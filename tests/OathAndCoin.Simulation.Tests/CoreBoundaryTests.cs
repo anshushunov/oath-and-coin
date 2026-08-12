@@ -29,12 +29,20 @@ namespace OathAndCoin.Simulation.Tests;
 ///      is actually named what the project is named, and that its type/
 ///      method tables aren't trivially empty — so silently reading the wrong
 ///      (or a stale/renamed) assembly fails loudly instead of passing green.
-///   4. The float/double check now also decodes MemberReference,
-///      MethodSpecification, StandaloneSignature and TypeSpecification
-///      blobs, not just field/method/local signatures — closing calls into
-///      other assemblies whose own signature carries float/double (e.g.
-///      Math.Sqrt(double)), generic method instantiations (Id&lt;double&gt;(x)),
-///      and constructed generic types (List&lt;double&gt;).
+///   4. The float/double check now also decodes MemberReference signatures
+///      (catches Math.Sqrt(double), double.Parse(string), a field reference
+///      like Math.PI — calls/field-refs into another assembly), the
+///      TypeSpecification a MemberReference's Parent points at (catches
+///      `new List&lt;double&gt;()` — the type argument lives on the parent,
+///      not the referenced .ctor's own signature), and — because
+///      MetadataReader has no bulk accessor for the MethodSpecification or
+///      TypeSpecification tables, and calli's StandaloneSignature has no
+///      back-reference from anywhere else — a minimal IL operand-token walk
+///      (IlTokenScanner) over every method body to find MethodSpecification
+///      (catches a generic method instantiated with float/double, e.g.
+///      Id&lt;double&gt;(x)), calli-kind StandaloneSignature, and any
+///      TypeSpecification reached directly by an instruction (box, newarr,
+///      castclass, sizeof, ldtoken, ...).
 ///   5. The banned-type list grew: System.Half (float16 — .NET's Half
 ///      arithmetic is implemented via float, so left alone it would be a
 ///      complete bypass of the float ban) and the System.Numerics
@@ -60,6 +68,17 @@ namespace OathAndCoin.Simulation.Tests;
 ///   - Implicit culture-dependence with no banned symbol at all — e.g.
 ///     `x.ToString("N2")` on an int — is invisible: there is no
 ///     "CultureInfo" symbol in that call for this check to find.
+///   - IlTokenScanner (used by the float check) is a deliberately minimal IL
+///     decoder: it knows the operand size of every documented ECMA-335
+///     opcode well enough to skip what it doesn't care about, but if it ever
+///     meets one it has no size for, it stops scanning *that method body*
+///     rather than guess — a wrong guess would desynchronize the rest of the
+///     walk. That stop is silent from the assertion's point of view: it
+///     shows up as "no violation found in this method", not as a build
+///     failure or a warning. It also does not decode `switch` targets'
+///     *meaning*, only their length (so it can keep walking past them), and
+///     it does not track which local/argument holds which value — it only
+///     ever inspects instruction operands, never data flow.
 ///   - Most fundamentally: this guard proves properties of the compiled
 ///     *form* of the code (what types/members/primitives are referenced).
 ///     It does not and cannot prove the simulation's *execution* is
