@@ -19,13 +19,37 @@ public sealed record TraceFactor(string ReasonCode, string SourceEntity, int Mag
 /// left on the event would dangle the moment the game is saved and
 /// reloaded, and the decision could no longer be explained.
 /// </summary>
+/// <remarks>
+/// A <see cref="CausalTrace"/> is not self-contained on its own — it
+/// explains an action (see <see cref="Actions"/>), not a target. Which hero
+/// and which contract the decision concerned already lives on the
+/// <see cref="Events.DomainEvent"/> that references this trace (e.g.
+/// <c>HeroAcceptedContract.HeroId</c>/<c>ContractId</c>), and a trace is
+/// only ever looked up together with that event by
+/// <see cref="Events.DomainEvent.CausalTraceId"/>. Repeating the target here
+/// would just be a second place for it to drift out of sync with the event.
+/// A trace is self-contained only in the pair <c>(event, trace)</c>, never
+/// in isolation.
+/// </remarks>
 public sealed record CausalTrace
 {
+    private ImmutableArray<TraceFactor> _positiveFactors;
+    private ImmutableArray<TraceFactor> _negativeFactors;
+    private ImmutableArray<string> _blockedBy;
+
     public required long TraceId { get; init; }
 
-    public required ImmutableArray<TraceFactor> PositiveFactors { get; init; }
+    public required ImmutableArray<TraceFactor> PositiveFactors
+    {
+        get => _positiveFactors;
+        init => _positiveFactors = RejectDefault(value, nameof(PositiveFactors));
+    }
 
-    public required ImmutableArray<TraceFactor> NegativeFactors { get; init; }
+    public required ImmutableArray<TraceFactor> NegativeFactors
+    {
+        get => _negativeFactors;
+        init => _negativeFactors = RejectDefault(value, nameof(NegativeFactors));
+    }
 
     /// <summary>
     /// Reason codes for hard constraints that ruled an action out entirely,
@@ -33,7 +57,11 @@ public sealed record CausalTrace
     /// обходится обычным положительным score"). Empty when nothing was
     /// blocked.
     /// </summary>
-    public required ImmutableArray<string> BlockedBy { get; init; }
+    public required ImmutableArray<string> BlockedBy
+    {
+        get => _blockedBy;
+        init => _blockedBy = RejectDefault(value, nameof(BlockedBy));
+    }
 
     /// <summary>
     /// Reason code that broke a tie between equally-scored actions; null
@@ -42,6 +70,24 @@ public sealed record CausalTrace
     /// never a description generated on the spot.
     /// </summary>
     public string? TieBreak { get; init; }
+
+    /// <summary>
+    /// <c>default(ImmutableArray&lt;T&gt;)</c> is an uninitialized struct,
+    /// not an empty array — <c>required</c> only guards against "never
+    /// assigned," not "assigned a default struct value." Left unchecked,
+    /// any read that touches the array's backing storage (e.g.
+    /// <c>Contains</c>, <c>SequenceEqual</c>) throws a
+    /// <see cref="NullReferenceException"/> far from the actual mistake.
+    /// Rejecting it here turns that into an immediate, diagnostic
+    /// <see cref="ArgumentException"/> at construction.
+    /// </summary>
+    private static ImmutableArray<T> RejectDefault<T>(ImmutableArray<T> value, string propertyName) =>
+        !value.IsDefault
+            ? value
+            : throw new ArgumentException(
+                $"{propertyName} must not be a default(ImmutableArray<{typeof(T).Name}>); "
+                + $"use ImmutableArray<{typeof(T).Name}>.Empty instead.",
+                propertyName);
 }
 
 /// <summary>
@@ -67,6 +113,12 @@ public sealed record DecisionResult
     private bool _selectedActionAssigned;
     private bool _consideredActionsAssigned;
 
+    /// <summary>
+    /// The chosen action (see <see cref="Actions"/>) — not a target. Which
+    /// hero and which contract this decision concerned is carried by the
+    /// <see cref="Events.DomainEvent"/> the caller derives from this result,
+    /// not repeated here.
+    /// </summary>
     public required ContentId SelectedAction
     {
         get => _selectedAction;
@@ -83,6 +135,14 @@ public sealed record DecisionResult
         get => _consideredActions;
         init
         {
+            if (value.IsDefault)
+            {
+                throw new ArgumentException(
+                    "ConsideredActions must not be a default(ImmutableArray<ContentId>); "
+                    + "use ImmutableArray<ContentId>.Empty instead.",
+                    nameof(ConsideredActions));
+            }
+
             _consideredActions = value;
             _consideredActionsAssigned = true;
             ValidateSelectedActionIsConsidered();

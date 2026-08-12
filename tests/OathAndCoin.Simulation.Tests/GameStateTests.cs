@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Reflection;
 using OathAndCoin.Simulation.Decisions;
 using OathAndCoin.Simulation.Events;
 using OathAndCoin.Simulation.Ids;
@@ -11,7 +12,8 @@ namespace OathAndCoin.Simulation.Tests;
 /// whose collections are physically immutable, whose event log only grows
 /// through <see cref="GameState.WithEvent"/> with strictly ordered event
 /// ids, and whose stored <see cref="CausalTrace"/>s stay addressable from
-/// the events that reference them.
+/// the events that reference them — in both directions, so neither an event
+/// nor a trace can end up orphaned.
 /// </summary>
 public class GameStateTests
 {
@@ -42,13 +44,71 @@ public class GameStateTests
     public void WithEvent_StoresTraceAddressableByEventReference()
     {
         var state = CreateState();
-        var trace = CreateEmptyTrace(traceId: 7);
+        var trace = CreateEmptyTrace(traceId: state.Metadata.NextTraceId);
         var evt = new HeroAcceptedContract(
             state.Metadata.NextEventId, state.Metadata.LogicalTime, trace.TraceId, new HeroId(1), ContractId);
 
         var next = state.WithEvent(evt, trace);
 
         Assert.Same(trace, next.Traces[evt.CausalTraceId!.Value]);
+        Assert.Equal(state.Metadata.NextTraceId + 1, next.Metadata.NextTraceId);
+    }
+
+    // Fix round 1 / C-1: WithEvent advanced NextEventId/StateVersion but not
+    // NextTraceId, so the most natural client pattern — read NextTraceId,
+    // build the trace under that id, build the event referencing it, call
+    // WithEvent — reads the same (never-advanced) id on the very next
+    // decision and silently overwrites the first explanation at that key.
+    [Fact]
+    public void WithEvent_AdvancesNextTraceIdAndKeepsBothExplanationsAddressable()
+    {
+        var state = CreateState();
+
+        var firstTraceId = state.Metadata.NextTraceId;
+        var firstTrace = CreateEmptyTrace(firstTraceId);
+        var firstEvent = new HeroAcceptedContract(
+            state.Metadata.NextEventId, state.Metadata.LogicalTime, firstTraceId, new HeroId(1), ContractId);
+        var afterFirst = state.WithEvent(firstEvent, firstTrace);
+
+        Assert.Equal(firstTraceId + 1, afterFirst.Metadata.NextTraceId);
+
+        var secondTraceId = afterFirst.Metadata.NextTraceId;
+        var secondTrace = CreateEmptyTrace(secondTraceId);
+        var secondEvent = new HeroDeclinedContract(
+            afterFirst.Metadata.NextEventId, afterFirst.Metadata.LogicalTime, secondTraceId, new HeroId(2), ContractId);
+        var afterSecond = afterFirst.WithEvent(secondEvent, secondTrace);
+
+        Assert.NotEqual(firstTraceId, secondTraceId);
+        Assert.Equal(secondTraceId + 1, afterSecond.Metadata.NextTraceId);
+        Assert.Equal(2, afterSecond.Traces.Count);
+        Assert.Same(firstTrace, afterSecond.Traces[firstTraceId]);
+        Assert.Same(secondTrace, afterSecond.Traces[secondTraceId]);
+    }
+
+    // Fix round 1 / C-1: a second decision must never silently erase what
+    // an earlier one already explained, even if a caller misuses the API by
+    // reusing an occupied trace id with different content.
+    [Fact]
+    public void WithEvent_RejectsOverwritingStoredTraceWithDifferentContent()
+    {
+        var state = CreateState();
+        var traceId = state.Metadata.NextTraceId;
+        var original = CreateEmptyTrace(traceId);
+        var firstEvent = new HeroAcceptedContract(
+            state.Metadata.NextEventId, state.Metadata.LogicalTime, traceId, new HeroId(1), ContractId);
+        var afterFirst = state.WithEvent(firstEvent, original);
+
+        var different = new CausalTrace
+        {
+            TraceId = traceId,
+            PositiveFactors = ImmutableArray.Create(new TraceFactor(ReasonCodes.PaymentAttractive, "hero#2", 3)),
+            NegativeFactors = ImmutableArray<TraceFactor>.Empty,
+            BlockedBy = ImmutableArray<string>.Empty,
+        };
+        var secondEvent = new HeroDeclinedContract(
+            afterFirst.Metadata.NextEventId, afterFirst.Metadata.LogicalTime, traceId, new HeroId(2), ContractId);
+
+        Assert.Throws<ArgumentException>(() => afterFirst.WithEvent(secondEvent, different));
     }
 
     [Fact]
@@ -74,49 +134,120 @@ public class GameStateTests
         Assert.Throws<ArgumentException>(() => state.WithEvent(evt, trace));
     }
 
+    // Fix round 1 / I-1: the previous check only caught "trace given, ids
+    // mismatch." An event that declares a CausalTraceId, with no trace
+    // given and nothing stored under that id yet, passed silently — exactly
+    // the dangling reference the whole feature exists to prevent.
+    [Fact]
+    public void WithEvent_RejectsDanglingCausalTraceReference()
+    {
+        var state = CreateState();
+        var evt = new HeroAcceptedContract(
+            state.Metadata.NextEventId, state.Metadata.LogicalTime, 99, new HeroId(1), ContractId);
+
+        Assert.Throws<ArgumentException>(() => state.WithEvent(evt, null));
+    }
+
+    // Fix round 1 / I-1: the mirror case also passed silently — a trace
+    // handed in for an event that references no CausalTraceId at all would
+    // land in Traces unreachable from any event.
+    [Fact]
+    public void WithEvent_RejectsTraceWithoutEventReference()
+    {
+        var state = CreateState();
+        var trace = CreateEmptyTrace(state.Metadata.NextTraceId);
+        var evt = new HeroAcceptedContract(
+            state.Metadata.NextEventId, state.Metadata.LogicalTime, null, new HeroId(1), ContractId);
+
+        Assert.Throws<ArgumentException>(() => state.WithEvent(evt, trace));
+    }
+
+    // Fix round 1 / I-1: the legitimate case the strict check must still
+    // allow — a second event referencing an explanation stored by an
+    // earlier one, without re-supplying the trace.
+    [Fact]
+    public void WithEvent_AllowsEventToReferenceAlreadyStoredTrace()
+    {
+        var state = CreateState();
+        var traceId = state.Metadata.NextTraceId;
+        var trace = CreateEmptyTrace(traceId);
+        var firstEvent = new HeroAcceptedContract(
+            state.Metadata.NextEventId, state.Metadata.LogicalTime, traceId, new HeroId(1), ContractId);
+        var afterFirst = state.WithEvent(firstEvent, trace);
+
+        var secondEvent = new HeroDeclinedContract(
+            afterFirst.Metadata.NextEventId, afterFirst.Metadata.LogicalTime, traceId, new HeroId(2), ContractId);
+        var afterSecond = afterFirst.WithEvent(secondEvent, null);
+
+        Assert.Equal(afterFirst.Metadata.NextTraceId, afterSecond.Metadata.NextTraceId);
+        Assert.Single(afterSecond.Traces);
+        Assert.Same(trace, afterSecond.Traces[traceId]);
+    }
+
+    // Fix round 1 / I-2: GameState is a public record with public init
+    // properties (needed for structural construction/inspection elsewhere),
+    // so a bare `with` expression always compiles and always yields a new
+    // GameState value. It must never be mistaken for a real campaign
+    // transition: WithEvent is the only place StateVersion may advance
+    // (see the remarks on GameState). This pins that a bare `with` leaves
+    // StateVersion untouched, so it can never be silently substituted for
+    // WithEvent without becoming visible here.
+    [Fact]
+    public void PlainWithExpression_DoesNotAdvanceStateVersion()
+    {
+        var state = CreateState();
+
+        var mutated = state with { Contracts = state.Contracts.SetItem(ContractId, CreateContract(ContractId)) };
+
+        Assert.Equal(state.Metadata.StateVersion, mutated.Metadata.StateVersion);
+        Assert.NotSame(state, mutated);
+    }
+
+    // Fix round 1 / I-3: the original version of this test always called
+    // source.ToImmutableSortedDictionary() at its own call site before
+    // assigning Heroes, so the defensive copy happened in *test* code — it
+    // passed identically whether GameState.Heroes was the concrete
+    // ImmutableSortedDictionary<,> or loosened to an interface like
+    // IReadOnlyDictionary<,> that a plain Dictionary already satisfies
+    // without copying, because it never actually tried to hand Heroes an
+    // unconverted Dictionary (and a version that did wouldn't compile
+    // against the correct, strict implementation). Reflection's
+    // PropertyInfo.SetValue sidesteps that: it bypasses the C# compiler's
+    // `init` restriction (compile-time only, not enforced by the CLR) and
+    // lets the test attempt exactly that assignment. Against the correct,
+    // physically immutable type this is rejected outright; if it were ever
+    // accepted, mutating the original Dictionary afterwards would leak into
+    // the already-built state — this test proves that consequence directly
+    // rather than assuming it.
     [Fact]
     public void MutatingSourceCollection_DoesNotAffectState()
     {
-        // Behavior, not type: a type assertion (e.g. Assert.IsAssignableFrom
-        // <ImmutableSortedDictionary<...>>) would prove the declared
-        // property type but not that the *owner of the original Dictionary*
-        // lost the ability to change already-built state. Build state from
-        // a plain, mutable Dictionary, then mutate that same Dictionary
-        // afterwards, and confirm the state that was already built does not
-        // see the change.
         var heroId = new HeroId(1);
         var source = new Dictionary<HeroId, HeroState>
         {
             [heroId] = CreateHero(heroId, greed: 5),
         };
+        var state = CreateState();
+        var heroesProperty = typeof(GameState).GetProperty(nameof(GameState.Heroes))!;
 
-        var state = CreateState(heroes: source.ToImmutableSortedDictionary());
+        var exception = Record.Exception(() => heroesProperty.SetValue(state, source));
+
+        if (exception is not null)
+        {
+            Assert.IsType<ArgumentException>(exception);
+            return;
+        }
 
         source[heroId] = CreateHero(heroId, greed: 999);
-        source[new HeroId(2)] = CreateHero(new HeroId(2), greed: 1);
-
-        Assert.Equal(5, state.Hero(heroId).Greed);
-        Assert.False(state.Heroes.ContainsKey(new HeroId(2)));
-        Assert.Single(state.Heroes);
+        Assert.Fail(
+            $"Heroes accepted a raw, unconverted Dictionary via reflection; mutating it afterwards "
+            + $"changed the already-built state's Greed to {state.Hero(heroId).Greed}.");
     }
 
-    // Fix round 1: MutatingSourceCollection_DoesNotAffectState always calls
-    // ToImmutableSortedDictionary() at its own call site before assigning
-    // Heroes, so the defensive copy already happened in test code — that
-    // test passes unchanged even if GameState.Heroes is loosened from the
-    // concrete ImmutableSortedDictionary<,> to IReadOnlyDictionary<,> (a
-    // type any Dictionary already satisfies without copying). A property
-    // typed as an interface no longer *forces* every future caller through
-    // a copying conversion; it just happens that this particular test still
-    // performs one. This test targets that gap directly: it asserts the
-    // exact declared type of every collection property, so relaxing any of
-    // them to a interface — even one only "coincidentally" caught in
-    // practice — is a visible failure here.
     [Fact]
     public void Collections_AreDeeplyImmutable()
     {
-        var properties = typeof(GameState).GetProperties(
-            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        var properties = typeof(GameState).GetProperties(BindingFlags.Public | BindingFlags.Instance);
 
         AssertDeclaredType(properties, nameof(GameState.Heroes), typeof(ImmutableSortedDictionary<HeroId, HeroState>));
         AssertDeclaredType(properties, nameof(GameState.Contracts), typeof(ImmutableSortedDictionary<ContentId, ContractState>));
@@ -128,11 +259,28 @@ public class GameStateTests
         Assert.Equal(typeof(ImmutableSortedSet<HeroId>), respondedByProperty!.PropertyType);
     }
 
-    private static void AssertDeclaredType(
-        System.Reflection.PropertyInfo[] properties, string propertyName, Type expectedType)
+    private static void AssertDeclaredType(PropertyInfo[] properties, string propertyName, Type expectedType)
     {
         var property = Assert.Single(properties, p => p.Name == propertyName);
         Assert.Equal(expectedType, property.PropertyType);
+    }
+
+    // Fix round 1 / I-4: default(ImmutableArray<T>) is an uninitialized
+    // struct, not an empty array — `required` only guards against "never
+    // assigned," not "assigned this specific default struct value."
+    [Fact]
+    public void History_RejectsDefaultImmutableArray()
+    {
+        var exception = Assert.Throws<ArgumentException>(() => new GameState
+        {
+            Metadata = CreateMetadata(),
+            Heroes = ImmutableSortedDictionary<HeroId, HeroState>.Empty,
+            Contracts = ImmutableSortedDictionary<ContentId, ContractState>.Empty,
+            Traces = ImmutableSortedDictionary<long, CausalTrace>.Empty,
+            History = default,
+        });
+
+        Assert.Contains("History", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -177,6 +325,15 @@ public class GameStateTests
         Greed = greed,
         Caution = 5,
         TrustInGuild = 5,
+    };
+
+    private static ContractState CreateContract(ContentId id) => new()
+    {
+        Id = id,
+        Payment = 100,
+        Risk = 5,
+        Status = ContractStatus.Offered,
+        RespondedBy = ImmutableSortedSet<HeroId>.Empty,
     };
 
     private static CausalTrace CreateEmptyTrace(long traceId) => new()

@@ -1,33 +1,30 @@
 using System.Collections.Immutable;
 using OathAndCoin.Simulation.Decisions;
-using OathAndCoin.Simulation.Ids;
 
 namespace OathAndCoin.Simulation.Tests;
 
 /// <summary>
-/// Verifies <see cref="DecisionResult"/> and <see cref="ReasonCodes"/>
-/// (TDD §8): a decision's selection must always be among what was actually
-/// considered, and reason codes are pinned, namespaced constants rather
-/// than strings assembled ad hoc.
+/// Verifies <see cref="DecisionResult"/>, <see cref="CausalTrace"/> and
+/// <see cref="ReasonCodes"/> (TDD §8): a decision's selection must always be
+/// among what was actually considered, reason codes are pinned, namespaced
+/// constants rather than strings assembled ad hoc, and none of the
+/// <see cref="ImmutableArray{T}"/>-typed properties silently accept an
+/// uninitialized <c>default</c> struct in place of an empty array.
 /// </summary>
 public class CausalTraceTests
 {
-    private static readonly ContentId Considered1 = ContentId.Parse("core:escort_the_caravan");
-    private static readonly ContentId Considered2 = ContentId.Parse("core:clear_the_ruins");
-    private static readonly ContentId NotConsidered = ContentId.Parse("core:guard_the_gate");
-
     [Fact]
     public void DecisionResult_SelectedActionMustBeAmongConsidered()
     {
         var exception = Assert.Throws<ArgumentException>(() => new DecisionResult
         {
-            SelectedAction = NotConsidered,
-            ConsideredActions = ImmutableArray.Create(Considered1, Considered2),
+            SelectedAction = Actions.Accept,
+            ConsideredActions = ImmutableArray.Create(Actions.Decline),
             SelectedScore = 10,
             Trace = CreateEmptyTrace(),
         });
 
-        Assert.Contains(NotConsidered.Value, exception.Message, StringComparison.Ordinal);
+        Assert.Contains(Actions.Accept.Value, exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -35,13 +32,13 @@ public class CausalTraceTests
     {
         var result = new DecisionResult
         {
-            SelectedAction = Considered1,
-            ConsideredActions = ImmutableArray.Create(Considered1, Considered2),
+            SelectedAction = Actions.Accept,
+            ConsideredActions = ImmutableArray.Create(Actions.Accept, Actions.Decline),
             SelectedScore = 10,
             Trace = CreateEmptyTrace(),
         };
 
-        Assert.Equal(Considered1, result.SelectedAction);
+        Assert.Equal(Actions.Accept, result.SelectedAction);
         Assert.Equal(2, result.ConsideredActions.Length);
     }
 
@@ -54,13 +51,32 @@ public class CausalTraceTests
         // to run first.
         var exception = Assert.Throws<ArgumentException>(() => new DecisionResult
         {
-            ConsideredActions = ImmutableArray.Create(Considered1, Considered2),
-            SelectedAction = NotConsidered,
+            ConsideredActions = ImmutableArray.Create(Actions.Decline),
+            SelectedAction = Actions.Accept,
             SelectedScore = 10,
             Trace = CreateEmptyTrace(),
         });
 
-        Assert.Contains(NotConsidered.Value, exception.Message, StringComparison.Ordinal);
+        Assert.Contains(Actions.Accept.Value, exception.Message, StringComparison.Ordinal);
+    }
+
+    // Fix round 1 / I-4: default(ImmutableArray<ContentId>) is an
+    // uninitialized struct, not an empty array. Before this fix,
+    // ConsideredActions = default would reach Contains() inside the
+    // invariant check and throw NullReferenceException instead of the
+    // documented ArgumentException.
+    [Fact]
+    public void ConsideredActions_RejectsDefaultImmutableArray()
+    {
+        var exception = Assert.Throws<ArgumentException>(() => new DecisionResult
+        {
+            SelectedAction = Actions.Accept,
+            ConsideredActions = default,
+            SelectedScore = 10,
+            Trace = CreateEmptyTrace(),
+        });
+
+        Assert.Contains("ConsideredActions", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -83,11 +99,30 @@ public class CausalTraceTests
         Assert.Equal(codes.Length, codes.Distinct().Count());
     }
 
-    private static CausalTrace CreateEmptyTrace() => new()
+    [Fact]
+    public void Actions_AreStableAndNamespaced()
+    {
+        Assert.Equal("action:accept", Actions.Accept.Value);
+        Assert.Equal("action:decline", Actions.Decline.Value);
+        Assert.NotEqual(Actions.Accept, Actions.Decline);
+    }
+
+    [Theory]
+    [InlineData("PositiveFactors")]
+    [InlineData("NegativeFactors")]
+    [InlineData("BlockedBy")]
+    public void CausalTrace_RejectsDefaultImmutableArrayFactorCollections(string propertyName)
+    {
+        var exception = Assert.Throws<ArgumentException>(() => CreateEmptyTrace(defaultOut: propertyName));
+
+        Assert.Contains(propertyName, exception.Message, StringComparison.Ordinal);
+    }
+
+    private static CausalTrace CreateEmptyTrace(string? defaultOut = null) => new()
     {
         TraceId = 1,
-        PositiveFactors = ImmutableArray<TraceFactor>.Empty,
-        NegativeFactors = ImmutableArray<TraceFactor>.Empty,
-        BlockedBy = ImmutableArray<string>.Empty,
+        PositiveFactors = defaultOut == "PositiveFactors" ? default : ImmutableArray<TraceFactor>.Empty,
+        NegativeFactors = defaultOut == "NegativeFactors" ? default : ImmutableArray<TraceFactor>.Empty,
+        BlockedBy = defaultOut == "BlockedBy" ? default : ImmutableArray<string>.Empty,
     };
 }
