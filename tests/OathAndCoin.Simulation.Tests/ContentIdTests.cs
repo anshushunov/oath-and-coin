@@ -13,14 +13,16 @@ namespace OathAndCoin.Simulation.Tests;
 public class ContentIdTests
 {
     [Theory]
-    [InlineData("core:bram")]
-    [InlineData("core:escort_the_caravan")]
-    [InlineData("mod_north:hero_2")]
-    public void Parse_AcceptsValidNamespacedId(string input)
+    [InlineData("core:bram", "core", "bram")]
+    [InlineData("core:escort_the_caravan", "core", "escort_the_caravan")]
+    [InlineData("mod_north:hero_2", "mod_north", "hero_2")]
+    public void Parse_AcceptsValidNamespacedId(string input, string expectedNamespace, string expectedName)
     {
         var id = ContentId.Parse(input);
 
         Assert.Equal(input, id.Value);
+        Assert.Equal(expectedNamespace, id.Namespace);
+        Assert.Equal(expectedName, id.Name);
     }
 
     [Theory]
