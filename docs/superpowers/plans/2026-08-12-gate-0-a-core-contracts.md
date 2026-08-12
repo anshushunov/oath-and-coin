@@ -179,13 +179,19 @@ public static ulong Draw(ulong campaignSeed, RngStream stream, ulong ordinal)
 
 `DrawInt32` считает ширину диапазона как `ulong span = (ulong)((long)maxExclusive - minInclusive)` и приводит результат обратно через `long`. Отбраковка по порогу для равномерности: `ulong threshold = ulong.MaxValue - (ulong.MaxValue % span)`; при попадании выше порога `ordinal` увеличивается на единицу и выборка повторяется. Число повторов возвращать наружу не нужно — функция остаётся чистой от `(seed, stream, ordinal)`.
 
-Golden-вектор генерируется один раз и коммитится:
+Golden-вектор генерируется один раз и коммитится. Раннера из плана B на этом этапе ещё нет, поэтому используется одноразовая консольная программа, **которая не попадает в репозиторий**:
 
 ```bash
-dotnet run --project tools/OathAndCoin.SimulationRunner -- emit-rng-golden --seed 424242 --stream HeroDecision --count 16
+dotnet new console -o /tmp/rng-golden -f net8.0
+dotnet add /tmp/rng-golden reference simulation/OathAndCoin.Simulation
+# Program.cs печатает JSON-массив из 16 значений Draw(424242, HeroDecision, i)
+dotnet run --project /tmp/rng-golden > tests/OathAndCoin.Simulation.Tests/Fixtures/rng-golden.json
+rm -rf /tmp/rng-golden
 ```
 
-Раннера на этом этапе ещё нет, поэтому в плане A вектор генерируется временным тестом с атрибутом `[Fact(Skip = "generator")]`, который печатает значения. Команда, которой файл создан, указывается в PR.
+Команда, которой файл создан, указывается в PR (глобальное ограничение «каждое число — с командой»).
+
+**Тест-генератор писать запрещено.** Тест с `[Fact(Skip = ...)]`, который ничего не утверждает, а печатает значения, — это не тест: он не может покраснеть и живёт в наборе вечно. Генерация вектора одноразова, поэтому и инструмент одноразов.
 
 - [ ] **Step 4: Запустить тесты**
 
@@ -302,7 +308,7 @@ git commit -m "feat: add stable namespaced content ids"
 | `WithEvent_StoresTraceAddressableByEventReference` | `state.Traces[evt.CausalTraceId.Value]` возвращает переданный trace |
 | `WithEvent_RejectsOutOfOrderEventId` | `ArgumentException` с номером в сообщении |
 | `WithEvent_RejectsTraceIdMismatch` | `CausalTraceId` события и `TraceId` переданного trace обязаны совпадать |
-| `Collections_AreDeeplyImmutable` | попытка привести `state.Heroes` к `IDictionary` и изменить — не компилируется либо бросает; проверяется через `Assert.IsAssignableFrom<ImmutableSortedDictionary<HeroId, HeroState>>` |
+| `MutatingSourceCollection_DoesNotAffectState` | построить состояние из обычного `Dictionary`, затем изменить этот `Dictionary` — состояние не меняется. Проверка поведения, а не типа: `Assert.IsAssignableFrom<ImmutableSortedDictionary<…>>` подтвердил бы объявленный тип, но не то, что владелец исходной коллекции потерял к ней доступ |
 | `Hero_ThrowsDiagnosticErrorForUnknownId` | сообщение содержит `hero#42` |
 | `Metadata_CarriesReproducibilityContract` | `SaveSchemaVersion`, `RulesetVersion`, `CampaignSeed`, `StateVersion` присутствуют и читаются |
 
