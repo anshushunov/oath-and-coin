@@ -100,6 +100,41 @@ public class GameStateTests
         Assert.Single(state.Heroes);
     }
 
+    // Fix round 1: MutatingSourceCollection_DoesNotAffectState always calls
+    // ToImmutableSortedDictionary() at its own call site before assigning
+    // Heroes, so the defensive copy already happened in test code — that
+    // test passes unchanged even if GameState.Heroes is loosened from the
+    // concrete ImmutableSortedDictionary<,> to IReadOnlyDictionary<,> (a
+    // type any Dictionary already satisfies without copying). A property
+    // typed as an interface no longer *forces* every future caller through
+    // a copying conversion; it just happens that this particular test still
+    // performs one. This test targets that gap directly: it asserts the
+    // exact declared type of every collection property, so relaxing any of
+    // them to a interface — even one only "coincidentally" caught in
+    // practice — is a visible failure here.
+    [Fact]
+    public void Collections_AreDeeplyImmutable()
+    {
+        var properties = typeof(GameState).GetProperties(
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+
+        AssertDeclaredType(properties, nameof(GameState.Heroes), typeof(ImmutableSortedDictionary<HeroId, HeroState>));
+        AssertDeclaredType(properties, nameof(GameState.Contracts), typeof(ImmutableSortedDictionary<ContentId, ContractState>));
+        AssertDeclaredType(properties, nameof(GameState.Traces), typeof(ImmutableSortedDictionary<long, CausalTrace>));
+        AssertDeclaredType(properties, nameof(GameState.History), typeof(ImmutableArray<DomainEvent>));
+
+        var respondedByProperty = typeof(ContractState).GetProperty(nameof(ContractState.RespondedBy));
+        Assert.NotNull(respondedByProperty);
+        Assert.Equal(typeof(ImmutableSortedSet<HeroId>), respondedByProperty!.PropertyType);
+    }
+
+    private static void AssertDeclaredType(
+        System.Reflection.PropertyInfo[] properties, string propertyName, Type expectedType)
+    {
+        var property = Assert.Single(properties, p => p.Name == propertyName);
+        Assert.Equal(expectedType, property.PropertyType);
+    }
+
     [Fact]
     public void Hero_ThrowsDiagnosticErrorForUnknownId()
     {
