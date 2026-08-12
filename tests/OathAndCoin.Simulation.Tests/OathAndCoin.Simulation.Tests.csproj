@@ -25,6 +25,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="Fixtures\rng-golden.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
       <_Parameter1>SimulationSourceRoot</_Parameter1>
       <_Parameter2>$(MSBuildThisFileDirectory)../../simulation</_Parameter2>
