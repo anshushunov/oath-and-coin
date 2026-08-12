@@ -25,7 +25,7 @@
 
 ---
 
-### Task A1: Скелет решения и трёхчастный guard границы
+### Task 1: Скелет решения и трёхчастный guard границы
 
 **Files:**
 - Create: `global.json`, `Directory.Build.props`, `.gitignore`, `OathAndCoin.sln`
@@ -113,7 +113,7 @@ git commit -m "feat: add solution skeleton with three-part core boundary guard"
 
 ---
 
-### Task A2: Counter-based детерминированная случайность (`ADR-003`)
+### Task 2: Counter-based детерминированная случайность (`ADR-003`)
 
 **Files:**
 - Create: `simulation/OathAndCoin.Simulation/Random/RngStream.cs`, `DeterministicRng.cs`
@@ -121,7 +121,7 @@ git commit -m "feat: add solution skeleton with three-part core boundary guard"
 - Create: `tests/OathAndCoin.Simulation.Tests/Fixtures/rng-golden.json`
 
 **Interfaces:**
-- Consumes: Task A1.
+- Consumes: Task 1.
 - Produces:
   - `enum RngStream { WorldGeneration = 0, WorldTick = 1, ContractGeneration = 2, HeroDecision = 3, ExpeditionEvent = 4, Combat = 5, CosmeticPresentation = 6 }` — по `TDD` §7.2
   - `static ulong DeterministicRng.Draw(ulong campaignSeed, RngStream stream, ulong ordinal)`
@@ -216,14 +216,14 @@ git commit -m "feat: add counter-based deterministic rng with stream separation"
 
 ---
 
-### Task A3: Стабильные идентификаторы (`ADR-005`)
+### Task 3: Стабильные идентификаторы (`ADR-005`)
 
 **Files:**
 - Create: `simulation/OathAndCoin.Simulation/Ids/ContentId.cs`, `HeroId.cs`
 - Test: `tests/OathAndCoin.Simulation.Tests/ContentIdTests.cs`
 
 **Interfaces:**
-- Consumes: Task A1.
+- Consumes: Task 1.
 - Produces:
   - `readonly struct ContentId : IEquatable<ContentId>, IComparable<ContentId>` — приватный конструктор, публичные `Parse`/`TryParse`, свойства `Namespace`, `Name`, `Value`
   - `readonly record struct HeroId(int Value) : IComparable<HeroId>`
@@ -264,7 +264,7 @@ git commit -m "feat: add stable namespaced content ids"
 
 ---
 
-### Task A4: События, causal trace и состояние кампании (`ADR-007`)
+### Task 4: События, causal trace и состояние кампании (`ADR-007`)
 
 **Files:**
 - Create: `simulation/OathAndCoin.Simulation/Events/DomainEvent.cs`
@@ -273,7 +273,7 @@ git commit -m "feat: add stable namespaced content ids"
 - Test: `tests/OathAndCoin.Simulation.Tests/GameStateTests.cs`, `CausalTraceTests.cs`
 
 **Interfaces:**
-- Consumes: Task A2, A3.
+- Consumes: Task 2, Task 3.
 - Produces:
   - `abstract record DomainEvent(long EventId, long LogicalTime, long? CausalTraceId)`
   - `sealed record HeroAcceptedContract(long, long, long?, HeroId, ContentId) : DomainEvent`
