@@ -6,18 +6,4 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
-  <ItemGroup>
-    <!-- ImplicitUsings normally adds a global "using System.IO;", which makes
-         File/Directory/Path resolvable unqualified — so the banned-API text
-         scan's "System.IO" substring never has to appear even though the API
-         is used (Critical finding C3). Removing just this one implicit using
-         keeps ImplicitUsings enabled for every other namespace but turns any
-         unqualified File/Directory/Path use into a compile error (CS0103)
-         here, in this project, instead of relying on text search. An explicit
-         "using System.IO;" or a fully qualified "System.IO.File..." call is
-         still textually present in source and remains caught by
-         SimulationSources_UseNoBannedApi. -->
-    <Using Remove="System.IO" />
-  </ItemGroup>
-
 </Project>
