@@ -1,3 +1,7 @@
+using System.Runtime.CompilerServices;
+
+[assembly: InternalsVisibleTo("OathAndCoin.Simulation.Tests")]
+
 namespace OathAndCoin.Simulation.Random;
 
 /// <summary>
@@ -55,7 +59,7 @@ public static class DeterministicRng
         }
 
         ulong span = (ulong)((long)maxExclusive - minInclusive);
-        ulong threshold = ulong.MaxValue - (ulong.MaxValue % span);
+        ulong threshold = AcceptanceThreshold(span);
 
         ulong currentOrdinal = ordinal;
         ulong sample;
@@ -71,6 +75,26 @@ public static class DeterministicRng
         }
 
         return (int)((long)minInclusive + (long)(sample % span));
+    }
+
+    /// <summary>
+    /// The rejection-sampling cutoff for a range of width <paramref name="span"/>:
+    /// the largest multiple of <paramref name="span"/> that fits in a
+    /// <see cref="ulong"/>. Samples at or above this value are re-drawn
+    /// (see <see cref="DrawInt32"/>) so that every value in
+    /// <c>[0, span)</c> is equally likely — without the cutoff, values near
+    /// the top of the 64-bit space would be under-represented by
+    /// <c>ulong.MaxValue % span</c> counts relative to the rest, biasing the
+    /// draw. Internal (not private) so the invariant — <c>threshold % span
+    /// == 0</c> and <c>threshold</c> within one <paramref name="span"/> of
+    /// <see cref="ulong.MaxValue"/> — can be asserted directly for a range
+    /// of span values: black-box testing cannot exercise the rejection
+    /// branch itself, since for realistic spans the rejection probability
+    /// is astronomically small (e.g. ~5.4e-20 for span = 2^32 - 1).
+    /// </summary>
+    internal static ulong AcceptanceThreshold(ulong span)
+    {
+        return ulong.MaxValue - (ulong.MaxValue % span);
     }
 
     private static ulong Mix(ulong z)

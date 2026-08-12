@@ -119,6 +119,31 @@ public class DeterministicRngTests
             () => DeterministicRng.DrawInt32(1UL, RngStream.Combat, 0UL, 5, 4));
     }
 
+    // Fix round 1 / I-1: DrawInt32's rejection branch is exercised by
+    // exactly zero draws across every test above — for the widest span
+    // (2^32 - 1, used by DrawInt32_HandlesFullIntRange) the rejection
+    // probability is ~5.4e-20, so black-box sampling can never reach it.
+    // The invariant that makes rejection sampling unbiased is asserted
+    // directly against DeterministicRng.AcceptanceThreshold (internal,
+    // exposed via InternalsVisibleTo) instead: threshold must be an exact
+    // multiple of span, and within one span of ulong.MaxValue, for every
+    // span DrawInt32 can ever compute (1 through 2^32 - 1).
+    [Fact]
+    public void AcceptanceThreshold_IsMultipleOfSpanAndNearMax()
+    {
+        ulong[] spans = { 1UL, 2UL, 3UL, 6UL, 7UL, 16UL, 97UL, 1024UL, 4294967295UL };
+
+        foreach (var span in spans)
+        {
+            var threshold = DeterministicRng.AcceptanceThreshold(span);
+
+            Assert.True(threshold % span == 0UL, $"threshold {threshold} is not a multiple of span {span}");
+            Assert.True(
+                threshold > ulong.MaxValue - span,
+                $"threshold {threshold} is not within one span of ulong.MaxValue for span {span}");
+        }
+    }
+
     [Fact]
     public void Draw_MatchesCommittedGoldenVector()
     {
@@ -129,23 +154,37 @@ public class DeterministicRngTests
         //
         //   dotnet new console -o /tmp/rng-golden -f net8.0
         //   dotnet add /tmp/rng-golden reference simulation/OathAndCoin.Simulation
-        //   # Program.cs: prints JSON array of Draw(424242, HeroDecision, i) for i in 0..15
+        //   # Program.cs: prints JSON object {algorithmVersion, campaignSeed,
+        //   # stream, values} for Draw(424242, HeroDecision, i), i in 0..15
         //   dotnet run --project /tmp/rng-golden > tests/OathAndCoin.Simulation.Tests/Fixtures/rng-golden.json
         //   rm -rf /tmp/rng-golden
+        //
+        // Fix round 1 / I-2: the fixture carries algorithmVersion, seed and
+        // stream alongside the values, and this test asserts all of them —
+        // not just the numbers. Without that, someone could change Mix,
+        // watch this test go red, regenerate the fixture, and leave
+        // AlgorithmVersion at "/1": every test would go green again while
+        // old saves kept claiming a version their bytes no longer match.
         const ulong seed = 424242UL;
         const RngStream stream = RngStream.HeroDecision;
 
         var path = Path.Combine(AppContext.BaseDirectory, "Fixtures", "rng-golden.json");
         var json = File.ReadAllText(path);
-        var expected = JsonSerializer.Deserialize<ulong[]>(json);
+        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        var fixture = JsonSerializer.Deserialize<GoldenVectorFixture>(json, options);
 
-        Assert.NotNull(expected);
-        Assert.Equal(16, expected!.Length);
+        Assert.NotNull(fixture);
+        Assert.Equal(DeterministicRng.AlgorithmVersion, fixture!.AlgorithmVersion);
+        Assert.Equal(seed, fixture.CampaignSeed);
+        Assert.Equal(nameof(RngStream.HeroDecision), fixture.Stream);
+        Assert.Equal(16, fixture.Values.Length);
 
-        for (var i = 0; i < expected.Length; i++)
+        for (var i = 0; i < fixture.Values.Length; i++)
         {
             var actual = DeterministicRng.Draw(seed, stream, (ulong)i);
-            Assert.Equal(expected[i], actual);
+            Assert.Equal(fixture.Values[i], actual);
         }
     }
+
+    private sealed record GoldenVectorFixture(string AlgorithmVersion, ulong CampaignSeed, string Stream, ulong[] Values);
 }
