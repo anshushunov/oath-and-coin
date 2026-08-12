@@ -239,7 +239,7 @@ initial_state
 
 ### 7.4. Floating point и целевой уровень детерминизма
 
-Целевой уровень для MVP — **воспроизводимость в пределах платформы и сборки**: этого достаточно для replay, тестов, отладки и багрепортов. Бит-в-бит кроссплатформенный детерминизм не является требованием MVP — это критерий для `ADR-003`, а не открытая амбиция.
+Целевой уровень для MVP — воспроизводимость на поддерживаемой платформе при фиксированных **`ruleset_version + content_version + RNG version/seed`** (контракт §7.1): этого достаточно для replay, тестов, отладки и багрепортов. Повторная сборка того же ruleset не должна менять replay — воспроизводимость привязана к версиям правил и контента, а не к артефакту сборки. Бит-в-бит кроссплатформенный детерминизм не является требованием MVP — это критерий для `ADR-003`, а не открытая амбиция.
 
 Критичные сравнения должны иметь определённые правила округления/tie-break; для воспроизводимых оценок предпочтительны integer/fixed-point шкалы, если они не усложняют модель непропорционально.
 
@@ -502,18 +502,20 @@ tools/
 
 Не нужно создавать пустые каталоги до появления их первого артефакта.
 
-## 21. Технические решения Gate 0
+## 21. Реестр технических ADR
 
-| ID | Решение | Критерии выбора |
-|---|---|---|
-| ADR-001 | Движок и язык | скорость агентной разработки, UI, 2D/3D, headless, CI, лицензия |
-| ADR-002 | Core boundary | отсутствие engine imports, serializable state, test runner |
-| ADR-003 | RNG | стабильность, streams, replay, cross-platform behavior |
-| ADR-004 | Content format/schema | tooling, diffability, validation, localization |
-| ADR-005 | IDs and references | стабильность, диагностика, mod/content evolution |
-| ADR-006 | Save strategy | migration, crash safety, replay/debug value |
-| ADR-007 | Event and causal trace | размер, запросы UI, debugging, localization |
-| ADR-008 | Test/headless tooling | локальный запуск, CI, batch performance |
+Блокирующие решения Gate 0 сгруппированы в четыре блока (MVP_PLAN §4.1); остальные ADR принимаются позже.
+
+| ID | Решение | Когда | Критерии выбора |
+|---|---|---|---|
+| ADR-001 | Движок и язык | Gate 0 | скорость агентной разработки, UI, 2D/3D, headless, CI, лицензия |
+| ADR-002 | Core boundary | Gate 0 | отсутствие engine imports, serializable state, test runner |
+| ADR-003 | RNG | Gate 0 | стабильность, streams, replay, cross-platform behavior |
+| ADR-004 | Content format/schema | Gate 0 | tooling, diffability, validation, localization |
+| ADR-005 | IDs and references | Gate 0 | стабильность, диагностика, mod/content evolution |
+| ADR-006 | Save strategy | Milestone 3 | migration, crash safety, replay/debug value |
+| ADR-007 | Event and causal trace | Gate 0 | размер, запросы UI, debugging, localization |
+| ADR-008 | Test/headless tooling | по итогам spike | локальный запуск, CI, batch performance |
 
 ## 22. Открытые технические вопросы
 
