@@ -49,6 +49,14 @@ internal static class StructuralEquality
         return left.Length == right.Length && left.SequenceEqual(right);
     }
 
+    /// <summary>
+    /// Hashes an array in order — deliberately, unlike
+    /// <see cref="EntriesHash"/> and <see cref="MembersHash"/>.
+    /// <see cref="ElementsEqual"/> compares element by element in sequence,
+    /// so two arrays holding the same elements in a different order are
+    /// <em>not</em> equal and are free to hash differently. Order sensitivity
+    /// here is what matches equality; there it is what breaks it.
+    /// </summary>
     public static int ElementsHash<T>(ImmutableArray<T> values)
     {
         if (values.IsDefault)
@@ -99,6 +107,33 @@ internal static class StructuralEquality
         return true;
     }
 
+    /// <summary>
+    /// Hashes a sorted dictionary <em>independently of enumeration order</em>,
+    /// to match <see cref="EntriesEqual"/>, which compares by key lookup and
+    /// therefore does not depend on order either.
+    /// </summary>
+    /// <remarks>
+    /// A sorted dictionary enumerates in the order its key comparer defines,
+    /// so folding entries into a <see cref="HashCode"/> one after another made
+    /// the hash a function of the comparer. Two dictionaries with identical
+    /// keys and values, one built with the natural comparer and one with the
+    /// reverse of it, then compared equal and hashed differently — which
+    /// breaks the <c>Equals</c>/<c>GetHashCode</c> contract outright and, in
+    /// practice, makes such a value unfindable in the very
+    /// <see cref="HashSet{T}"/> or <see cref="Dictionary{TKey,TValue}"/> it
+    /// was just put into. Banning non-default comparers was the alternative;
+    /// it was rejected because it turns a mistake that can simply not exist
+    /// into a run-time exception, and because nothing else in state cares
+    /// which comparer built a collection.
+    ///
+    /// Per-entry hashes are combined with <em>addition</em> in an
+    /// <c>unchecked</c> context rather than XOR. Both are commutative, but
+    /// XOR cancels: two entries that hash alike contribute nothing at all,
+    /// so a dictionary containing a duplicated pair would hash like one
+    /// without it. Addition keeps multiplicity. The entry count is mixed
+    /// in afterwards, once, so the count itself does not depend on order
+    /// either and collections of different sizes do not collide as readily.
+    /// </remarks>
     public static int EntriesHash<TKey, TValue>(ImmutableSortedDictionary<TKey, TValue>? entries)
         where TKey : notnull
     {
@@ -107,15 +142,13 @@ internal static class StructuralEquality
             return 0;
         }
 
-        var hash = default(HashCode);
-        hash.Add(entries.Count);
+        var accumulated = 0;
         foreach (var entry in entries)
         {
-            hash.Add(entry.Key);
-            hash.Add(entry.Value);
+            accumulated = unchecked(accumulated + HashCode.Combine(entry.Key, entry.Value));
         }
 
-        return hash.ToHashCode();
+        return HashCode.Combine(entries.Count, accumulated);
     }
 
     public static bool MembersEqual<T>(ImmutableSortedSet<T>? left, ImmutableSortedSet<T>? right)
@@ -133,6 +166,13 @@ internal static class StructuralEquality
         return left.SetEquals(right);
     }
 
+    /// <summary>
+    /// Hashes a sorted set <em>independently of enumeration order</em>, to
+    /// match <see cref="MembersEqual"/>, which uses
+    /// <see cref="ImmutableSortedSet{T}.SetEquals"/> and therefore does not
+    /// depend on order. Same reasoning, same commutative accumulation as
+    /// <see cref="EntriesHash"/> — see its remarks.
+    /// </summary>
     public static int MembersHash<T>(ImmutableSortedSet<T>? members)
     {
         if (members is null)
@@ -140,13 +180,12 @@ internal static class StructuralEquality
             return 0;
         }
 
-        var hash = default(HashCode);
-        hash.Add(members.Count);
+        var accumulated = 0;
         foreach (var member in members)
         {
-            hash.Add(member);
+            accumulated = unchecked(accumulated + HashCode.Combine(member));
         }
 
-        return hash.ToHashCode();
+        return HashCode.Combine(members.Count, accumulated);
     }
 }

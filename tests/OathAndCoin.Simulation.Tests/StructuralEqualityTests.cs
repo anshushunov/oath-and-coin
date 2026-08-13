@@ -26,6 +26,7 @@ public class StructuralEqualityTests
     private static readonly ContentId BramDefinition = ContentId.Parse("core:bram");
     private static readonly ContentId ZaraDefinition = ContentId.Parse("core:zara");
     private static readonly ContentId ContractId = ContentId.Parse("core:escort_the_caravan");
+    private static readonly ContentId SecondContractId = ContentId.Parse("core:clear_the_mine");
 
     [Fact]
     public void IdenticalStatesBuiltIndependently_AreEqual()
@@ -171,6 +172,159 @@ public class StructuralEqualityTests
             + "compared equal, so this test proved nothing about hashing.");
     }
 
+    // Fix round 6 / R-3: EntriesEqual compares by key lookup and MembersEqual
+    // by SetEquals, so neither depends on enumeration order or on which
+    // comparer built the collection. EntriesHash and MembersHash, however,
+    // folded elements in *enumeration* order — and for a sorted collection
+    // that order is precisely what the comparer decides. Two states with
+    // identical content, one built with the natural comparer and one with its
+    // reverse, therefore compared equal and hashed differently: the
+    // Equals/GetHashCode contract broken outright.
+    [Fact]
+    public void StatesBuiltWithReversedComparers_AreEqualAndHashEqually()
+    {
+        var natural = BuildComparerSensitiveState(descending: false);
+        var reversed = BuildComparerSensitiveState(descending: true);
+
+        // Guard on the fixture itself: if the two states happened to
+        // enumerate identically, everything below would pass for free.
+        AssertEnumeratesDifferently(natural.Heroes.Keys, reversed.Heroes.Keys, nameof(GameState.Heroes));
+        AssertEnumeratesDifferently(natural.Contracts.Keys, reversed.Contracts.Keys, nameof(GameState.Contracts));
+        AssertEnumeratesDifferently(natural.Traces.Keys, reversed.Traces.Keys, nameof(GameState.Traces));
+        AssertEnumeratesDifferently(
+            natural.Contract(ContractId).RespondedBy,
+            reversed.Contract(ContractId).RespondedBy,
+            nameof(ContractState.RespondedBy));
+
+        Assert.Equal(natural, reversed);
+        Assert.Equal(natural.GetHashCode(), reversed.GetHashCode());
+    }
+
+    // The consequence the contract exists to prevent, shown directly rather
+    // than inferred from the hash codes above.
+    [Fact]
+    public void StateBuiltWithReversedComparers_IsFoundInSetAndDictionary()
+    {
+        var natural = BuildComparerSensitiveState(descending: false);
+        var reversed = BuildComparerSensitiveState(descending: true);
+
+        var set = new HashSet<GameState> { natural };
+
+        Assert.Contains(reversed, set);
+        Assert.False(
+            set.Add(reversed),
+            "the reversed-comparer state landed in a different bucket and was stored as a second, "
+            + "distinct member of a set that already contained an equal value");
+
+        var byState = new Dictionary<GameState, string> { [natural] = "campaign" };
+
+        Assert.True(byState.TryGetValue(reversed, out var found));
+        Assert.Equal("campaign", found);
+    }
+
+    // The same asymmetry one level down, on the sorted *set*: MembersEqual
+    // uses SetEquals, so the responder set's comparer must not reach the hash
+    // either.
+    [Fact]
+    public void ContractsWithReversedResponderComparer_AreEqualAndHashEqually()
+    {
+        var natural = BuildContract(BuildResponders(descending: false));
+        var reversed = BuildContract(BuildResponders(descending: true));
+
+        AssertEnumeratesDifferently(
+            natural.RespondedBy,
+            reversed.RespondedBy,
+            nameof(ContractState.RespondedBy));
+        Assert.Equal(natural, reversed);
+        Assert.Equal(natural.GetHashCode(), reversed.GetHashCode());
+        Assert.Contains(reversed, new HashSet<ContractState> { natural });
+    }
+
+    private static void AssertEnumeratesDifferently<T>(
+        IEnumerable<T> natural,
+        IEnumerable<T> reversed,
+        string what)
+    {
+        Assert.False(
+            natural.SequenceEqual(reversed),
+            $"{what} enumerated identically under both comparers, so this fixture cannot "
+            + "distinguish an order-independent hash from an order-dependent one");
+    }
+
+    /// <summary>
+    /// Descending order over the natural one, so a sorted collection built
+    /// with it enumerates backwards while holding exactly the same content.
+    /// </summary>
+    private sealed class Descending<T> : IComparer<T>
+    {
+        public static readonly Descending<T> Instance = new();
+
+        public int Compare(T? x, T? y) => Comparer<T>.Default.Compare(y, x);
+    }
+
+    private static ImmutableSortedSet<HeroId> BuildResponders(bool descending)
+    {
+        var responders = descending
+            ? ImmutableSortedSet<HeroId>.Empty.WithComparer(Descending<HeroId>.Instance)
+            : ImmutableSortedSet<HeroId>.Empty;
+
+        return responders.Add(new HeroId(1)).Add(new HeroId(2));
+    }
+
+    // Every collection here holds at least two elements, because a
+    // one-element collection enumerates the same way under either comparer
+    // and would make the test vacuous.
+    private static GameState BuildComparerSensitiveState(bool descending)
+    {
+        var heroes = descending
+            ? ImmutableSortedDictionary<HeroId, HeroState>.Empty.WithComparers(Descending<HeroId>.Instance)
+            : ImmutableSortedDictionary<HeroId, HeroState>.Empty;
+        var contracts = descending
+            ? ImmutableSortedDictionary<ContentId, ContractState>.Empty.WithComparers(Descending<ContentId>.Instance)
+            : ImmutableSortedDictionary<ContentId, ContractState>.Empty;
+        var traces = descending
+            ? ImmutableSortedDictionary<long, CausalTrace>.Empty.WithComparers(Descending<long>.Instance)
+            : ImmutableSortedDictionary<long, CausalTrace>.Empty;
+
+        var responders = BuildResponders(descending);
+
+        var state = new GameState
+        {
+            Metadata = new GameMetadata
+            {
+                SaveSchemaVersion = 1,
+                RulesetVersion = "ruleset-1",
+                ContentVersion = "content-1",
+                CampaignSeed = 424242UL,
+                StateVersion = 0,
+                LogicalTime = 0,
+                NextEventId = 0,
+                NextTraceId = 0,
+                NextDecisionOrdinal = 0,
+            },
+            Heroes = heroes
+                .Add(new HeroId(1), BuildHero(new HeroId(1), BramDefinition))
+                .Add(new HeroId(2), BuildHero(new HeroId(2), ZaraDefinition)),
+            Contracts = contracts
+                .Add(ContractId, BuildContract(responders))
+                .Add(SecondContractId, BuildContract(responders, SecondContractId)),
+            Traces = traces,
+            History = ImmutableArray<DomainEvent>.Empty,
+        };
+
+        var firstTrace = BuildTrace(traceId: 0);
+        state = state.WithEvent(
+            new HeroAcceptedContract(0, 0, firstTrace.TraceId, new HeroId(1), ContractId),
+            firstTrace,
+            drawsConsumed: 1);
+
+        var secondTrace = BuildTrace(traceId: 1, paymentMagnitude: 4);
+        return state.WithEvent(
+            new HeroDeclinedContract(1, 0, secondTrace.TraceId, new HeroId(2), SecondContractId),
+            secondTrace,
+            drawsConsumed: 1);
+    }
+
     private static GameState BuildPopulatedState(
         int paymentMagnitude = 3,
         HeroId? respondedBy = null,
@@ -219,13 +373,16 @@ public class StructuralEqualityTests
         TrustInGuild = 5,
     };
 
-    private static ContractState BuildContract(HeroId respondedBy) => new()
+    private static ContractState BuildContract(HeroId respondedBy) =>
+        BuildContract(ImmutableSortedSet<HeroId>.Empty.Add(respondedBy));
+
+    private static ContractState BuildContract(ImmutableSortedSet<HeroId> respondedBy, ContentId? id = null) => new()
     {
-        Id = ContractId,
+        Id = id ?? ContractId,
         Payment = 100,
         Risk = 5,
         Status = ContractStatus.Offered,
-        RespondedBy = ImmutableSortedSet<HeroId>.Empty.Add(respondedBy),
+        RespondedBy = respondedBy,
     };
 
     private static CausalTrace BuildTrace(
