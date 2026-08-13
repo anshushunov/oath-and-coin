@@ -1,0 +1,33 @@
+# Formatting rules, machine-checked by the `dotnet format` stage of CI
+# (TDD §19.1). This file exists so that "the style" is a property of the
+# repository rather than of whichever SDK default happened to be current: with
+# no .editorconfig, `dotnet format --verify-no-changes` enforces the SDK's
+# built-in defaults, and an IDE with different defaults would reformat code
+# straight into a red pipeline.
+#
+# It is deliberately minimal. Only rules that a check actually enforces belong
+# here; a long list of aspirational preferences would be a style document in
+# disguise, and AGENTS.md §12 freezes the number of those.
+
+root = true
+
+[*]
+charset = utf-8
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.cs]
+indent_style = space
+indent_size = 4
+
+# The braced form of a `case` body is already one level in from `switch`; the
+# SDK default indents its contents a second time, which pushes deeply nested
+# code (the IL walk in CoreBoundaryTests) past the line width for no gain in
+# clarity. The existing code was written in the un-indented style, so this
+# setting keeps the format stage from rewriting 36 lines it has no reason to
+# touch.
+csharp_indent_case_contents_when_block = false
+
+[*.{json,yml,yaml}]
+indent_style = space
+indent_size = 2

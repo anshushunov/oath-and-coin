@@ -1,0 +1,106 @@
+# Gate 0 pipeline — TDD §19, items 1-5 and 7.
+#
+# Item 6 (save round-trip) is deliberately absent: the save format belongs to
+# Milestone 3, and a stage that checks nothing is worse than a missing stage,
+# because it reads as coverage.
+#
+# Every stage below either proves something the code cannot prove about itself
+# or it does not exist. The order is cheapest-first, so a formatting slip does
+# not wait behind a full test run to be reported.
+name: build
+
+on:
+  # Every branch, not just the default one: the mutant runs that prove these
+  # checks can actually go red (plan C, task C1 step 4) are pushed branches
+  # with no pull request, and a workflow that only listens to `main` and PRs
+  # would leave them unobserved.
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          # Pinned to the exact version in global.json, which sets
+          # rollForward: disable — a runner with only a newer SDK would fail
+          # to build at all rather than build with an unpinned toolchain.
+          dotnet-version: 8.0.424
+
+      - name: Restore
+        run: dotnet restore OathAndCoin.sln
+
+      # TDD §19.1. Runs before the build so that a formatting-only failure is
+      # reported in seconds instead of minutes.
+      - name: Format
+        run: dotnet format OathAndCoin.sln --verify-no-changes --no-restore
+
+      # TDD §19.2. TreatWarningsAsErrors (Directory.Build.props) makes any
+      # warning a failure here; CI=true also turns on ContinuousIntegrationBuild,
+      # which normalizes source paths embedded in the assemblies.
+      - name: Build
+        run: dotnet build OathAndCoin.sln -c Release --no-restore
+
+      # TDD §19.3-5. The core boundary guard, content schema validation and the
+      # determinism properties are all tests, not separate CLI stages: one
+      # runner, one report, one place to look when something goes red.
+      - name: Test
+        run: dotnet test OathAndCoin.sln -c Release --no-build
+
+      # TDD §19.7. The tests above prove determinism inside one process; this
+      # proves it across two, which is the claim MVP_PLAN §4.3 actually makes.
+      # Two independent processes, same seed, byte-identical canonical
+      # artifact.
+      #
+      # `git diff --no-index` does the comparison because it is the one
+      # byte-comparison tool guaranteed to be present and to behave identically
+      # on the Linux runner and on a Windows workstation, and it exits non-zero
+      # on difference without any shell plumbing. `cmp` would work on the
+      # runner and not in a plain Windows shell; the point of the pipeline is
+      # that a developer can run the same command that failed.
+      - name: Determinism replay
+        shell: bash
+        run: |
+          dotnet run --project tools/OathAndCoin.SimulationRunner -c Release --no-build -- \
+            run-scenario \
+            --content content --schemas schemas \
+            --commands scenarios/gate0.commands.json --seed 424242 \
+            --artifact artifacts/gate0-canonical.json \
+            --report artifacts/gate0-report.txt
+
+          dotnet run --project tools/OathAndCoin.SimulationRunner -c Release --no-build -- \
+            run-scenario \
+            --content content --schemas schemas \
+            --commands scenarios/gate0.commands.json --seed 424242 \
+            --artifact artifacts/gate0-canonical.replay.json \
+            --report artifacts/gate0-report.replay.txt
+
+          git diff --no-index --exit-code \
+            artifacts/gate0-canonical.json \
+            artifacts/gate0-canonical.replay.json
+
+      # Spec §8.1: the evidence a reviewer and the product owner read is
+      # produced by the run, never retyped into a pull request description.
+      # if: always() because a failed replay is exactly when the two artifacts
+      # are worth reading.
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate0-evidence
+          path: artifacts/
+          if-no-files-found: error

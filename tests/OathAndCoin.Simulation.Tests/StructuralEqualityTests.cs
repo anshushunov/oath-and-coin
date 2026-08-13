@@ -385,31 +385,43 @@ public class StructuralEqualityTests
         RespondedBy = respondedBy,
     };
 
+    // Block bodies, not expression bodies, on these two: an expression-bodied
+    // member whose parameter list wraps makes `dotnet format` (TDD §19.1)
+    // demand that the object initializer be indented relative to the last
+    // parameter line, which reads worse than either alternative. BuildContract
+    // above keeps its expression body because its parameter list fits on one
+    // line and the rule never fires there.
     private static CausalTrace BuildTrace(
         long traceId,
         int paymentMagnitude = 3,
         string? extraBlocker = null,
-        string? tieBreak = null) => new()
+        string? tieBreak = null)
     {
-        TraceId = traceId,
-        PositiveFactors = ImmutableArray.Create(
-            new TraceFactor(ReasonCodes.PaymentAttractive, BramDefinition, paymentMagnitude),
-            new TraceFactor(ReasonCodes.TrustsTheGuild, BramDefinition, 2)),
-        NegativeFactors = ImmutableArray.Create(
-            new TraceFactor(ReasonCodes.RiskTooHigh, ContractId, -1)),
-        BlockedBy = extraBlocker is null
-            ? ImmutableArray<string>.Empty
-            : ImmutableArray.Create(extraBlocker),
-        TieBreak = tieBreak,
-    };
+        return new CausalTrace
+        {
+            TraceId = traceId,
+            PositiveFactors = ImmutableArray.Create(
+                new TraceFactor(ReasonCodes.PaymentAttractive, BramDefinition, paymentMagnitude),
+                new TraceFactor(ReasonCodes.TrustsTheGuild, BramDefinition, 2)),
+            NegativeFactors = ImmutableArray.Create(
+                new TraceFactor(ReasonCodes.RiskTooHigh, ContractId, -1)),
+            BlockedBy = extraBlocker is null
+                ? ImmutableArray<string>.Empty
+                : ImmutableArray.Create(extraBlocker),
+            TieBreak = tieBreak,
+        };
+    }
 
     private static DecisionResult BuildDecision(
         ContentId[]? consideredOrder = null,
-        int paymentMagnitude = 3) => new()
+        int paymentMagnitude = 3)
     {
-        SelectedAction = Actions.Accept,
-        ConsideredActions = ImmutableArray.Create(consideredOrder ?? new[] { Actions.Accept, Actions.Decline }),
-        SelectedScore = 10,
-        Trace = BuildTrace(traceId: 0, paymentMagnitude: paymentMagnitude),
-    };
+        return new DecisionResult
+        {
+            SelectedAction = Actions.Accept,
+            ConsideredActions = ImmutableArray.Create(consideredOrder ?? new[] { Actions.Accept, Actions.Decline }),
+            SelectedScore = 10,
+            Trace = BuildTrace(traceId: 0, paymentMagnitude: paymentMagnitude),
+        };
+    }
 }
