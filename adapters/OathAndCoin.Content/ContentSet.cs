@@ -24,6 +24,24 @@ public sealed class ContentSet
     /// </summary>
     public const int SaveSchemaVersion = 1;
 
+    /// <summary>
+    /// The content format this build reads (TDD §11.1: "обязательная версия
+    /// content schema"). Every content file states its own
+    /// <c>schema_version</c>, and a file that states a different one is
+    /// refused rather than read under this version's assumptions — the
+    /// failure mode a version field exists to prevent is a later format being
+    /// parsed by an earlier build and silently losing the meaning of a field
+    /// that was reused.
+    /// </summary>
+    /// <remarks>
+    /// The schemas in <c>schemas/</c> pin the same number with <c>const</c>,
+    /// and <c>SchemaAgreementTests</c> asserts the two agree — the same
+    /// arrangement as <see cref="ContentBounds"/>, for the same reason: two
+    /// independent statements of one rule are only safe while something checks
+    /// that they still say the same thing.
+    /// </remarks>
+    public const int SupportedContentSchemaVersion = 1;
+
     private ContentSet(
         ImmutableSortedDictionary<ContentId, HeroDefinition> heroes,
         ImmutableSortedDictionary<ContentId, ContractDefinition> contracts,
@@ -71,6 +89,7 @@ public sealed class ContentSet
         var heroes = ImmutableSortedDictionary.CreateBuilder<ContentId, HeroDefinition>();
         foreach (var (relativePath, file) in ReadFiles<HeroFile>(root, "heroes"))
         {
+            RequireSupportedSchemaVersion(file.SchemaVersion, relativePath);
             RequireUniqueId(seenIds, file.Id, relativePath);
             heroes.Add(file.Id, new HeroDefinition(
                 file.Id,
@@ -88,6 +107,7 @@ public sealed class ContentSet
         var contracts = ImmutableSortedDictionary.CreateBuilder<ContentId, ContractDefinition>();
         foreach (var (relativePath, file) in ReadFiles<ContractFile>(root, "contracts"))
         {
+            RequireSupportedSchemaVersion(file.SchemaVersion, relativePath);
             RequireUniqueId(seenIds, file.Id, relativePath);
             contracts.Add(file.Id, new ContractDefinition(
                 file.Id,
@@ -198,6 +218,17 @@ public sealed class ContentSet
         foreach (var file in files)
         {
             yield return (file.RelativePath, StrictJson.ReadFile<TFile>(file.RelativePath, file.FullPath));
+        }
+    }
+
+    private static void RequireSupportedSchemaVersion(int schemaVersion, string relativePath)
+    {
+        if (schemaVersion != SupportedContentSchemaVersion)
+        {
+            throw new InvalidDataException(
+                $"Content file '{relativePath}' declares schema_version {schemaVersion}, but this build "
+                + $"reads version {SupportedContentSchemaVersion}. Migrate the file, or run a build that "
+                + "understands its version — reading it under the wrong version would be a guess.");
         }
     }
 

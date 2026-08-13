@@ -11,6 +11,7 @@ public class ContentSetTests
 {
     private const string ValidHeroJson = """
         {
+          "schema_version": 1,
           "id": "core:hilda",
           "display_name_key": "hero.core.hilda.name",
           "greed": 50,
@@ -59,6 +60,7 @@ public class ContentSetTests
         // ordinal file order is aaa < zzz, content id order is core:bram < core:zara.
         temp.WriteHero("aaa.json", """
             {
+              "schema_version": 1,
               "id": "core:zara",
               "display_name_key": "hero.core.zara.name",
               "greed": 20,
@@ -68,6 +70,7 @@ public class ContentSetTests
             """);
         temp.WriteHero("zzz.json", """
             {
+              "schema_version": 1,
               "id": "core:bram",
               "display_name_key": "hero.core.bram.name",
               "greed": 60,
@@ -119,6 +122,7 @@ public class ContentSetTests
         using var temp = TempContentRoot.CreateEmpty();
         temp.WriteHero("greedy.json", """
             {
+              "schema_version": 1,
               "id": "core:hilda",
               "display_name_key": "hero.core.hilda.name",
               "greed": 500,
@@ -140,6 +144,7 @@ public class ContentSetTests
         using var temp = TempContentRoot.CreateEmpty();
         temp.WriteHero("typo.json", """
             {
+              "schema_version": 1,
               "id": "core:hilda",
               "display_name_key": "hero.core.hilda.name",
               "greed": 50,
@@ -153,6 +158,55 @@ public class ContentSetTests
 
         Assert.Contains("typo.json", exception.Message, StringComparison.Ordinal);
         Assert.Contains("trust_in_gild", exception.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A file authored for another version of the format is refused, not read
+    /// under this version's assumptions (TDD §11.1). The dangerous case is not
+    /// a field that disappeared — that fails as a missing member — but one
+    /// whose meaning changed while its name and type stayed put.
+    /// </summary>
+    [Fact]
+    public void Load_FailsOnUnsupportedSchemaVersion()
+    {
+        using var temp = TempContentRoot.CreateEmpty();
+        temp.WriteHero("future.json", ValidHeroJson.Replace(
+            "\"schema_version\": 1",
+            "\"schema_version\": 2",
+            StringComparison.Ordinal));
+
+        var exception = Assert.Throws<InvalidDataException>(() => ContentSet.Load(temp.Root));
+
+        Assert.Contains("future.json", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("schema_version 2", exception.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// External data has a ceiling before it is allocated for (TDD §18).
+    /// </summary>
+    /// <remarks>
+    /// The depth ceiling from the same options cannot be demonstrated on this
+    /// path today, and that is a fact about the model rather than a gap in the
+    /// test: every property of a hero or a contract is a scalar, so there is
+    /// nothing legal to nest 32 levels deep — a deeply nested value is refused
+    /// as a type mismatch or an unknown property before the reader ever gets
+    /// that far. The depth limit is exercised where documents really are
+    /// walked structurally: see
+    /// <c>SchemaAgreementTests.Validate_ReportsFilesThatBreachTheExternalDataLimits</c>.
+    /// </remarks>
+    [Fact]
+    public void Load_FailsOnOversizedFile()
+    {
+        using var temp = TempContentRoot.CreateEmpty();
+        temp.WriteHero("bloated.json", ValidHeroJson.Replace(
+            "\"display_name_key\": \"hero.core.hilda.name\"",
+            "\"display_name_key\": \"" + new string('x', (int)ContentLimits.MaxFileSizeBytes) + "\"",
+            StringComparison.Ordinal));
+
+        var exception = Assert.Throws<InvalidDataException>(() => ContentSet.Load(temp.Root));
+
+        Assert.Contains("bloated.json", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("limit", exception.Message, StringComparison.Ordinal);
     }
 
     /// <summary>

@@ -42,6 +42,13 @@ public sealed record ContractDefinition(
 /// </remarks>
 internal sealed record HeroFile
 {
+    /// <summary>
+    /// Which version of the content format this file was authored against
+    /// (TDD §11.1). Required, so a file cannot omit it and be read under
+    /// whatever the current build happens to assume.
+    /// </summary>
+    public required int SchemaVersion { get; init; }
+
     public required ContentId Id { get; init; }
 
     public required string DisplayNameKey { get; init; }
@@ -56,6 +63,13 @@ internal sealed record HeroFile
 /// <summary>The on-disk shape of a contract file; see <see cref="HeroFile"/>.</summary>
 internal sealed record ContractFile
 {
+    /// <summary>
+    /// Which version of the content format this file was authored against
+    /// (TDD §11.1). Required, so a file cannot omit it and be read under
+    /// whatever the current build happens to assume.
+    /// </summary>
+    public required int SchemaVersion { get; init; }
+
     public required ContentId Id { get; init; }
 
     public required string DisplayNameKey { get; init; }

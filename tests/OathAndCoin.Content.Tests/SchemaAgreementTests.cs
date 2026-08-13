@@ -39,6 +39,65 @@ public class SchemaAgreementTests
         Assert.Equal(ContentBounds.RiskMax, ReadBound(schema, "risk", "maximum"));
     }
 
+    /// <summary>
+    /// The schema pins the content format version with <c>const</c> and the
+    /// loader states it as a constant; this keeps the two numbers equal. The
+    /// same argument as the range bounds above: two statements of one rule are
+    /// safe only while something checks they still agree.
+    /// </summary>
+    [Fact]
+    public void SchemaVersionConst_MatchesLoaderSupportedVersion()
+    {
+        foreach (var schemaFile in new[] { "hero.schema.json", "contract.schema.json" })
+        {
+            using var schema = OpenSchema(schemaFile);
+
+            Assert.Equal(
+                ContentSet.SupportedContentSchemaVersion,
+                schema.RootElement.GetProperty("properties").GetProperty("schema_version")
+                    .GetProperty("const").GetInt32());
+
+            Assert.Contains(
+                schema.RootElement.GetProperty("required").EnumerateArray().Select(item => item.GetString()),
+                name => name == "schema_version");
+        }
+    }
+
+    /// <summary>
+    /// Validation reads external data under the same ceilings the loader does
+    /// (TDD §18), and reports a breach as a violation rather than as an
+    /// exception or an out-of-memory kill.
+    /// </summary>
+    /// <remarks>
+    /// This is where the depth limit is actually exercised: a validator walks
+    /// whatever document it is handed, so unlike the loader — whose model has
+    /// nothing to nest under — it can be given 40 nested arrays. Before this,
+    /// validation read files with a bare <c>File.ReadAllText</c> and parsed
+    /// them at the parser's default depth, so the most permissive way into the
+    /// program was also the unbounded one.
+    /// </remarks>
+    [Fact]
+    public void Validate_ReportsFilesThatBreachTheExternalDataLimits()
+    {
+        var schemas = ContentSchemas.Load(RepositoryFixtures.SchemaRoot);
+
+        using var oversized = TempContentRoot.CreateEmpty();
+        oversized.WriteHero(
+            "bloated.json",
+            "{\"display_name_key\": \"" + new string('x', (int)ContentLimits.MaxFileSizeBytes) + "\"}");
+
+        var oversizedViolation = Assert.Single(schemas.Validate(oversized.Root));
+        Assert.Contains("bloated.json", oversizedViolation.RelativePath, StringComparison.Ordinal);
+        Assert.Contains("limit", oversizedViolation.Message, StringComparison.Ordinal);
+
+        using var deep = TempContentRoot.CreateEmpty();
+        var depth = ContentLimits.MaxJsonDepth + 8;
+        deep.WriteHero("deep.json", new string('[', depth) + new string(']', depth));
+
+        var deepViolation = Assert.Single(schemas.Validate(deep.Root));
+        Assert.Contains("deep.json", deepViolation.RelativePath, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void AllContentFiles_SatisfyTheirSchema()
     {
@@ -57,6 +116,7 @@ public class SchemaAgreementTests
         using var temp = TempContentRoot.CreateEmpty();
         temp.WriteHero("greedy.json", """
             {
+              "schema_version": 1,
               "id": "core:hilda",
               "display_name_key": "hero.core.hilda.name",
               "greed": 500,

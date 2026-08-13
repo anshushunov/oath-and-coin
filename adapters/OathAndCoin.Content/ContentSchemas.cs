@@ -107,17 +107,22 @@ public sealed class ContentSchemas
                 continue;
             }
 
-            JsonNode? instance;
+            JsonNode instance;
             try
             {
-                instance = JsonNode.Parse(File.ReadAllText(fullPath));
+                // Through StrictJson, so validation reads external data under
+                // the same size and depth ceilings the loader does (TDD §18).
+                // Reading it here with a bare File.ReadAllText left the laxest
+                // path into the program unbounded, which is the only path an
+                // oversized or deeply nested file needs.
+                instance = StrictJson.ParseNode(relativePath, fullPath);
             }
-            catch (JsonException exception)
+            catch (InvalidDataException exception)
             {
                 violations.Add(new ContentSchemaViolation(
                     relativePath,
-                    exception.Path ?? "$",
-                    $"File is not valid JSON: {exception.Message}"));
+                    "$",
+                    exception.Message));
                 continue;
             }
 

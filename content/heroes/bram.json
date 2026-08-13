@@ -1,4 +1,5 @@
 {
+  "schema_version": 1,
   "id": "core:bram",
   "display_name_key": "hero.core.bram.name",
   "greed": 60,

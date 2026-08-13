@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace OathAndCoin.Content;
@@ -12,14 +13,9 @@ namespace OathAndCoin.Content;
 /// </summary>
 internal static class StrictJson
 {
-    /// <summary>
-    /// Size and depth ceilings on loaded structures (TDD §18). Without them a
-    /// malformed file becomes an out-of-memory kill instead of a diagnosable
-    /// error, and the diagnosis is the whole value of a loader.
-    /// </summary>
-    public const long MaxFileSizeBytes = 256 * 1024;
-
-    public const int MaxDepth = 32;
+    // The numbers themselves live in ContentLimits, which is public: they are
+    // part of what an author is promised, not an implementation detail of this
+    // reader. This class is where they are enforced.
 
     public static readonly JsonSerializerOptions Options = new()
     {
@@ -37,7 +33,22 @@ internal static class StrictJson
         ReadCommentHandling = JsonCommentHandling.Disallow,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
         NumberHandling = JsonNumberHandling.Strict,
-        MaxDepth = MaxDepth,
+        MaxDepth = ContentLimits.MaxJsonDepth,
+    };
+
+    /// <summary>
+    /// The same ceilings as <see cref="Options"/>, for the paths that walk a
+    /// document instead of deserializing it (schema validation). Kept beside
+    /// the serializer options rather than restated at the call site: a second
+    /// reading path with its own, laxer limits is the same as having no
+    /// limits, because external data only has to arrive through the laxest
+    /// one.
+    /// </summary>
+    public static readonly JsonDocumentOptions DocumentOptions = new()
+    {
+        MaxDepth = ContentLimits.MaxJsonDepth,
+        AllowTrailingCommas = false,
+        CommentHandling = JsonCommentHandling.Disallow,
     };
 
     /// <summary>
@@ -52,16 +63,11 @@ internal static class StrictJson
     /// </param>
     public static T ReadFile<T>(string displayPath, string fullPath)
     {
-        var length = new FileInfo(fullPath).Length;
-        if (length > MaxFileSizeBytes)
-        {
-            throw new InvalidDataException(
-                $"File '{displayPath}' is {length} bytes, over the {MaxFileSizeBytes}-byte limit.");
-        }
+        var bytes = ReadBounded(displayPath, fullPath);
 
         try
         {
-            return JsonSerializer.Deserialize<T>(File.ReadAllBytes(fullPath), Options)
+            return JsonSerializer.Deserialize<T>(bytes, Options)
                 ?? throw new InvalidDataException(
                     $"File '{displayPath}' holds JSON null where an object was expected.");
         }
@@ -71,5 +77,48 @@ internal static class StrictJson
                 $"File '{displayPath}' is not valid at JSON path '{exception.Path ?? "$"}': {exception.Message}",
                 exception);
         }
+    }
+
+    /// <summary>
+    /// Reads one file as a <see cref="JsonNode"/> under the same size and
+    /// depth ceilings as <see cref="ReadFile{T}"/>.
+    /// </summary>
+    public static JsonNode ParseNode(string displayPath, string fullPath)
+    {
+        var bytes = ReadBounded(displayPath, fullPath);
+
+        try
+        {
+            return JsonNode.Parse(bytes, nodeOptions: null, DocumentOptions)
+                ?? throw new InvalidDataException(
+                    $"File '{displayPath}' holds JSON null where a document was expected.");
+        }
+        catch (JsonException exception)
+        {
+            throw new InvalidDataException(
+                $"File '{displayPath}' is not valid at JSON path '{exception.Path ?? "$"}': {exception.Message}",
+                exception);
+        }
+    }
+
+    /// <summary>
+    /// Reads a file's bytes, refusing anything over
+    /// <see cref="ContentLimits.MaxFileSizeBytes"/> before allocating for it.
+    /// </summary>
+    /// <remarks>
+    /// The size is checked against the file's own length rather than after
+    /// reading it, so an oversized file costs a stat call instead of its own
+    /// size in memory.
+    /// </remarks>
+    public static byte[] ReadBounded(string displayPath, string fullPath)
+    {
+        var length = new FileInfo(fullPath).Length;
+        if (length > ContentLimits.MaxFileSizeBytes)
+        {
+            throw new InvalidDataException(
+                $"File '{displayPath}' is {length} bytes, over the {ContentLimits.MaxFileSizeBytes}-byte limit.");
+        }
+
+        return File.ReadAllBytes(fullPath);
     }
 }

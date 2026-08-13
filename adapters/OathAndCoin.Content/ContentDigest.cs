@@ -21,6 +21,8 @@ public static class ContentDigest
 
     private const byte FieldSeparator = 0x1F;
 
+    private const int BufferSizeBytes = 64 * 1024;
+
     /// <summary>
     /// SHA-256 over every file under <paramref name="contentRoot"/>: each
     /// file's repository-relative path and then its bytes, in ordinal path
@@ -58,16 +60,57 @@ public static class ContentDigest
             .ToList();
 
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        var buffer = new byte[BufferSizeBytes];
 
         foreach (var file in files)
         {
             hash.AppendData(Encoding.UTF8.GetBytes(file.RelativePath));
             hash.AppendData(new[] { FieldSeparator });
-            hash.AppendData(File.ReadAllBytes(file.FullPath));
+            AppendContent(hash, file, buffer);
             hash.AppendData(new[] { FieldSeparator });
         }
 
         return Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Feeds one file into the running hash in fixed-size chunks, refusing
+    /// anything over <see cref="ContentLimits.MaxFileSizeBytes"/>.
+    /// </summary>
+    /// <remarks>
+    /// Streaming, not <c>File.ReadAllBytes</c>: the digest covers every file
+    /// under the content root, including ones no loader ever reads, so reading
+    /// each one whole made the memory cost of hashing a property of the
+    /// largest file anybody dropped into <c>content/</c>. The size ceiling is
+    /// the loader's own (TDD §18) — a file too large to load is not one this
+    /// version should quietly account for either, and refusing it here reports
+    /// the problem in the same terms the loader would.
+    /// </remarks>
+    private static void AppendContent(
+        IncrementalHash hash,
+        (string RelativePath, string FullPath) file,
+        byte[] buffer)
+    {
+        using var stream = new FileStream(
+            file.FullPath,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            BufferSizeBytes,
+            FileOptions.SequentialScan);
+
+        if (stream.Length > ContentLimits.MaxFileSizeBytes)
+        {
+            throw new InvalidDataException(
+                $"File '{file.RelativePath}' is {stream.Length} bytes, over the "
+                + $"{ContentLimits.MaxFileSizeBytes}-byte limit.");
+        }
+
+        int read;
+        while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
+        {
+            hash.AppendData(buffer, 0, read);
+        }
     }
 
     internal static string ToRelativePosixPath(string root, string fullPath) =>

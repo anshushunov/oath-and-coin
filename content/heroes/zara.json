@@ -1,4 +1,5 @@
 {
+  "schema_version": 1,
   "id": "core:zara",
   "display_name_key": "hero.core.zara.name",
   "greed": 20,
