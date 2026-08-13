@@ -86,8 +86,11 @@ public sealed record GameMetadata
 /// </summary>
 /// <remarks>
 /// <see cref="WithEvent"/> is the only sanctioned campaign-transition
-/// entrypoint: it is the only place <see cref="GameMetadata.StateVersion"/>
-/// may advance. <see cref="GameState"/> is still a public record with public
+/// entrypoint: it is the only place <see cref="GameMetadata.StateVersion"/>,
+/// <see cref="GameMetadata.LogicalTime"/>,
+/// <see cref="GameMetadata.NextEventId"/>,
+/// <see cref="GameMetadata.NextTraceId"/> or
+/// <see cref="GameMetadata.NextDecisionOrdinal"/> may advance. <see cref="GameState"/> is still a public record with public
 /// <c>init</c> properties — needed so tests, save/load, and replay code can
 /// construct and inspect it structurally — which means a bare
 /// <c>state with { ... }</c> expression always compiles and always produces
@@ -194,6 +197,7 @@ public sealed record GameState
     /// ever moved or checked, so "when did this happen" had no answer that
     /// history itself could confirm.
     /// </para>
+    /// <para>
     /// <paramref name="trace"/> is optional because not every event is a
     /// decision. When <paramref name="domainEvent"/>.<see cref="DomainEvent.CausalTraceId"/>
     /// is set, exactly one of two things must be true, or the reference
@@ -220,6 +224,7 @@ public sealed record GameState
     /// land in <see cref="Traces"/> unreachable from any event.
     /// <see cref="GameMetadata.NextTraceId"/> only advances when this call
     /// actually stores a <em>new</em> trace.
+    /// </para>
     /// </remarks>
     /// <exception cref="ArgumentException">
     /// <paramref name="domainEvent"/>'s <see cref="DomainEvent.EventId"/>
