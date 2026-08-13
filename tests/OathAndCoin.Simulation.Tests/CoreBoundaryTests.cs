@@ -138,6 +138,13 @@ public class CoreBoundaryTests
     private static readonly (string Namespace, string Name)[] BannedTypes =
     {
         // Non-deterministic / wall-clock by construction.
+        //
+        // System.Random has a second, independent line of defence this list
+        // does not provide and must not be assumed to: the namespace
+        // OathAndCoin.Simulation.Random shadows it, so `new Random()` inside
+        // the core fails to compile (CS0118) before this check ever runs.
+        // See the note above that namespace's declaration — renaming it would
+        // silently remove that, leaving only this entry.
         ("System", "Random"),
         ("System.Diagnostics", "Stopwatch"),
 
