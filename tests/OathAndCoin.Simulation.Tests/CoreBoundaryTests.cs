@@ -54,17 +54,44 @@ namespace OathAndCoin.Simulation.Tests;
 ///      unlike float/double, so it is a legitimate deterministic
 ///      fixed/floating-decimal type — this is a decision, not an oversight.
 ///
+/// Fix round 4 closed three holes found by review:
+///   - initobj (0xFE15) was absent from IlTokenScanner's operand-size table.
+///     Since an unknown opcode stops the walk, one `default(SomeStruct)` at
+///     the top of a method hid every instruction after it — and structs are
+///     what a deterministic core is made of.
+///   - Floating-point arithmetic that leaves no trace in any signature —
+///     `(int)(amount / 3.0)` is int in, int out, no float local, no
+///     float-shaped member reference, yet divides in IEEE-754 — is now
+///     caught by checking the *opcodes* the IL walk already visits against
+///     FloatingPointOpCodes, not just the signatures they reference.
+///   - The build-output check enumerated only the top level of bin/, so an
+///     engine library placed in runtimes/&lt;rid&gt;/native/ (the standard
+///     native-package layout) shipped unseen. It now recurses.
+///
 /// Known limits — read before trusting a green run:
+///   - The banned lists (BannedTypes, BannedMembers, FloatingPointOpCodes,
+///     the literal "Godot" needle) are a FLOOR, NOT A PROOF. They enumerate
+///     what is known to be forbidden; they do not derive it. Everything not
+///     enumerated passes silently, and the misses are real, not theoretical:
+///     Environment.GetEnvironmentVariable, Thread.CurrentThread.
+///     CurrentCulture, System.Diagnostics.Process, Assembly.Load, and
+///     Task/Thread are all unlisted today and would go green. Likewise the
+///     engine is found by matching the literal string "Godot" in assembly,
+///     namespace, type and file names — an engine assembly renamed or
+///     repackaged under any other name passes. Treat a green run as "none of
+///     the listed things are present", never as "the assembly is
+///     deterministic".
 ///   - This is static symbol analysis. It cannot see through reflection by
 ///     name (`Type.GetType("System.Random")` + `Activator.CreateInstance`),
 ///     `dynamic` dispatch, or P/Invoke — none of those leave the
 ///     TypeReference/MemberReference shape this check looks for.
-///   - A float/double value that never appears in a *signature* is
-///     invisible to the float check: `object o = Math.PI;` boxes a constant
-///     that was folded at compile time and leaves no local, field, or
-///     parameter of type float/double anywhere — there is no signature to
-///     decode. (A non-const field or call that resolves to Math.PI is still
-///     caught — see round 3's MemberReference check.)
+///   - A float/double the compiler folds away entirely — e.g.
+///     `const double Ratio = 1.5; int n = (int)(4 * Ratio);`, which emits a
+///     plain `ldc.i4.6` — leaves neither a signature nor a floating-point
+///     instruction, and is invisible. (A float constant that survives to
+///     runtime, boxed or not, does emit ldc.r4/ldc.r8 and is caught by round
+///     4's opcode check; a non-const field or call that resolves to Math.PI
+///     is caught by round 3's MemberReference check.)
 ///   - Implicit culture-dependence with no banned symbol at all — e.g.
 ///     `x.ToString("N2")` on an int — is invisible: there is no
 ///     "CultureInfo" symbol in that call for this check to find.
@@ -78,7 +105,11 @@ namespace OathAndCoin.Simulation.Tests;
 ///     failure or a warning. It also does not decode `switch` targets'
 ///     *meaning*, only their length (so it can keep walking past them), and
 ///     it does not track which local/argument holds which value — it only
-///     ever inspects instruction operands, never data flow.
+///     ever inspects each instruction's opcode and its immediate operand,
+///     never data flow. Round 4 fixed the one opcode actually missing from
+///     the table (initobj), but the table is still a hand-maintained
+///     enumeration: adding AllowUnsafeBlocks or a future CIL opcode means
+///     re-checking it rather than assuming it stayed exhaustive.
 ///   - Most fundamentally: this guard proves properties of the compiled
 ///     *form* of the code (what types/members/primitives are referenced).
 ///     It does not and cannot prove the simulation's *execution* is
@@ -155,6 +186,33 @@ public class CoreBoundaryTests
         ("System.Globalization", "CultureInfo", "get_CurrentUICulture"),
     };
 
+    // IL instructions that can only exist if float32/float64 values are being
+    // produced, loaded, stored or converted. Signature decoding cannot see
+    // these: `(int)(amount / 3.0)` compiles to conv.r8 / ldc.r8 / div /
+    // conv.i4 with no float in any local, field, parameter, return type or
+    // member reference — real IEEE-754 arithmetic with no signature to
+    // decode. Note that add/sub/mul/div themselves are type-agnostic opcodes
+    // and therefore not listed; what betrays the operation is the conversion
+    // or constant load that must precede it. These instructions do not occur
+    // in genuinely float-free code, so this is a floor, not a heuristic.
+    private static readonly Dictionary<ILOpCode, string> FloatingPointOpCodes = new()
+    {
+        [ILOpCode.Conv_r4] = "conv.r4",
+        [ILOpCode.Conv_r8] = "conv.r8",
+        [ILOpCode.Conv_r_un] = "conv.r.un",
+        [ILOpCode.Ldc_r4] = "ldc.r4",
+        [ILOpCode.Ldc_r8] = "ldc.r8",
+        [ILOpCode.Ldind_r4] = "ldind.r4",
+        [ILOpCode.Ldind_r8] = "ldind.r8",
+        [ILOpCode.Stind_r4] = "stind.r4",
+        [ILOpCode.Stind_r8] = "stind.r8",
+        [ILOpCode.Ldelem_r4] = "ldelem.r4",
+        [ILOpCode.Ldelem_r8] = "ldelem.r8",
+        [ILOpCode.Stelem_r4] = "stelem.r4",
+        [ILOpCode.Stelem_r8] = "stelem.r8",
+        [ILOpCode.Ckfinite] = "ckfinite",
+    };
+
     [Fact]
     public void SimulationAssemblies_ArePositivelyIdentifiedCompiledOutputs()
     {
@@ -229,7 +287,12 @@ public class CoreBoundaryTests
                 $"Expected build output directory '{outputDirectory}' for project '{project.Name}' " +
                 "was not found — build the solution first.");
 
-            foreach (var file in Directory.GetFiles(outputDirectory))
+            // Recursive on purpose: native/runtime packages land in
+            // runtimes/<rid>/native/ and other nested folders, and a
+            // <None Link="runtimes/win-x64/native/GodotSharp.dll"
+            // CopyToOutputDirectory="PreserveNewest" /> item ships the engine
+            // in a subdirectory the top-level-only enumeration never saw.
+            foreach (var file in Directory.GetFiles(outputDirectory, "*", SearchOption.AllDirectories))
             {
                 var fileName = Path.GetFileName(file);
                 Assert.False(
@@ -420,6 +483,12 @@ public class CoreBoundaryTests
             // contains the call. IlTokenScanner does the minimum necessary
             // walk (see its doc comment for exactly what it does and does
             // not decode) to find those operand tokens.
+            //
+            // The same walk also reads the opcodes themselves, because
+            // floating-point arithmetic can exist with no signature anywhere
+            // to decode: `(int)(amount / 3.0)` has an int parameter, an int
+            // return type, no float local and no float-shaped member
+            // reference, yet divides in IEEE-754 (fix round 4, C2).
             foreach (var handle in reader.MethodDefinitions)
             {
                 var method = reader.GetMethodDefinition(handle);
@@ -429,8 +498,22 @@ public class CoreBoundaryTests
                 }
 
                 var body = peReader.GetMethodBody(method.RelativeVirtualAddress);
-                foreach (var tokenHandle in IlTokenScanner.EnumerateTokenOperands(body.GetILBytes()!))
+                foreach (var instruction in IlTokenScanner.EnumerateInstructions(body.GetILBytes()!))
                 {
+                    if (FloatingPointOpCodes.TryGetValue(instruction.OpCode, out var mnemonic))
+                    {
+                        Assert.Fail(
+                            $"[{project.Name}] Method '{DescribeMethod(reader, method)}' executes the " +
+                            $"floating-point instruction '{mnemonic}' — IEEE-754 arithmetic whose result " +
+                            "can differ between platforms, with no float in any signature to give it away.");
+                    }
+
+                    var tokenHandle = instruction.TokenOperand;
+                    if (tokenHandle.IsNil)
+                    {
+                        continue;
+                    }
+
                     switch (tokenHandle.Kind)
                     {
                         case HandleKind.MethodSpecification:
@@ -674,9 +757,20 @@ public class CoreBoundaryTests
             ILOpCode.Box, ILOpCode.Newarr, ILOpCode.Ldelema, ILOpCode.Unbox, ILOpCode.Unbox_any,
             ILOpCode.Refanyval, ILOpCode.Mkrefany, ILOpCode.Ldtoken, ILOpCode.Callvirt,
             ILOpCode.Ldftn, ILOpCode.Ldvirtftn, ILOpCode.Sizeof, ILOpCode.Constrained,
+            ILOpCode.Initobj,
         };
 
-        public static IEnumerable<EntityHandle> EnumerateTokenOperands(byte[] il)
+        /// <summary>
+        /// One decoded instruction: its opcode, plus the metadata token it
+        /// carries as an operand if it carries one (default/nil otherwise).
+        /// Both halves matter to callers — the token identifies *what* is
+        /// referenced, the opcode identifies *what is done*, and some
+        /// violations (IEEE-754 arithmetic on values that never appear in any
+        /// signature) are only visible in the opcode.
+        /// </summary>
+        public readonly record struct IlInstruction(ILOpCode OpCode, EntityHandle TokenOperand);
+
+        public static IEnumerable<IlInstruction> EnumerateInstructions(byte[] il)
         {
             var offset = 0;
             while (offset < il.Length)
@@ -700,6 +794,8 @@ public class CoreBoundaryTests
                         yield break;
                     }
 
+                    yield return new IlInstruction(opCode, default);
+
                     var targetCount = BitConverter.ToInt32(il, offset);
                     offset += 4 + (targetCount * 4);
                     continue;
@@ -712,6 +808,7 @@ public class CoreBoundaryTests
                     yield break;
                 }
 
+                var tokenOperand = default(EntityHandle);
                 if (TokenOperandOpCodes.Contains(opCode))
                 {
                     if (offset + 4 > il.Length)
@@ -720,21 +817,17 @@ public class CoreBoundaryTests
                     }
 
                     var token = BitConverter.ToInt32(il, offset);
-                    EntityHandle handle;
                     try
                     {
-                        handle = MetadataTokens.EntityHandle(token);
+                        tokenOperand = MetadataTokens.EntityHandle(token);
                     }
                     catch (BadImageFormatException)
                     {
-                        handle = default;
-                    }
-
-                    if (!handle.IsNil)
-                    {
-                        yield return handle;
+                        tokenOperand = default;
                     }
                 }
+
+                yield return new IlInstruction(opCode, tokenOperand);
 
                 offset += operandSize;
             }
@@ -818,7 +911,14 @@ public class CoreBoundaryTests
                 ILOpCode.Cpobj, ILOpCode.Ldobj, ILOpCode.Stobj,
                 ILOpCode.Box, ILOpCode.Newarr, ILOpCode.Ldelema, ILOpCode.Unbox, ILOpCode.Unbox_any,
                 ILOpCode.Refanyval, ILOpCode.Mkrefany, ILOpCode.Ldtoken, ILOpCode.Callvirt,
-                ILOpCode.Ldftn, ILOpCode.Ldvirtftn, ILOpCode.Sizeof, ILOpCode.Constrained);
+                ILOpCode.Ldftn, ILOpCode.Ldvirtftn, ILOpCode.Sizeof, ILOpCode.Constrained,
+                // initobj (0xFE15) was missing from this table until fix round
+                // 4. Because an unknown opcode stops the walk, a single
+                // `default(SomeStruct)` / `new SomeStruct()` / `int? x =
+                // default` near the top of a method made everything after it
+                // invisible to this scanner — and a deterministic core is
+                // going to be made of structs.
+                ILOpCode.Initobj);
 
             Add(8, ILOpCode.Ldc_i8, ILOpCode.Ldc_r8);
 
