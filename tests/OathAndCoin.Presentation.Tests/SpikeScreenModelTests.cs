@@ -4,6 +4,8 @@ using OathAndCoin.Content;
 using OathAndCoin.Content.Scenarios;
 using OathAndCoin.Content.Tests;
 using OathAndCoin.Simulation.Decisions;
+using OathAndCoin.Simulation.Events;
+using OathAndCoin.Simulation.Ids;
 
 namespace OathAndCoin.Presentation.Tests;
 
@@ -75,6 +77,62 @@ public class SpikeScreenModelTests
                 ReasonCodes.UnpredictableMood,
                 ReasonCodes.TrustsTheGuild,
             },
+            model.Lines[0].For);
+    }
+
+    /// <summary>
+    /// The gate 0 seed alone never exercises the ordinal-by-code tie-break in
+    /// <c>SpikeScreenModelFactory.Rank</c> — Zara's own magnitudes (8, 5, 4)
+    /// are all distinct, and so are Bram's (24, 15, 5). Without a factor pair
+    /// that actually ties on magnitude, the <c>ThenBy(ReasonCode, Ordinal)</c>
+    /// half of the rule could be deleted (or reversed) and every other test
+    /// in this class would stay green. This test builds that pair by hand:
+    /// two positive factors both magnitude 5, inserted in the order
+    /// (mood, payment) — the opposite of what ordinal-by-code demands, since
+    /// "hero.decision.payment_attractive" &lt; "hero.decision.unpredictable_mood"
+    /// ordinally.
+    /// </summary>
+    [Fact]
+    public void FromOutcome_BreaksEqualMagnitudeTiesByReasonCodeOrdinal()
+    {
+        var zara = ContentId.Parse("core:zara");
+        var contract = ContentId.Parse("core:escort_the_caravan");
+
+        var trace = new CausalTrace
+        {
+            TraceId = 1,
+            PositiveFactors = ImmutableArray.Create(
+                new TraceFactor(ReasonCodes.UnpredictableMood, zara, 5),
+                new TraceFactor(ReasonCodes.PaymentAttractive, contract, 5)),
+            NegativeFactors = ImmutableArray<TraceFactor>.Empty,
+            BlockedBy = ImmutableArray<string>.Empty,
+        };
+
+        var decision = new DecisionResult
+        {
+            SelectedAction = Actions.Accept,
+            ConsideredActions = ImmutableArray.Create(Actions.Accept, Actions.Decline),
+            SelectedScore = 5,
+            Trace = trace,
+        };
+
+        var step = new StepOutcome(
+            new ScenarioCommand(1, 0, contract, ExpectedStateVersion: 0),
+            Applied: true,
+            RejectionCode: null,
+            HeroDefinition: zara,
+            Decision: decision,
+            Events: ImmutableArray<DomainEvent>.Empty);
+
+        // FinalState is never read by FromOutcome — only Steps is — so a
+        // synthetic outcome does not need a real GameState to make this
+        // test's point.
+        var outcome = new ScenarioOutcome(FinalState: null!, Steps: ImmutableArray.Create(step));
+
+        var model = SpikeScreenModelFactory.FromOutcome(outcome);
+
+        Assert.Equal(
+            new[] { ReasonCodes.PaymentAttractive, ReasonCodes.UnpredictableMood },
             model.Lines[0].For);
     }
 

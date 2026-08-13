@@ -56,7 +56,7 @@ public static class DeterminismArtifact
         using var stream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(stream, WriterOptions))
         {
-            WriteCanonical(root, writer);
+            CanonicalJson.Write(root, writer);
         }
 
         return Encoding.UTF8.GetString(stream.ToArray());
@@ -185,44 +185,4 @@ public static class DeterminismArtifact
         ContractStatus.Accepted => "accepted",
         _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unmapped contract status."),
     };
-
-    /// <summary>
-    /// Writes <paramref name="node"/> with object keys in ordinal order. Array
-    /// order is preserved — it is content (the order commands ran in), not
-    /// presentation.
-    /// </summary>
-    private static void WriteCanonical(JsonNode? node, Utf8JsonWriter writer)
-    {
-        switch (node)
-        {
-            case null:
-                writer.WriteNullValue();
-                break;
-
-            case JsonObject jsonObject:
-                writer.WriteStartObject();
-                foreach (var property in jsonObject.OrderBy(property => property.Key, StringComparer.Ordinal))
-                {
-                    writer.WritePropertyName(property.Key);
-                    WriteCanonical(property.Value, writer);
-                }
-
-                writer.WriteEndObject();
-                break;
-
-            case JsonArray jsonArray:
-                writer.WriteStartArray();
-                foreach (var element in jsonArray)
-                {
-                    WriteCanonical(element, writer);
-                }
-
-                writer.WriteEndArray();
-                break;
-
-            default:
-                node.WriteTo(writer);
-                break;
-        }
-    }
 }

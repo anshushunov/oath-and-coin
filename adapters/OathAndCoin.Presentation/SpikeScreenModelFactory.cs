@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using OathAndCoin.Content;
 using OathAndCoin.Content.Scenarios;
 using OathAndCoin.Simulation.Decisions;
 
@@ -74,9 +75,10 @@ public static class SpikeScreenModelFactory
     /// <summary>
     /// SHA-256 of the model's canonical JSON — every field a player can see
     /// except <see cref="SpikeScreenModel.ErrorDetail"/> (see its remarks),
-    /// with object keys sorted ordinally and numbers written by
-    /// <see cref="Utf8JsonWriter"/> so the current culture can never leak in
-    /// (mirrors <see cref="DeterminismArtifact"/>'s own canonicalization).
+    /// canonicalized by the same <see cref="CanonicalJson.Write"/>
+    /// <see cref="DeterminismArtifact"/> uses, so object keys are sorted
+    /// ordinally and numbers are written by <see cref="Utf8JsonWriter"/>,
+    /// never through the current culture.
     /// </summary>
     public static string ReadModelHash(SpikeScreenModel model)
     {
@@ -92,7 +94,7 @@ public static class SpikeScreenModelFactory
         using var stream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(stream, WriterOptions))
         {
-            WriteCanonical(root, writer);
+            CanonicalJson.Write(root, writer);
         }
 
         return Convert.ToHexString(SHA256.HashData(stream.ToArray())).ToLowerInvariant();
@@ -137,47 +139,4 @@ public static class SpikeScreenModelFactory
         ["for"] = new JsonArray(line.For.Select(code => (JsonNode?)code).ToArray()),
         ["against"] = new JsonArray(line.Against.Select(code => (JsonNode?)code).ToArray()),
     };
-
-    /// <summary>
-    /// Writes <paramref name="node"/> with object keys in ordinal order.
-    /// Array order is preserved — it is content (which line came first),
-    /// not presentation. Copied in shape from
-    /// <see cref="DeterminismArtifact"/>'s writer of the same name rather
-    /// than shared: the two hash different, unrelated things, and a shared
-    /// helper would tempt a future change to one to leak into the other.
-    /// </summary>
-    private static void WriteCanonical(JsonNode? node, Utf8JsonWriter writer)
-    {
-        switch (node)
-        {
-            case null:
-                writer.WriteNullValue();
-                break;
-
-            case JsonObject jsonObject:
-                writer.WriteStartObject();
-                foreach (var property in jsonObject.OrderBy(property => property.Key, StringComparer.Ordinal))
-                {
-                    writer.WritePropertyName(property.Key);
-                    WriteCanonical(property.Value, writer);
-                }
-
-                writer.WriteEndObject();
-                break;
-
-            case JsonArray jsonArray:
-                writer.WriteStartArray();
-                foreach (var element in jsonArray)
-                {
-                    WriteCanonical(element, writer);
-                }
-
-                writer.WriteEndArray();
-                break;
-
-            default:
-                node.WriteTo(writer);
-                break;
-        }
-    }
 }
