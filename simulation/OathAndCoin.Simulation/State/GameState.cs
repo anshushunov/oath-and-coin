@@ -126,6 +126,30 @@ public sealed record GameState
     public required ImmutableSortedDictionary<ContentId, ContractState> Contracts { get; init; }
 
     /// <summary>
+    /// Ids of the commands already applied to this campaign, so replaying one
+    /// is refused instead of quietly happening twice (see
+    /// <c>ProposeContractToHero.CommandId</c>). A command id nothing ever
+    /// checks is worse than no command id at all: it looks like idempotency
+    /// and provides none.
+    /// </summary>
+    /// <remarks>
+    /// The one property here without <c>required</c>, and deliberately so.
+    /// Every other member of this record was part of the contract package
+    /// before any state existed to construct; this one arrived afterwards,
+    /// with a default that is both correct and the only sensible reading of
+    /// its absence — "no command has been applied yet". Making it
+    /// <c>required</c> would have forced an edit to every construction site in
+    /// the repository to restate that same empty set, which is churn that
+    /// hides the one place where the value actually matters.
+    ///
+    /// Filled by the command layer through a plain <c>with</c> expression
+    /// alongside the event's other effects, immediately before
+    /// <see cref="WithEvent"/> — see the remarks on this type for why that
+    /// pairing is the sanctioned shape and a bare <c>with</c> alone is not.
+    /// </remarks>
+    public ImmutableSortedSet<long> AppliedCommandIds { get; init; } = ImmutableSortedSet<long>.Empty;
+
+    /// <summary>
     /// Explanations for past decisions, addressable by the
     /// <see cref="DomainEvent.CausalTraceId"/> carried on the event that
     /// produced them. Stored here — not only returned alongside a command's
@@ -363,6 +387,7 @@ public sealed record GameState
                 && StructuralEquality.EntriesEqual(Heroes, other.Heroes)
                 && StructuralEquality.EntriesEqual(Contracts, other.Contracts)
                 && StructuralEquality.EntriesEqual(Traces, other.Traces)
+                && StructuralEquality.MembersEqual(AppliedCommandIds, other.AppliedCommandIds)
                 && StructuralEquality.ElementsEqual(History, other.History)));
 
     public override int GetHashCode() => HashCode.Combine(
@@ -370,5 +395,6 @@ public sealed record GameState
         StructuralEquality.EntriesHash(Heroes),
         StructuralEquality.EntriesHash(Contracts),
         StructuralEquality.EntriesHash(Traces),
+        StructuralEquality.MembersHash(AppliedCommandIds),
         StructuralEquality.ElementsHash(History));
 }
