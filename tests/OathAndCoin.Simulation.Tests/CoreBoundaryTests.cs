@@ -68,6 +68,17 @@ namespace OathAndCoin.Simulation.Tests;
 ///     engine library placed in runtimes/&lt;rid&gt;/native/ (the standard
 ///     native-package layout) shipped unseen. It now recurses.
 ///
+/// Fix round 5 closed the last known way to run IEEE-754 arithmetic past a
+/// green guard: floats reached through boxing. `(double)a + (double)b` on
+/// `object` arguments emits `unbox.any System.Double` and then the
+/// type-agnostic `add`/`div`/`conv.i4` opcodes — nothing in
+/// FloatingPointOpCodes, nothing float-shaped in any signature (parameters,
+/// return type, locals and member references are all `object`/`int`), and the
+/// IL walk's `default:` branch ignored the TypeReference the unbox.any token
+/// pointed at. System.Double and System.Single are now banned as type
+/// references outright; see the comment on BannedTypes for why that does not
+/// fire on legitimate code.
+///
 /// Known limits — read before trusting a green run:
 ///   - The banned lists (BannedTypes, BannedMembers, FloatingPointOpCodes,
 ///     the literal "Godot" needle) are a FLOOR, NOT A PROOF. They enumerate
@@ -146,6 +157,30 @@ public class CoreBoundaryTests
         // float under the hood, so leaving it unbanned would be a complete,
         // trivially-discoverable bypass of the float/double ban.
         ("System", "Half"),
+
+        // System.Double / System.Single as *type references* (fix round 5,
+        // the unbox.any hole). `(double)someObject + (double)someOther`
+        // compiles to `unbox.any [System.Runtime]System.Double` followed by
+        // plain, type-agnostic `add`/`div` and a `conv.i4` — no opcode from
+        // FloatingPointOpCodes anywhere, no float in any parameter, return
+        // type, local or member-reference signature, and yet real IEEE-754
+        // arithmetic inside the core. What the operand of unbox.any points at
+        // is a bare TypeReference to System.Double, which the IL walk's
+        // `default:` branch deliberately ignores (TypeRefs are "already
+        // covered by the table scans") — so the type-reference scan is
+        // exactly where it has to be caught.
+        //
+        // This does not fire on legitimate code: in a signature a primitive
+        // is encoded as an ELEMENT_TYPE_R8/R4 *element code*, not as a
+        // reference to the System.Double type row, so ordinary integer code
+        // (and even code that merely mentions `double` in a signature, which
+        // the signature decoder catches separately) produces no TypeReference
+        // here. A TypeReference to System.Double/System.Single only appears
+        // when the type itself is addressed as a type — box/unbox, typeof,
+        // ldtoken, constrained. — which deterministic integer-only code has
+        // no reason to do.
+        ("System", "Double"),
+        ("System", "Single"),
 
         // System.Numerics floating-point structs: their fields are inside
         // another assembly's metadata, which the signature-decoding float
