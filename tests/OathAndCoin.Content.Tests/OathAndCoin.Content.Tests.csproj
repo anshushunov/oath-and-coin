@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\adapters\OathAndCoin.Content\OathAndCoin.Content.csproj" />
+    <ProjectReference Include="..\..\tools\OathAndCoin.SimulationRunner\OathAndCoin.SimulationRunner.csproj" />
   </ItemGroup>
 
   <!--
