@@ -19,6 +19,9 @@ internal static class RepositoryFixtures
 
     public static string SchemaRoot => Resolve("SchemaRoot");
 
+    /// <summary>The Gate 0 scenario the spike is reproduced from.</summary>
+    public static string ScenarioPath => Path.Combine(Resolve("ScenarioRoot"), "gate0.commands.json");
+
     private static string Resolve(string key)
     {
         var metadata = typeof(RepositoryFixtures).Assembly

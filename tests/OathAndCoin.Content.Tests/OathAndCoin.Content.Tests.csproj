@@ -39,6 +39,10 @@
       <_Parameter1>SchemaRoot</_Parameter1>
       <_Parameter2>$(MSBuildThisFileDirectory)../../schemas</_Parameter2>
     </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>ScenarioRoot</_Parameter1>
+      <_Parameter2>$(MSBuildThisFileDirectory)../../scenarios</_Parameter2>
+    </AssemblyAttribute>
   </ItemGroup>
 
 </Project>

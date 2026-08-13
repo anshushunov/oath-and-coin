@@ -1,6 +1,4 @@
 using System.Collections.Immutable;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using OathAndCoin.Simulation.Decisions;
 using OathAndCoin.Simulation.Events;
 using OathAndCoin.Simulation.Ids;
@@ -25,35 +23,6 @@ public sealed class ContentSet
     /// to yesterday's bytes.
     /// </summary>
     public const int SaveSchemaVersion = 1;
-
-    /// <summary>
-    /// Size and depth limits on loaded structures (TDD §18). Content is
-    /// external data: it can be modded, hand-edited or corrupted, and a loader
-    /// with no ceiling turns a bad file into an out-of-memory kill rather than
-    /// a diagnosable error.
-    /// </summary>
-    private const long MaxFileSizeBytes = 256 * 1024;
-
-    private const int MaxJsonDepth = 32;
-
-    private static readonly JsonSerializerOptions SerializerOptions = new()
-    {
-        // snake_case comes from a policy, not from per-property attributes:
-        // with a policy there is no second hand-written spelling of a field
-        // name to disagree with the schema.
-        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-
-        // Every one of these is a rejection, not a convenience. A loader that
-        // accepts `Greed` for `greed`, tolerates a trailing comma, ignores a
-        // misspelled property or reads comments is a loader that turns an
-        // author's mistake into a value silently defaulted to zero.
-        PropertyNameCaseInsensitive = false,
-        AllowTrailingCommas = false,
-        ReadCommentHandling = JsonCommentHandling.Disallow,
-        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
-        NumberHandling = JsonNumberHandling.Strict,
-        MaxDepth = MaxJsonDepth,
-    };
 
     private ContentSet(
         ImmutableSortedDictionary<ContentId, HeroDefinition> heroes,
@@ -228,31 +197,7 @@ public sealed class ContentSet
 
         foreach (var file in files)
         {
-            yield return (file.RelativePath, ReadFile<TFile>(file.RelativePath, file.FullPath));
-        }
-    }
-
-    private static TFile ReadFile<TFile>(string relativePath, string fullPath)
-    {
-        var length = new FileInfo(fullPath).Length;
-        if (length > MaxFileSizeBytes)
-        {
-            throw new InvalidDataException(
-                $"Content file '{relativePath}' is {length} bytes, over the {MaxFileSizeBytes}-byte limit.");
-        }
-
-        try
-        {
-            return JsonSerializer.Deserialize<TFile>(File.ReadAllBytes(fullPath), SerializerOptions)
-                ?? throw new InvalidDataException(
-                    $"Content file '{relativePath}' holds JSON null where an object was expected.");
-        }
-        catch (JsonException exception)
-        {
-            throw new InvalidDataException(
-                $"Content file '{relativePath}' is not valid at JSON path "
-                + $"'{exception.Path ?? "$"}': {exception.Message}",
-                exception);
+            yield return (file.RelativePath, StrictJson.ReadFile<TFile>(file.RelativePath, file.FullPath));
         }
     }
 
