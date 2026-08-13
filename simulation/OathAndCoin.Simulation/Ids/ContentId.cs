@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
 namespace OathAndCoin.Simulation.Ids;
@@ -17,7 +18,16 @@ namespace OathAndCoin.Simulation.Ids;
 /// <c>default(ContentId)</c> throws instead of returning <c>null</c> or
 /// empty text. Ordering and hashing are ordinal only: this type never
 /// consults the host machine's locale (TDD §7.3).
+///
+/// The JSON converter is attached to the type, not left to the caller to
+/// register: without it <see cref="System.Text.Json"/> writes the struct's
+/// three public properties as an object and reads that object back as
+/// <c>default(ContentId)</c> without raising anything, which turns the
+/// "cannot exist invalid" guarantee into a purely compile-time one the
+/// moment any identifier arrives from a file. See
+/// <see cref="ContentIdJsonConverter"/>.
 /// </remarks>
+[JsonConverter(typeof(ContentIdJsonConverter))]
 public readonly struct ContentId : IEquatable<ContentId>, IComparable<ContentId>
 {
     private const string SegmentPatternText = "^[a-z][a-z0-9_]*$";
