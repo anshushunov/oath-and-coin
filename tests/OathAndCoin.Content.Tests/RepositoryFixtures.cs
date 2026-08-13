@@ -19,8 +19,11 @@ internal static class RepositoryFixtures
 
     public static string SchemaRoot => Resolve("SchemaRoot");
 
+    /// <summary>Directory holding scenario command files and their manifests.</summary>
+    public static string ScenarioRoot => Resolve("ScenarioRoot");
+
     /// <summary>The Gate 0 scenario the spike is reproduced from.</summary>
-    public static string ScenarioPath => Path.Combine(Resolve("ScenarioRoot"), "gate0.commands.json");
+    public static string ScenarioPath => Path.Combine(ScenarioRoot, "gate0.commands.json");
 
     private static string Resolve(string key)
     {
