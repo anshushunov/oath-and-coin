@@ -23,6 +23,35 @@ ADR-001-engine-and-language.md
 - `superseded` — заменено более новым решением;
 - `rejected` — рассмотрено и отклонено.
 
+## Перечень
+
+Продуктовые решения:
+
+| ID | Решение | Статус |
+|---|---|---|
+| [DEC-001](DEC-001-no-direct-hero-control.md) | Игрок не управляет героями напрямую | accepted |
+| [DEC-002](DEC-002-autobattle-as-exam.md) | Автобой является экзаменом подготовки | accepted |
+| [DEC-003](DEC-003-region-scale-world.md) | Мир симулируется в масштабе региона | proposed |
+| [DEC-004](DEC-004-reasons-in-ui.md) | Причины решений являются частью интерфейса | accepted |
+| [DEC-005](DEC-005-retreat-signal.md) | Игроку разрешён сигнал общего отступления | proposed, принятие после Milestone 2 |
+| [DEC-006](DEC-006-ranked-reasons-not-probabilities.md) | Ранжированные причины вместо числовых вероятностей | accepted |
+| [DEC-007](DEC-007-ui-first-presentation.md) | UI-first презентация и схематичный бой до валидации MVP | accepted |
+| [DEC-008](DEC-008-negotiation-first-differentiation.md) | Переговоры и обещания — приоритетный дифференциатор | accepted |
+| [DEC-009](DEC-009-hero-portraits-in-m1.md) | Шесть портретов героев в M1 как исключение из DEC-007 | accepted |
+
+Технические решения:
+
+| ID | Решение | Статус |
+|---|---|---|
+| [ADR-001](ADR-001-engine-and-language.md) | Движок и язык: Godot 4.7.1 и C# на net8.0 | accepted |
+| [ADR-002](ADR-002-simulation-core-boundary.md) | Граница simulation core: две сборки и механическая проверка | accepted |
+| [ADR-003](ADR-003-deterministic-rng.md) | Counter-based RNG без хранимого состояния | accepted |
+| [ADR-004](ADR-004-content-format.md) | Контент: JSON с JSON Schema и вычисляемой версией | accepted |
+| [ADR-005](ADR-005-stable-ids.md) | Стабильные namespaced идентификаторы | accepted |
+| [ADR-007](ADR-007-events-and-causal-trace.md) | Конверт события и хранение causal trace в состоянии | accepted |
+
+Зарезервированные номера: `ADR-006` — стратегия сохранений (Milestone 3), `ADR-008` — тестовый и headless-тулинг (по итогам спайка). `ADR-009` не существует: фиксированный симуляционный тик отозван из Gate 0 и входит в постановку модели времени боя на старте Milestone 2.
+
 ## Шаблон
 
 ```markdown

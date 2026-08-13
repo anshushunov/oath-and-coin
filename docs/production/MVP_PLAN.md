@@ -369,15 +369,15 @@ Gate 0 завершён после ручного подтверждения в�
 
 | ID | Вопрос | Нужен до | Артефакт решения |
 |---|---|---|---|
-| BQ-001 | Движок и язык | Gate 0 | ADR |
+| BQ-001 | Движок и язык | закрыт: [ADR-001](../decisions/ADR-001-engine-and-language.md), граница core — [ADR-002](../decisions/ADR-002-simulation-core-boundary.md) | ADR |
 | BQ-002 | Первая платформа и input | M4 | DEC + ADR |
 | BQ-003 | Граница контроля игрока | направление в [DEC-005](../decisions/DEC-005-retreat-signal.md) (proposed, принятие после M2); экспедиция — M1/M2 | DEC |
 | BQ-004 | Модель hero decision и переговоров | M1 | DEC + system spec |
 | BQ-005 | Публичность числовых шансов | закрыт: [DEC-006](../decisions/DEC-006-ranked-reasons-not-probabilities.md) | DEC |
 | BQ-006 | Пространство и время боя | M2 | DEC |
 | BQ-007 | Отступление и смерть | M2/M3 | DEC |
-| BQ-008 | Формат events/causal trace | Gate 0 | ADR |
-| BQ-009 | Формат контента и stable IDs | Gate 0 | ADR |
+| BQ-008 | Формат events/causal trace | закрыт: [ADR-007](../decisions/ADR-007-events-and-causal-trace.md) | ADR |
+| BQ-009 | Формат контента и stable IDs | закрыт: [ADR-004](../decisions/ADR-004-content-format.md), [ADR-005](../decisions/ADR-005-stable-ids.md), детерминизм — [ADR-003](../decisions/ADR-003-deterministic-rng.md) | ADR |
 | BQ-010 | Save schema и migration policy | M3 | ADR |
 | BQ-011 | Авторский/процедурный контрактный контент | M3 | DEC |
 | BQ-012 | Тон короткой кампании | M3 | DEC |
