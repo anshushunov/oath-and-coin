@@ -49,7 +49,8 @@ public static class DeterministicRng
     }
 
     /// <summary>
-    /// Draws an <see cref="int"/> uniformly in [minInclusive, maxExclusive).
+    /// Draws an <see cref="int"/> uniformly in [minInclusive, maxExclusive),
+    /// reporting how many ordinals it cost.
     /// The range width is computed in <see cref="ulong"/> because
     /// <c>maxExclusive - minInclusive</c> in <see cref="int"/> arithmetic
     /// can overflow for wide ranges (e.g. int.MinValue..int.MaxValue): the
@@ -59,7 +60,22 @@ public static class DeterministicRng
     /// rejected and re-drawn (advancing only a local ordinal, never mutating
     /// any state) so every remaining outcome is equally likely.
     /// </summary>
-    public static int DrawInt32(ulong campaignSeed, RngStream stream, ulong ordinal, int minInclusive, int maxExclusive)
+    /// <returns>
+    /// The drawn value together with
+    /// <see cref="Int32Draw.OrdinalsConsumed"/> — the number of ordinals
+    /// burned starting at <paramref name="ordinal"/>, which is greater than
+    /// 1 whenever a sample was rejected.
+    /// </returns>
+    /// <remarks>
+    /// The return type carries the ordinal count because a rejected sample
+    /// burns an ordinal that the caller must still account for. This method
+    /// used to return a bare <see cref="int"/>; the extra ordinals were
+    /// invisible, callers reported <c>drawsConsumed: 1</c>, and the next
+    /// decision restarted on an ordinal already drawn and accepted —
+    /// silently repeating that sample. See the remarks on
+    /// <see cref="Int32Draw"/>.
+    /// </remarks>
+    public static Int32Draw DrawInt32(ulong campaignSeed, RngStream stream, ulong ordinal, int minInclusive, int maxExclusive)
     {
         if (maxExclusive <= minInclusive)
         {
@@ -73,6 +89,7 @@ public static class DeterministicRng
         ulong threshold = AcceptanceThreshold(span);
 
         ulong currentOrdinal = ordinal;
+        ulong ordinalsConsumed = 1UL;
         ulong sample;
         while (true)
         {
@@ -83,9 +100,10 @@ public static class DeterministicRng
             }
 
             currentOrdinal = unchecked(currentOrdinal + 1UL);
+            ordinalsConsumed = checked(ordinalsConsumed + 1UL);
         }
 
-        return (int)((long)minInclusive + (long)(sample % span));
+        return new Int32Draw((int)((long)minInclusive + (long)(sample % span)), ordinalsConsumed);
     }
 
     /// <summary>
@@ -99,9 +117,12 @@ public static class DeterministicRng
     /// draw. Internal (not private) so the invariant — <c>threshold % span
     /// == 0</c> and <c>threshold</c> within one <paramref name="span"/> of
     /// <see cref="ulong.MaxValue"/> — can be asserted directly for a range
-    /// of span values: black-box testing cannot exercise the rejection
-    /// branch itself, since for realistic spans the rejection probability
-    /// is astronomically small (e.g. ~5.4e-20 for span = 2^32 - 1).
+    /// of span values, rather than only inferred from sampled draws: random
+    /// sampling cannot reach the rejection branch, since for realistic spans
+    /// the rejection probability is astronomically small (e.g. ~5.4e-20 for
+    /// span = 2^32 - 1). The branch itself is still covered, by a campaign
+    /// seed constructed to land on it — see
+    /// <c>DeterministicRngTests.DrawInt32_ReportsEveryOrdinalARejectionBurned</c>.
     /// </summary>
     internal static ulong AcceptanceThreshold(ulong span)
     {

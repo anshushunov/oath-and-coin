@@ -77,8 +77,9 @@ public class DeterministicRngTests
 
         for (ulong ordinal = 0; ordinal < 100_000UL; ordinal++)
         {
-            var value = DeterministicRng.DrawInt32(seed, stream, ordinal, -5, 6);
-            Assert.InRange(value, -5, 5);
+            var draw = DeterministicRng.DrawInt32(seed, stream, ordinal, -5, 6);
+            Assert.InRange(draw.Value, -5, 5);
+            Assert.Equal(1UL, draw.OrdinalsConsumed);
         }
     }
 
@@ -105,8 +106,9 @@ public class DeterministicRngTests
             var rawSample = DeterministicRng.Draw(seed, stream, ordinal);
             var expected = (int)((long)minInclusive + (long)(rawSample % span));
 
-            Assert.Equal(expected, actual);
-            Assert.True(actual >= minInclusive && (long)actual < (long)maxExclusive);
+            Assert.Equal(expected, actual.Value);
+            Assert.Equal(1UL, actual.OrdinalsConsumed);
+            Assert.True(actual.Value >= minInclusive && (long)actual.Value < (long)maxExclusive);
         }
     }
 
@@ -142,6 +144,85 @@ public class DeterministicRngTests
                 threshold > ulong.MaxValue - span,
                 $"threshold {threshold} is not within one span of ulong.MaxValue for span {span}");
         }
+    }
+
+    // Fix round 6 / R-1: on rejection DrawInt32 advanced a *local* ordinal
+    // and returned a bare int, so the extra ordinals it burned were invisible
+    // to the caller. The caller could only report `drawsConsumed: 1` to
+    // GameState.WithEvent, leaving NextDecisionOrdinal on an ordinal that had
+    // already been drawn *and accepted* — so the next decision reproduced
+    // that exact sample, with replay, save/continue and the golden vectors
+    // all agreeing with each other and all wrong.
+    //
+    // The rejection branch cannot be reached by sampling (see the remarks on
+    // AcceptanceThreshold), so the seed below was *constructed*, not
+    // searched for: Draw(seed, stream, 0) == Mix(Mix(seed + (stream+1)*GAMMA)),
+    // and SplitMix64's finalizer Mix is a bijection on 64 bits (xor-shift-right
+    // and odd-constant multiplication are both invertible mod 2^64).
+    // Inverting it twice starting from ulong.MaxValue yields the one campaign
+    // seed whose ordinal-0 sample is exactly ulong.MaxValue — a value at or
+    // above every possible acceptance threshold, hence rejected for every
+    // span.
+    //
+    // Produced by a throwaway console app (deleted afterwards, never
+    // committed), the same way the golden vector below was:
+    //
+    //   dotnet new console -f net8.0 -o /tmp/rng-reject
+    //   # Program.cs: reimplements Mix/Draw; inverts Mix via a fixed-point
+    //   # undo of `x ^ (x >> s)` plus Newton modular inverses of the two odd
+    //   # constants; self-checks UnMix(Mix(x)) == x on probes; then prints
+    //   #   seed = UnMix(UnMix(ulong.MaxValue)) - (HeroDecision + 1) * GAMMA
+    //   # and, for a table of spans, whether ordinal 0 is rejected.
+    //   dotnet run --project /tmp/rng-reject
+    //   rm -rf /tmp/rng-reject
+    //
+    // Pinned output: campaignSeed = 4892902761533153534,
+    // Draw(seed, HeroDecision, 0) = 18446744073709551615 == ulong.MaxValue,
+    // ordinal0Rejected = True for every span in {2,3,4,5,6,7,10,20,100}.
+    [Fact]
+    public void DrawInt32_ReportsEveryOrdinalARejectionBurned()
+    {
+        const ulong seed = 4892902761533153534UL;
+        const RngStream stream = RngStream.HeroDecision;
+        const int minInclusive = 0;
+        const int maxExclusive = 6;
+        const ulong span = 6UL;
+
+        // The premise of the test, asserted rather than assumed: without this
+        // the test below would pass on a draw that was never rejected.
+        Assert.Equal(ulong.MaxValue, DeterministicRng.Draw(seed, stream, 0UL));
+        Assert.True(
+            DeterministicRng.Draw(seed, stream, 0UL) >= DeterministicRng.AcceptanceThreshold(span),
+            $"ordinal 0 must sit at or above the acceptance threshold for span {span}, "
+            + "otherwise the rejection branch is not entered at all");
+
+        var draw = DeterministicRng.DrawInt32(seed, stream, 0UL, minInclusive, maxExclusive);
+
+        Assert.True(
+            draw.OrdinalsConsumed > 1UL,
+            $"the sample at ordinal 0 was rejected, so more than one ordinal was burned, but the "
+            + $"draw reported {draw.OrdinalsConsumed}; a caller forwarding that to "
+            + "GameState.WithEvent would leave NextDecisionOrdinal on an ordinal already drawn "
+            + "and accepted, and the next decision would repeat this very sample");
+        Assert.Equal(2UL, draw.OrdinalsConsumed);
+
+        // The accepted sample is the last ordinal burned, not the first.
+        var acceptedOrdinal = draw.OrdinalsConsumed - 1UL;
+        var acceptedSample = DeterministicRng.Draw(seed, stream, acceptedOrdinal);
+        Assert.True(acceptedSample < DeterministicRng.AcceptanceThreshold(span));
+        Assert.Equal((int)(acceptedSample % span), draw.Value);
+
+        // What the reported count buys: resuming at ordinal + OrdinalsConsumed
+        // is a genuinely fresh draw.
+        var next = DeterministicRng.DrawInt32(seed, stream, draw.OrdinalsConsumed, minInclusive, maxExclusive);
+        Assert.NotEqual(acceptedSample, DeterministicRng.Draw(seed, stream, draw.OrdinalsConsumed));
+        Assert.NotEqual(draw.Value, next.Value);
+
+        // And the consequence of getting the count wrong, shown directly:
+        // resuming one ordinal on — what a caller hard-coding 1 would do —
+        // replays the sample this call already consumed and accepted.
+        var repeated = DeterministicRng.DrawInt32(seed, stream, 1UL, minInclusive, maxExclusive);
+        Assert.Equal(draw.Value, repeated.Value);
     }
 
     [Fact]
