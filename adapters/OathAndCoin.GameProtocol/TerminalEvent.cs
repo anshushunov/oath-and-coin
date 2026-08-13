@@ -1,0 +1,242 @@
+using System.Collections.Immutable;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace OathAndCoin.GameProtocol;
+
+/// <summary>
+/// What the running game printed to stdout when a scenario reached its
+/// checkpoint: the outcome, the two hashes <c>OathAndCoin.Presentation</c>
+/// defines (read model and rendered UI), and enough about the screenshot
+/// frame to compare against what the tool captured. This is the other half
+/// of the protocol from <see cref="GameArguments"/> — the tool builds the
+/// launch request, the game reports back in this shape — which is why it
+/// lives in the same protocol-only assembly rather than in
+/// <c>OathAndCoin.Presentation</c>, which neither side of a process boundary
+/// should have to depend on just to read a terminal line.
+/// </summary>
+/// <param name="SchemaVersion">
+/// The version of this wire format the line was written under. Required,
+/// not defaulted: the protocol is expected to grow, and an old tool reading
+/// a newer event should refuse it outright (see <see cref="Parse"/>) rather
+/// than parse it under assumptions that no longer hold.
+/// </param>
+/// <param name="Event">The event's own name, e.g. <c>"terminal"</c>.</param>
+/// <param name="OutcomeKind">
+/// <c>"success"</c> or <c>"error"</c>, mirroring
+/// <c>OathAndCoin.Content.Scenarios.ScenarioOutcomeKind</c> — kept as a plain
+/// string rather than that enum because this assembly does not reference
+/// <c>OathAndCoin.Content</c> (it consumes nothing; see the plan brief).
+/// </param>
+/// <param name="Scenario">The scenario id the run was driven from.</param>
+/// <param name="Seed">The simulation seed the run used.</param>
+/// <param name="Checkpoint">The checkpoint name the run reports reaching.</param>
+/// <param name="ErrorCode">
+/// The formalized error identifier when <paramref name="OutcomeKind"/> is
+/// <c>"error"</c>; <c>null</c> on success. Together with
+/// <paramref name="OutcomeKind"/> this is what makes an error a stated
+/// outcome rather than an absence of the success fields below.
+/// </param>
+/// <param name="ContentVersion">
+/// The loaded content's version, or <c>null</c> when the run errored before
+/// content finished loading — an error that early never computes one.
+/// </param>
+/// <param name="CanonicalHash">
+/// The canonical content hash, <c>null</c> for the same reason as
+/// <paramref name="ContentVersion"/>.
+/// </param>
+/// <param name="ReadModelHash">
+/// <c>OathAndCoin.Presentation.SpikeScreenModelFactory.ReadModelHash</c> of
+/// the screen the game built — present even on an error outcome, because an
+/// error still renders a screen (with its own error code and no lines) that
+/// can be hashed like any other.
+/// </param>
+/// <param name="RenderedUiHash">The rendered-UI-snapshot hash of the same screen.</param>
+/// <param name="FrameSha256">SHA-256 of the screenshot frame the game wrote.</param>
+/// <param name="FrameWidth">The captured frame's width in pixels.</param>
+/// <param name="FrameHeight">The captured frame's height in pixels.</param>
+/// <param name="FrameDistinctColors">Distinct colors observed in the captured frame.</param>
+public sealed record TerminalEvent(
+    int SchemaVersion,
+    string Event,
+    string OutcomeKind,
+    string Scenario,
+    ulong Seed,
+    string Checkpoint,
+    string? ErrorCode,
+    string? ContentVersion,
+    string? CanonicalHash,
+    string ReadModelHash,
+    string RenderedUiHash,
+    string FrameSha256,
+    int FrameWidth,
+    int FrameHeight,
+    int FrameDistinctColors)
+{
+    /// <summary>
+    /// The wire format version this build understands. Mirrors
+    /// <c>OathAndCoin.Content.Scenarios.ScenarioManifest.SupportedManifestSchemaVersion</c>:
+    /// a line declaring any other version is refused rather than read under
+    /// the wrong version's assumptions.
+    /// </summary>
+    public const int SupportedSchemaVersion = 1;
+
+    /// <summary>
+    /// The bound every size and depth ceiling below is set to. A terminal
+    /// event is a small, flat object; there is no legitimate reason for one
+    /// to nest sixteen levels deep, and a reader that allows it anyway is a
+    /// reader an adversarial or merely buggy game build can use to burn CPU
+    /// on stdout it fully controls.
+    /// </summary>
+    private const int MaxJsonDepth = 16;
+
+    /// <summary>
+    /// The strict reading policy every line in <see cref="Parse"/> goes
+    /// through. Restated here — rather than shared with
+    /// <c>OathAndCoin.Content.StrictJson</c>, which enforces the identical
+    /// policy for on-disk content — because this assembly deliberately
+    /// references nothing (it belongs to both the tool and the game, and a
+    /// dependency on the tool's content-reading assembly would break that).
+    /// A terminal event is external data exactly like a content file — it
+    /// arrives on stdout, a channel the running game does not fully control
+    /// either (engine banners, driver warnings) — so it earns the same
+    /// strictness for the same reason: an unmapped property or a trailing
+    /// comma is a version skew or a bug, not something to paper over.
+    /// </summary>
+    private static readonly JsonSerializerOptions Options = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        PropertyNameCaseInsensitive = false,
+        AllowTrailingCommas = false,
+        ReadCommentHandling = JsonCommentHandling.Disallow,
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+        NumberHandling = JsonNumberHandling.Strict,
+        MaxDepth = MaxJsonDepth,
+    };
+
+    /// <summary>
+    /// Reads every line of the game's stdout, picking out terminal events.
+    /// </summary>
+    /// <remarks>
+    /// Never throws. A line is only treated as an attempted event if, once
+    /// trimmed, it starts with <c>{</c> — the engine prints plenty of plain
+    /// text noise on stdout (its own banner, renderer info, shader compiler
+    /// chatter), and none of that should count as a broken event just
+    /// because it also failed to parse as JSON. A line that does look like
+    /// an attempted event but is not valid JSON, declares a
+    /// <see cref="SchemaVersion"/> this build does not understand, or is
+    /// missing a required field is recorded in
+    /// <see cref="TerminalParseResult.Errors"/> instead — a caller driving a
+    /// scenario needs to see that failure, not have the run silently report
+    /// nothing.
+    /// </remarks>
+    public static TerminalParseResult Parse(IReadOnlyList<string> outputLines)
+    {
+        ArgumentNullException.ThrowIfNull(outputLines);
+
+        var events = ImmutableArray.CreateBuilder<TerminalEvent>();
+        var errors = ImmutableArray.CreateBuilder<string>();
+
+        foreach (var line in outputLines)
+        {
+            if (!line.TrimStart().StartsWith('{'))
+            {
+                // Not an attempted event at all: engine noise, ignored.
+                continue;
+            }
+
+            EventLine? parsed;
+            try
+            {
+                parsed = JsonSerializer.Deserialize<EventLine>(line, Options);
+            }
+            catch (JsonException exception)
+            {
+                errors.Add($"Line '{line}' is not a valid terminal event: {exception.Message}");
+                continue;
+            }
+
+            if (parsed is null)
+            {
+                errors.Add($"Line '{line}' is JSON null where a terminal event object was expected.");
+                continue;
+            }
+
+            if (parsed.SchemaVersion != SupportedSchemaVersion)
+            {
+                errors.Add(
+                    $"Line '{line}' declares schema_version {parsed.SchemaVersion}, but this build reads "
+                    + $"version {SupportedSchemaVersion}.");
+                continue;
+            }
+
+            events.Add(new TerminalEvent(
+                parsed.SchemaVersion,
+                parsed.Event,
+                parsed.OutcomeKind,
+                parsed.Scenario,
+                parsed.Seed,
+                parsed.Checkpoint,
+                parsed.ErrorCode,
+                parsed.ContentVersion,
+                parsed.CanonicalHash,
+                parsed.ReadModelHash,
+                parsed.RenderedUiHash,
+                parsed.FrameSha256,
+                parsed.FrameWidth,
+                parsed.FrameHeight,
+                parsed.FrameDistinctColors));
+        }
+
+        return new TerminalParseResult(events.ToImmutable(), errors.ToImmutable());
+    }
+
+    /// <summary>
+    /// The wire shape <see cref="Parse"/> deserializes into before it is
+    /// known to be a version this build understands. Kept separate from
+    /// <see cref="TerminalEvent"/> itself so the public record's shape is
+    /// never at the mercy of what <see cref="JsonSerializer"/> needs from a
+    /// deserialization target (e.g. a settable init accessor for every
+    /// member) — the two happen to match field-for-field today, but nothing
+    /// here depends on them staying textually identical.
+    /// </summary>
+    private sealed record EventLine
+    {
+        public required int SchemaVersion { get; init; }
+
+        public required string Event { get; init; }
+
+        public required string OutcomeKind { get; init; }
+
+        public required string Scenario { get; init; }
+
+        public required ulong Seed { get; init; }
+
+        public required string Checkpoint { get; init; }
+
+        public string? ErrorCode { get; init; }
+
+        public string? ContentVersion { get; init; }
+
+        public string? CanonicalHash { get; init; }
+
+        public required string ReadModelHash { get; init; }
+
+        public required string RenderedUiHash { get; init; }
+
+        public required string FrameSha256 { get; init; }
+
+        public required int FrameWidth { get; init; }
+
+        public required int FrameHeight { get; init; }
+
+        public required int FrameDistinctColors { get; init; }
+    }
+}
+
+/// <summary>
+/// The result of reading a whole stdout stream: every event that parsed
+/// cleanly, in the order it was printed, and every line that looked like an
+/// attempted event but was not one this build could accept.
+/// </summary>
+public sealed record TerminalParseResult(ImmutableArray<TerminalEvent> Events, ImmutableArray<string> Errors);
