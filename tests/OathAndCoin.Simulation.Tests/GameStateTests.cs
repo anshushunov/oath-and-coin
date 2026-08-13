@@ -229,6 +229,56 @@ public class GameStateTests
         Assert.Throws<ArgumentException>(() => afterFirst.WithEvent(secondEvent, different, drawsConsumed: 0));
     }
 
+    // Fix round 6 / R-2: storing a new trace only checked that its id was
+    // absent from Traces, while NextTraceId advanced by exactly one whatever
+    // id got stored. Store id 7 with the counter at 0 and the counter reads
+    // 1; store ids 1..6 after that and it reads 7 again — an id that is
+    // already occupied. "Next free" stopped being true, and the next decision
+    // would be handed an id it could not store.
+    [Fact]
+    public void WithEvent_RejectsNewTraceAheadOfTheCounter()
+    {
+        var state = CreateState();
+        var aheadOfCounter = state.Metadata.NextTraceId + 7;
+        var trace = CreateEmptyTrace(aheadOfCounter);
+        var evt = new HeroAcceptedContract(
+            state.Metadata.NextEventId, state.Metadata.LogicalTime, aheadOfCounter, new HeroId(1), ContractId);
+
+        var exception = Assert.Throws<ArgumentException>(() => state.WithEvent(evt, trace, drawsConsumed: 0));
+
+        // The diagnostic has to name both numbers, or the caller cannot tell
+        // which id it should have used.
+        Assert.Contains(aheadOfCounter.ToString(), exception.Message, StringComparison.Ordinal);
+        Assert.Contains(state.Metadata.NextTraceId.ToString(), exception.Message, StringComparison.Ordinal);
+        Assert.Contains(nameof(GameMetadata.NextTraceId), exception.Message, StringComparison.Ordinal);
+    }
+
+    // The same rule once the campaign is under way: the counter is not merely
+    // a starting point that any later id satisfies.
+    [Fact]
+    public void WithEvent_RejectsNewTraceThatSkipsTheCounter()
+    {
+        var state = CreateState();
+        var firstTraceId = state.Metadata.NextTraceId;
+        var firstEvent = new HeroAcceptedContract(
+            state.Metadata.NextEventId, state.Metadata.LogicalTime, firstTraceId, new HeroId(1), ContractId);
+        var afterFirst = state.WithEvent(firstEvent, CreateEmptyTrace(firstTraceId), drawsConsumed: 1);
+
+        var skipped = afterFirst.Metadata.NextTraceId + 4;
+        var secondEvent = new HeroDeclinedContract(
+            afterFirst.Metadata.NextEventId, afterFirst.Metadata.LogicalTime, skipped, new HeroId(2), ContractId);
+
+        var exception = Assert.Throws<ArgumentException>(
+            () => afterFirst.WithEvent(secondEvent, CreateEmptyTrace(skipped), drawsConsumed: 1));
+
+        Assert.Contains(skipped.ToString(), exception.Message, StringComparison.Ordinal);
+        Assert.Contains(afterFirst.Metadata.NextTraceId.ToString(), exception.Message, StringComparison.Ordinal);
+
+        // The rejected call left nothing behind.
+        Assert.Single(afterFirst.Traces);
+        Assert.Equal(firstTraceId + 1, afterFirst.Metadata.NextTraceId);
+    }
+
     [Fact]
     public void WithEvent_RejectsOutOfOrderEventId()
     {

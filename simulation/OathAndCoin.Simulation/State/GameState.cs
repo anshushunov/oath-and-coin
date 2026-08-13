@@ -50,6 +50,14 @@ public sealed record GameMetadata
     /// addressable explanations instead of the second one silently
     /// overwriting the first at trace id 0.
     /// </summary>
+    /// <remarks>
+    /// "Next free" is enforced, not merely intended:
+    /// <see cref="GameState.WithEvent"/> refuses to store a new trace under
+    /// any id other than this one. Because the counter moves by exactly one
+    /// per stored trace, a trace accepted out of sequence would make it point
+    /// at an occupied id later on — storing id 7 while the counter reads 0
+    /// leaves it at 1, and after ids 0..6 are stored it reads 7 again.
+    /// </remarks>
     public required long NextTraceId { get; init; }
 
     /// <summary>
@@ -213,7 +221,13 @@ public sealed record GameState
     /// decision must never erase what the first one already explained). If
     /// the stored trace is equivalent (same content), the call is a no-op
     /// on <see cref="Traces"/> — a second event may legitimately reference
-    /// an explanation that was already stored.</item>
+    /// an explanation that was already stored. Storing a <em>new</em>
+    /// explanation additionally requires its id to be exactly
+    /// <see cref="GameMetadata.NextTraceId"/>: the counter advances by one
+    /// per stored trace, so accepting an arbitrary id would let it point at
+    /// an id that is already occupied and stop meaning "next free" (store a
+    /// trace at id 7 while the counter reads 0, then store ids 0..6, and the
+    /// counter reads 7 again — over an existing key).</item>
     /// <item><paramref name="trace"/> is <c>null</c>, and a trace with that
     /// id is already in <see cref="Traces"/> — a later event legitimately
     /// referencing an earlier decision's explanation.</item>
@@ -277,6 +291,17 @@ public sealed record GameState
                 }
                 else
                 {
+                    if (trace.TraceId != Metadata.NextTraceId)
+                    {
+                        throw new ArgumentException(
+                            $"Trace id {trace.TraceId} is not the campaign's next free trace id "
+                            + $"({Metadata.NextTraceId}); a new explanation must be stored under "
+                            + "GameMetadata.NextTraceId, because that counter only ever advances by one "
+                            + "per stored trace and would otherwise stop meaning \"next free\" — a later "
+                            + "decision would then be handed an id that is already occupied.",
+                            nameof(trace));
+                    }
+
                     storesNewTrace = true;
                 }
             }
