@@ -35,7 +35,8 @@ namespace OathAndCoin.Simulation.Decisions;
 public sealed record TraceFactor(string ReasonCode, ContentId SourceEntity, int Magnitude);
 
 /// <summary>
-/// The stored explanation for a decision (ADR-007). Addressed by
+/// The stored explanation for a decision (ADR-007, planned — TDD §21).
+/// Addressed by
 /// <see cref="TraceId"/> from <see cref="Events.DomainEvent.CausalTraceId"/>
 /// and kept in <see cref="State.GameState.Traces"/> rather than only on a
 /// command's return value: if it lived only on the result, the reference

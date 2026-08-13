@@ -7,7 +7,8 @@ using System.Reflection.PortableExecutable;
 namespace OathAndCoin.Simulation.Tests;
 
 /// <summary>
-/// Mechanizes ADR-002 (core boundary): the simulation assembly (and, as of
+/// Mechanizes the core boundary (ADR-002, planned — TDD §21): the simulation
+/// assembly (and, as of
 /// fix round 3, every assembly compiled from a project under simulation/)
 /// must be usable headless, without Godot, and without non-deterministic or
 /// non-integer system APIs.

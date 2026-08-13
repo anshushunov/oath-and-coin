@@ -3,8 +3,9 @@ using OathAndCoin.Simulation.Ids;
 namespace OathAndCoin.Simulation.Events;
 
 /// <summary>
-/// Base type for everything that happens in a campaign (ADR-007). Every
-/// event carries its own place in the log (<see cref="EventId"/>), the
+/// Base type for everything that happens in a campaign (ADR-007, planned —
+/// TDD §21). Every event carries its own place in the log
+/// (<see cref="EventId"/>), the
 /// campaign's logical time when it happened, and — optionally — the id of a
 /// <see cref="Decisions.CausalTrace"/> stored in
 /// <see cref="State.GameState.Traces"/> that explains it. The trace itself

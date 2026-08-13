@@ -53,8 +53,8 @@ public sealed record GameMetadata
     public required long NextTraceId { get; init; }
 
     /// <summary>
-    /// The ordinal to feed the counter-based RNG (ADR-003) for the next
-    /// draw. Living in state rather than beside it is what keeps the engine
+    /// The ordinal to feed the counter-based RNG (ADR-003, planned — TDD §21)
+    /// for the next draw. Living in state rather than beside it is what keeps the engine
     /// stateless: randomness is derived from
     /// <c>(CampaignSeed, stream, NextDecisionOrdinal)</c>, never kept in a
     /// generator's own memory.
@@ -75,8 +75,8 @@ public sealed record GameMetadata
 }
 
 /// <summary>
-/// Campaign state (ADR-007). Every collection here is a physically
-/// immutable BCL type (<see cref="ImmutableSortedDictionary{TKey,TValue}"/>,
+/// Campaign state (ADR-007, planned — TDD §21). Every collection here is a
+/// physically immutable BCL type (<see cref="ImmutableSortedDictionary{TKey,TValue}"/>,
 /// <see cref="ImmutableSortedSet{T}"/>, <see cref="ImmutableArray{T}"/>)
 /// rather than a read-only interface over a mutable collection: an
 /// interface only stops this type's own consumers from mutating what they

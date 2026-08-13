@@ -4,8 +4,8 @@ using OathAndCoin.Simulation.Random;
 namespace OathAndCoin.Simulation.Tests;
 
 /// <summary>
-/// Task 2 (ADR-003): the deterministic RNG must be a pure function of
-/// (campaignSeed, stream, ordinal) with no internal state, so a saved game
+/// Task 2 (ADR-003, planned — TDD §21): the deterministic RNG must be a pure
+/// function of (campaignSeed, stream, ordinal) with no internal state, so a saved game
 /// can resume the exact same sequence just by knowing how many draws each
 /// stream has already produced.
 /// </summary>

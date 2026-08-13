@@ -4,8 +4,8 @@ using System.Text.RegularExpressions;
 namespace OathAndCoin.Simulation.Ids;
 
 /// <summary>
-/// A stable, namespaced content identifier (ADR-005) in the form
-/// <c>namespace:name</c>, where both segments match
+/// A stable, namespaced content identifier (ADR-005, planned — TDD §21) in
+/// the form <c>namespace:name</c>, where both segments match
 /// <c>^[a-z][a-z0-9_]*$</c>.
 /// </summary>
 /// <remarks>

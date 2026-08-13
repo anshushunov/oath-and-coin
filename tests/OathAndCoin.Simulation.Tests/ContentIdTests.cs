@@ -3,8 +3,9 @@ using OathAndCoin.Simulation.Ids;
 namespace OathAndCoin.Simulation.Tests;
 
 /// <summary>
-/// Verifies <see cref="ContentId"/> (ADR-005): a stable, namespaced content
-/// identifier that cannot exist in an invalid state. Construction goes only
+/// Verifies <see cref="ContentId"/> (ADR-005, planned — TDD §21): a
+/// stable, namespaced content identifier that cannot exist in an invalid
+/// state. Construction goes only
 /// through <see cref="ContentId.Parse"/>/<see cref="ContentId.TryParse"/>,
 /// ordering is ordinal (never culture-dependent), and the struct's own
 /// <c>default</c> value is treated as uninitialized rather than a silent

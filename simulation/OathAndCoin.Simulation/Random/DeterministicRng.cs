@@ -5,8 +5,8 @@ using System.Runtime.CompilerServices;
 namespace OathAndCoin.Simulation.Random;
 
 /// <summary>
-/// Counter-based deterministic RNG (ADR-003). Every draw is a pure function
-/// of (campaignSeed, stream, ordinal) — there is no instance, no field, no
+/// Counter-based deterministic RNG (ADR-003, planned — TDD §21). Every draw
+/// is a pure function of (campaignSeed, stream, ordinal) — there is no instance, no field, no
 /// counter kept anywhere in this type. The caller supplies the ordinal (how
 /// many draws have already been made on that stream), so the same
 /// (seed, stream, ordinal) triple always reproduces the same value no

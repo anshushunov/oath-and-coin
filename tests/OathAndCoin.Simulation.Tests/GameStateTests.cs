@@ -9,8 +9,8 @@ using OathAndCoin.Simulation.State;
 namespace OathAndCoin.Simulation.Tests;
 
 /// <summary>
-/// Verifies <see cref="GameState"/> (ADR-007): campaign state is a value
-/// whose collections are physically immutable, whose event log only grows
+/// Verifies <see cref="GameState"/> (ADR-007, planned — TDD §21): campaign
+/// state is a value whose collections are physically immutable, whose event log only grows
 /// through <see cref="GameState.WithEvent"/> with strictly ordered event
 /// ids, and whose stored <see cref="CausalTrace"/>s stay addressable from
 /// the events that reference them — in both directions, so neither an event
