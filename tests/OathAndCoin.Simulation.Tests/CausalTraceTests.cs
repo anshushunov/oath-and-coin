@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using OathAndCoin.Simulation.Decisions;
+using OathAndCoin.Simulation.Ids;
 
 namespace OathAndCoin.Simulation.Tests;
 
@@ -97,6 +98,46 @@ public class CausalTraceTests
 
         Assert.All(codes, code => Assert.StartsWith("hero.decision.", code, StringComparison.Ordinal));
         Assert.Equal(codes.Length, codes.Distinct().Count());
+    }
+
+    // Fix round 5 / C-7: SourceEntity used to be free text, so an
+    // explanation named the thing that caused it in a form nothing could
+    // resolve. Typed as a ContentId it is programmatically linked back to the
+    // entity — this test walks that link, which is the whole point of the
+    // change and is what a UI would do to let a player follow a reason back
+    // to its cause. The hero's *definition* is used, not its runtime HeroId,
+    // because the definition is stable across saves.
+    [Fact]
+    public void TraceFactor_SourceEntityResolvesBackToTheEntityThatProducedIt()
+    {
+        var bram = ContentId.Parse("core:bram");
+        var heroes = ImmutableSortedDictionary<ContentId, string>.Empty.Add(bram, "hero.display_name.bram");
+        var factor = new TraceFactor(ReasonCodes.TrustsTheGuild, bram, 2);
+
+        Assert.Equal(bram, factor.SourceEntity);
+        Assert.True(heroes.ContainsKey(factor.SourceEntity));
+        Assert.Equal("core", factor.SourceEntity.Namespace);
+    }
+
+    // The other side of the same boundary, stated as an executable fact:
+    // reason codes are an engine dictionary that becomes localization keys.
+    // They are never authored in content and never addressed from content, so
+    // they are deliberately not ContentIds — and they are not even shaped like
+    // one, which keeps the two vocabularies impossible to confuse.
+    [Fact]
+    public void ReasonCodes_AreEngineStringsNotContentIds()
+    {
+        var codes = new[]
+        {
+            ReasonCodes.PaymentAttractive,
+            ReasonCodes.RiskTooHigh,
+            ReasonCodes.TrustsTheGuild,
+            ReasonCodes.UnpredictableMood,
+        };
+
+        Assert.All(codes, code => Assert.False(
+            ContentId.TryParse(code, out _),
+            $"Reason code '{code}' parses as a ContentId; the two vocabularies must stay distinguishable."));
     }
 
     [Fact]

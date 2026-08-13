@@ -219,7 +219,7 @@ public class GameStateTests
         var different = new CausalTrace
         {
             TraceId = traceId,
-            PositiveFactors = ImmutableArray.Create(new TraceFactor(ReasonCodes.PaymentAttractive, "hero#2", 3)),
+            PositiveFactors = ImmutableArray.Create(new TraceFactor(ReasonCodes.PaymentAttractive, HeroDefinition, 3)),
             NegativeFactors = ImmutableArray<TraceFactor>.Empty,
             BlockedBy = ImmutableArray<string>.Empty,
         };

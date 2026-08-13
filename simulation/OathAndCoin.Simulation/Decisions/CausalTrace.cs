@@ -9,7 +9,30 @@ namespace OathAndCoin.Simulation.Decisions;
 /// how much of this to surface to the player, but it never invents a
 /// different reason than the one the simulation actually used.
 /// </summary>
-public sealed record TraceFactor(string ReasonCode, string SourceEntity, int Magnitude);
+/// <param name="ReasonCode">
+/// A stable code from <see cref="ReasonCodes"/> — a plain string, and see
+/// the remarks there for where that line is drawn.
+/// </param>
+/// <param name="SourceEntity">
+/// The content-addressable entity this factor came from, as a
+/// <see cref="ContentId"/> rather than free text. The argument that put
+/// <see cref="Actions"/> behind <see cref="ContentId"/> — these values reach
+/// explanations, saves and localization keys, so they need a stable
+/// namespaced identifier — applies word for word to the source of a factor,
+/// which is the one thing in an explanation a player might want to follow
+/// back to the object that caused it. In a game whose value is understanding
+/// why, an explanation you cannot navigate from is a weaker artifact.
+///
+/// For a hero this is the hero's <see cref="State.HeroState.Definition"/>,
+/// not its runtime <see cref="HeroId"/>: the definition is stable across
+/// saves and across campaigns, so a stored explanation stays meaningful even
+/// where the instance it described no longer exists.
+/// </param>
+/// <param name="Magnitude">
+/// How strongly this factor weighed in — integer, like every other
+/// gameplay-relevant number in the core (TDD §7.4).
+/// </param>
+public sealed record TraceFactor(string ReasonCode, ContentId SourceEntity, int Magnitude);
 
 /// <summary>
 /// The stored explanation for a decision (ADR-007). Addressed by

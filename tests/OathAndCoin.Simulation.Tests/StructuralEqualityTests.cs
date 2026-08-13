@@ -236,10 +236,10 @@ public class StructuralEqualityTests
     {
         TraceId = traceId,
         PositiveFactors = ImmutableArray.Create(
-            new TraceFactor(ReasonCodes.PaymentAttractive, "core:bram", paymentMagnitude),
-            new TraceFactor(ReasonCodes.TrustsTheGuild, "core:bram", 2)),
+            new TraceFactor(ReasonCodes.PaymentAttractive, BramDefinition, paymentMagnitude),
+            new TraceFactor(ReasonCodes.TrustsTheGuild, BramDefinition, 2)),
         NegativeFactors = ImmutableArray.Create(
-            new TraceFactor(ReasonCodes.RiskTooHigh, "core:escort_the_caravan", -1)),
+            new TraceFactor(ReasonCodes.RiskTooHigh, ContractId, -1)),
         BlockedBy = extraBlocker is null
             ? ImmutableArray<string>.Empty
             : ImmutableArray.Create(extraBlocker),
