@@ -231,6 +231,39 @@ public class ScenarioManifestTests
     }
 
     /// <summary>
+    /// The owner ruling's other edge, symmetric to
+    /// <see cref="Resolve_IncludesBoundaryCommand"/>: <c>after_command_id 0</c>
+    /// is always legal — it means "before any command" — even though no real
+    /// scenario ever assigns a command the id 0.
+    /// <c>content_error.manifest.json</c>'s <c>load_failed</c> checkpoint is
+    /// exactly this case, so the command list below deliberately contains no
+    /// command with id 0: <see cref="CheckpointResolver.Resolve"/> must not
+    /// require one to exist, and the resulting slice must be empty rather
+    /// than everything up to some accidental match.
+    /// </summary>
+    [Fact]
+    public void Resolve_ZeroAfterCommandIdYieldsEmptySlice()
+    {
+        var manifest = new ScenarioManifest(
+            1,
+            "content_error",
+            ScenarioOutcomeKind.Error,
+            Fault: new FaultInjection("missing_content_root", "fixtures/does-not-exist"),
+            ExpectedErrorCode: "CONTENT_ROOT_NOT_FOUND",
+            Checkpoints: ImmutableArray.Create(new Checkpoint("load_failed", 0)));
+        var commands = TwoCommands();
+
+        var checkpoint = CheckpointResolver.Resolve(manifest, commands, "load_failed");
+
+        Assert.Equal("load_failed", checkpoint.Name);
+        Assert.Equal(0, checkpoint.AfterCommandId);
+
+        var slice = CheckpointResolver.CommandsUpTo(commands, checkpoint);
+
+        Assert.Empty(slice);
+    }
+
+    /// <summary>
     /// The schema in <c>schemas/</c> is validated independently from
     /// <c>SchemaAgreementTests.AllContentFiles_SatisfyTheirSchema</c>: that
     /// test only walks the <c>content/</c> tree and picks a schema by
