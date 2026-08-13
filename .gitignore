@@ -3,3 +3,12 @@ obj/
 artifacts/
 .vs/
 *.user
+
+# Working material of the agent workflow — plans, specs, hand-off notes.
+# It stays on the workstation and out of the repository on purpose: once a
+# plan's content has moved into docs/decisions/, keeping the plan under git
+# leaves two sources of truth, and the stale one is the one somebody reads.
+# Deleting it outright would throw away notes that are still useful while the
+# work is fresh, so it lives locally instead.
+docs/superpowers/
+.superpowers/

@@ -508,19 +508,21 @@ tools/
 
 | ID | Решение | Когда | Критерии выбора |
 |---|---|---|---|
-| ADR-001 | Движок и язык | Gate 0 | скорость агентной разработки, UI, 2D/3D, headless, CI, лицензия |
-| ADR-002 | Core boundary | Gate 0 | отсутствие engine imports, serializable state, test runner |
-| ADR-003 | RNG | Gate 0 | стабильность, streams, replay, cross-platform behavior |
-| ADR-004 | Content format/schema | Gate 0 | tooling, diffability, validation, localization |
-| ADR-005 | IDs and references | Gate 0 | стабильность, диагностика, mod/content evolution |
+| ADR-001 | Движок и язык | принят 2026-08-13: [ADR-001](../decisions/ADR-001-engine-and-language.md) | скорость агентной разработки, UI, 2D/3D, headless, CI, лицензия |
+| ADR-002 | Core boundary | принят 2026-08-13: [ADR-002](../decisions/ADR-002-simulation-core-boundary.md) | отсутствие engine imports, serializable state, test runner |
+| ADR-003 | RNG | принят 2026-08-13: [ADR-003](../decisions/ADR-003-deterministic-rng.md) | стабильность, streams, replay, cross-platform behavior |
+| ADR-004 | Content format/schema | принят 2026-08-13: [ADR-004](../decisions/ADR-004-content-format.md) | tooling, diffability, validation, localization |
+| ADR-005 | IDs and references | принят 2026-08-13: [ADR-005](../decisions/ADR-005-stable-ids.md) | стабильность, диагностика, mod/content evolution |
 | ADR-006 | Save strategy | Milestone 3 | migration, crash safety, replay/debug value |
-| ADR-007 | Event and causal trace | Gate 0 | размер, запросы UI, debugging, localization |
+| ADR-007 | Event and causal trace | принят 2026-08-13: [ADR-007](../decisions/ADR-007-events-and-causal-trace.md) | размер, запросы UI, debugging, localization |
 | ADR-008 | Test/headless tooling | по итогам spike | локальный запуск, CI, batch performance |
+
+`ADR-009` в этом реестре нет намеренно: фиксированный симуляционный тик отозван из Gate 0 и входит в постановку модели времени боя на старте Milestone 2 (§9).
 
 ## 22. Открытые технические вопросы
 
 - Snapshot + command log или полный event sourcing оправдан для MVP?
-- Какая часть trace хранится постоянно, а какая агрегируется в хронику?
+- ~~Какая часть trace хранится постоянно?~~ Закрыто [ADR-007](../decisions/ADR-007-events-and-causal-trace.md): trace хранится в состоянии целиком и адресуется `TraceId` из события. Открытым остаётся, как он агрегируется в хронику кампании — вопрос Milestone 3.
 - Как минимизировать failing scenario автоматически?
 - Нужен ли mod-ready namespace с первого MVP или только возможность эволюции data schemas?
 - Как обеспечить локализуемые причинные фразы для языков с различной грамматикой?
