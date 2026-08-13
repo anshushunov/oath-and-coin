@@ -35,4 +35,30 @@ public sealed record ContractState
     /// deterministic enumeration order.
     /// </summary>
     public required ImmutableSortedSet<HeroId> RespondedBy { get; init; }
+
+    /// <summary>
+    /// Member-wise on <see cref="RespondedBy"/>.
+    /// <see cref="ImmutableSortedSet{T}"/> does not override
+    /// <c>Equals</c>, so the compiler-generated record equality compares it
+    /// by reference: two contracts each answered by hero 1 would be unequal,
+    /// while two untouched contracts would be equal only because both hold
+    /// the shared <c>Empty</c> singleton. That inconsistency propagates
+    /// straight into <see cref="GameState"/> equality, which compares
+    /// <see cref="GameState.Contracts"/> value by value.
+    /// </summary>
+    public bool Equals(ContractState? other) =>
+        other is not null
+        && (ReferenceEquals(this, other)
+            || (Id == other.Id
+                && Payment == other.Payment
+                && Risk == other.Risk
+                && Status == other.Status
+                && StructuralEquality.MembersEqual(RespondedBy, other.RespondedBy)));
+
+    public override int GetHashCode() => HashCode.Combine(
+        Id,
+        Payment,
+        Risk,
+        Status,
+        StructuralEquality.MembersHash(RespondedBy));
 }

@@ -72,6 +72,33 @@ public sealed record CausalTrace
     public string? TieBreak { get; init; }
 
     /// <summary>
+    /// Element-wise, not reference-wise. The compiler-generated
+    /// <c>Equals</c> compares each <see cref="ImmutableArray{T}"/> field by
+    /// its backing array's identity, which made two independently built
+    /// traces with the same factors unequal — while two traces whose arrays
+    /// are all the shared <c>Empty</c> singleton compared equal. A
+    /// save/load round-trip test written against an empty fixture would
+    /// therefore pass and only start failing once an explanation had its
+    /// first real factor. <see cref="TieBreak"/> is compared ordinally, like
+    /// every other identifier-shaped string in this assembly (TDD §7.3).
+    /// </summary>
+    public bool Equals(CausalTrace? other) =>
+        other is not null
+        && (ReferenceEquals(this, other)
+            || (TraceId == other.TraceId
+                && string.Equals(TieBreak, other.TieBreak, StringComparison.Ordinal)
+                && StructuralEquality.ElementsEqual(PositiveFactors, other.PositiveFactors)
+                && StructuralEquality.ElementsEqual(NegativeFactors, other.NegativeFactors)
+                && StructuralEquality.ElementsEqual(BlockedBy, other.BlockedBy)));
+
+    public override int GetHashCode() => HashCode.Combine(
+        TraceId,
+        TieBreak is null ? 0 : StringComparer.Ordinal.GetHashCode(TieBreak),
+        StructuralEquality.ElementsHash(PositiveFactors),
+        StructuralEquality.ElementsHash(NegativeFactors),
+        StructuralEquality.ElementsHash(BlockedBy));
+
+    /// <summary>
     /// <c>default(ImmutableArray&lt;T&gt;)</c> is an uninitialized struct,
     /// not an empty array — <c>required</c> only guards against "never
     /// assigned," not "assigned a default struct value." Left unchecked,
@@ -152,6 +179,27 @@ public sealed record DecisionResult
     public required int SelectedScore { get; init; }
 
     public required CausalTrace Trace { get; init; }
+
+    /// <summary>
+    /// Element-wise, for the same reason as
+    /// <see cref="CausalTrace.Equals(CausalTrace)"/>: the generated
+    /// <c>Equals</c> compares <see cref="ConsideredActions"/> by backing-array
+    /// identity. The two assignment-tracking fields are deliberately not part
+    /// of equality — they are construction bookkeeping, not decision content.
+    /// </summary>
+    public bool Equals(DecisionResult? other) =>
+        other is not null
+        && (ReferenceEquals(this, other)
+            || (SelectedAction == other.SelectedAction
+                && SelectedScore == other.SelectedScore
+                && StructuralEquality.ElementsEqual(ConsideredActions, other.ConsideredActions)
+                && Trace == other.Trace));
+
+    public override int GetHashCode() => HashCode.Combine(
+        SelectedAction,
+        SelectedScore,
+        StructuralEquality.ElementsHash(ConsideredActions),
+        Trace);
 
     private void ValidateSelectedActionIsConsidered()
     {

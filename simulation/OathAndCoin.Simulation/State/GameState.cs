@@ -190,7 +190,7 @@ public sealed record GameState
 
                 if (Traces.TryGetValue(trace.TraceId, out var existingTrace))
                 {
-                    if (!AreEquivalent(existingTrace, trace))
+                    if (existingTrace != trace)
                     {
                         throw new ArgumentException(
                             $"Trace id {trace.TraceId} is already stored with different content; "
@@ -233,16 +233,38 @@ public sealed record GameState
     }
 
     /// <summary>
-    /// Structural equality for <see cref="CausalTrace"/> that does not rely
-    /// on the record's generated <c>Equals</c>: <see cref="ImmutableArray{T}"/>'s
-    /// own <c>Equals</c> compares the backing array by reference, not by
-    /// element, so two traces built independently with the same factors
-    /// would otherwise compare unequal.
+    /// Content equality, entry by entry and element by element. Two states
+    /// assembled independently from the same data are equal; changing one
+    /// factor of one explanation makes them unequal.
     /// </summary>
-    private static bool AreEquivalent(CausalTrace left, CausalTrace right) =>
-        left.TraceId == right.TraceId
-        && left.PositiveFactors.SequenceEqual(right.PositiveFactors)
-        && left.NegativeFactors.SequenceEqual(right.NegativeFactors)
-        && left.BlockedBy.SequenceEqual(right.BlockedBy)
-        && left.TieBreak == right.TieBreak;
+    /// <remarks>
+    /// None of the collection types above override <c>Equals</c>
+    /// (<see cref="ImmutableArray{T}"/> compares its backing array by
+    /// reference; the immutable sorted dictionaries inherit plain reference
+    /// equality), so the compiler-generated record <c>Equals</c> answered
+    /// "not equal" for two identical states — except when every collection
+    /// involved happened to be the shared <c>Empty</c> singleton, where it
+    /// answered "equal". A save/load round-trip test written on an empty
+    /// fixture would pass under that rule and only break on the first state
+    /// that carried real data. This is the type-level fix; the shared
+    /// element-wise rules live in <see cref="StructuralEquality"/>. It also
+    /// replaces the private <c>AreEquivalent</c> helper
+    /// <see cref="WithEvent"/> used to compare stored traces — that
+    /// comparison is now just <c>existingTrace != trace</c>.
+    /// </remarks>
+    public bool Equals(GameState? other) =>
+        other is not null
+        && (ReferenceEquals(this, other)
+            || (Metadata == other.Metadata
+                && StructuralEquality.EntriesEqual(Heroes, other.Heroes)
+                && StructuralEquality.EntriesEqual(Contracts, other.Contracts)
+                && StructuralEquality.EntriesEqual(Traces, other.Traces)
+                && StructuralEquality.ElementsEqual(History, other.History)));
+
+    public override int GetHashCode() => HashCode.Combine(
+        Metadata,
+        StructuralEquality.EntriesHash(Heroes),
+        StructuralEquality.EntriesHash(Contracts),
+        StructuralEquality.EntriesHash(Traces),
+        StructuralEquality.ElementsHash(History));
 }
