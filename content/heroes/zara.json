@@ -1,0 +1,7 @@
+{
+  "id": "core:zara",
+  "display_name_key": "hero.core.zara.name",
+  "greed": 20,
+  "caution": 80,
+  "trust_in_guild": 40
+}

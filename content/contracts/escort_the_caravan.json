@@ -1,0 +1,6 @@
+{
+  "id": "core:escort_the_caravan",
+  "display_name_key": "contract.core.escort_the_caravan.name",
+  "payment": 40,
+  "risk": 50
+}

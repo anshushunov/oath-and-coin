@@ -1,0 +1,10 @@
+# Line endings of the files that feed ContentDigest are part of the content
+# version: the digest is a SHA-256 over the files' bytes, so a checkout that
+# turned LF into CRLF would compute a different ContentVersion for the same
+# commit — and the canonical determinism artifact, which carries that version,
+# would stop matching between a Windows workstation and a Linux CI runner.
+# Pinning the checkout to LF makes the digest a property of the commit rather
+# than of the machine that cloned it (TDD §7.3: no host-dependent inputs).
+content/**/*.json text eol=lf
+schemas/**/*.json text eol=lf
+scenarios/**/*.json text eol=lf

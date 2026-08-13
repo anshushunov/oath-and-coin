@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!--
+    Pinned to an exact version, not a range (TDD §18: "закрепить версии
+    third-party dependencies"): a floating dependency is a way for content
+    validation to change meaning between two runs of the same commit.
+  -->
+  <ItemGroup>
+    <PackageReference Include="JsonSchema.Net" Version="7.3.4" />
+  </ItemGroup>
+
+  <!--
+    One-way reference: this assembly knows about the simulation, the
+    simulation knows nothing about files. Every path, stream and byte in the
+    project lives here.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\simulation\OathAndCoin.Simulation\OathAndCoin.Simulation.csproj" />
+  </ItemGroup>
+
+</Project>

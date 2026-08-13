@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oath-and-coin.invalid/schemas/contract.schema.json",
+  "title": "Contract definition",
+  "description": "A contract offer's authored terms. Ranges here are the same numbers ContentBounds enforces in the loader; SchemaAgreementTests asserts the two never drift apart.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "display_name_key",
+    "payment",
+    "risk"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$",
+      "description": "Stable namespaced identifier; the pattern is ContentId's own format."
+    },
+    "display_name_key": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Localization key, never a player-facing literal (TDD 11.1)."
+    },
+    "payment": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "risk": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    }
+  }
+}
