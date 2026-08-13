@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oath-and-coin.invalid/schemas/hero.schema.json",
+  "title": "Hero definition",
+  "description": "A hero's authored definition. Ranges here are the same numbers ContentBounds enforces in the loader; SchemaAgreementTests asserts the two never drift apart.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "display_name_key",
+    "greed",
+    "caution",
+    "trust_in_guild"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Version of this content format (TDD 11.1). Pinned by const so a file authored for a later format is refused by tooling, not read under today's assumptions; ContentSet.SupportedContentSchemaVersion states the same number and SchemaAgreementTests keeps the two equal."
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$",
+      "description": "Stable namespaced identifier; the pattern is ContentId's own format."
+    },
+    "display_name_key": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Localization key, never a player-facing literal (TDD 11.1)."
+    },
+    "greed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "caution": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "trust_in_guild": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    }
+  }
+}

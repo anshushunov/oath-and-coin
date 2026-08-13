@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
+    <PackageReference Include="xunit" Version="2.5.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\adapters\OathAndCoin.Content\OathAndCoin.Content.csproj" />
+    <ProjectReference Include="..\..\tools\OathAndCoin.SimulationRunner\OathAndCoin.SimulationRunner.csproj" />
+  </ItemGroup>
+
+  <!--
+    Fixtures are located through assembly metadata, not by walking parent
+    directories looking for `.git`: in a worktree `.git` is a file rather than
+    a directory, so that search fails exactly where parallel agent work
+    happens (spec §10).
+  -->
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>ContentRoot</_Parameter1>
+      <_Parameter2>$(MSBuildThisFileDirectory)../../content</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>SchemaRoot</_Parameter1>
+      <_Parameter2>$(MSBuildThisFileDirectory)../../schemas</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>ScenarioRoot</_Parameter1>
+      <_Parameter2>$(MSBuildThisFileDirectory)../../scenarios</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+</Project>
