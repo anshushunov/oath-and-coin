@@ -73,6 +73,7 @@ jobs:
       # runner and not in a plain Windows shell; the point of the pipeline is
       # that a developer can run the same command that failed.
       - name: Determinism replay
+        id: replay
         shell: bash
         run: |
           dotnet run --project tools/OathAndCoin.SimulationRunner -c Release --no-build -- \
@@ -95,10 +96,17 @@ jobs:
 
       # Spec §8.1: the evidence a reviewer and the product owner read is
       # produced by the run, never retyped into a pull request description.
-      # if: always() because a failed replay is exactly when the two artifacts
-      # are worth reading.
+      #
+      # always(), because a failed replay is exactly when the two artifacts are
+      # worth reading — but not when the replay never ran. The three mutant
+      # runs of plan C step 4 all failed at Test, which skips the replay, and
+      # this step then went red a second time with "no files found": a failure
+      # that says nothing about the mutant and pushes the real one further up
+      # the log. Guarding on the replay's outcome keeps `if-no-files-found:
+      # error` meaningful — it now fires only when the run that was supposed to
+      # produce evidence produced none.
       - name: Upload evidence
-        if: always()
+        if: always() && steps.replay.outcome != 'skipped'
         uses: actions/upload-artifact@v4
         with:
           name: gate0-evidence
