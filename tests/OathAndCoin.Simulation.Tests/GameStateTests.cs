@@ -149,6 +149,60 @@ public class GameStateTests
         Assert.Equal(state.Metadata.NextDecisionOrdinal, next.Metadata.NextDecisionOrdinal);
     }
 
+    // Fix round 5 / C-5: LogicalTime was never validated and never advanced.
+    // An event stamped -999 appended cheerfully after one stamped 0, so
+    // History was not monotone in time and the campaign clock in Metadata
+    // sat at its initial value forever — "when did this happen" had no
+    // answer the log could corroborate.
+    [Fact]
+    public void WithEvent_RejectsEventBeforeTheCampaignsLogicalTime()
+    {
+        var state = CreateState();
+        var atTen = new HeroAcceptedContract(
+            state.Metadata.NextEventId, 10, null, new HeroId(1), ContractId);
+        var afterTen = state.WithEvent(atTen, null, drawsConsumed: 0);
+
+        var backwards = new HeroDeclinedContract(
+            afterTen.Metadata.NextEventId, -999, null, new HeroId(2), ContractId);
+
+        var exception = Assert.Throws<ArgumentException>(
+            () => afterTen.WithEvent(backwards, null, drawsConsumed: 0));
+
+        Assert.Contains("-999", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("10", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WithEvent_AdvancesLogicalTimeToTheEventsOwn()
+    {
+        var state = CreateState();
+        var evt = new HeroAcceptedContract(
+            state.Metadata.NextEventId, 7, null, new HeroId(1), ContractId);
+
+        var next = state.WithEvent(evt, null, drawsConsumed: 0);
+
+        Assert.Equal(7, next.Metadata.LogicalTime);
+        Assert.Equal(0, state.Metadata.LogicalTime);
+    }
+
+    // Simultaneity is legitimate: two heroes answering the same offer in the
+    // same tick share a logical time. Only going *backwards* is rejected.
+    [Fact]
+    public void WithEvent_AllowsTwoEventsAtTheSameLogicalTime()
+    {
+        var state = CreateState();
+        var first = new HeroAcceptedContract(
+            state.Metadata.NextEventId, 3, null, new HeroId(1), ContractId);
+        var afterFirst = state.WithEvent(first, null, drawsConsumed: 1);
+
+        var second = new HeroDeclinedContract(
+            afterFirst.Metadata.NextEventId, 3, null, new HeroId(2), ContractId);
+        var afterSecond = afterFirst.WithEvent(second, null, drawsConsumed: 1);
+
+        Assert.Equal(3, afterSecond.Metadata.LogicalTime);
+        Assert.Equal(2, afterSecond.History.Length);
+    }
+
     // Fix round 1 / C-1: a second decision must never silently erase what
     // an earlier one already explained, even if a caller misuses the API by
     // reusing an occupied trace id with different content.

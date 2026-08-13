@@ -30,6 +30,14 @@ public sealed record GameMetadata
     /// </summary>
     public required long StateVersion { get; init; }
 
+    /// <summary>
+    /// The campaign's current logical time (TDD §10). Moved forward only by
+    /// <see cref="GameState.WithEvent"/>, to the logical time of the event
+    /// being appended, and an event dated earlier than this is rejected — so
+    /// <see cref="GameState.History"/> is monotone in logical time and this
+    /// field always answers "when is the campaign now" consistently with the
+    /// log.
+    /// </summary>
     public required long LogicalTime { get; init; }
 
     public required long NextEventId { get; init; }
@@ -141,7 +149,8 @@ public sealed record GameState
     /// <summary>
     /// Appends <paramref name="domainEvent"/> to <see cref="History"/> and
     /// advances <see cref="GameMetadata.NextEventId"/>,
-    /// <see cref="GameMetadata.StateVersion"/> and
+    /// <see cref="GameMetadata.StateVersion"/>,
+    /// <see cref="GameMetadata.LogicalTime"/> and
     /// <see cref="GameMetadata.NextDecisionOrdinal"/> — the only place any of
     /// them does.
     /// </summary>
@@ -175,6 +184,16 @@ public sealed record GameState
     /// campaign-transition entrypoint, which is exactly the invariant the
     /// remarks on <see cref="GameState"/> rely on.
     /// </para>
+    /// <para>
+    /// <see cref="GameMetadata.LogicalTime"/> follows
+    /// <paramref name="domainEvent"/>'s own
+    /// <see cref="DomainEvent.LogicalTime"/>, and an event dated before the
+    /// campaign's current logical time is rejected. Without both halves the
+    /// log was not monotone in time — an event at logical time -999 appended
+    /// happily after one at 0 — and the campaign clock was a field nothing
+    /// ever moved or checked, so "when did this happen" had no answer that
+    /// history itself could confirm.
+    /// </para>
     /// <paramref name="trace"/> is optional because not every event is a
     /// decision. When <paramref name="domainEvent"/>.<see cref="DomainEvent.CausalTraceId"/>
     /// is set, exactly one of two things must be true, or the reference
@@ -204,8 +223,10 @@ public sealed record GameState
     /// </remarks>
     /// <exception cref="ArgumentException">
     /// <paramref name="domainEvent"/>'s <see cref="DomainEvent.EventId"/>
-    /// does not equal <see cref="GameMetadata.NextEventId"/>; or the
-    /// trace/event-reference pairing described above is violated.
+    /// does not equal <see cref="GameMetadata.NextEventId"/>; its
+    /// <see cref="DomainEvent.LogicalTime"/> is earlier than
+    /// <see cref="GameMetadata.LogicalTime"/>; or the trace/event-reference
+    /// pairing described above is violated.
     /// </exception>
     public GameState WithEvent(DomainEvent domainEvent, CausalTrace? trace, ulong drawsConsumed)
     {
@@ -215,6 +236,14 @@ public sealed record GameState
         {
             throw new ArgumentException(
                 $"Event id {domainEvent.EventId} is out of order; expected {Metadata.NextEventId}.",
+                nameof(domainEvent));
+        }
+
+        if (domainEvent.LogicalTime < Metadata.LogicalTime)
+        {
+            throw new ArgumentException(
+                $"Event logical time {domainEvent.LogicalTime} is before the campaign's current logical "
+                + $"time ({Metadata.LogicalTime}); history must be monotone in logical time.",
                 nameof(domainEvent));
         }
 
@@ -268,6 +297,7 @@ public sealed record GameState
             {
                 NextEventId = Metadata.NextEventId + 1,
                 StateVersion = Metadata.StateVersion + 1,
+                LogicalTime = domainEvent.LogicalTime,
                 NextTraceId = storesNewTrace ? Metadata.NextTraceId + 1 : Metadata.NextTraceId,
                 NextDecisionOrdinal = checked(Metadata.NextDecisionOrdinal + drawsConsumed),
             },
