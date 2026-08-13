@@ -51,7 +51,19 @@ public sealed record GameMetadata
     /// <c>(CampaignSeed, stream, NextDecisionOrdinal)</c>, never kept in a
     /// generator's own memory.
     /// </summary>
-    public required long NextDecisionOrdinal { get; init; }
+    /// <remarks>
+    /// <see cref="ulong"/>, not <see cref="long"/>: this value is handed
+    /// straight to <c>DeterministicRng.Draw</c>, whose ordinal parameter is
+    /// <see cref="ulong"/>. Declaring it signed forced a cast at every call
+    /// site, and that cast is exactly where a negative ordinal — which the
+    /// RNG would silently accept as a huge unsigned one — would slip in. The
+    /// two types now match, so there is nothing to cast and nothing to get
+    /// wrong.
+    ///
+    /// Advanced only by <see cref="GameState.WithEvent"/>, through its
+    /// <c>drawsConsumed</c> argument; see the remarks there.
+    /// </remarks>
+    public required ulong NextDecisionOrdinal { get; init; }
 }
 
 /// <summary>
@@ -128,10 +140,41 @@ public sealed record GameState
 
     /// <summary>
     /// Appends <paramref name="domainEvent"/> to <see cref="History"/> and
-    /// advances <see cref="GameMetadata.NextEventId"/> and
-    /// <see cref="GameMetadata.StateVersion"/> — the only place either does.
+    /// advances <see cref="GameMetadata.NextEventId"/>,
+    /// <see cref="GameMetadata.StateVersion"/> and
+    /// <see cref="GameMetadata.NextDecisionOrdinal"/> — the only place any of
+    /// them does.
     /// </summary>
+    /// <param name="domainEvent">The event to append.</param>
+    /// <param name="trace">
+    /// The explanation for <paramref name="domainEvent"/>, or <c>null</c>;
+    /// see the remarks for exactly when each is required.
+    /// </param>
+    /// <param name="drawsConsumed">
+    /// How many RNG ordinals producing <paramref name="domainEvent"/>
+    /// consumed on <see cref="Random.RngStream.HeroDecision"/> — <c>0</c> for
+    /// a transition that made no draw at all.
+    /// </param>
     /// <remarks>
+    /// <para>
+    /// <paramref name="drawsConsumed"/> has no default value on purpose. The
+    /// RNG is counter-based: a draw is a pure function of
+    /// <c>(CampaignSeed, stream, ordinal)</c>, so if the ordinal does not
+    /// move, the *same* random value comes back — two heroes deciding in a
+    /// row would draw identically and the second explanation would be a copy
+    /// of the first, with nothing anywhere to indicate it. A defaulted
+    /// parameter would make that failure the one you get by forgetting to
+    /// type anything; a required one makes every transition state, in the
+    /// signature, how much randomness it spent. <c>0</c> at a non-decision
+    /// call site is not noise, it is the claim "this transition consumed no
+    /// randomness".
+    /// </para>
+    /// <para>
+    /// The alternative shape — a separate <c>WithDecisionDraw</c> method —
+    /// was rejected: it is equally forgettable and it would create a second
+    /// campaign-transition entrypoint, which is exactly the invariant the
+    /// remarks on <see cref="GameState"/> rely on.
+    /// </para>
     /// <paramref name="trace"/> is optional because not every event is a
     /// decision. When <paramref name="domainEvent"/>.<see cref="DomainEvent.CausalTraceId"/>
     /// is set, exactly one of two things must be true, or the reference
@@ -164,7 +207,7 @@ public sealed record GameState
     /// does not equal <see cref="GameMetadata.NextEventId"/>; or the
     /// trace/event-reference pairing described above is violated.
     /// </exception>
-    public GameState WithEvent(DomainEvent domainEvent, CausalTrace? trace)
+    public GameState WithEvent(DomainEvent domainEvent, CausalTrace? trace, ulong drawsConsumed)
     {
         ArgumentNullException.ThrowIfNull(domainEvent);
 
@@ -226,6 +269,7 @@ public sealed record GameState
                 NextEventId = Metadata.NextEventId + 1,
                 StateVersion = Metadata.StateVersion + 1,
                 NextTraceId = storesNewTrace ? Metadata.NextTraceId + 1 : Metadata.NextTraceId,
+                NextDecisionOrdinal = checked(Metadata.NextDecisionOrdinal + drawsConsumed),
             },
             History = History.Add(domainEvent),
             Traces = storesNewTrace ? Traces.SetItem(trace!.TraceId, trace) : Traces,

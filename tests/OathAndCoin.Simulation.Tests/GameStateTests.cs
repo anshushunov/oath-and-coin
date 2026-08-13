@@ -3,6 +3,7 @@ using System.Reflection;
 using OathAndCoin.Simulation.Decisions;
 using OathAndCoin.Simulation.Events;
 using OathAndCoin.Simulation.Ids;
+using OathAndCoin.Simulation.Random;
 using OathAndCoin.Simulation.State;
 
 namespace OathAndCoin.Simulation.Tests;
@@ -27,7 +28,7 @@ public class GameStateTests
         var evt = new HeroAcceptedContract(
             state.Metadata.NextEventId, state.Metadata.LogicalTime, null, new HeroId(1), ContractId);
 
-        var next = state.WithEvent(evt, null);
+        var next = state.WithEvent(evt, null, drawsConsumed: 0);
 
         Assert.Equal(state.Metadata.NextEventId + 1, next.Metadata.NextEventId);
         Assert.Equal(state.Metadata.StateVersion + 1, next.Metadata.StateVersion);
@@ -48,7 +49,7 @@ public class GameStateTests
         var evt = new HeroAcceptedContract(
             state.Metadata.NextEventId, state.Metadata.LogicalTime, trace.TraceId, new HeroId(1), ContractId);
 
-        var next = state.WithEvent(evt, trace);
+        var next = state.WithEvent(evt, trace, drawsConsumed: 0);
 
         Assert.Same(trace, next.Traces[evt.CausalTraceId!.Value]);
         Assert.Equal(state.Metadata.NextTraceId + 1, next.Metadata.NextTraceId);
@@ -68,7 +69,7 @@ public class GameStateTests
         var firstTrace = CreateEmptyTrace(firstTraceId);
         var firstEvent = new HeroAcceptedContract(
             state.Metadata.NextEventId, state.Metadata.LogicalTime, firstTraceId, new HeroId(1), ContractId);
-        var afterFirst = state.WithEvent(firstEvent, firstTrace);
+        var afterFirst = state.WithEvent(firstEvent, firstTrace, drawsConsumed: 1);
 
         Assert.Equal(firstTraceId + 1, afterFirst.Metadata.NextTraceId);
 
@@ -76,13 +77,76 @@ public class GameStateTests
         var secondTrace = CreateEmptyTrace(secondTraceId);
         var secondEvent = new HeroDeclinedContract(
             afterFirst.Metadata.NextEventId, afterFirst.Metadata.LogicalTime, secondTraceId, new HeroId(2), ContractId);
-        var afterSecond = afterFirst.WithEvent(secondEvent, secondTrace);
+        var afterSecond = afterFirst.WithEvent(secondEvent, secondTrace, drawsConsumed: 1);
 
         Assert.NotEqual(firstTraceId, secondTraceId);
         Assert.Equal(secondTraceId + 1, afterSecond.Metadata.NextTraceId);
         Assert.Equal(2, afterSecond.Traces.Count);
         Assert.Same(firstTrace, afterSecond.Traces[firstTraceId]);
         Assert.Same(secondTrace, afterSecond.Traces[secondTraceId]);
+    }
+
+    // Fix round 5 / C-3: NextDecisionOrdinal was declared, documented as
+    // "what makes the engine stateless", and never advanced by anything —
+    // while WithEvent's remarks forbid using a bare `with` as a transition.
+    // There was therefore no sanctioned way to move it at all, and because
+    // a draw is a pure function of (seed, stream, ordinal), two decisions in
+    // a row would have drawn the identical value. The last assert shows that
+    // consequence directly rather than trusting the counter.
+    //
+    // Note also what compiles here: NextDecisionOrdinal is handed to
+    // DeterministicRng.Draw with no cast. That only builds because both are
+    // ulong now — the signed/unsigned mismatch is pinned by the compiler,
+    // not by an assertion that could rot.
+    [Fact]
+    public void WithEvent_AdvancesDecisionOrdinalSoTwoDecisionsDrawDifferently()
+    {
+        var state = CreateState();
+
+        var firstOrdinal = state.Metadata.NextDecisionOrdinal;
+        var firstEvent = new HeroAcceptedContract(
+            state.Metadata.NextEventId, state.Metadata.LogicalTime, null, new HeroId(1), ContractId);
+        var afterFirst = state.WithEvent(firstEvent, null, drawsConsumed: 1);
+
+        var secondOrdinal = afterFirst.Metadata.NextDecisionOrdinal;
+        var secondEvent = new HeroDeclinedContract(
+            afterFirst.Metadata.NextEventId, afterFirst.Metadata.LogicalTime, null, new HeroId(2), ContractId);
+        var afterSecond = afterFirst.WithEvent(secondEvent, null, drawsConsumed: 1);
+
+        Assert.NotEqual(firstOrdinal, secondOrdinal);
+        Assert.Equal(firstOrdinal + 1, secondOrdinal);
+        Assert.Equal(secondOrdinal + 1, afterSecond.Metadata.NextDecisionOrdinal);
+
+        Assert.NotEqual(
+            DeterministicRng.Draw(state.Metadata.CampaignSeed, RngStream.HeroDecision, firstOrdinal),
+            DeterministicRng.Draw(state.Metadata.CampaignSeed, RngStream.HeroDecision, secondOrdinal));
+    }
+
+    [Fact]
+    public void WithEvent_AdvancesDecisionOrdinalByTheDrawsActuallyConsumed()
+    {
+        var state = CreateState();
+        var evt = new HeroAcceptedContract(
+            state.Metadata.NextEventId, state.Metadata.LogicalTime, null, new HeroId(1), ContractId);
+
+        var next = state.WithEvent(evt, null, drawsConsumed: 3);
+
+        Assert.Equal(state.Metadata.NextDecisionOrdinal + 3, next.Metadata.NextDecisionOrdinal);
+    }
+
+    // The other half of the contract: a transition that drew nothing must not
+    // burn an ordinal, or a replay would desynchronize from the run it is
+    // replaying.
+    [Fact]
+    public void WithEvent_LeavesDecisionOrdinalUntouchedWhenNothingWasDrawn()
+    {
+        var state = CreateState();
+        var evt = new HeroAcceptedContract(
+            state.Metadata.NextEventId, state.Metadata.LogicalTime, null, new HeroId(1), ContractId);
+
+        var next = state.WithEvent(evt, null, drawsConsumed: 0);
+
+        Assert.Equal(state.Metadata.NextDecisionOrdinal, next.Metadata.NextDecisionOrdinal);
     }
 
     // Fix round 1 / C-1: a second decision must never silently erase what
@@ -96,7 +160,7 @@ public class GameStateTests
         var original = CreateEmptyTrace(traceId);
         var firstEvent = new HeroAcceptedContract(
             state.Metadata.NextEventId, state.Metadata.LogicalTime, traceId, new HeroId(1), ContractId);
-        var afterFirst = state.WithEvent(firstEvent, original);
+        var afterFirst = state.WithEvent(firstEvent, original, drawsConsumed: 0);
 
         var different = new CausalTrace
         {
@@ -108,7 +172,7 @@ public class GameStateTests
         var secondEvent = new HeroDeclinedContract(
             afterFirst.Metadata.NextEventId, afterFirst.Metadata.LogicalTime, traceId, new HeroId(2), ContractId);
 
-        Assert.Throws<ArgumentException>(() => afterFirst.WithEvent(secondEvent, different));
+        Assert.Throws<ArgumentException>(() => afterFirst.WithEvent(secondEvent, different, drawsConsumed: 0));
     }
 
     [Fact]
@@ -118,7 +182,7 @@ public class GameStateTests
         var wrongEventId = state.Metadata.NextEventId + 5;
         var evt = new HeroAcceptedContract(wrongEventId, state.Metadata.LogicalTime, null, new HeroId(1), ContractId);
 
-        var exception = Assert.Throws<ArgumentException>(() => state.WithEvent(evt, null));
+        var exception = Assert.Throws<ArgumentException>(() => state.WithEvent(evt, null, drawsConsumed: 0));
 
         Assert.Contains(wrongEventId.ToString(), exception.Message, StringComparison.Ordinal);
     }
@@ -131,7 +195,7 @@ public class GameStateTests
         // Event claims a different trace than the one actually handed in.
         var evt = new HeroAcceptedContract(state.Metadata.NextEventId, state.Metadata.LogicalTime, 2, new HeroId(1), ContractId);
 
-        Assert.Throws<ArgumentException>(() => state.WithEvent(evt, trace));
+        Assert.Throws<ArgumentException>(() => state.WithEvent(evt, trace, drawsConsumed: 0));
     }
 
     // Fix round 1 / I-1: the previous check only caught "trace given, ids
@@ -145,7 +209,7 @@ public class GameStateTests
         var evt = new HeroAcceptedContract(
             state.Metadata.NextEventId, state.Metadata.LogicalTime, 99, new HeroId(1), ContractId);
 
-        Assert.Throws<ArgumentException>(() => state.WithEvent(evt, null));
+        Assert.Throws<ArgumentException>(() => state.WithEvent(evt, null, drawsConsumed: 0));
     }
 
     // Fix round 1 / I-1: the mirror case also passed silently — a trace
@@ -159,7 +223,7 @@ public class GameStateTests
         var evt = new HeroAcceptedContract(
             state.Metadata.NextEventId, state.Metadata.LogicalTime, null, new HeroId(1), ContractId);
 
-        Assert.Throws<ArgumentException>(() => state.WithEvent(evt, trace));
+        Assert.Throws<ArgumentException>(() => state.WithEvent(evt, trace, drawsConsumed: 0));
     }
 
     // Fix round 1 / I-1: the legitimate case the strict check must still
@@ -173,11 +237,11 @@ public class GameStateTests
         var trace = CreateEmptyTrace(traceId);
         var firstEvent = new HeroAcceptedContract(
             state.Metadata.NextEventId, state.Metadata.LogicalTime, traceId, new HeroId(1), ContractId);
-        var afterFirst = state.WithEvent(firstEvent, trace);
+        var afterFirst = state.WithEvent(firstEvent, trace, drawsConsumed: 0);
 
         var secondEvent = new HeroDeclinedContract(
             afterFirst.Metadata.NextEventId, afterFirst.Metadata.LogicalTime, traceId, new HeroId(2), ContractId);
-        var afterSecond = afterFirst.WithEvent(secondEvent, null);
+        var afterSecond = afterFirst.WithEvent(secondEvent, null, drawsConsumed: 0);
 
         Assert.Equal(afterFirst.Metadata.NextTraceId, afterSecond.Metadata.NextTraceId);
         Assert.Single(afterSecond.Traces);
@@ -314,7 +378,7 @@ public class GameStateTests
         LogicalTime = 0,
         NextEventId = 0,
         NextTraceId = 0,
-        NextDecisionOrdinal = 0,
+        NextDecisionOrdinal = 0UL,
     };
 
     private static HeroState CreateHero(HeroId id, int greed) => new()

@@ -205,7 +205,8 @@ public class StructuralEqualityTests
 
         return state.WithEvent(
             new HeroAcceptedContract(0, 0, trace.TraceId, accepting, ContractId),
-            trace);
+            trace,
+            drawsConsumed: 1);
     }
 
     private static HeroState BuildHero(HeroId id, ContentId definition) => new()
