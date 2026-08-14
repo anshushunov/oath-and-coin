@@ -8,3 +8,10 @@
 content/**/*.json text eol=lf
 schemas/**/*.json text eol=lf
 scenarios/**/*.json text eol=lf
+
+# Shell scripts keep LF in the working copy on every platform. Checked out with
+# CRLF they do not run at all: bash reads the carriage return as part of the
+# command and reports `$'\r': command not found`. The scripts here are run both
+# by a developer on Windows through Git Bash and by the Linux CI runner, so the
+# checkout must not decide which of the two works.
+*.sh text eol=lf
