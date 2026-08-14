@@ -22,10 +22,32 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\tools\OathAndCoin.Harness\OathAndCoin.Harness.csproj" />
+
+    <!--
+      ProcessRunnerTests launches the fake game as a real child process, so
+      it needs the built .exe, not a compiled reference to its types.
+      ReferenceOutputAssembly="false" still builds the project (so the exe
+      exists) without adding its assembly to this project's references.
+    -->
+    <ProjectReference Include="..\OathAndCoin.Harness.FakeGame\OathAndCoin.Harness.FakeGame.csproj"
+                       ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <ItemGroup>
     <None Include="Fixtures\tiny.png" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!--
+    Same mechanism OathAndCoin.Content.Tests uses for its fixture roots
+    (ContentRoot/SchemaRoot/ScenarioRoot): the path is resolved by MSBuild at
+    build time, so it is correct in every checkout layout without walking up
+    looking for `.git` (a file, not a directory, inside a worktree).
+  -->
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>FakeGamePath</_Parameter1>
+      <_Parameter2>$(MSBuildThisFileDirectory)..\OathAndCoin.Harness.FakeGame\bin\$(Configuration)\$(TargetFramework)\OathAndCoin.Harness.FakeGame.exe</_Parameter2>
+    </AssemblyAttribute>
   </ItemGroup>
 
 </Project>
