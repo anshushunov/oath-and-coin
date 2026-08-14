@@ -31,11 +31,20 @@ public class ProcessRunnerTests
 
     // Real timeouts, not aspirational ones: HangTimeout is the brief's own 2
     // seconds, and the guard bounds below exist so a genuine regression
-    // (a deadlock, a descendant that survives Kill) fails this test on its
-    // own schedule instead of however long the CI job's outer timeout is.
+    // (a deadlock, a descendant that survives Kill, ProcessRunner's own
+    // post-kill drain wait never unblocking) fails the test that would
+    // catch it on its own schedule, instead of wedging the whole run —
+    // exactly what happened running M-PROCESS-1 by hand before this guard
+    // existed (see the fix report for that observation).
     private static readonly TimeSpan HangTimeout = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan AmpleTimeout = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan DeadlockGuardBound = TimeSpan.FromSeconds(15);
+
+    // Comfortably above the worst case this process is documented to take:
+    // HangTimeout (2s) to notice the hang, plus ProcessRunner's own
+    // DrainAfterKillBound (5s) if a descendant outlives the kill, plus
+    // margin for process start/teardown overhead.
+    private static readonly TimeSpan RunGuardBound = TimeSpan.FromSeconds(15);
+
     private static readonly TimeSpan DescendantPollBound = TimeSpan.FromSeconds(5);
 
     private static readonly string FakeGamePath = ResolveFakeGamePath();
@@ -73,18 +82,12 @@ public class ProcessRunnerTests
     {
         var runner = new ProcessRunner();
 
-        // Bounded explicitly, on a background thread, rather than trusting
-        // the test runner's own timeout: a real deadlock here (reading one
-        // stream synchronously to completion before draining the other)
-        // should fail this test loudly and quickly, not just eventually
-        // wedge the whole CI job.
-        var runTask = Task.Run(() => runner.Run(FakeGamePath, new[] { "both-streams" }, AmpleTimeout));
-        var completed = await Task.WhenAny(runTask, Task.Delay(DeadlockGuardBound)) == runTask;
+        // Bounded explicitly rather than trusting the test runner's own
+        // timeout: a real deadlock here (reading one stream synchronously to
+        // completion before draining the other) should fail this test
+        // loudly and quickly, not just eventually wedge the whole CI job.
+        var outcome = await RunGuardedAsync(runner, "both-streams", AmpleTimeout);
 
-        Assert.True(
-            completed,
-            $"ProcessRunner.Run did not return within {DeadlockGuardBound} — possible deadlock on large output.");
-        var outcome = await runTask;
         Assert.False(outcome.TimedOut);
         Assert.Equal(0, outcome.ExitCode);
     }
@@ -101,21 +104,31 @@ public class ProcessRunnerTests
     }
 
     [Fact]
-    public void Run_MarksTimedOutRun()
+    public async Task Run_MarksTimedOutRun()
     {
         var runner = new ProcessRunner();
 
-        var outcome = runner.Run(FakeGamePath, new[] { "hang" }, HangTimeout);
+        // Guarded like Run_DoesNotDeadlockOnLargeOutput: the very regression
+        // this test exists to catch (Run never noticing the process is
+        // stuck) is a hang, so an unguarded call would wedge the test run
+        // instead of failing this test.
+        var outcome = await RunGuardedAsync(runner, "hang", HangTimeout);
 
         Assert.True(outcome.TimedOut);
     }
 
     [Fact]
-    public void Run_KillsDescendantsOnTimeout()
+    public async Task Run_KillsDescendantsOnTimeout()
     {
         var runner = new ProcessRunner();
 
-        var outcome = runner.Run(FakeGamePath, new[] { "child" }, HangTimeout);
+        // Guarded for the same reason as Run_MarksTimedOutRun — and here
+        // doubly so: M-PROCESS-1 (Kill() instead of Kill(entireProcessTree:
+        // true)) makes Run itself hang forever, not merely fail an
+        // assertion, because the surviving descendant keeps a redirected
+        // pipe open. Without this guard, that regression wedges the whole
+        // test run instead of failing this one test.
+        var outcome = await RunGuardedAsync(runner, "child", HangTimeout);
 
         Assert.True(outcome.TimedOut);
 
@@ -137,11 +150,11 @@ public class ProcessRunnerTests
     }
 
     [Fact]
-    public void Run_DrainsBothStreamsToEofAfterTimeout()
+    public async Task Run_DrainsBothStreamsToEofAfterTimeout()
     {
         var runner = new ProcessRunner();
 
-        var outcome = runner.Run(FakeGamePath, new[] { "hang" }, HangTimeout);
+        var outcome = await RunGuardedAsync(runner, "hang", HangTimeout);
 
         Assert.True(outcome.TimedOut);
         Assert.Contains(
@@ -168,6 +181,26 @@ public class ProcessRunnerTests
             .Where(line => line.Stream == ProcessStream.StandardError)
             .Select(line => line.Text);
         Assert.Equal(new[] { "after-close-0", "after-close-1", "after-close-2" }, stderrLines);
+    }
+
+    /// <summary>
+    /// Calls <see cref="ProcessRunner.Run"/> on a background task and fails
+    /// the test — rather than hanging it — if it does not return within
+    /// <see cref="RunGuardBound"/>. Every test that drives a timeout or a
+    /// kill uses this: the regression each one exists to catch (a missed
+    /// timeout, a descendant that survives a kill) is itself a hang, so an
+    /// unguarded call would turn a red test into a wedged CI job instead.
+    /// </summary>
+    private static async Task<ProcessOutcome> RunGuardedAsync(ProcessRunner runner, string mode, TimeSpan timeout)
+    {
+        var runTask = Task.Run(() => runner.Run(FakeGamePath, new[] { mode }, timeout));
+        var completed = await Task.WhenAny(runTask, Task.Delay(RunGuardBound)) == runTask;
+
+        Assert.True(
+            completed,
+            $"ProcessRunner.Run did not return within {RunGuardBound} while running the '{mode}' fixture.");
+
+        return await runTask;
     }
 
     private static bool WaitUntilProcessExits(int processId, TimeSpan bound)
