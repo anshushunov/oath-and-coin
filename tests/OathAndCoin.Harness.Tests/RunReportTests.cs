@@ -262,6 +262,8 @@ public class RunReportTests
             Scenario: "gate0",
             Checkpoint: "decisions_complete",
             Seed: 424242UL,
+            RequestedWidth: 1280,
+            RequestedHeight: 720,
             ExpectedOutcome: ScenarioOutcomeKind.Success,
             ExpectedErrorCode: null,
             ExpectedCanonicalHash: "bbbb",

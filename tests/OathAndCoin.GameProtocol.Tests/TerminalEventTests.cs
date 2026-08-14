@@ -142,6 +142,37 @@ public class TerminalEventTests
     }
 
     [Fact]
+    public void ToLine_RoundTripsThroughParse()
+    {
+        // The writer and the reader are the two halves of one wire format,
+        // and the game — which has no test project of its own — is the only
+        // caller of the writer. This is the test that makes adding a field on
+        // one side without the other fail here instead of on someone's
+        // machine the next time they launch the engine by hand.
+        var original = ExpectedEvent();
+
+        var result = TerminalEvent.Parse(new[] { original.ToLine() });
+
+        Assert.Equal(new[] { original }, result.Events);
+        Assert.Empty(result.Errors);
+    }
+
+    [Fact]
+    public void ToLine_RoundTripsErrorEventWithoutContentVersionOrCanonicalHash()
+    {
+        var original = ExpectedEvent(
+            outcomeKind: "error",
+            errorCode: "CONTENT_ROOT_NOT_FOUND",
+            contentVersion: null,
+            canonicalHash: null);
+
+        var result = TerminalEvent.Parse(new[] { original.ToLine() });
+
+        Assert.Equal(new[] { original }, result.Events);
+        Assert.Empty(result.Errors);
+    }
+
+    [Fact]
     public void Parse_ParsesErrorOutcomeWithoutContentVersion()
     {
         var line = BuildLine(

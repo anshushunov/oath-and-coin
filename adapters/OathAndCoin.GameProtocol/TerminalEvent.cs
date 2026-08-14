@@ -92,8 +92,10 @@ public sealed record TerminalEvent(
 
     /// <summary>
     /// The strict reading policy every line in <see cref="Parse"/> goes
-    /// through. Restated here — rather than shared with
-    /// <c>OathAndCoin.Content.StrictJson</c>, which enforces the identical
+    /// through, and the writing policy <see cref="ToLine"/> emits under, so
+    /// the two halves of the wire format cannot disagree about naming.
+    /// Restated here — rather than shared with
+    /// <c>OathAndCoin.Content.StrictJson</c>, which enforces the same kind of
     /// policy for on-disk content — because this assembly deliberately
     /// references nothing (it belongs to both the tool and the game, and a
     /// dependency on the tool's content-reading assembly would break that).
@@ -101,7 +103,11 @@ public sealed record TerminalEvent(
     /// arrives on stdout, a channel the running game does not fully control
     /// either (engine banners, driver warnings) — so it earns the same
     /// strictness for the same reason: an unmapped property or a trailing
-    /// comma is a version skew or a bug, not something to paper over.
+    /// comma is a version skew or a bug, not something to paper over. The
+    /// ceilings are the one deliberate difference: an event is a flat object
+    /// arriving one line at a time, so the depth bound is 16 rather than
+    /// <c>ContentLimits.MaxJsonDepth</c>'s 32, and there is no size bound at
+    /// all — a line's length is already bounded by the reader that split it.
     /// </summary>
     private static readonly JsonSerializerOptions Options = new()
     {
@@ -192,13 +198,46 @@ public sealed record TerminalEvent(
     }
 
     /// <summary>
+    /// Renders this event as the single stdout line <see cref="Parse"/> reads
+    /// back. Lives here rather than in the game because the game has no test
+    /// project: hand-written JSON there would drift from
+    /// <see cref="EventLine"/>'s required field set silently, and the only
+    /// thing that would notice is a person launching the engine by hand.
+    /// With both halves in one type, <c>ToLine_RoundTripsThroughParse</c>
+    /// fails the moment a field is added on one side alone.
+    /// </summary>
+    public string ToLine() => JsonSerializer.Serialize(
+        new EventLine
+        {
+            SchemaVersion = SchemaVersion,
+            Event = Event,
+            OutcomeKind = OutcomeKind,
+            Scenario = Scenario,
+            Seed = Seed,
+            Checkpoint = Checkpoint,
+            ErrorCode = ErrorCode,
+            ContentVersion = ContentVersion,
+            CanonicalHash = CanonicalHash,
+            ReadModelHash = ReadModelHash,
+            RenderedUiHash = RenderedUiHash,
+            FrameSha256 = FrameSha256,
+            FrameWidth = FrameWidth,
+            FrameHeight = FrameHeight,
+            FrameDistinctColors = FrameDistinctColors,
+        },
+        Options);
+
+    /// <summary>
     /// The wire shape <see cref="Parse"/> deserializes into before it is
-    /// known to be a version this build understands. Kept separate from
+    /// known to be a version this build understands, and the shape
+    /// <see cref="ToLine"/> serializes from. Kept separate from
     /// <see cref="TerminalEvent"/> itself so the public record's shape is
     /// never at the mercy of what <see cref="JsonSerializer"/> needs from a
     /// deserialization target (e.g. a settable init accessor for every
     /// member) — the two happen to match field-for-field today, but nothing
-    /// here depends on them staying textually identical.
+    /// here depends on them staying textually identical. A field absent on
+    /// either side is a compiler error in <see cref="ToLine"/> when
+    /// <c>required</c>, and a round-trip failure otherwise.
     /// </summary>
     private sealed record EventLine
     {

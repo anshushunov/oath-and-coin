@@ -1,4 +1,3 @@
-using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Godot;
 using OathAndCoin.Content;
@@ -218,13 +217,13 @@ public partial class Main : Control
     }
 
     /// <summary>
-    /// Builds the wire-format terminal line (<see cref="TerminalEvent"/>'s
-    /// snake_case JSON) for a successful capture. Written by hand against the
-    /// same field set <see cref="TerminalEvent.Parse"/> reads, rather than
-    /// through a shared writer, for the reason <see cref="TerminalEvent"/>
-    /// itself gives for owning its strict reader independently: this line is
-    /// external data the moment it leaves this process, and the two sides of
-    /// the protocol are not meant to share code across the process boundary.
+    /// Builds the wire-format terminal line for a successful capture. The
+    /// JSON itself is <see cref="TerminalEvent.ToLine"/>'s business: this
+    /// file only decides which values go in. Composing the object here
+    /// against <see cref="TerminalEvent.Parse"/>'s required field set used to
+    /// be the writer, and nothing in the build would have caught the two
+    /// drifting apart — <c>game/</c> has no test project, and CI only
+    /// compiles it.
     /// </summary>
     private static string BuildTerminalLine(
         GameArguments arguments,
@@ -234,25 +233,29 @@ public partial class Main : Control
         string renderedUiHash,
         CaptureResult capture)
     {
-        var json = new JsonObject
-        {
-            ["schema_version"] = TerminalEvent.SupportedSchemaVersion,
-            ["event"] = "terminal",
-            ["outcome_kind"] = outcomeKind,
-            ["scenario"] = arguments.Scenario,
-            ["seed"] = JsonValue.Create(arguments.Seed),
-            ["checkpoint"] = arguments.Checkpoint,
-            ["error_code"] = loaded.Model.ErrorCode,
-            ["content_version"] = loaded.ContentVersion,
-            ["canonical_hash"] = loaded.CanonicalHash,
-            ["read_model_hash"] = readModelHash,
-            ["rendered_ui_hash"] = renderedUiHash,
-            ["frame_sha256"] = capture.FrameSha256,
-            ["frame_width"] = capture.FrameWidth,
-            ["frame_height"] = capture.FrameHeight,
-            ["frame_distinct_colors"] = capture.FrameDistinctColors,
-        };
+        // An invariant, not a case: CaptureProtocol.Run builds a line only for
+        // a succeeded capture, and CaptureResult.Success refuses an empty
+        // hash. It is stated because moving to the typed writer is what made
+        // the nullability visible at all — the hand-written JSON object took
+        // a null here without a word and would have emitted
+        // "frame_sha256": null, which Parse accepts as present.
+        ArgumentException.ThrowIfNullOrEmpty(capture.FrameSha256);
 
-        return json.ToJsonString();
+        return new TerminalEvent(
+            SchemaVersion: TerminalEvent.SupportedSchemaVersion,
+            Event: "terminal",
+            OutcomeKind: outcomeKind,
+            Scenario: arguments.Scenario,
+            Seed: arguments.Seed,
+            Checkpoint: arguments.Checkpoint,
+            ErrorCode: loaded.Model.ErrorCode,
+            ContentVersion: loaded.ContentVersion,
+            CanonicalHash: loaded.CanonicalHash,
+            ReadModelHash: readModelHash,
+            RenderedUiHash: renderedUiHash,
+            FrameSha256: capture.FrameSha256,
+            FrameWidth: capture.FrameWidth,
+            FrameHeight: capture.FrameHeight,
+            FrameDistinctColors: capture.FrameDistinctColors).ToLine();
     }
 }

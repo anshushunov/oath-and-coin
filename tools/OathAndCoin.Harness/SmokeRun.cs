@@ -120,15 +120,25 @@ public static class SmokeRun
             var expected = phases.Time(
                 "build_expected", () => Expectation.Build(repository.Root, layout.RunId, inputs, arguments.Seed));
 
+            var game = GameRequest(repository.Root, arguments, inputs, expected, layout);
+
             var outcome = phases.Time(
-                "run_game", () => RunGame(runner, enginePath, repository.Root, arguments, inputs, expected, layout));
+                "run_game",
+                () => RunGame(runner, enginePath, repository.Root, game, arguments.TimeoutSeconds, layout),
+
+                // A game that exited non-zero or had to be killed did not do
+                // what this phase names, and the report should not say it
+                // did. The verdict rejects such a run either way, but a
+                // reader scanning phases[] for the first failure would
+                // otherwise be sent past the one phase that actually broke.
+                result => result.ExitCode == 0 && !result.TimedOut);
 
             var frame = phases.Time(
                 "inspect_frame",
                 () => Inspect(layout.Staged(RunLayout.FrameFileName)),
                 inspection => inspection.HasValidPngHeader);
 
-            var observed = Observe(inputs, arguments, expected, outcome, frame, layout);
+            var observed = Observe(inputs, arguments, game, expected, outcome, frame, layout);
             observation = observed;
             verdict = phases.Time("evaluate_verdict", () => SmokeVerdict.Evaluate(observed), result => result.Passed);
         }
@@ -184,35 +194,45 @@ public static class SmokeRun
         layout.Publish((report with { Phases = phases.Complete() }).ToJson(home), report.Verdict.Passed);
     }
 
+    /// <summary>
+    /// The launch request this run makes of the game. Built before the run
+    /// rather than inside it because the verdict holds the frame to the
+    /// resolution stated here: request and check have to come from one value,
+    /// or the check is asking the game to agree with itself.
+    /// </summary>
+    private static GameArguments GameRequest(
+        string repositoryRoot,
+        ParsedArguments arguments,
+        ScenarioInputs inputs,
+        Expectation expected,
+        RunLayout layout) => new(
+        Smoke: true,
+        Scenario: arguments.Scenario,
+        Checkpoint: inputs.Checkpoint.Name,
+        Seed: arguments.Seed,
+
+        // The faulted root for a scenario that expects an error, the real one
+        // otherwise — the same root the expectation was built against, so
+        // both sides of the comparison saw the same content.
+        ContentRoot: expected.ContentRoot,
+        SchemaRoot: Path.Combine(repositoryRoot, "schemas"),
+        ScenarioRoot: Path.Combine(repositoryRoot, "scenarios"),
+        ScreenshotPath: layout.Staged(RunLayout.FrameFileName),
+        Width: GameArguments.DefaultWidth,
+        Height: GameArguments.DefaultHeight,
+        Locale: Locale);
+
     /// <summary>Launches the game and keeps everything it said, whatever it said.</summary>
     private static ProcessOutcome RunGame(
         IProcessRunner runner,
         string enginePath,
         string repositoryRoot,
-        ParsedArguments arguments,
-        ScenarioInputs inputs,
-        Expectation expected,
+        GameArguments game,
+        int timeoutSeconds,
         RunLayout layout)
     {
-        var game = new GameArguments(
-            Smoke: true,
-            Scenario: arguments.Scenario,
-            Checkpoint: inputs.Checkpoint.Name,
-            Seed: arguments.Seed,
-
-            // The faulted root for a scenario that expects an error, the real
-            // one otherwise — the same root the expectation was built
-            // against, so both sides of the comparison saw the same content.
-            ContentRoot: expected.ContentRoot,
-            SchemaRoot: Path.Combine(repositoryRoot, "schemas"),
-            ScenarioRoot: Path.Combine(repositoryRoot, "scenarios"),
-            ScreenshotPath: layout.Staged(RunLayout.FrameFileName),
-            Width: GameArguments.DefaultWidth,
-            Height: GameArguments.DefaultHeight,
-            Locale: Locale);
-
         var argv = GameInvocation.BuildArgv(Path.Combine(repositoryRoot, "game"), game);
-        var outcome = runner.Run(enginePath, argv, TimeSpan.FromSeconds(arguments.TimeoutSeconds));
+        var outcome = runner.Run(enginePath, argv, TimeSpan.FromSeconds(timeoutSeconds));
 
         File.WriteAllLines(
             layout.Staged(RunLayout.RunLogFileName),
@@ -232,6 +252,7 @@ public static class SmokeRun
     private static RunObservation Observe(
         ScenarioInputs inputs,
         ParsedArguments arguments,
+        GameArguments game,
         Expectation expected,
         ProcessOutcome outcome,
         FrameInspection frame,
@@ -240,7 +261,7 @@ public static class SmokeRun
         var lines = outcome.Lines.Select(line => line.Text).ToImmutableArray();
 
         return new RunObservation(
-            arguments.Scenario, inputs.Checkpoint.Name, arguments.Seed,
+            arguments.Scenario, inputs.Checkpoint.Name, arguments.Seed, game.Width, game.Height,
             inputs.Manifest.ExpectedOutcome, inputs.Manifest.ExpectedErrorCode,
             expected.CanonicalHash, expected.ReadModelHash, expected.RenderedUiHash,
             TerminalEvent.Parse(lines), outcome.ExitCode, outcome.TimedOut, lines, frame,

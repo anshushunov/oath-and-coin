@@ -274,6 +274,40 @@ public class SmokeVerdictTests
     }
 
     [Fact]
+    public void Verdict_RejectsSingleColourFrame()
+    {
+        // The failure this catches is invisible to every other condition: a
+        // correctly built control tree whose window rendered nothing still
+        // writes a valid PNG whose SHA-256 the game itself declared, so both
+        // hashes and the frame-provenance check stay green on a blank frame.
+        var observation = CleanRun(eventOverride: CleanEvent() with { FrameDistinctColors = 1 });
+
+        var verdict = SmokeVerdict.Evaluate(observation);
+
+        Assert.False(verdict.Passed);
+        Assert.Contains(
+            verdict.Reasons, reason => reason.Contains("distinct colour", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Verdict_RejectsFrameThatIsNotTheRequestedResolution()
+    {
+        // Two values move together here because they are one fact — the size
+        // the game says it captured and the size on disk agree, and only the
+        // resolution the run asked for disagrees. Corrupting either alone
+        // would trip the event-versus-frame comparison instead, which is the
+        // self-referential check this one exists to backstop.
+        var observation = CleanRun(
+            eventOverride: CleanEvent() with { FrameWidth = 640, FrameHeight = 480 },
+            frameOverride: CleanFrame() with { Width = 640, Height = 480 });
+
+        var verdict = SmokeVerdict.Evaluate(observation);
+
+        Assert.False(verdict.Passed);
+        Assert.Contains(verdict.Reasons, reason => reason.Contains("requested", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void Verdict_RejectsMissingFrame()
     {
         var observation = CleanRun(
@@ -353,6 +387,8 @@ public class SmokeVerdictTests
             Scenario: errorOutcome ? ErrorScenario : Scenario,
             Checkpoint: errorOutcome ? ErrorCheckpoint : Checkpoint,
             Seed: Seed,
+            RequestedWidth: FrameWidth,
+            RequestedHeight: FrameHeight,
             ExpectedOutcome: errorOutcome ? ScenarioOutcomeKind.Error : ScenarioOutcomeKind.Success,
             ExpectedErrorCode: errorOutcome ? ErrorCode : null,
             ExpectedCanonicalHash: errorOutcome ? null : CanonicalHash,

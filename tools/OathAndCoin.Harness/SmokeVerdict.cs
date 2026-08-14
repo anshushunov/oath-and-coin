@@ -16,6 +16,14 @@ namespace OathAndCoin.Harness;
 /// <param name="Scenario">The scenario id the run was asked to drive.</param>
 /// <param name="Checkpoint">The checkpoint the run was asked to stop at.</param>
 /// <param name="Seed">The simulation seed the run was asked to use.</param>
+/// <param name="RequestedWidth">
+/// The window width this run launched the game with
+/// (<see cref="GameArguments.Width"/>). Held separately from what the game
+/// reported so at least one frame condition is anchored outside the game's
+/// own claims: every other size check compares the event against the file
+/// the same event describes.
+/// </param>
+/// <param name="RequestedHeight">The window height this run launched the game with.</param>
 /// <param name="ExpectedOutcome">
 /// What the scenario's manifest (<see cref="ScenarioManifest.ExpectedOutcome"/>) says this run should produce.
 /// </param>
@@ -52,6 +60,8 @@ public sealed record RunObservation(
     string Scenario,
     string Checkpoint,
     ulong Seed,
+    int RequestedWidth,
+    int RequestedHeight,
     ScenarioOutcomeKind ExpectedOutcome,
     string? ExpectedErrorCode,
     string? ExpectedCanonicalHash,
@@ -130,6 +140,19 @@ public static class SmokeVerdict
         if (!observation.Frame.HasValidPngHeader)
         {
             reasons.Add($"Frame '{observation.FramePath}' does not have a valid PNG header.");
+        }
+
+        // Against what the run asked for, not against what the event says the
+        // run produced. The event's own width and height are compared to the
+        // file further down, but that pair proves only that the game
+        // described the file it wrote; a game that captured the wrong surface
+        // would describe that one just as consistently.
+        if (observation.Frame.Width != observation.RequestedWidth
+            || observation.Frame.Height != observation.RequestedHeight)
+        {
+            reasons.Add(
+                $"Frame '{observation.FramePath}' is {observation.Frame.Width}x{observation.Frame.Height}, but the "
+                + $"run requested {observation.RequestedWidth}x{observation.RequestedHeight}.");
         }
 
         return new Verdict(reasons.Count == 0, reasons.ToImmutable());
@@ -229,6 +252,21 @@ public static class SmokeVerdict
             reasons.Add(
                 $"Frame '{observation.FramePath}' is {observation.Frame.Width}x{observation.Frame.Height}, but "
                 + $"the terminal event reports {terminalEvent.FrameWidth}x{terminalEvent.FrameHeight}.");
+        }
+
+        // The one condition that says anything about the pixels. A window
+        // that rendered nothing — a compositor failure, a hidden root, a
+        // stretch policy pushing the content off-screen — still writes a
+        // valid PNG of the requested size whose SHA-256 the game declares
+        // correctly, so every other frame condition stays green on it.
+        // Counted by the game (GodotCaptureSurface.CountDistinctColors), so
+        // this is not independent evidence; it is the cheapest check that
+        // fails on a blank frame at all.
+        if (terminalEvent.FrameDistinctColors <= 1)
+        {
+            reasons.Add(
+                $"Frame '{observation.FramePath}' holds {terminalEvent.FrameDistinctColors} distinct colour(s): "
+                + "nothing was rendered, whatever the control tree contained.");
         }
     }
 
