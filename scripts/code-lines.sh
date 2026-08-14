@@ -39,6 +39,17 @@ if [ "${1:-}" = "--cap" ]; then
     fi
     cap="$2"
     shift 2
+
+    # A cap that is not a number would make `[ "$code" -gt "$cap" ]` fail as a
+    # test rather than as a script, and a failing test inside an `if` is simply
+    # false — the ceiling would switch itself off and the stage would stay
+    # green. A guard that can be disabled by a typo is not a guard.
+    case "$cap" in
+        '' | *[!0-9]*)
+            echo "code-lines.sh: --cap needs a non-negative integer, got '$cap'" >&2
+            exit 2
+            ;;
+    esac
 fi
 
 if [ "$#" -eq 0 ]; then

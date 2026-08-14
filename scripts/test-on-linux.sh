@@ -31,9 +31,13 @@ if [ -n "$(git status --porcelain)" ]; then
     echo "note: the working tree has uncommitted changes; this runs HEAD, which is what a push would deliver." >&2
 fi
 
-version=$(awk -F'"' '/"version"/ { print $4; exit }' global.json)
+# Read from the same snapshot the archive below is built from. Taking it from
+# the working copy instead would pick the image by an edited pin while testing
+# the committed one — the two disagreeing precisely in the dirty-tree case this
+# script allows.
+version=$(git show HEAD:global.json | awk -F'"' '/"version"/ { print $4; exit }')
 if [ -z "$version" ]; then
-    echo "test-on-linux.sh: could not read the SDK version from global.json" >&2
+    echo "test-on-linux.sh: could not read the SDK version from HEAD:global.json" >&2
     exit 2
 fi
 
@@ -50,8 +54,12 @@ fi
 # The tree arrives as an archive over stdin rather than as a bind mount: no host
 # path translation, and the container never sees — or writes to — the bin/ and
 # obj/ directories of the Windows build sitting in the working copy.
-git archive --format=tar HEAD | docker run --rm -i "$image" bash -c "
+# Extra arguments are handed to the inner shell positionally, not spliced into
+# its script text: `--filter 'A|B'` pasted into a double-quoted string is
+# re-parsed by that shell, where the pipe becomes a pipeline and a space ends
+# the value.
+git archive --format=tar HEAD | docker run --rm -i "$image" bash -c '
     set -euo pipefail
     mkdir /work && tar -x -C /work && cd /work
-    dotnet test OathAndCoin.sln -c Release $*
-"
+    dotnet test OathAndCoin.sln -c Release "$@"
+' bash "$@"
