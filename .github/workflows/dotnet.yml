@@ -70,6 +70,20 @@ jobs:
             exit 1
           }
 
+      # ADR-008 caps the harness at 1050 code lines. The cap lived only in prose
+      # until now, and the number quoted beside it in the record had been
+      # produced by a command nobody wrote down — the two disagreed by 80 lines.
+      # A ceiling that is not measured by anything is a wish, so it is measured
+      # here, by the same script a developer runs locally, and the exact
+      # counting rule lives in that script rather than in a sentence.
+      #
+      # Raising the cap is a decision for the owner, recorded in ADR-008. This
+      # step exists to make sure that decision is taken deliberately instead of
+      # arrived at one commit at a time.
+      - name: Verify the harness stays under its line cap
+        shell: bash
+        run: ./scripts/code-lines.sh --cap 1050 tools/OathAndCoin.Harness
+
       # TDD §19.2. TreatWarningsAsErrors (Directory.Build.props) makes any
       # warning a failure here; CI=true also turns on ContinuousIntegrationBuild,
       # which normalizes source paths embedded in the assemblies.
