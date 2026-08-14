@@ -49,8 +49,9 @@ ADR-001-engine-and-language.md
 | [ADR-004](ADR-004-content-format.md) | Контент: JSON с JSON Schema и вычисляемой версией | accepted |
 | [ADR-005](ADR-005-stable-ids.md) | Стабильные namespaced идентификаторы | accepted |
 | [ADR-007](ADR-007-events-and-causal-trace.md) | Конверт события и хранение causal trace в состоянии | accepted |
+| [ADR-008](ADR-008-runtime-harness.md) | Runtime harness: свой инструмент и состав условий успеха прогона | accepted |
 
-Зарезервированные номера: `ADR-006` — стратегия сохранений (Milestone 3), `ADR-008` — тестовый и headless-тулинг (по итогам спайка). `ADR-009` не существует: фиксированный симуляционный тик отозван из Gate 0 и входит в постановку модели времени боя на старте Milestone 2.
+Зарезервированные номера: `ADR-006` — стратегия сохранений (Milestone 3). `ADR-009` не существует: фиксированный симуляционный тик отозван из Gate 0 и входит в постановку модели времени боя на старте Milestone 2.
 
 ## Шаблон
 

@@ -77,9 +77,7 @@ public class RunReportTests
     [Fact]
     public void Report_NormalizesAbsolutePaths()
     {
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var userName = Path.GetFileName(home.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-        Assert.False(string.IsNullOrEmpty(userName), "This test needs a home directory with a leaf name.");
+        var (home, userName) = FabricatedHome();
 
         var report = Sample() with
         {
@@ -106,8 +104,7 @@ public class RunReportTests
     [Fact]
     public void Report_NormalizesPathsQuotedInsideFailureMessages()
     {
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var userName = Path.GetFileName(home.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        var (home, userName) = FabricatedHome();
         var enginePath = Path.Combine(home, "Godot", "Godot_v4.7.1-stable_mono_win64.exe");
 
         var report = Sample() with
@@ -249,6 +246,26 @@ public class RunReportTests
         // the one above it; the marker line is what this field states, and
         // run.log holds all three whatever this one selects.
         Assert.Equal(new[] { "ERROR: Failed to read the root certificate store." }, diagnostics);
+    }
+
+    /// <summary>
+    /// A home directory and its leaf name, invented rather than read from the
+    /// machine. <see cref="RunReport.ToJson"/> takes the home directory as an
+    /// argument, so nothing about these tests needs the real one — and reading
+    /// it made them depend on who ran them. In a container the home directory
+    /// is <c>/root</c>, whose leaf name is a substring of the report's own
+    /// <c>"root"</c> key, so the "no user name anywhere" assertion failed on a
+    /// perfectly normalized document. The leaf here is deliberately a word no
+    /// report vocabulary contains.
+    /// </summary>
+    private static (string Home, string UserName) FabricatedHome()
+    {
+        const string userName = "harness-fixture-user";
+        var root = Path.GetPathRoot(Directory.GetCurrentDirectory());
+
+        Assert.False(string.IsNullOrEmpty(root), "This test needs a rooted current directory.");
+
+        return (Path.Combine(root, "home-fixture", userName), userName);
     }
 
     private static JsonDocument Render(RunReport report) =>

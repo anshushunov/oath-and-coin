@@ -515,7 +515,7 @@ tools/
 | ADR-005 | IDs and references | принят 2026-08-13: [ADR-005](../decisions/ADR-005-stable-ids.md) | стабильность, диагностика, mod/content evolution |
 | ADR-006 | Save strategy | Milestone 3 | migration, crash safety, replay/debug value |
 | ADR-007 | Event and causal trace | принят 2026-08-13: [ADR-007](../decisions/ADR-007-events-and-causal-trace.md) | размер, запросы UI, debugging, localization |
-| ADR-008 | Test/headless tooling | по итогам spike | локальный запуск, CI, batch performance |
+| ADR-008 | Test/headless tooling | принят 2026-08-15: [ADR-008](../decisions/ADR-008-runtime-harness.md) | локальный запуск, CI, batch performance |
 
 `ADR-009` в этом реестре нет намеренно: фиксированный симуляционный тик отозван из Gate 0 и входит в постановку модели времени боя на старте Milestone 2 (§9).
 
