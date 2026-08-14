@@ -60,9 +60,10 @@ public sealed record ScenarioManifest(
 
     /// <exception cref="InvalidDataException">
     /// The file is missing, malformed, has an unknown property, declares an
-    /// unsupported schema version, repeats a checkpoint name, or states an
-    /// outcome inconsistent with its own fields (an error outcome without an
-    /// error code, or a success outcome with a fault).
+    /// unsupported schema version, names a scenario other than the one its own
+    /// file name names, repeats a checkpoint name, or states an outcome
+    /// inconsistent with its own fields (an error outcome without an error
+    /// code, or a success outcome with a fault).
     /// </exception>
     public static ScenarioManifest Load(string path)
     {
@@ -83,6 +84,22 @@ public sealed record ScenarioManifest(
                 $"Scenario manifest '{displayPath}' declares schema_version {file.SchemaVersion}, but this "
                 + $"build reads version {SupportedManifestSchemaVersion}. Migrate the file, or run a build "
                 + "that understands its version — reading it under the wrong version would be a guess.");
+        }
+
+        // Every caller addresses a scenario by file name and composes
+        // "<scenario>.manifest.json" from it — SmokeRun from --scenario, the
+        // game's Main.LoadModel from the same argv value — and then uses that
+        // requested id for both execution and the terminal event. So nothing
+        // downstream ever reads this field back, and a manifest naming a
+        // different scenario than the file holding it would go unnoticed on
+        // both sides at once while the file said something else about itself.
+        var namedScenario = ScenarioIdIn(displayPath);
+        if (!string.Equals(file.Scenario, namedScenario, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                $"Scenario manifest '{displayPath}' declares scenario '{file.Scenario}', but its file name "
+                + $"names '{namedScenario}'. The field is this scenario's stable id and callers reach it by "
+                + "file name — two spellings mean one of them is never read.");
         }
 
         var expectedOutcome = ParseOutcome(file.ExpectedOutcome, displayPath);
@@ -126,6 +143,19 @@ public sealed record ScenarioManifest(
             fault,
             file.ExpectedErrorCode,
             checkpoints.ToImmutable());
+    }
+
+    /// <summary>
+    /// The scenario a file name names: everything before its first dot, so
+    /// <c>gate0.manifest.json</c> names <c>gate0</c> rather than
+    /// <c>gate0.manifest</c>. A name with no dot at all is taken whole rather
+    /// than treated as an error here — this is a comparison, and the message
+    /// it feeds is clearer than "not a manifest file name" would be.
+    /// </summary>
+    private static string ScenarioIdIn(string fileName)
+    {
+        var dot = fileName.IndexOf('.');
+        return dot < 0 ? fileName : fileName[..dot];
     }
 
     private static ScenarioOutcomeKind ParseOutcome(string value, string displayPath) => value switch

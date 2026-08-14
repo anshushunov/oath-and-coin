@@ -65,7 +65,7 @@ public class ScenarioManifestTests
     [Fact]
     public void Load_FailsOnUnsupportedSchemaVersion()
     {
-        using var temp = TempManifest.Write(ValidManifestJson.Replace(
+        using var temp = TempManifest.Write("gate0", ValidManifestJson.Replace(
             "\"schema_version\": 1",
             "\"schema_version\": 2",
             StringComparison.Ordinal));
@@ -79,7 +79,7 @@ public class ScenarioManifestTests
     [Fact]
     public void Load_FailsOnUnknownProperty()
     {
-        using var temp = TempManifest.Write("""
+        using var temp = TempManifest.Write("gate0", """
             {
               "schema_version": 1,
               "scenario": "gate0",
@@ -97,7 +97,7 @@ public class ScenarioManifestTests
     [Fact]
     public void Load_FailsOnDuplicateCheckpointName()
     {
-        using var temp = TempManifest.Write("""
+        using var temp = TempManifest.Write("gate0", """
             {
               "schema_version": 1,
               "scenario": "gate0",
@@ -117,7 +117,7 @@ public class ScenarioManifestTests
     [Fact]
     public void Load_FailsWhenErrorOutcomeHasNoErrorCode()
     {
-        using var temp = TempManifest.Write("""
+        using var temp = TempManifest.Write("content_error", """
             {
               "schema_version": 1,
               "scenario": "content_error",
@@ -134,7 +134,7 @@ public class ScenarioManifestTests
     [Fact]
     public void Load_FailsWhenSuccessOutcomeDeclaresFault()
     {
-        using var temp = TempManifest.Write("""
+        using var temp = TempManifest.Write("gate0", """
             {
               "schema_version": 1,
               "scenario": "gate0",
@@ -147,6 +147,35 @@ public class ScenarioManifestTests
         var exception = Assert.Throws<InvalidDataException>(() => ScenarioManifest.Load(temp.FullPath));
 
         Assert.Contains("fault", exception.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The <c>scenario</c> field is the scenario's own stable id, and every
+    /// caller addresses a scenario by file name — <c>SmokeRun</c> composes
+    /// <c>&lt;scenario&gt;.manifest.json</c> from <c>--scenario</c>, and
+    /// <c>Main.LoadModel</c> does the same in the game. Nothing read the field
+    /// back, so a manifest could name a different scenario than the file
+    /// holding it: execution and the terminal event would both use the
+    /// requested id, agree with each other, and the run would go green while
+    /// the file said something else about itself.
+    /// </summary>
+    [Fact]
+    public void Load_FailsWhenScenarioFieldDisagreesWithFileName()
+    {
+        using var temp = TempManifest.Write("gate0", """
+            {
+              "schema_version": 1,
+              "scenario": "other",
+              "expected_outcome": "success",
+              "checkpoints": [{ "name": "decisions_complete", "after_command_id": 2 }]
+            }
+            """);
+
+        var exception = Assert.Throws<InvalidDataException>(() => ScenarioManifest.Load(temp.FullPath));
+
+        // Both names, because either one could be the mistake.
+        Assert.Contains("'other'", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("'gate0'", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -297,7 +326,7 @@ public class ScenarioManifestTests
         // Positive control: a green run above must mean "checked and clean",
         // not "checked nothing" (spec §8.3) — the same idiom
         // AllContentFiles_SatisfyTheirSchema uses.
-        using var invalid = TempManifest.Write("""
+        using var invalid = TempManifest.Write("broken", """
             {
               "schema_version": 1,
               "scenario": "broken",
@@ -330,10 +359,19 @@ public class ScenarioManifestTests
     };
 
     /// <summary>
-    /// A single throwaway manifest file. Mirrors <see cref="TempContentRoot"/>'s
-    /// reasoning at file scope: a negative-path manifest test writes one bad
-    /// value without touching the production files in <c>scenarios/</c>.
+    /// A single throwaway manifest file, named <c>&lt;scenario&gt;.manifest.json</c>
+    /// the way every file under <c>scenarios/</c> is. Mirrors
+    /// <see cref="TempContentRoot"/>'s reasoning at file scope: a negative-path
+    /// manifest test writes one bad value without touching the production
+    /// files in <c>scenarios/</c>.
     /// </summary>
+    /// <remarks>
+    /// The scenario is a parameter rather than a fixed file name because
+    /// <see cref="ScenarioManifest.Load"/> now holds the <c>scenario</c> field
+    /// to the file's own name: a fixture that always wrote
+    /// <c>manifest.json</c> would fail that check in every test, including the
+    /// ones about something else entirely.
+    /// </remarks>
     private sealed class TempManifest : IDisposable
     {
         private readonly string _directory;
@@ -346,13 +384,13 @@ public class ScenarioManifestTests
 
         public string FullPath { get; }
 
-        public static TempManifest Write(string json)
+        public static TempManifest Write(string scenario, string json)
         {
             var directory = System.IO.Path.Combine(
                 System.IO.Path.GetTempPath(), "oath-and-coin-tests", Guid.NewGuid().ToString("n"));
             Directory.CreateDirectory(directory);
 
-            var fullPath = System.IO.Path.Combine(directory, "manifest.json");
+            var fullPath = System.IO.Path.Combine(directory, $"{scenario}.manifest.json");
             File.WriteAllText(fullPath, json);
             return new TempManifest(directory, fullPath);
         }
