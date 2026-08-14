@@ -1,0 +1,12 @@
+<Project Sdk="Godot.NET.Sdk/4.7.1">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <RootNamespace>OathAndCoin.Game</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\adapters\OathAndCoin.Presentation\OathAndCoin.Presentation.csproj" />
+    <ProjectReference Include="..\adapters\OathAndCoin.GameProtocol\OathAndCoin.GameProtocol.csproj" />
+    <ProjectReference Include="..\adapters\OathAndCoin.Content\OathAndCoin.Content.csproj" />
+  </ItemGroup>
+</Project>

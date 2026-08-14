@@ -3,6 +3,7 @@ obj/
 artifacts/
 .vs/
 *.user
+game/.godot/
 
 # Working material of the agent workflow — plans, specs, hand-off notes.
 # It stays on the workstation and out of the repository on purpose: once a

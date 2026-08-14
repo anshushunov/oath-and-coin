@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oath-and-coin.invalid/schemas/scenario-manifest.schema.json",
+  "title": "Scenario manifest",
+  "description": "The contract a scenario states about itself: which outcome it is expected to produce, how to break it when that outcome is an error, and the named checkpoints a caller can stop it at. This is the input format every runtime-harness task after this one consumes.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "scenario", "expected_outcome", "checkpoints"],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Version of this manifest format. Pinned by const so a manifest authored for a later format is refused by tooling, not read under today's assumptions; ScenarioManifest.SupportedManifestSchemaVersion states the same number."
+    },
+    "scenario": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Name of the scenario this manifest describes, e.g. the stem of its *.commands.json file."
+    },
+    "expected_outcome": {
+      "type": "string",
+      "enum": ["success", "error"],
+      "description": "Whether the scenario is expected to complete normally or to fail with a specific error. Stated as data, not inferred from whether a fault block is present."
+    },
+    "fault": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "path"],
+      "description": "How to break the game before running the scenario, and where. Legal only alongside expected_outcome: error.",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "expected_error_code": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The error code a caller running this scenario to failure should observe. Required when expected_outcome is error."
+    },
+    "checkpoints": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Named points in the scenario's command sequence a caller can resolve and stop at.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "after_command_id"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "after_command_id": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Commands up to and including this id have run when the checkpoint is reached. 0 means before any command."
+          }
+        }
+      }
+    }
+  }
+}
