@@ -111,20 +111,24 @@ public partial class Main : Control
     /// Loads content and runs the requested scenario up to its checkpoint.
     /// </summary>
     /// <remarks>
-    /// Content loading happens in three stages, each mapped to its own error
-    /// code by which stage failed to load — never by matching on an exception
-    /// message, which is free text meant for a person, not a stable
-    /// identifier a tool compares runs on:
+    /// Loading happens in five stages, each mapped to its own error code by
+    /// which stage failed — never by matching on an exception message, which
+    /// is free text meant for a person, not a stable identifier a tool
+    /// compares runs on. <see cref="ScenarioManifest.Load"/>,
+    /// <see cref="ScenarioCommands.Load"/> and <see cref="CheckpointResolver.Resolve"/>
+    /// all throw the same <see cref="InvalidDataException"/> the three
+    /// content stages do — including for an ordinary typo in <c>--scenario</c>
+    /// or <c>--checkpoint</c>, not just a corrupted file — so leaving them
+    /// uncaught would crash <see cref="_Ready"/> with no screen shown and no
+    /// terminal line emitted, right after four stages that carefully turn the
+    /// same exception type into an error screen instead:
     /// <list type="bullet">
     /// <item><c>CONTENT_ROOT_NOT_FOUND</c> — the content directory itself is missing, checked directly rather than inferred from <see cref="ContentSet.Load"/>'s own message.</item>
     /// <item><c>SCHEMA_INVALID</c> — <see cref="ContentSchemas.ValidateOrThrow"/> (validation stage 1, TDD §11.2) rejected a file.</item>
     /// <item><c>CONTENT_INVALID</c> — <see cref="ContentSet.Load"/> itself rejected a file past schema validation (an id reused, a value out of range).</item>
+    /// <item><c>SCENARIO_INVALID</c> — <see cref="ScenarioManifest.Load"/> or <see cref="ScenarioCommands.Load"/> could not read the scenario's own files (missing, malformed, no commands).</item>
+    /// <item><c>CHECKPOINT_UNKNOWN</c> — <see cref="CheckpointResolver.Resolve"/> could not resolve <c>--checkpoint</c> against an otherwise valid scenario (unknown name, or a manifest with no checkpoints at all).</item>
     /// </list>
-    /// Scenario, manifest and checkpoint failures are not caught here: none of
-    /// the fixtures this build ships trigger them, and the runtime harness
-    /// plan names error codes only for content loading (see the plan brief) —
-    /// inventing codes for cases nothing exercises would be a guess this
-    /// class has no way to validate.
     /// </remarks>
     private static LoadResult LoadModel(GameArguments arguments)
     {
@@ -176,9 +180,34 @@ public partial class Main : Control
         var manifestPath = Path.Combine(arguments.ScenarioRoot, $"{arguments.Scenario}.manifest.json");
         var commandsPath = Path.Combine(arguments.ScenarioRoot, $"{arguments.Scenario}.commands.json");
 
-        var manifest = ScenarioManifest.Load(manifestPath);
-        var commands = ScenarioCommands.Load(commandsPath);
-        var checkpoint = CheckpointResolver.Resolve(manifest, commands, arguments.Checkpoint);
+        ScenarioManifest manifest;
+        IReadOnlyList<ScenarioCommand> commands;
+        try
+        {
+            manifest = ScenarioManifest.Load(manifestPath);
+            commands = ScenarioCommands.Load(commandsPath);
+        }
+        catch (InvalidDataException exception)
+        {
+            return new LoadResult(
+                SpikeScreenModelFactory.FromError("SCENARIO_INVALID", exception.Message),
+                ContentVersion: null,
+                CanonicalHash: null);
+        }
+
+        Checkpoint checkpoint;
+        try
+        {
+            checkpoint = CheckpointResolver.Resolve(manifest, commands, arguments.Checkpoint);
+        }
+        catch (InvalidDataException exception)
+        {
+            return new LoadResult(
+                SpikeScreenModelFactory.FromError("CHECKPOINT_UNKNOWN", exception.Message),
+                ContentVersion: null,
+                CanonicalHash: null);
+        }
+
         var commandsUpTo = CheckpointResolver.CommandsUpTo(commands, checkpoint);
 
         var outcome = ScenarioRunner.Run(content, commandsUpTo, arguments.Seed);
