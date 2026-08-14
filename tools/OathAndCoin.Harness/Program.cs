@@ -1,24 +1,34 @@
 namespace OathAndCoin.Harness;
 
 /// <summary>
-/// Entry point placeholder. This task builds the tool's decision-making
-/// core — argument parsing, PNG inspection, and the run verdict — as pure,
-/// testable pieces. Wiring them into an actual run (launching Godot, driving
-/// a scenario to a checkpoint, writing a report) is process orchestration:
-/// a later runtime-harness task's job. <see cref="Main"/> exists only so
-/// this project builds as an executable; it commits to no interface a later
-/// task would have to work around.
+/// The <c>run-smoke</c> entry point: parse the command line, hand the run to
+/// <see cref="SmokeRun.Execute"/>, and return what it decided.
 /// </summary>
+/// <remarks>
+/// Exit codes are the tool's contract with whatever runs it:
+/// <list type="bullet">
+/// <item><c>0</c> — the verdict passed.</item>
+/// <item><c>1</c> — the verdict failed; every reason is on stderr.</item>
+/// <item><c>2</c> — the command line could not be parsed.</item>
+/// <item><c>3</c> — the run could not be carried out at all (no engine, a
+/// failed build or import, an expectation the tool could not build, or a
+/// working tree it refuses to run on).</item>
+/// </list>
+/// The split matters to a caller: <c>1</c> is a fact about the game, <c>2</c>
+/// and <c>3</c> are facts about the invocation and the machine, and treating
+/// them alike is how a broken environment gets reported as a broken game.
+/// </remarks>
 public static class Program
 {
     private const int ExitArgumentError = 2;
-    private const int ExitNotImplemented = 3;
 
     public static int Main(string[] args)
     {
+        ParsedArguments arguments;
+
         try
         {
-            CommandLine.Parse(args);
+            arguments = CommandLine.Parse(args);
         }
         catch (ArgumentException exception)
         {
@@ -26,8 +36,6 @@ public static class Program
             return ExitArgumentError;
         }
 
-        Console.Error.WriteLine(
-            "run-smoke: arguments parsed successfully; process orchestration is not implemented yet.");
-        return ExitNotImplemented;
+        return SmokeRun.Execute(arguments, new ProcessRunner(), Console.Out, Console.Error);
     }
 }
