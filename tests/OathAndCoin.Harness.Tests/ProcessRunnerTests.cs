@@ -11,12 +11,13 @@ namespace OathAndCoin.Harness.Tests;
 /// so these tests exercise its built <c>.exe</c>, not its types — through
 /// every shape a real Godot child process can take: a clean exit, output
 /// large enough to fill an OS pipe buffer on both streams, a nonzero exit, a
-/// hang that has to be killed, a hang that has spawned its own child, and a
-/// stream that closes early while the other keeps writing.
+/// hang that has to be killed, a hang that has spawned its own child, a
+/// launcher that exits normally leaving a descendant holding both pipes, and
+/// a stream that closes early while the other keeps writing.
 /// </summary>
 /// <remarks>
 /// The fixture constants below (<c>BothStreamsLineCount</c>, the hang lines,
-/// the child-PID prefix, the half-closed lines) mirror
+/// the child-PID prefix, the orphan line, the half-closed lines) mirror
 /// <c>OathAndCoin.Harness.FakeGame.Program</c>'s own constants exactly.
 /// <c>ReferenceOutputAssembly="false"</c> means there is no compile-time seam
 /// to share them through — see that project's csproj and its <c>Program</c>
@@ -28,6 +29,7 @@ public class ProcessRunnerTests
     private const string HangStdoutLine = "about-to-hang";
     private const string HangStderrLine = "stderr-before-hang";
     private const string ChildPidPrefix = "child-pid=";
+    private const string OrphanStdoutLine = "parent-exiting";
 
     // Real timeouts, not aspirational ones: HangTimeout is the brief's own 2
     // seconds, and the guard bounds below exist so a genuine regression
@@ -147,6 +149,39 @@ public class ProcessRunnerTests
             descendantExited,
             $"Descendant process {descendantProcessId} was still running {DescendantPollBound} after the "
             + "timeout — Kill(entireProcessTree: true) should have ended it.");
+    }
+
+    /// <summary>
+    /// The case the <c>hang</c> and <c>child</c> fixtures cannot produce: the
+    /// launched process exits **on its own, inside the timeout**, having
+    /// spawned a descendant that inherited its stdout and stderr. Neither pipe
+    /// reaches EOF, but nothing ever times out either, so a drain bounded only
+    /// after a kill is never bounded at all and <see cref="ProcessRunner.Run"/>
+    /// waits for a writer it no longer controls — one normally terminating
+    /// launcher hanging the harness and CI indefinitely (M-PROCESS-2).
+    /// </summary>
+    /// <remarks>
+    /// Guarded like every other timing test here, and for the sharper reason:
+    /// the regression is a hang, so without the guard this test would wedge
+    /// the run instead of failing. <c>linger</c> outlives
+    /// <see cref="RunGuardBound"/> deliberately — a descendant that died on
+    /// its own before the guard expired would let an unbounded drain pass.
+    /// </remarks>
+    [Fact]
+    public async Task Run_ReturnsWhenAnExitedParentLeavesADescendantHoldingTheStreams()
+    {
+        var runner = new ProcessRunner();
+
+        var outcome = await RunGuardedAsync(runner, "orphan", HangTimeout);
+
+        // The parent exited normally and well inside the timeout: this is not
+        // the timeout path wearing a different fixture.
+        Assert.False(outcome.TimedOut);
+        Assert.Equal(0, outcome.ExitCode);
+
+        // And nothing the parent actually wrote was lost to the bound.
+        Assert.Contains(
+            outcome.Lines, line => line.Stream == ProcessStream.StandardOutput && line.Text == OrphanStdoutLine);
     }
 
     [Fact]

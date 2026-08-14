@@ -31,8 +31,21 @@ public static class Program
     /// <summary>What <c>hang</c> and <c>child</c> print to stderr right before they block forever.</summary>
     public const string HangStderrLine = "stderr-before-hang";
 
-    /// <summary>Prefix <c>child</c> puts in front of its descendant's PID on stdout.</summary>
+    /// <summary>Prefix <c>child</c> and <c>orphan</c> put in front of their descendant's PID on stdout.</summary>
     public const string ChildPidPrefix = "child-pid=";
+
+    /// <summary>What <c>orphan</c> prints to stdout right before it exits, leaving its descendant behind.</summary>
+    public const string OrphanStdoutLine = "parent-exiting";
+
+    /// <summary>
+    /// How long <c>linger</c> holds the stdout and stderr it inherited before
+    /// exiting on its own. Longer than <c>ProcessRunnerTests.RunGuardBound</c>,
+    /// so a <c>ProcessRunner</c> that waits for EOF instead of bounding the
+    /// drain fails that guard rather than being rescued by this timer; short
+    /// enough that a descendant a tree-kill cannot reach (an orphan reparented
+    /// to init on Linux) still cannot outlive the test run by much.
+    /// </summary>
+    private static readonly TimeSpan LingerFor = TimeSpan.FromSeconds(30);
 
     private const int UnknownModeExitCode = 2;
 
@@ -56,6 +69,8 @@ public static class Program
             "duplicate-event" => RunDuplicateEvent(),
             "hang" => RunHang(),
             "child" => RunChild(),
+            "orphan" => RunOrphan(),
+            "linger" => RunLinger(),
             "half-closed" => RunHalfClosed(),
             _ => throw new ArgumentException($"Unknown fake-game mode '{args[0]}'."),
         };
@@ -114,14 +129,7 @@ public static class Program
 
     private static int RunChild()
     {
-        var executable = Environment.ProcessPath
-            ?? throw new InvalidOperationException("Could not determine this process's own executable path.");
-
-        var startInfo = new ProcessStartInfo(executable) { UseShellExecute = false };
-        startInfo.ArgumentList.Add("hang");
-
-        using var child = Process.Start(startInfo)
-            ?? throw new InvalidOperationException("Failed to start the descendant process.");
+        using var child = StartDescendant("hang");
 
         Console.WriteLine(ChildPidPrefix + child.Id.ToString(CultureInfo.InvariantCulture));
         Console.Out.Flush();
@@ -132,6 +140,53 @@ public static class Program
         // the test run instead of proving anything about tree-kill.
         Thread.Sleep(Timeout.Infinite);
         return 0; // Unreachable: this mode only ever ends by being killed.
+    }
+
+    /// <summary>
+    /// A launcher: spawns a descendant that inherits this process's stdout and
+    /// stderr, then exits immediately and normally. This is what a real
+    /// launcher-shaped engine binary does, and it is the shape <c>child</c>
+    /// cannot produce — <c>child</c> hangs, so the harness always reaches its
+    /// timeout branch. Here the parent exits well inside the timeout while the
+    /// write ends of both pipes stay open in the descendant, so nothing ever
+    /// reaches EOF and only a bounded drain can end the run.
+    /// </summary>
+    private static int RunOrphan()
+    {
+        using var child = StartDescendant("linger");
+
+        Console.WriteLine(ChildPidPrefix + child.Id.ToString(CultureInfo.InvariantCulture));
+        Console.WriteLine(OrphanStdoutLine);
+        Console.Out.Flush();
+
+        return 0;
+    }
+
+    /// <summary>
+    /// Holds the stdout and stderr it inherited for <see cref="LingerFor"/>
+    /// and writes nothing: the pipes stay open, so a reader waiting for EOF
+    /// waits, but a reader that has already captured every line loses nothing
+    /// by giving up on it.
+    /// </summary>
+    private static int RunLinger()
+    {
+        Thread.Sleep(LingerFor);
+        return 0;
+    }
+
+    private static Process StartDescendant(string mode)
+    {
+        var executable = Environment.ProcessPath
+            ?? throw new InvalidOperationException("Could not determine this process's own executable path.");
+
+        // No redirection: the descendant inherits this process's own stdout
+        // and stderr handles, which is exactly what keeps the harness's pipes
+        // open after this process is gone.
+        var startInfo = new ProcessStartInfo(executable) { UseShellExecute = false };
+        startInfo.ArgumentList.Add(mode);
+
+        return Process.Start(startInfo)
+            ?? throw new InvalidOperationException("Failed to start the descendant process.");
     }
 
     private static int RunHalfClosed()

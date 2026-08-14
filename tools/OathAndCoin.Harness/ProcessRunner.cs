@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.ComponentModel;
 using System.Diagnostics;
 
 namespace OathAndCoin.Harness;
@@ -25,26 +26,34 @@ namespace OathAndCoin.Harness;
 /// </list>
 /// It also does not promise that <c>entireProcessTree: true</c> itself is
 /// airtight: a descendant that spawns after the kill's own tree-walk
-/// snapshot, or one a permission failure leaves alive, can still hold a
-/// write end of these pipes open (M-PROCESS-1's mutant proved exactly this
-/// window — with a plain <c>Kill()</c> the surviving grandchild kept a
-/// redirected pipe open and this method never returned). Past the timeout
-/// kill, the drain is therefore itself bounded by <see cref="DrainAfterKillBound"/>
-/// — see <see cref="Run"/> — so that window costs a few extra seconds, never
-/// an unbounded hang.
+/// snapshot, one a permission failure leaves alive, or one whose parent
+/// exited first — orphans are reparented, so a tree walk from the process
+/// this method launched no longer reaches them — can still hold a write end
+/// of these pipes open. M-PROCESS-1's mutant proved that window with a plain
+/// <c>Kill()</c>: the surviving grandchild kept a redirected pipe open and
+/// this method never returned. Because a kill is therefore never a
+/// guarantee, and because the process exiting on its own is not one either,
+/// the drain is bounded on **every** path — see <see cref="Run"/> — so a
+/// pipe-holding descendant costs a few extra seconds, never an unbounded
+/// hang.
 /// </remarks>
 public sealed class ProcessRunner : IProcessRunner
 {
     /// <summary>
-    /// How long, after a timeout kill, this method keeps waiting for both
-    /// readers to reach EOF on their own before forcing them closed. Only
-    /// reachable once <see cref="Process.Kill(bool)"/> has already been
-    /// called: a healthy kill reaches every descendant in well under a
-    /// second, so this bound exists purely for the pathological case where
-    /// something still holds a pipe open, not to shave time off a normal
-    /// run — see the type's remarks.
+    /// The least time this method ever gives both readers to reach EOF on
+    /// their own before forcing them closed, and the whole allowance once the
+    /// run's own budget is already spent.
     /// </summary>
-    private static readonly TimeSpan DrainAfterKillBound = TimeSpan.FromSeconds(5);
+    /// <remarks>
+    /// A process that has exited has closed its own write ends, so every byte
+    /// it wrote is already in the pipe and readable at memory speed: this
+    /// grace is not there to let a healthy run finish writing, it is there to
+    /// wait out a descendant that outlived it. Five seconds is generous for
+    /// the former and arbitrary for the latter, which is the point — the
+    /// alternative is waiting on a writer this process does not control, with
+    /// no bound at all.
+    /// </remarks>
+    private static readonly TimeSpan DrainGrace = TimeSpan.FromSeconds(5);
 
     public ProcessOutcome Run(string fileName, IReadOnlyList<string> arguments, TimeSpan timeout)
     {
@@ -66,9 +75,8 @@ public sealed class ProcessRunner : IProcessRunner
 
         using var process = new Process { StartInfo = startInfo };
         // Cancels the two readers' pending ReadLineAsync calls (not
-        // disposed/closed streams — see ReadLinesAsync) if the post-kill
-        // drain bound below expires. Never triggered on the happy path: it
-        // is only ever cancelled from inside the `if (timedOut)` block.
+        // disposed/closed streams — see ReadLinesAsync) once the drain bound
+        // below expires, on whichever path got there.
         using var drainCts = new CancellationTokenSource();
         var stopwatch = Stopwatch.StartNew();
         process.Start();
@@ -89,33 +97,61 @@ public sealed class ProcessRunner : IProcessRunner
             // this process; anything it spawned keeps running.
             process.Kill(entireProcessTree: true);
             process.WaitForExit();
-
-            // Bounded only here, in the post-kill case: the happy path below
-            // (process exited on its own) still waits for true EOF with no
-            // limit, so a slow-but-healthy drain is never truncated. This
-            // wait exists because a kill is not a guarantee — see the type's
-            // remarks — so if EOF still has not arrived on its own after a
-            // generous margin, this cancels both reads rather than trust a
-            // writer this process no longer controls.
-            if (!Task.WaitAll(new Task[] { stdoutTask, stderrTask }, DrainAfterKillBound))
-            {
-                drainCts.Cancel();
-            }
         }
 
-        // Awaited unconditionally past this point: on the happy path this is
-        // the first and only wait, with no bound and no cancellation ever
-        // requested; on the timeout path it is either already satisfied or
-        // is what the cancellation above just unblocked. WaitForExit
-        // returning true is never treated as proof both readers reached
-        // EOF — pipes can still hold unread bytes after the process that
-        // wrote them has exited.
+        // Bounded on every path, not only after a kill. WaitForExit returning
+        // true is not proof both readers reached EOF: a descendant that
+        // inherited these pipes holds their write ends open after the process
+        // this method launched has exited normally, and waiting for an EOF
+        // only that descendant can produce is an unbounded wait triggered by
+        // an ordinary, successful run (M-PROCESS-2). What is left of the
+        // run's own budget bounds it, and never less than DrainGrace so a
+        // process that exits just short of its timeout is not truncated.
+        var remaining = timeout - stopwatch.Elapsed;
+        if (!Task.WaitAll(new Task[] { stdoutTask, stderrTask }, remaining > DrainGrace ? remaining : DrainGrace))
+        {
+            // Best effort, and only meaningful on the path that has not
+            // killed anything yet: the tree walk starts from a process that
+            // has already exited, which on Linux means the descendant was
+            // reparented away and is no longer reachable from here at all.
+            // The bound below is what actually guarantees the return.
+            if (!timedOut)
+            {
+                TryKillTree(process);
+            }
+
+            drainCts.Cancel();
+        }
+
+        // Awaited unconditionally past this point: either both readers
+        // reached EOF within the bound above, or the cancellation just
+        // unblocked them and each returns the lines it had already read.
         Task.WaitAll(stdoutTask, stderrTask);
         stopwatch.Stop();
 
         var lines = stdoutTask.Result.Concat(stderrTask.Result).ToImmutableArray();
 
         return new ProcessOutcome(lines, process.ExitCode, timedOut, stopwatch.Elapsed);
+    }
+
+    /// <summary>
+    /// Kills the process tree and swallows the two failures that mean there
+    /// is nothing left to kill (the process is already gone) or that this
+    /// process may not (a permission failure on a descendant). Neither is a
+    /// reason to fail a run whose output has already been captured, and the
+    /// caller's own bound does not depend on this succeeding.
+    /// </summary>
+    private static void TryKillTree(Process process)
+    {
+        try
+        {
+            process.Kill(entireProcessTree: true);
+        }
+        catch (Exception exception)
+            when (exception is InvalidOperationException or Win32Exception or AggregateException)
+        {
+            // Nothing to do and nothing to report: see this method's summary.
+        }
     }
 
     private static async Task<List<ProcessLine>> ReadLinesAsync(
