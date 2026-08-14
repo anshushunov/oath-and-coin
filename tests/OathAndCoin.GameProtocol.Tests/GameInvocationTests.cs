@@ -10,15 +10,24 @@ namespace OathAndCoin.GameProtocol.Tests;
 /// </summary>
 public class GameInvocationTests
 {
+    // An already-absolute, already-native-separator path on whichever OS the
+    // tests run on: GameInvocation.BuildArgv normalizes every path through
+    // Path.GetFullPath, so a fixture has to already be in that OS's own
+    // canonical shape for the "was already absolute, comes back unchanged"
+    // tests below to mean anything. A literal "C:\..." is that shape only on
+    // Windows — Path.GetFullPath does not treat it as rooted on Linux, so it
+    // gets resolved against the working directory instead of preserved.
+    private static readonly string RepoRoot = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "repo"));
+
     private static GameArguments SmokeArguments() => new(
         Smoke: true,
         Scenario: "gate0",
         Checkpoint: "decisions_complete",
         Seed: 424242UL,
-        ContentRoot: @"C:\repo\content",
-        SchemaRoot: @"C:\repo\schemas",
-        ScenarioRoot: @"C:\repo\scenarios",
-        ScreenshotPath: @"C:\repo\artifacts\smoke\run\frame.png",
+        ContentRoot: Path.Combine(RepoRoot, "content"),
+        SchemaRoot: Path.Combine(RepoRoot, "schemas"),
+        ScenarioRoot: Path.Combine(RepoRoot, "scenarios"),
+        ScreenshotPath: Path.Combine(RepoRoot, "artifacts", "smoke", "run", "frame.png"),
         Width: 1280,
         Height: 720,
         Locale: "en");
@@ -26,22 +35,25 @@ public class GameInvocationTests
     [Fact]
     public void BuildArgv_PutsEngineFlagsBeforeSeparatorAndUserArgsAfter()
     {
-        var argv = GameInvocation.BuildArgv(@"C:\repo\game", SmokeArguments());
+        var arguments = SmokeArguments();
+        var gamePath = Path.Combine(RepoRoot, "game");
+
+        var argv = GameInvocation.BuildArgv(gamePath, arguments);
 
         Assert.Equal(
             new[]
             {
-                "--path", @"C:\repo\game",
+                "--path", gamePath,
                 "--resolution", "1280x720",
                 "--",
                 "--smoke",
                 "--scenario", "gate0",
                 "--checkpoint", "decisions_complete",
                 "--seed", "424242",
-                "--content", @"C:\repo\content",
-                "--schemas", @"C:\repo\schemas",
-                "--scenarios", @"C:\repo\scenarios",
-                "--screenshot", @"C:\repo\artifacts\smoke\run\frame.png",
+                "--content", arguments.ContentRoot,
+                "--schemas", arguments.SchemaRoot,
+                "--scenarios", arguments.ScenarioRoot,
+                "--screenshot", arguments.ScreenshotPath,
                 "--locale", "en",
             },
             argv);
@@ -50,9 +62,10 @@ public class GameInvocationTests
     /// <summary>
     /// A relative path is only meaningful relative to whatever the tool
     /// process's working directory happened to be — the game process Godot
-    /// starts has no reason to share it. Forward slashes are normalized too:
-    /// a manifest or CLI author on this Windows-only project should not have
-    /// to remember which separator the engine flag wants.
+    /// starts has no reason to share it. The exact-equality assertions below
+    /// pin the normalization fully (including which separator the current
+    /// OS's own <see cref="Path.GetFullPath(string)"/> uses — backslash on
+    /// Windows, forward slash on Linux — so nothing here hardcodes either).
     /// </summary>
     [Fact]
     public void BuildArgv_UsesAbsoluteNormalizedPaths()
@@ -69,12 +82,10 @@ public class GameInvocationTests
         var screenshotValue = argv[Array.IndexOf(argv, "--screenshot") + 1];
 
         // Independent of how BuildArgv computes it: a relative input must not
-        // survive as a relative or forward-slashed output.
+        // survive as a relative path.
         Assert.True(Path.IsPathRooted(pathValue));
         Assert.True(Path.IsPathRooted(contentValue));
         Assert.True(Path.IsPathRooted(screenshotValue));
-        Assert.DoesNotContain('/', contentValue);
-        Assert.DoesNotContain('/', screenshotValue);
 
         Assert.Equal(Path.GetFullPath("game"), pathValue);
         Assert.Equal(Path.GetFullPath("content/root"), contentValue);
@@ -89,15 +100,16 @@ public class GameInvocationTests
     [Fact]
     public void BuildArgv_KeepsPathsWithSpacesAsSingleArguments()
     {
+        var screenshotPath = Path.Combine(RepoRoot, "artifacts", "smoke run", "frame.png");
         var arguments = SmokeArguments() with
         {
-            ScreenshotPath = @"C:\repo\artifacts\smoke run\frame.png",
+            ScreenshotPath = screenshotPath,
         };
 
-        var argv = GameInvocation.BuildArgv(@"C:\repo\game", arguments).ToArray();
+        var argv = GameInvocation.BuildArgv(Path.Combine(RepoRoot, "game"), arguments).ToArray();
 
         Assert.Equal(
-            @"C:\repo\artifacts\smoke run\frame.png",
+            screenshotPath,
             argv[Array.IndexOf(argv, "--screenshot") + 1]);
         Assert.DoesNotContain(argv, element => element.Contains('"', StringComparison.Ordinal));
     }
@@ -128,7 +140,7 @@ public class GameInvocationTests
     {
         var arguments = SmokeArguments();
 
-        var argv = GameInvocation.BuildArgv(@"C:\repo\game", arguments).ToArray();
+        var argv = GameInvocation.BuildArgv(Path.Combine(RepoRoot, "game"), arguments).ToArray();
         var separatorIndex = Array.IndexOf(argv, "--");
         var userArgs = argv[(separatorIndex + 1)..];
 
@@ -161,7 +173,7 @@ public class GameInvocationTests
     {
         var arguments = SmokeArguments() with { Width = 1600, Height = 900 };
 
-        var argv = GameInvocation.BuildArgv(@"C:\repo\game", arguments).ToArray();
+        var argv = GameInvocation.BuildArgv(Path.Combine(RepoRoot, "game"), arguments).ToArray();
         var separatorIndex = Array.IndexOf(argv, "--");
         var userArgs = argv[(separatorIndex + 1)..];
 
@@ -192,7 +204,7 @@ public class GameInvocationTests
     {
         var arguments = SmokeArguments() with { Width = 1600, Height = 900 };
 
-        var argv = GameInvocation.BuildArgv(@"C:\repo\game", arguments).ToArray();
+        var argv = GameInvocation.BuildArgv(Path.Combine(RepoRoot, "game"), arguments).ToArray();
 
         Assert.Equal("1600x900", argv[Array.IndexOf(argv, "--resolution") + 1]);
     }
