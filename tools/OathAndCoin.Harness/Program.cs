@@ -39,14 +39,3 @@ public static class Program
         return SmokeRun.Execute(arguments, new ProcessRunner(), Console.Out, Console.Error);
     }
 }
-
-internal static class MutantCi2_0 { public static int Value => 0; }
-internal static class MutantCi2_1 { public static int Value => 1; }
-internal static class MutantCi2_2 { public static int Value => 2; }
-internal static class MutantCi2_3 { public static int Value => 3; }
-internal static class MutantCi2_4 { public static int Value => 4; }
-internal static class MutantCi2_5 { public static int Value => 5; }
-internal static class MutantCi2_6 { public static int Value => 6; }
-internal static class MutantCi2_7 { public static int Value => 7; }
-internal static class MutantCi2_8 { public static int Value => 8; }
-internal static class MutantCi2_9 { public static int Value => 9; }
