@@ -41,6 +41,10 @@ public static class GodotEngine
     /// </summary>
     private static readonly TimeSpan ToolTimeout = TimeSpan.FromMinutes(10);
 
+    /// <summary>Godot's <c>DisplayServer.WindowMode</c>, in its own order — see <see cref="WindowMode"/>.</summary>
+    private static readonly string[] WindowModes =
+        { "windowed", "minimized", "maximized", "fullscreen", "exclusive_fullscreen" };
+
     /// <summary>
     /// Resolves the engine from <c>--godot</c>, then <see cref="EnvironmentVariable"/>.
     /// </summary>
@@ -84,10 +88,7 @@ public static class GodotEngine
         var outcome = runner.Run(enginePath, new[] { "--version" }, ToolTimeout);
         Require(outcome, $"'{enginePath}' --version");
 
-        var version = outcome.Lines
-            .Where(line => line.Stream == ProcessStream.StandardOutput && line.Text.Trim().Length > 0)
-            .Select(line => line.Text.Trim())
-            .LastOrDefault() ?? string.Empty;
+        var version = LastOutputLine(outcome);
 
         // Version first, flavour second, both against the printed string:
         // "4.7.1.stable.mono.official.<hash>". The trailing dot on the
@@ -106,14 +107,31 @@ public static class GodotEngine
         return new EngineFacts(enginePath, version, sha256);
     }
 
-    /// <summary>Compiles the game's assembly, which the engine loads at startup.</summary>
-    public static void Build(IProcessRunner runner, string repositoryRoot)
+    /// <summary>
+    /// Compiles the game's assembly, which the engine loads at startup, and
+    /// reports the SDK that compiled it.
+    /// </summary>
+    /// <remarks>
+    /// The SDK version is asked for here rather than in a phase of its own
+    /// because it is a fact about this build step: two runs that differ only
+    /// by SDK patch level produce different assemblies from the same commit,
+    /// and a report that names the engine down to a hash of its bytes while
+    /// staying silent about the compiler cannot tell those two runs apart.
+    /// </remarks>
+    /// <returns>What <c>dotnet --version</c> reported.</returns>
+    public static string Build(IProcessRunner runner, string repositoryRoot)
     {
         ArgumentNullException.ThrowIfNull(runner);
 
+        var version = runner.Run("dotnet", new[] { "--version" }, ToolTimeout);
+        Require(version, "dotnet --version");
+
         var project = Path.Combine(repositoryRoot, "game", "OathAndCoin.Game.csproj");
-        var outcome = runner.Run("dotnet", new[] { "build", project, "-c", "Debug" }, ToolTimeout);
-        Require(outcome, $"dotnet build {project} -c Debug");
+        Require(
+            runner.Run("dotnet", new[] { "build", project, "-c", "Debug" }, ToolTimeout),
+            $"dotnet build {project} -c Debug");
+
+        return LastOutputLine(version);
     }
 
     /// <summary>
@@ -126,13 +144,16 @@ public static class GodotEngine
     /// in its own commit, with the log and a link to the engine issue — never
     /// as a quiet bypass here, which is how a harness ends up proving nothing.
     /// </remarks>
-    public static void Import(IProcessRunner runner, string enginePath, string repositoryRoot)
+    /// <returns>The project directory imported, so the phase has a result to record like any other.</returns>
+    public static string Import(IProcessRunner runner, string enginePath, string repositoryRoot)
     {
         ArgumentNullException.ThrowIfNull(runner);
 
         var project = Path.Combine(repositoryRoot, "game");
         var argv = new[] { "--headless", "--import", "--path", project };
         Require(runner.Run(enginePath, argv, ToolTimeout), $"'{enginePath}' {string.Join(' ', argv)}");
+
+        return project;
     }
 
     /// <summary>
@@ -148,42 +169,63 @@ public static class GodotEngine
     {
         ArgumentException.ThrowIfNullOrEmpty(projectFile);
 
-        // project.godot is an INI-like file of `key=value` lines under
-        // `[section]` headers, with `;` comments. Only the flat keys matter
-        // here, and they are unique across the file, so the sections are not
-        // tracked — a full parser would be more machinery than one report
-        // field is worth.
-        var settings = new Dictionary<string, string>(StringComparer.Ordinal);
-        var assignments = File.ReadAllLines(projectFile)
-            .Where(line => !line.StartsWith(';') && line.IndexOf('=', StringComparison.Ordinal) > 0);
-
-        foreach (var line in assignments)
-        {
-            var separator = line.IndexOf('=', StringComparison.Ordinal);
-            settings[line[..separator].Trim()] = line[(separator + 1)..].Trim().Trim('"');
-        }
-
         return new VisualEnvironment(
             string.Create(CultureInfo.InvariantCulture, $"{width}x{height}"),
-            settings.GetValueOrDefault("renderer/rendering_method", "unstated"),
+            Setting(projectFile, "renderer/rendering_method") ?? "unstated",
             locale,
-            WindowMode(settings.GetValueOrDefault("window/size/mode", "0")));
+            WindowMode(Setting(projectFile, "window/size/mode") ?? "0"));
     }
 
     /// <summary>
-    /// Godot's <c>DisplayServer.WindowMode</c>, spelled out. An unknown value
-    /// is reported as itself rather than guessed at: the report's job is to
-    /// say what the project settings said.
+    /// One <c>key=value</c> line out of <c>project.godot</c>'s INI-like body.
+    /// Scanned per key rather than parsed into a dictionary: two keys are
+    /// wanted, the file is short, and the section headers a real parser would
+    /// have to track are irrelevant while every key read here is unique
+    /// across the file.
     /// </summary>
-    private static string WindowMode(string value) => value switch
+    private static string? Setting(string projectFile, string key)
     {
-        "0" => "windowed",
-        "1" => "minimized",
-        "2" => "maximized",
-        "3" => "fullscreen",
-        "4" => "exclusive_fullscreen",
-        _ => $"mode_{value}",
-    };
+        var prefix = key + "=";
+
+        foreach (var line in File.ReadLines(projectFile))
+        {
+            if (line.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                return line[prefix.Length..].Trim().Trim('"');
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Godot's <c>DisplayServer.WindowMode</c>, spelled out by index. A value
+    /// outside the enum is reported as itself rather than guessed at: the
+    /// report's job is to say what the project settings said.
+    /// </summary>
+    private static string WindowMode(string value) =>
+        int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var mode)
+        && mode < WindowModes.Length
+            ? WindowModes[mode]
+            : $"mode_{value}";
+
+    /// <summary>
+    /// The tail of a failed tool's output — enough to see the actual error
+    /// without copying a whole MSBuild log into an exception message, which
+    /// the report then carries as that phase's detail. <c>run.log</c> holds
+    /// the game process's own output, not these build-time tools'.
+    /// </summary>
+    private static string LastLines(ProcessOutcome outcome) =>
+        string.Join(" | ", outcome.Lines.TakeLast(5).Select(line => line.Text));
+
+    /// <summary>
+    /// What a tool asked for its own version said, ignoring blank lines and
+    /// anything it wrote to stderr.
+    /// </summary>
+    private static string LastOutputLine(ProcessOutcome outcome) => outcome.Lines
+        .Where(line => line.Stream == ProcessStream.StandardOutput && line.Text.Trim().Length > 0)
+        .Select(line => line.Text.Trim())
+        .LastOrDefault() ?? string.Empty;
 
     private static void Require(ProcessOutcome outcome, string command)
     {
@@ -201,13 +243,4 @@ public static class GodotEngine
                 $"{command} exited with code {outcome.ExitCode}. Last output: {LastLines(outcome)}");
         }
     }
-
-    /// <summary>
-    /// The tail of a failed tool's output — enough to see the actual error
-    /// without copying a whole MSBuild log into an exception message, which
-    /// the report then carries as that phase's detail. <c>run.log</c> holds
-    /// the game process's own output, not these build-time tools'.
-    /// </summary>
-    private static string LastLines(ProcessOutcome outcome) =>
-        string.Join(" | ", outcome.Lines.TakeLast(5).Select(line => line.Text));
 }

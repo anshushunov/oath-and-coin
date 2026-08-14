@@ -95,6 +95,68 @@ public class RunReportTests
         Assert.DoesNotContain(userName, json, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// The structured path fields are not the only way a path reaches this
+    /// document. A rejected <c>--godot</c> is quoted in a failure message and
+    /// nowhere else — the <c>engine</c> block is null, because verification
+    /// never ran — so a report that only normalized its structured fields
+    /// would publish the operator's home directory in <c>verdict.reasons</c>
+    /// while every field it did normalize looked clean.
+    /// </summary>
+    [Fact]
+    public void Report_NormalizesPathsQuotedInsideFailureMessages()
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var userName = Path.GetFileName(home.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        var enginePath = Path.Combine(home, "Godot", "Godot_v4.7.1-stable_mono_win64.exe");
+
+        var report = Sample() with
+        {
+            Engine = null,
+            Observation = null,
+            Repository = new RepositoryState("/repo", "c0ffee", Dirty: false),
+            RunDirectory = "/repo/artifacts/smoke/gate0/decisions_complete/runs/r",
+            Phases = Phases()
+                .Select(phase => phase.Id == "resolve_engine"
+                    ? phase with
+                    {
+                        Verdict = PhaseVerdict.Failed,
+                        Detail = $"The Godot engine at '{enginePath}', named by '--godot', does not exist.",
+                    }
+                    : phase)
+                .ToImmutableArray(),
+            Verdict = new Verdict(
+                Passed: false,
+                ImmutableArray.Create($"The Godot engine at '{enginePath}', named by '--godot', does not exist.")),
+        };
+
+        var json = report.ToJson(home);
+
+        Assert.DoesNotContain(userName, json, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("~", json, StringComparison.Ordinal);
+
+        // The message is still a readable sentence, not a path-shaped ruin:
+        // only the home prefix is replaced.
+        using var document = JsonDocument.Parse(json);
+        var reason = document.RootElement.GetProperty("verdict").GetProperty("reasons")[0].GetString();
+        Assert.StartsWith("The Godot engine at '~", reason, StringComparison.Ordinal);
+        Assert.EndsWith("does not exist.", reason, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The plan's Definition of Done asks the report to carry the SDK version
+    /// alongside the engine's: two runs from the same commit under different
+    /// SDK patch levels compile different assemblies, and a report silent
+    /// about the compiler cannot tell them apart.
+    /// </summary>
+    [Fact]
+    public void Report_RecordsSdkVersion()
+    {
+        using var document = Render(Sample() with { SdkVersion = "8.0.424" });
+
+        Assert.Equal("8.0.424", document.RootElement.GetProperty("sdk_version").GetString());
+    }
+
     [Fact]
     public void Report_RecordsCommitAndDirtyFlag()
     {
@@ -170,6 +232,7 @@ public class RunReportTests
         Checkpoint: "decisions_complete",
         Seed: 424242UL,
         Visual: new VisualEnvironment("1280x720", "gl_compatibility", "en", "windowed"),
+        SdkVersion: "8.0.424",
         Engine: new EngineFacts("/engines/godot", "4.7.1.stable.mono", "b0b1"),
         Phases: Phases(),
         Observation: SampleObservation(),

@@ -48,6 +48,18 @@
       <_Parameter1>FakeGamePath</_Parameter1>
       <_Parameter2>$(MSBuildThisFileDirectory)..\OathAndCoin.Harness.FakeGame\bin\$(Configuration)\$(TargetFramework)\OathAndCoin.Harness.FakeGame.exe</_Parameter2>
     </AssemblyAttribute>
+
+    <!--
+      SmokeRunTests drives SmokeRun.Execute end to end against a fake process
+      runner. The run reads the repository's real scenario manifests and
+      game/project.godot — the same inputs a real run reads — so it needs the
+      checkout's root, resolved by MSBuild for the same reason the paths above
+      are.
+    -->
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>RepositoryRoot</_Parameter1>
+      <_Parameter2>$(MSBuildThisFileDirectory)..\..</_Parameter2>
+    </AssemblyAttribute>
   </ItemGroup>
 
 </Project>

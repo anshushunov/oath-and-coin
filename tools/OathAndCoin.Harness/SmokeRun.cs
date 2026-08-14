@@ -107,19 +107,20 @@ public static class SmokeRun
         EngineFacts? engine = null;
         RunObservation? observation = null;
         Verdict? verdict = null;
+        string? sdkVersion = null;
         string? aborted = null;
 
         try
         {
-            var enginePath = phases.Run("resolve_engine", () => GodotEngine.Resolve(arguments.GodotPath));
-            engine = phases.Run("verify_engine", () => GodotEngine.Verify(runner, enginePath));
-            phases.Run("build_game", () => GodotEngine.Build(runner, repository.Root));
-            phases.Run("import_assets", () => GodotEngine.Import(runner, enginePath, repository.Root));
+            var enginePath = phases.Time("resolve_engine", () => GodotEngine.Resolve(arguments.GodotPath));
+            engine = phases.Time("verify_engine", () => GodotEngine.Verify(runner, enginePath));
+            sdkVersion = phases.Time("build_game", () => GodotEngine.Build(runner, repository.Root));
+            phases.Time("import_assets", () => GodotEngine.Import(runner, enginePath, repository.Root));
 
-            var expected = phases.Run(
+            var expected = phases.Time(
                 "build_expected", () => Expectation.Build(repository.Root, layout.RunId, inputs, arguments.Seed));
 
-            var outcome = phases.Run(
+            var outcome = phases.Time(
                 "run_game", () => RunGame(runner, enginePath, repository.Root, arguments, inputs, expected, layout));
 
             var frame = phases.Time(
@@ -144,7 +145,7 @@ public static class SmokeRun
             phases,
             new RunReport(
                 layout.RunId, repository, arguments.Scenario, inputs.Checkpoint.Name, arguments.Seed, visual,
-                engine, ImmutableArray<PhaseRecord>.Empty, observation, verdict, layout.RunDirectory));
+                sdkVersion, engine, ImmutableArray<PhaseRecord>.Empty, observation, verdict, layout.RunDirectory));
 
         output.WriteLine($"run: {layout.RunDirectory}");
 
@@ -400,24 +401,22 @@ public static class SmokeRun
     {
         private readonly List<PhaseRecord> _records = new();
 
-        /// <summary>Runs a phase that either works or aborts the run.</summary>
-        public T Run<T>(string id, Func<T> body) => Time(id, body, _ => true);
-
-        /// <summary>The same, for a phase that produces nothing.</summary>
-        public void Run(string id, Action body) => Run(id, () => { body(); return true; });
-
         /// <summary>
-        /// Runs a phase whose own result decides its verdict — for the phases
-        /// that did their job correctly and whose answer is what failed.
+        /// Runs a phase and records how it went. Without
+        /// <paramref name="passed"/> the phase either works or aborts the run,
+        /// which is the shape of the first six. With one, the phase's own
+        /// result decides its verdict — for a phase that did its job correctly
+        /// and whose answer is what failed.
         /// </summary>
-        public T Time<T>(string id, Func<T> body, Func<T, bool> passed)
+        public T Time<T>(string id, Func<T> body, Func<T, bool>? passed = null)
         {
             var stopwatch = Stopwatch.StartNew();
 
             try
             {
                 var value = body();
-                Add(id, passed(value) ? PhaseVerdict.Passed : PhaseVerdict.Failed, stopwatch.Elapsed, null);
+                var verdict = passed?.Invoke(value) ?? true;
+                Add(id, verdict ? PhaseVerdict.Passed : PhaseVerdict.Failed, stopwatch.Elapsed, null);
                 return value;
             }
             catch (Exception exception)
