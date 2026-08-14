@@ -49,6 +49,27 @@ jobs:
       - name: Format
         run: dotnet format OathAndCoin.sln --verify-no-changes --no-restore
 
+      # Guards the risk this task exists for: `dotnet build` only builds the
+      # projects listed in the .sln. If OathAndCoin.Game silently falls out
+      # of the solution during a merge, the build keeps succeeding on
+      # everything else and stays green while the Godot-side code stops
+      # being compiled at all. Checked here, right before Build, so a
+      # missing project is reported with its own clear message instead of
+      # surfacing later as an unexplained gap in build output.
+      #
+      # The pattern is escaped to the exact file name, not a bare substring:
+      # `adapters/OathAndCoin.GameProtocol/OathAndCoin.GameProtocol.csproj`
+      # is also in the solution and its path contains "OathAndCoin.Game" as
+      # a substring, so an unescaped grep would still match it and stay
+      # silent while the real game project was gone.
+      - name: Verify game project is in the solution
+        shell: bash
+        run: |
+          dotnet sln OathAndCoin.sln list | grep -q "OathAndCoin\.Game\.csproj" || {
+            echo "::error::OathAndCoin.Game is missing from OathAndCoin.sln — the Godot game project has fallen out of the solution, so 'dotnet build' silently stops compiling it. Run 'dotnet sln OathAndCoin.sln add game/OathAndCoin.Game.csproj' to restore it." >&2
+            exit 1
+          }
+
       # TDD §19.2. TreatWarningsAsErrors (Directory.Build.props) makes any
       # warning a failure here; CI=true also turns on ContinuousIntegrationBuild,
       # which normalizes source paths embedded in the assemblies.
