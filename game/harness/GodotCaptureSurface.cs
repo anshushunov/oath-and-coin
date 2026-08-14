@@ -186,7 +186,19 @@ public sealed class GodotCaptureSurface : ICaptureSurface
     private T RunOnMainThread<T>(Func<T> function)
     {
         var result = default(T);
-        RunOnMainThread(() => result = function());
+
+        // A statement body, not the expression form `() => result =
+        // function()`. An expression lambda whose body has a value is
+        // convertible to both Action and Func<T>, and overload resolution
+        // prefers Func<T> — which is this method itself. The expression form
+        // therefore called this overload again, once per frame of an
+        // infinite recursion, and the first real capture run died with
+        // STATUS_STACK_OVERFLOW (exit code -1073741571) before the engine
+        // had drawn anything. A statement body with no return value is
+        // convertible to Action alone, so the intended overload is the only
+        // candidate.
+        RunOnMainThread(() => { result = function(); });
+
         return result!;
     }
 }
