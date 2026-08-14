@@ -75,17 +75,37 @@ public class SmokeVerdictTests
         Assert.Contains(verdict.Reasons, reason => reason.Contains("outcome", StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>
+    /// The reproduction that retired <c>Verdict_RejectsEngineErrorLine</c>
+    /// (owner, 2026-08-14): a run with exit 0, one terminal event, all three
+    /// hashes matching and a valid 1280x720 frame was judged failed for one
+    /// line the engine prints about the machine it is running on. Both lines
+    /// below are verbatim from that run's <c>run.log</c>. An
+    /// <c>ERROR:</c>-prefixed line is the engine's general-purpose diagnostic
+    /// channel — the same prefix carries certificate stores, audio devices and
+    /// missing optional drivers — so failing on its mere presence makes the
+    /// same commit pass on one machine and fail on another, which is the one
+    /// thing a proof run may not do.
+    /// </summary>
     [Fact]
-    public void Verdict_RejectsEngineErrorLine()
+    public void Verdict_AcceptsRunWhoseOnlyErrorLineIsAboutTheEnvironment()
     {
-        var observation = CleanRun(diagnosticLines: ImmutableArray.Create("ERROR: renderer initialization failed"));
+        var observation = CleanRun(diagnosticLines: ImmutableArray.Create(
+            "ERROR: Failed to read the root certificate store.",
+            "   at: get_system_ca_certificates (platform/windows/os_windows.cpp:2582)"));
 
         var verdict = SmokeVerdict.Evaluate(observation);
 
-        Assert.False(verdict.Passed);
-        Assert.Contains(verdict.Reasons, reason => reason.Contains("ERROR:", StringComparison.Ordinal));
+        Assert.True(verdict.Passed);
+        Assert.Empty(verdict.Reasons);
     }
 
+    /// <summary>
+    /// Fatal, unlike <c>ERROR:</c>, because the game itself emits this exact
+    /// prefix from <c>Main._Ready</c>'s capture worker (see the
+    /// <c>SCRIPT ERROR: autopilot capture failed</c> line there) and the engine
+    /// reserves it for the script layer. No environment probe produces one.
+    /// </summary>
     [Fact]
     public void Verdict_RejectsScriptErrorLine()
     {
@@ -98,6 +118,23 @@ public class SmokeVerdictTests
         Assert.Contains(verdict.Reasons, reason => reason.Contains("SCRIPT ERROR:", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// The engine's crash macros print <c>FATAL:</c> and then abort the
+    /// process, so this can only ever fire on a run that also died — it costs
+    /// no false failures and buys a named reason instead of a bare exit code.
+    /// </summary>
+    [Fact]
+    public void Verdict_RejectsFatalEngineLine()
+    {
+        var observation = CleanRun(
+            diagnosticLines: ImmutableArray.Create("FATAL: Condition \"!data\" is true."));
+
+        var verdict = SmokeVerdict.Evaluate(observation);
+
+        Assert.False(verdict.Passed);
+        Assert.Contains(verdict.Reasons, reason => reason.Contains("FATAL:", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void Verdict_RejectsFatalDiagnosticAfterTerminalEvent()
     {
@@ -108,13 +145,13 @@ public class SmokeVerdictTests
             diagnosticLines: ImmutableArray.Create(
                 "Godot Engine v4.2.1.stable.official",
                 "{\"event\":\"terminal\", ... }",
-                "ERROR: Condition \"!ok\" is true. Aborting.",
+                "SCRIPT ERROR: Condition \"!ok\" is true. Aborting.",
                 "at: some_engine_function (core/os/os.cpp:123)"));
 
         var verdict = SmokeVerdict.Evaluate(observation);
 
         Assert.False(verdict.Passed);
-        Assert.Contains(verdict.Reasons, reason => reason.Contains("ERROR:", StringComparison.Ordinal));
+        Assert.Contains(verdict.Reasons, reason => reason.Contains("SCRIPT ERROR:", StringComparison.Ordinal));
     }
 
     [Fact]

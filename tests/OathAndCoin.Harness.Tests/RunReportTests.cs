@@ -217,6 +217,40 @@ public class RunReportTests
             verdict.GetProperty("reasons").EnumerateArray().Select(reason => reason.GetString()!).ToImmutableArray());
     }
 
+    /// <summary>
+    /// An <c>ERROR:</c> line the verdict no longer fails on still has to reach
+    /// whoever reads the report (owner's ruling, 2026-08-14): narrowing the
+    /// fatal set changed what fails a run, not what a run records.
+    /// <c>run.log</c> keeps the output verbatim and complete; this field
+    /// repeats the lines carrying one of the engine's own diagnostic markers,
+    /// so the report is readable on its own.
+    /// </summary>
+    [Fact]
+    public void Report_ListsEngineDiagnosticsTheVerdictDidNotFailOn()
+    {
+        var observation = SampleObservation() with
+        {
+            DiagnosticLines = ImmutableArray.Create(
+                "Godot Engine v4.7.1.stable.mono.official",
+                "ERROR: Failed to read the root certificate store.",
+                "   at: get_system_ca_certificates (platform/windows/os_windows.cpp:2582)"),
+        };
+
+        using var document = Render(Sample() with { Observation = observation });
+
+        var diagnostics = document.RootElement
+            .GetProperty("actual")
+            .GetProperty("engine_diagnostics")
+            .EnumerateArray()
+            .Select(line => line.GetString())
+            .ToArray();
+
+        // The banner line carries no marker and the location line continues
+        // the one above it; the marker line is what this field states, and
+        // run.log holds all three whatever this one selects.
+        Assert.Equal(new[] { "ERROR: Failed to read the root certificate store." }, diagnostics);
+    }
+
     private static JsonDocument Render(RunReport report) =>
         JsonDocument.Parse(report.ToJson(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)));
 

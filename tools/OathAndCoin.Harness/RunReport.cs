@@ -217,6 +217,16 @@ public sealed record RunReport(
         observation.Terminal.Events.Length,
         observation.Terminal.Errors.Select(error => NormalizeText(error, homeDirectory)!).ToImmutableArray(),
         observation.Terminal.Events.Length == 1 ? observation.Terminal.Events[0] : null,
+
+        // Every engine diagnostic, including the ones the verdict tolerated.
+        // Only two markers fail a run (see SmokeVerdict's fatal prefixes);
+        // that decides what a run means, not what it records, so an ERROR:
+        // line about the machine still reaches whoever reads this document.
+        // run.log holds the output complete and verbatim either way.
+        observation.DiagnosticLines
+            .Where(SmokeVerdict.IsDiagnostic)
+            .Select(line => NormalizeText(line, homeDirectory)!)
+            .ToImmutableArray(),
         observation.Frame);
 
     /// <summary>
@@ -239,7 +249,7 @@ public sealed record RunReport(
 
     private sealed record ActualDocument(
         int ExitCode, bool TimedOut, int TerminalEventCount, ImmutableArray<string> TerminalErrors,
-        TerminalEvent? TerminalEvent, FrameInspection Frame);
+        TerminalEvent? TerminalEvent, ImmutableArray<string> EngineDiagnostics, FrameInspection Frame);
 
     private sealed record PhaseDocument(string Id, PhaseVerdict Verdict, long DurationMs, string? Detail);
 

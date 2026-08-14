@@ -49,10 +49,13 @@ namespace OathAndCoin.Harness;
 /// <param name="ExitCode">The game process's own exit code.</param>
 /// <param name="TimedOut">Whether the process had to be killed after <see cref="ParsedArguments.TimeoutSeconds"/>.</param>
 /// <param name="DiagnosticLines">
-/// Every line of the game's captured output, scanned for the engine's own
-/// fatal markers (<c>ERROR:</c>, <c>SCRIPT ERROR:</c>) — independent of
-/// whether a terminal event also parsed, because a run can print a valid
-/// event and still have crashed logging on its way out.
+/// Every line of the game's captured output — nothing filtered on the way in.
+/// Scanned twice and for different purposes: for the narrow set of markers
+/// that fail a run on their own (<c>SmokeVerdict</c>'s fatal prefixes), and
+/// for every marker the engine uses at all, which <c>report.json</c> repeats
+/// whatever the verdict decided. The scan is independent of whether a
+/// terminal event also parsed, because a run can print a valid event and
+/// still have crashed logging on its way out.
 /// </param>
 /// <param name="Frame">What <see cref="FrameFile.Inspect"/> found when it looked at the screenshot on disk.</param>
 /// <param name="FramePath">Where that screenshot was expected to be written, for reporting only.</param>
@@ -92,8 +95,54 @@ public sealed record Verdict(bool Passed, ImmutableArray<string> Reasons);
 /// </summary>
 public static class SmokeVerdict
 {
-    private const string EngineErrorPrefix = "ERROR:";
-    private const string ScriptErrorPrefix = "SCRIPT ERROR:";
+    /// <summary>
+    /// The engine markers that fail a run on their own. Two entries, each
+    /// here for a stated reason rather than for looking serious:
+    /// <list type="bullet">
+    /// <item>
+    /// <c>SCRIPT ERROR:</c> — the engine's script channel
+    /// (<c>ERR_HANDLER_SCRIPT</c>, one of the five error types the pinned
+    /// 4.7.1 binary spells alongside <c>WARNING</c>, <c>ERROR</c>,
+    /// <c>SHADER ERROR</c> and <c>UNKNOWN ERROR</c>), and the prefix the game
+    /// itself prints when its capture worker throws — see the
+    /// <c>SCRIPT ERROR: autopilot capture failed</c> line in
+    /// <c>game/app/Main.cs</c>. That is a run reporting a defect in this
+    /// repository's own code, which is what this harness exists to catch, and
+    /// no probe of the machine produces one.
+    /// </item>
+    /// <item>
+    /// <c>FATAL:</c> — the engine's crash macros (<c>FATAL: Condition "…" is
+    /// true.</c>), which print and then trap. It can only appear on a run that
+    /// died, so it costs no false failure; it buys the operator a named cause
+    /// instead of a bare negative exit code.
+    /// </item>
+    /// </list>
+    /// <c>ERROR:</c> is deliberately absent: it is the engine's general
+    /// diagnostic channel, carrying certificate stores and absent optional
+    /// devices as readily as real faults, so failing on its presence made the
+    /// same commit pass on one machine and fail on another (owner's
+    /// reproduction, 2026-08-14 — see <c>SmokeVerdictTests</c>). Every line
+    /// still reaches <c>run.log</c> and <c>report.json</c> unchanged.
+    /// </summary>
+    private static readonly ImmutableArray<string> FatalPrefixes =
+        ImmutableArray.Create("SCRIPT ERROR:", "FATAL:");
+
+    /// <summary>
+    /// Every marker the engine puts in front of a diagnostic line, fatal here
+    /// or not. Reported, never failed on by itself: <see cref="IsDiagnostic"/>
+    /// is what <c>report.json</c> selects with, so a reader of the report
+    /// alone still sees the lines the verdict decided to tolerate.
+    /// </summary>
+    private static readonly ImmutableArray<string> DiagnosticPrefixes = ImmutableArray.Create(
+        "ERROR:", "WARNING:", "SCRIPT ERROR:", "SHADER ERROR:", "UNKNOWN ERROR:", "FATAL:");
+
+    /// <summary>
+    /// Whether this line of the game's output carries one of the engine's own
+    /// diagnostic markers. A multi-line diagnostic's continuation lines (a
+    /// stack frame, an <c>at:</c> location) carry no marker and are not
+    /// selected — <c>run.log</c> holds the output complete and verbatim.
+    /// </summary>
+    public static bool IsDiagnostic(string line) => StartsWithAny(line, DiagnosticPrefixes);
 
     public static Verdict Evaluate(RunObservation observation)
     {
@@ -118,7 +167,10 @@ public static class SmokeVerdict
             reasons.Add($"Malformed terminal line: {parseError}");
         }
 
-        AddDiagnosticReasons(observation.DiagnosticLines, reasons);
+        foreach (var line in observation.DiagnosticLines.Where(line => StartsWithAny(line, FatalPrefixes)))
+        {
+            reasons.Add($"Fatal engine diagnostic on the game's output: {line}");
+        }
 
         if (observation.Terminal.Events.Length == 0)
         {
@@ -158,28 +210,11 @@ public static class SmokeVerdict
         return new Verdict(reasons.Count == 0, reasons.ToImmutable());
     }
 
-    private static void AddDiagnosticReasons(
-        ImmutableArray<string> diagnosticLines,
-        ImmutableArray<string>.Builder reasons)
-    {
-        foreach (var line in diagnosticLines)
-        {
-            var trimmed = line.TrimStart();
-
-            // Checked in this order — and as an if/else, not two
-            // independent ifs — because "SCRIPT ERROR:" also starts with
-            // neither prefix of the other, but a line matching one should
-            // never also be reported as the other kind of fatal diagnostic.
-            if (trimmed.StartsWith(ScriptErrorPrefix, StringComparison.Ordinal))
-            {
-                reasons.Add($"Script error on the game's output: {line}");
-            }
-            else if (trimmed.StartsWith(EngineErrorPrefix, StringComparison.Ordinal))
-            {
-                reasons.Add($"Engine error on the game's output: {line}");
-            }
-        }
-    }
+    // Leading whitespace is trimmed because the engine indents some of its
+    // own output; nothing else about the line is normalized, and the reason
+    // (or the report) quotes it exactly as the game printed it.
+    private static bool StartsWithAny(string line, ImmutableArray<string> prefixes) =>
+        prefixes.Any(prefix => line.TrimStart().StartsWith(prefix, StringComparison.Ordinal));
 
     private static void AddEventReasons(
         RunObservation observation,
