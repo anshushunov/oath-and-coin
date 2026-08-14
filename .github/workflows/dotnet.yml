@@ -133,3 +133,174 @@ jobs:
           name: gate0-evidence
           path: artifacts/
           if-no-files-found: error
+
+  # ADR-008 recorded that running the engine in CI was "not tried and did not
+  # fail". This job is the measurement that turns that into a fact. It is a
+  # job of its own, not extra steps on `build`: everything above proves things
+  # about the simulation and costs about a minute, and nothing here is allowed
+  # to make that slower or to gate it.
+  #
+  # What it proves that `build` cannot: the game actually starts under the
+  # pinned engine, renders a window, and the screen it renders agrees with the
+  # model the harness computed independently — see ADR-008 for the exact list
+  # of conditions and, more importantly, for what they do not prove.
+  runtime-smoke:
+    runs-on: ubuntu-latest
+
+    # Generous against the existing job's 10: a software-rendered engine start
+    # is the slowest thing in this repository, and a timeout that fires on a
+    # slow-but-healthy runner is a flaky gate, which is worse than no gate.
+    timeout-minutes: 20
+
+    env:
+      # Pinned by URL, and verified against the checksum the release itself
+      # publishes (SHA512-SUMS.txt of 4.7.1-stable). ADR-001 pins the engine
+      # version; this pins the bytes. The harness's own verify_engine phase
+      # then re-checks the version and records the binary's SHA-256, so a
+      # wrong download fails twice over rather than running quietly.
+      GODOT_ZIP_URL: >-
+        https://github.com/godotengine/godot-builds/releases/download/4.7.1-stable/Godot_v4.7.1-stable_mono_linux_x86_64.zip
+      GODOT_ZIP_SHA512: 0dd41f159a358b3cf23898a8d6aa3b346bd91a574b22991bbd3bc812cd414ad1b1d7701de7124bd9818f0d52b3734a885f0edaeab9cb4b2cd1d5049171e304b8
+
+      # The capture path needs a rendering context, so `--headless` is not an
+      # option for the run itself (it is still used for `--import`, which
+      # renders nothing). A GitHub runner has no GPU, so the context comes
+      # from Mesa's llvmpipe. Forced rather than left to auto-detection: a
+      # silent fallback to a stub driver produces a blank frame, and a blank
+      # frame is a failed verdict (frame_distinct_colors <= 1) whose cause
+      # would be invisible here.
+      LIBGL_ALWAYS_SOFTWARE: '1'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.424
+
+      # xvfb + xauth give the engine a real X display to open a real window
+      # on; the mesa packages give that window a GL 3.3 context via llvmpipe.
+      # The rest are the X client libraries the engine binary links against —
+      # a missing one is a load-time failure with no frame and no log.
+      - name: Install the virtual display and software GL
+        shell: bash
+        run: |
+          started=$(date +%s)
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            xvfb xauth x11-utils \
+            libgl1 libglx-mesa0 libgl1-mesa-dri libegl1 \
+            libxcursor1 libxinerama1 libxrandr2 libxi6 libxkbcommon0 libfontconfig1
+          echo "install_seconds=$(( $(date +%s) - started ))" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Download and verify the engine
+        shell: bash
+        run: |
+          started=$(date +%s)
+          curl --fail --silent --show-error --location --retry 3 \
+            --output "$RUNNER_TEMP/godot.zip" "$GODOT_ZIP_URL"
+          elapsed=$(( $(date +%s) - started ))
+
+          bytes=$(stat -c %s "$RUNNER_TEMP/godot.zip")
+          echo "download_bytes=$bytes download_seconds=$elapsed" | tee -a "$GITHUB_STEP_SUMMARY"
+
+          echo "$GODOT_ZIP_SHA512  $RUNNER_TEMP/godot.zip" | sha512sum --check --strict -
+
+          unzip -q "$RUNNER_TEMP/godot.zip" -d "$RUNNER_TEMP/godot"
+
+          # Resolved from the archive rather than spelled out a second time:
+          # the directory inside the zip and the binary inside it are named by
+          # different conventions (…_x86_64/ but ….x86_64), and a hard-coded
+          # path that drifts would fail as "no engine" instead of as "the
+          # archive changed shape". Exactly one match, or stop.
+          shopt -s nullglob
+          binaries=("$RUNNER_TEMP"/godot/*/Godot_v*_mono_linux.x86_64)
+          if [ "${#binaries[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one engine binary in the archive, found ${#binaries[@]}." >&2
+            unzip -l "$RUNNER_TEMP/godot.zip" | head -20 >&2
+            exit 1
+          fi
+
+          chmod +x "${binaries[0]}"
+          echo "GODOT=${binaries[0]}" >> "$GITHUB_ENV"
+
+      # Release, matching the `build` job, and separately from the runs below
+      # so the harness's own build time is not counted as a scenario's.
+      - name: Build the harness
+        shell: bash
+        run: |
+          dotnet restore OathAndCoin.sln
+          dotnet build tools/OathAndCoin.Harness/OathAndCoin.Harness.csproj -c Release --no-restore
+
+      # 1920x1080 rather than 1280x720: the window the run asks for is exactly
+      # 1280x720, and a screen of exactly that size leaves no room for a
+      # window manager's idea of a usable rect. There is no window manager
+      # under Xvfb, so the window gets the size it asked for — the verdict
+      # checks that, and a resized window fails it.
+      #
+      # --timeout 120 rather than the default 60: llvmpipe is several times
+      # slower to bring up a context than a real GPU, and the measurement this
+      # job exists for is the wall clock, not how close it sails to a limit.
+      - name: Runtime smoke — gate0
+        id: smoke_gate0
+        shell: bash
+        run: |
+          xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
+            dotnet run --project tools/OathAndCoin.Harness -c Release --no-build -- \
+            run-smoke --scenario gate0 --godot "$GODOT" --timeout 120
+
+      # always(), because a failed gate0 says nothing about whether the error
+      # screen still comes up, and the cost this job is measuring is what both
+      # scenarios cost together. Guarded on the first scenario having run at
+      # all, so a job that died at the download does not report a second
+      # failure that is really the first one again.
+      - name: Runtime smoke — content_error
+        id: smoke_content_error
+        if: always() && steps.smoke_gate0.outcome != 'skipped'
+        shell: bash
+        run: |
+          xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
+            dotnet run --project tools/OathAndCoin.Harness -c Release --no-build -- \
+            run-smoke --scenario content_error --godot "$GODOT" --timeout 120
+
+      # The numbers a reader of this job wants — which engine ran, how long
+      # each phase took, the frame's hash and how many colours it held — are
+      # already in each run's report.json. Quoted into the log and the job
+      # summary so they can be read without downloading the artifact, and so
+      # two runs of this workflow can be compared line by line.
+      - name: Summarise the runs
+        if: always() && steps.smoke_gate0.outcome != 'skipped'
+        shell: bash
+        run: |
+          shopt -s nullglob
+          reports=(artifacts/smoke/*/*/latest-attempt.json)
+          if [ "${#reports[@]}" -eq 0 ]; then
+            echo "::warning::No run published a report."
+            exit 0
+          fi
+
+          for report in "${reports[@]}"; do
+            jq -r '
+              "### \(.scenario) / \(.checkpoint)",
+              "",
+              "- verdict: \(.verdict.passed)",
+              "- reasons: \(.verdict.reasons | if length == 0 then "none" else join(" | ") end)",
+              "- engine: \(.engine.version // "n/a") sha256=\(.engine.sha256 // "n/a")",
+              "- sdk: \(.sdk_version // "n/a")",
+              "- frame: \(.actual.frame.width)x\(.actual.frame.height) \(.actual.frame.byte_length) bytes sha256=\(.actual.frame.sha256)",
+              "- distinct colours: \(.actual.terminal_event.frame_distinct_colors // "n/a")",
+              "- phases: \([.phases[] | "\(.id)=\(.duration_ms)ms/\(.verdict)"] | join(" "))",
+              ""
+            ' "$report" | tee -a "$GITHUB_STEP_SUMMARY"
+          done
+
+      # Same rule as the evidence upload above: published when there is
+      # something to publish, and a failed run is exactly when the frame and
+      # the log are worth reading.
+      - name: Upload runtime evidence
+        if: always() && steps.smoke_gate0.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-smoke-evidence
+          path: artifacts/smoke/
+          if-no-files-found: error
