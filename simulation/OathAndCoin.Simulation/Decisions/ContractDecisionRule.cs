@@ -67,31 +67,58 @@ public static class ContractDecisionRule
         ImmutableArray.Create(Actions.Accept, Actions.Decline);
 
     /// <summary>
-    /// Decides whether <paramref name="hero"/> takes
-    /// <paramref name="contract"/>.
+    /// Decides whether the hero in <paramref name="context"/> takes its
+    /// contract.
     /// </summary>
-    /// <param name="campaignSeed">From <see cref="GameMetadata.CampaignSeed"/>.</param>
-    /// <param name="decisionOrdinal">
-    /// From <see cref="GameMetadata.NextDecisionOrdinal"/> — never a counter
-    /// this type keeps. Randomness is a pure function of
-    /// (seed, stream, ordinal), which is what makes the same state and the
-    /// same command reproduce the same decision without anything having to
-    /// remember anything.
-    /// </param>
-    /// <param name="traceId">
-    /// From <see cref="GameMetadata.NextTraceId"/>: the id the explanation
-    /// will be stored under, so the event that carries the decision can point
-    /// at it.
-    /// </param>
-    public static HeroDecision Decide(
-        HeroState hero,
-        ContractState contract,
-        ulong campaignSeed,
-        ulong decisionOrdinal,
-        long traceId)
+    /// <remarks>
+    /// The gate runs first, before any arithmetic: a violated principle
+    /// (<see cref="ReasonCodes.PrincipleForbids"/>) closes the decision on the
+    /// spot, with no score and no mood draw. Nothing after the gate can
+    /// overturn it, because nothing after the gate runs at all — a red line
+    /// is not a very large negative contribution that money could outweigh,
+    /// it is the absence of a sum to outweigh (spec §3.2).
+    /// </remarks>
+    public static HeroDecision Decide(DecisionContext context)
     {
-        ArgumentNullException.ThrowIfNull(hero);
-        ArgumentNullException.ThrowIfNull(contract);
+        ArgumentNullException.ThrowIfNull(context);
+
+        AssertTraitsAreSortedById(context.Traits);
+
+        var blocks = ImmutableArray.CreateBuilder<TraceBlock>();
+        foreach (var trait in context.Traits)
+        {
+            if (trait.IsPrinciple && context.Contract.Tags.Contains(trait.Tag))
+            {
+                blocks.Add(new TraceBlock(ReasonCodes.PrincipleForbids, trait.Id));
+            }
+        }
+
+        if (blocks.Count > 0)
+        {
+            var blockedResult = new DecisionResult
+            {
+                SelectedAction = Actions.Decline,
+                ConsideredActions = Considered,
+                SelectedScore = null,
+                Trace = new CausalTrace
+                {
+                    TraceId = context.TraceId,
+                    PositiveFactors = ImmutableArray<TraceFactor>.Empty,
+                    NegativeFactors = ImmutableArray<TraceFactor>.Empty,
+                    BlockedBy = blocks.ToImmutable(),
+                },
+            };
+
+            // No mood draw happened on this path: a decision the gate closes
+            // must not spend randomness it never needed (spec §3.2).
+            return new HeroDecision(blockedResult, 0);
+        }
+
+        var hero = context.Hero;
+        var contract = context.Contract;
+        var campaignSeed = context.CampaignSeed;
+        var decisionOrdinal = context.DecisionOrdinal;
+        var traceId = context.TraceId;
 
         var paymentPull = contract.Payment * hero.Greed / 100;
         var riskAversion = contract.Risk * hero.Caution / 100;
@@ -159,4 +186,26 @@ public static class ContractDecisionRule
     /// </summary>
     internal static Int32Draw DrawMood(ulong campaignSeed, ulong ordinal) =>
         DeterministicRng.DrawInt32(campaignSeed, RngStream.HeroDecision, ordinal, MoodMin, MoodMax + 1);
+
+    /// <summary>
+    /// The order principles are checked in is the order blocks appear in the
+    /// trace, and that order is a canonical artifact — so it is checked here,
+    /// not assumed, on every call. A plain
+    /// <see cref="System.Diagnostics.Debug.Assert(bool)"/> would compile away
+    /// entirely under a Release build, which is exactly the configuration the
+    /// canonical artifact is produced under.
+    /// </summary>
+    private static void AssertTraitsAreSortedById(ImmutableArray<HeldTrait> traits)
+    {
+        for (var i = 1; i < traits.Length; i++)
+        {
+            if (traits[i].Id.CompareTo(traits[i - 1].Id) <= 0)
+            {
+                throw new ArgumentException(
+                    $"DecisionContext.Traits must be strictly sorted by Id; "
+                    + $"'{traits[i - 1].Id}' is not before '{traits[i].Id}'.",
+                    nameof(traits));
+            }
+        }
+    }
 }

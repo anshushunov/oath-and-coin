@@ -1,6 +1,8 @@
+using System.Collections.Immutable;
 using OathAndCoin.Simulation.Commands;
 using OathAndCoin.Simulation.Decisions;
 using OathAndCoin.Simulation.Events;
+using OathAndCoin.Simulation.Ids;
 using OathAndCoin.Simulation.State;
 
 namespace OathAndCoin.Simulation;
@@ -80,12 +82,26 @@ public sealed class SimulationEngine
             return CommandResult.Rejected(state, RejectionCodes.AlreadyResponded);
         }
 
-        var decision = ContractDecisionRule.Decide(
-            hero,
-            contract,
-            state.Metadata.CampaignSeed,
-            state.Metadata.NextDecisionOrdinal,
-            state.Metadata.NextTraceId);
+        // Traits and Crew are left empty here rather than resolved: resolving
+        // a hero's trait ids into HeldTrait needs the content each id names
+        // (TraitDefinition's Kind/Tag/Weight), and this engine has no
+        // ContentSet to resolve them against — wiring that lookup through is
+        // a later task's concern (see the plan). Until then the gate this
+        // context feeds is reachable and correct, just never fed a principle
+        // by this call site, and every existing test here carries heroes with
+        // no traits at all, so this is not yet a visible gap.
+        var context = new DecisionContext
+        {
+            Hero = hero,
+            Contract = contract,
+            Traits = ImmutableArray<HeldTrait>.Empty,
+            Crew = ImmutableSortedDictionary<HeroId, ContentId>.Empty,
+            CampaignSeed = state.Metadata.CampaignSeed,
+            DecisionOrdinal = state.Metadata.NextDecisionOrdinal,
+            TraceId = state.Metadata.NextTraceId,
+        };
+
+        var decision = ContractDecisionRule.Decide(context);
 
         var accepted = decision.Result.SelectedAction == Actions.Accept;
 
