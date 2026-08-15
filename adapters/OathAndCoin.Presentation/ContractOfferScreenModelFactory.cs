@@ -313,10 +313,28 @@ public static class ContractOfferScreenModelFactory
             hero.Value,
             heroDisplayNameKey,
             decision.SelectedAction.Value,
-            RankReasons(decision.Trace),
+            RankReasons(decision.Trace, heroDisplayNameKeys),
             BlockedByEntity: null,
             Wavered: ComputeWavered(decision));
     }
+
+    /// <summary>
+    /// Reason codes whose <see cref="TraceFactor.SourceEntity"/> is always a
+    /// trait id (<see cref="ContractDecisionRule.Decide"/>'s own inclination
+    /// walk: <c>trait.Id</c>, never anything else) — see
+    /// <see cref="ResolveSourceDisplayNameKey"/>.
+    /// </summary>
+    private static readonly ImmutableHashSet<string> TraitSourcedReasonCodes = ImmutableHashSet.Create(
+        StringComparer.Ordinal, ReasonCodes.PersonalConviction, ReasonCodes.PersonalAversion);
+
+    /// <summary>
+    /// Reason codes whose source is always a comrade — a different hero,
+    /// never the one answering (<see cref="ContractDecisionRule.Decide"/>'s
+    /// own bonds walk: <c>comrade</c>, resolved through <c>Crew</c>, which
+    /// that method itself never lets hold anyone absent from the roster).
+    /// </summary>
+    private static readonly ImmutableHashSet<string> ComradeSourcedReasonCodes = ImmutableHashSet.Create(
+        StringComparer.Ordinal, ReasonCodes.StandsWithComrade, ReasonCodes.WillNotWorkWith);
 
     /// <summary>
     /// Reasons in the order a player reads them: strongest factor first,
@@ -331,15 +349,65 @@ public static class ContractOfferScreenModelFactory
     /// the reasons shown are always the strongest, never whichever three the
     /// trace happened to compute first.
     /// </summary>
-    private static ImmutableArray<ReasonLine> RankReasons(CausalTrace trace) =>
+    private static ImmutableArray<ReasonLine> RankReasons(
+        CausalTrace trace, IReadOnlyDictionary<string, string> heroDisplayNameKeys) =>
         trace.PositiveFactors
             .Concat(trace.NegativeFactors)
             .OrderByDescending(factor => factor.Magnitude)
             .ThenBy(factor => factor.ReasonCode, StringComparer.Ordinal)
             .ThenBy(factor => factor.SourceEntity)
             .Take(MaxReasons)
-            .Select(factor => new ReasonLine(factor.ReasonCode, factor.SourceEntity.Value, QualitativeScale.ForMagnitude(factor.Magnitude)))
+            .Select(factor => new ReasonLine(
+                factor.ReasonCode,
+                factor.SourceEntity.Value,
+                QualitativeScale.ForMagnitude(factor.Magnitude),
+                ResolveSourceDisplayNameKey(factor, heroDisplayNameKeys)))
             .ToImmutableArray();
+
+    /// <summary>
+    /// The fact <see cref="ReasonLine.SourceDisplayNameKey"/>'s own remarks
+    /// promise is a model fact, not a screen branch: whether a reason's
+    /// source is worth naming depends only on which kind of thing
+    /// <see cref="TraceFactor.SourceEntity"/> names, and this is the one
+    /// place that classification lives, closed over
+    /// <see cref="ContractDecisionRule.Decide"/>'s own five source shapes
+    /// (contract, the responding hero itself, a trait, a comrade — the
+    /// fifth, a blocking principle, never reaches here at all; see
+    /// <see cref="ToResponseLine"/>). Contract- and self-sourced reasons
+    /// resolve to <c>null</c>: both are already named elsewhere on the same
+    /// screen (<see cref="ContractLine.DisplayNameKey"/>,
+    /// <see cref="ResponseLine.HeroDisplayNameKey"/>), so repeating either
+    /// here would not explain anything a player does not already see.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// The reason names a comrade absent from <paramref name="heroDisplayNameKeys"/> —
+    /// a content-loading or roster-building bug (see
+    /// <see cref="ContractDecisionRule.Decide"/>'s own, identical guarantee
+    /// for <c>Crew</c>), not a comrade with no name.
+    /// </exception>
+    private static string? ResolveSourceDisplayNameKey(
+        TraceFactor factor, IReadOnlyDictionary<string, string> heroDisplayNameKeys)
+    {
+        if (TraitSourcedReasonCodes.Contains(factor.ReasonCode))
+        {
+            return TraitDisplayNameKey(factor.SourceEntity);
+        }
+
+        if (ComradeSourcedReasonCodes.Contains(factor.ReasonCode))
+        {
+            return heroDisplayNameKeys.TryGetValue(factor.SourceEntity.Value, out var key)
+                ? key
+                : throw new InvalidOperationException(
+                    $"Reason '{factor.ReasonCode}' names comrade '{factor.SourceEntity.Value}' as its source, "
+                    + "but the roster this factory built has no display-name key for it — a content-loading "
+                    + "or roster-building bug, not a comrade with no name.");
+        }
+
+        // PaymentAttractive/RiskTooHigh/PaymentInsulting name the contract;
+        // TrustsTheGuild/UnpredictableMood name the responding hero itself.
+        // Both are already on screen under their own key.
+        return null;
+    }
 
     /// <summary>
     /// Whether this hero's mood flipped the answer the rest of the factors
@@ -409,5 +477,6 @@ public static class ContractOfferScreenModelFactory
         ["reason_code"] = reason.ReasonCode,
         ["source_entity"] = reason.SourceEntity,
         ["strength"] = reason.Strength.ToString(),
+        ["source_display_name_key"] = reason.SourceDisplayNameKey,
     };
 }

@@ -61,7 +61,25 @@ public enum ScreenState
 /// translated by <see cref="QualitativeScale.ForMagnitude"/> — never the raw
 /// integer.
 /// </param>
-public sealed record ReasonLine(string ReasonCode, string SourceEntity, QualitativeGrade Strength);
+/// <param name="SourceDisplayNameKey">
+/// A localization key naming <paramref name="SourceEntity"/> in a way a
+/// player reads, or <c>null</c> when the source adds nothing the screen has
+/// not already said. Spec §5.2, verbatim: "Название черты в объяснении
+/// берётся не из кода причины, а из <c>SourceEntity</c>: код говорит, чем
+/// мотив является, источник — чей он" — <see cref="ReasonCode"/> alone
+/// cannot distinguish, say, which of a hero's two convictions
+/// (<see cref="OathAndCoin.Simulation.Decisions.ReasonCodes.PersonalConviction"/>)
+/// actually fired. <c>null</c> exactly for the reason codes whose own source
+/// is always the offered contract or the responding hero itself — both
+/// already named on screen (<see cref="ContractLine.DisplayNameKey"/>,
+/// <see cref="ResponseLine.HeroDisplayNameKey"/>), so naming them again here
+/// would repeat, not explain. Which codes fall on which side of that line is
+/// <see cref="ContractOfferScreenModelFactory"/>'s own fact about the model,
+/// not a choice the screen makes by branching on <see cref="ReasonCode"/> —
+/// see its remarks.
+/// </param>
+public sealed record ReasonLine(
+    string ReasonCode, string SourceEntity, QualitativeGrade Strength, string? SourceDisplayNameKey);
 
 /// <summary>
 /// One hero in the roster, as the screen shows them: qualitative traits, and

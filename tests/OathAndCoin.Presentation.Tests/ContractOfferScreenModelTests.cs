@@ -427,6 +427,7 @@ public class ContractOfferScreenModelTests
             { "reason-code", normal, WithResponse(normal, acceptResponse with { Reasons = acceptResponse.Reasons.SetItem(0, reason with { ReasonCode = "other" }) }) },
             { "reason-source-entity", normal, WithResponse(normal, acceptResponse with { Reasons = acceptResponse.Reasons.SetItem(0, reason with { SourceEntity = "core:other" }) }) },
             { "reason-strength", normal, WithResponse(normal, acceptResponse with { Reasons = acceptResponse.Reasons.SetItem(0, reason with { Strength = QualitativeGrade.Extreme }) }) },
+            { "reason-source-display-name-key", normal, WithResponse(normal, acceptResponse with { Reasons = acceptResponse.Reasons.SetItem(0, reason with { SourceDisplayNameKey = "trait.extra" }) }) },
         };
     }
 
@@ -509,6 +510,11 @@ public class ContractOfferScreenModelTests
                 Assert.Contains(catalogue[reason.ReasonCode], snapshot.Texts);
                 Assert.Contains(catalogue[QualitativeScale.KeyFor(reason.Strength)], snapshot.Texts);
                 Assert.DoesNotContain(reason.SourceEntity, snapshot.Texts);
+
+                if (reason.SourceDisplayNameKey is not null)
+                {
+                    Assert.Contains(catalogue[reason.SourceDisplayNameKey], snapshot.Texts);
+                }
             }
 
             if (response.BlockedByEntity is not null)
@@ -516,6 +522,12 @@ public class ContractOfferScreenModelTests
                 Assert.DoesNotContain(response.BlockedByEntity, snapshot.Texts);
             }
         }
+
+        // Positive control (spec §5.2): the fixture's trait-sourced reason
+        // must actually resolve to its own trait's name, not merely "some
+        // key or other happened to be null and the loop above never ran".
+        Assert.Contains("trait.core.loyal_to_the_merchant_guild.name", catalogue.Keys);
+        Assert.Contains(catalogue["trait.core.loyal_to_the_merchant_guild.name"], snapshot.Texts);
     }
 
     [Fact]
@@ -585,7 +597,19 @@ public class ContractOfferScreenModelTests
                 "core:bram",
                 "hero.core.bram.name",
                 "action:accept",
-                ImmutableArray.Create(new ReasonLine(ReasonCodes.PaymentAttractive, "core:escort_the_caravan", QualitativeGrade.High)),
+                ImmutableArray.Create(
+                    // Contract-sourced: SourceDisplayNameKey null, the
+                    // contract is already named on screen (Critical, round 3).
+                    new ReasonLine(
+                        ReasonCodes.PaymentAttractive, "core:escort_the_caravan", QualitativeGrade.High,
+                        SourceDisplayNameKey: null),
+
+                    // Trait-sourced: SourceDisplayNameKey names the specific
+                    // conviction — ReasonCode alone only says "some
+                    // conviction fired", not which of a hero's several.
+                    new ReasonLine(
+                        ReasonCodes.PersonalConviction, "core:loyal_to_the_merchant_guild", QualitativeGrade.Low,
+                        SourceDisplayNameKey: "trait.core.loyal_to_the_merchant_guild.name")),
                 null,
                 false),
             new ResponseLine(
@@ -710,7 +734,33 @@ public class ContractOfferScreenModelTests
                 Trace = trace,
             };
 
-            return Single(Hero(0, "kestrel"), decision);
+            // Unlike Single's other callers, this fixture's comrades — zara
+            // and doran, StandsWithComrade's own SourceEntity above — have to
+            // actually be in the roster: Task 12 review (Critical, round 3)
+            // resolves a comrade-sourced reason's display name by looking it
+            // up there, exactly like ContractDecisionRule.Decide's own Crew
+            // lookup already requires of a real AcceptedBy entry (see its
+            // remarks). A comrade absent from state.Heroes is not a shape a
+            // real decision ever produces, so this fixture is made to match
+            // that instead of the factory being made to tolerate a shape
+            // that cannot happen.
+            var kestrel = Hero(0, "kestrel");
+            var heroes = ImmutableSortedDictionary.CreateRange(new[]
+            {
+                new KeyValuePair<HeroId, HeroState>(kestrel.Id, kestrel),
+                new KeyValuePair<HeroId, HeroState>(new HeroId(1), Hero(1, "zara")),
+                new KeyValuePair<HeroId, HeroState>(new HeroId(2), Hero(2, "doran")),
+            });
+
+            var contracts = ImmutableSortedDictionary.CreateRange(new[]
+            {
+                new KeyValuePair<ContentId, ContractState>(Contract, BuildContract()),
+            });
+
+            var state = BuildState(heroes, contracts);
+            var step = Step(0, kestrel.Id.Value, Contract, kestrel.Definition, decision);
+
+            return new ScenarioOutcome(state, ImmutableArray.Create(step));
         }
 
         public static ScenarioOutcome ManyReasons()

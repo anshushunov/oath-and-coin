@@ -113,6 +113,12 @@ public sealed record RenderedUiSnapshot(ImmutableArray<string> Texts)
             foreach (var reason in response.Reasons)
             {
                 texts.Add(Resolve(catalogue, reason.ReasonCode));
+
+                if (reason.SourceDisplayNameKey is not null)
+                {
+                    texts.Add(Resolve(catalogue, reason.SourceDisplayNameKey));
+                }
+
                 texts.Add(Resolve(catalogue, QualitativeScale.KeyFor(reason.Strength)));
             }
 

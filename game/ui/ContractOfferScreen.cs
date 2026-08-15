@@ -29,10 +29,15 @@ namespace OathAndCoin.Game.Ui;
 /// the screen-state key, a display-name key (including
 /// <see cref="ResponseLine.HeroDisplayNameKey"/>, joined onto a response by
 /// its hero's own id rather than carried as one — see that field's remarks),
-/// a tag key, a reason code, an action, whether the hero wavered, the error
-/// code, and a <see cref="QualitativeGrade"/> by way of
-/// <see cref="QualitativeScale.KeyFor"/> — is resolved to player-facing text
-/// before it becomes a <see cref="Label"/>. A field that carries a raw
+/// a tag key, a reason code, a reason's own source name when it has one
+/// worth showing (<see cref="ReasonLine.SourceDisplayNameKey"/> — <c>null</c>
+/// for the codes whose source is already on screen some other way, per that
+/// field's remarks; this screen shows it exactly when it is not null, which
+/// is a branch on that model fact, never on <see cref="ReasonLine.ReasonCode"/>
+/// itself), an action, whether the hero wavered, the error code, and a
+/// <see cref="QualitativeGrade"/> by way of <see cref="QualitativeScale.KeyFor"/> —
+/// is resolved to player-facing text before it becomes a <see cref="Label"/>.
+/// A field that carries a raw
 /// content id purely for the model's own bookkeeping
 /// (<see cref="ContractLine.Definition"/>, <see cref="HeroCard.Definition"/>,
 /// <see cref="ResponseLine.HeroDefinition"/>, <see cref="ReasonLine.SourceEntity"/>,
@@ -198,6 +203,19 @@ public sealed partial class ContractOfferScreen : VBoxContainer
         foreach (var reason in response.Reasons)
         {
             block.AddChild(BuildLabel(textSource.Resolve(reason.ReasonCode)));
+
+            // A branch on whether this specific reason carries a source
+            // worth naming — a model fact (ReasonLine.SourceDisplayNameKey),
+            // never a branch on reason.ReasonCode itself. See that field's
+            // remarks: PaymentAttractive/RiskTooHigh name the contract,
+            // TrustsTheGuild/UnpredictableMood name the responding hero,
+            // both already on screen, so the factory leaves this null for
+            // them rather than the screen deciding to skip it by code.
+            if (reason.SourceDisplayNameKey is not null)
+            {
+                block.AddChild(BuildLabel(textSource.Resolve(reason.SourceDisplayNameKey)));
+            }
+
             block.AddChild(BuildLabel(textSource.Resolve(QualitativeScale.KeyFor(reason.Strength))));
         }
 
