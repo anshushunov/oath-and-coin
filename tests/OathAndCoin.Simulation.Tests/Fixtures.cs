@@ -327,21 +327,21 @@ internal static class Fixtures
         ImmutableSortedSet<ContentId> tags,
         ImmutableSortedDictionary<ContentId, HeldTrait>? traitRules = null,
         ulong nextDecisionOrdinal = 0) => new()
-    {
-        Metadata = new GameMetadata
         {
-            SaveSchemaVersion = 1,
-            RulesetVersion = "test-ruleset",
-            ContentVersion = "test-content",
-            CampaignSeed = CampaignSeed,
-            StateVersion = 0,
-            LogicalTime = 0,
-            NextEventId = 0,
-            NextTraceId = 0,
-            NextDecisionOrdinal = nextDecisionOrdinal,
-        },
-        Heroes = heroes,
-        Contracts = ImmutableSortedDictionary.CreateRange(new[]
+            Metadata = new GameMetadata
+            {
+                SaveSchemaVersion = 1,
+                RulesetVersion = "test-ruleset",
+                ContentVersion = "test-content",
+                CampaignSeed = CampaignSeed,
+                StateVersion = 0,
+                LogicalTime = 0,
+                NextEventId = 0,
+                NextTraceId = 0,
+                NextDecisionOrdinal = nextDecisionOrdinal,
+            },
+            Heroes = heroes,
+            Contracts = ImmutableSortedDictionary.CreateRange(new[]
         {
             KeyValuePair.Create(ContractId, new ContractState
             {
@@ -355,8 +355,8 @@ internal static class Fixtures
                 AcceptedBy = ImmutableSortedSet<HeroId>.Empty,
             }),
         }),
-        TraitRules = traitRules ?? ImmutableSortedDictionary<ContentId, HeldTrait>.Empty,
-        Traces = ImmutableSortedDictionary<long, CausalTrace>.Empty,
-        History = ImmutableArray<DomainEvent>.Empty,
-    };
+            TraitRules = traitRules ?? ImmutableSortedDictionary<ContentId, HeldTrait>.Empty,
+            Traces = ImmutableSortedDictionary<long, CausalTrace>.Empty,
+            History = ImmutableArray<DomainEvent>.Empty,
+        };
 }

@@ -405,17 +405,17 @@ public class ReplayDeterminismTests
         int pride = 1,
         ImmutableArray<ContentId>? traits = null,
         ImmutableSortedDictionary<ContentId, int>? relationships = null) => new()
-    {
-        Id = new HeroId(0),
-        Definition = ContentId.Parse("core:hero_0"),
-        DisplayNameKey = "hero.test.minimal.name",
-        Greed = 0,
-        Caution = 0,
-        Pride = pride,
-        TrustInGuild = 0,
-        Traits = traits ?? ImmutableArray<ContentId>.Empty,
-        Relationships = relationships ?? ImmutableSortedDictionary<ContentId, int>.Empty,
-    };
+        {
+            Id = new HeroId(0),
+            Definition = ContentId.Parse("core:hero_0"),
+            DisplayNameKey = "hero.test.minimal.name",
+            Greed = 0,
+            Caution = 0,
+            Pride = pride,
+            TrustInGuild = 0,
+            Traits = traits ?? ImmutableArray<ContentId>.Empty,
+            Relationships = relationships ?? ImmutableSortedDictionary<ContentId, int>.Empty,
+        };
 
     // RespondedBy is pinned to the same one-hero set across every call
     // (including the AcceptedBy-only fixture above) so that varying
@@ -424,16 +424,16 @@ public class ReplayDeterminismTests
         int requiredCrew = 1,
         ImmutableSortedSet<ContentId>? tags = null,
         ImmutableSortedSet<HeroId>? acceptedBy = null) => new()
-    {
-        Id = ContentId.Parse("core:contract_0"),
-        Payment = 0,
-        Risk = 0,
-        RequiredCrew = requiredCrew,
-        Tags = tags ?? ImmutableSortedSet<ContentId>.Empty,
-        Status = ContractStatus.Offered,
-        RespondedBy = ImmutableSortedSet.Create(new HeroId(0)),
-        AcceptedBy = acceptedBy ?? ImmutableSortedSet<HeroId>.Empty,
-    };
+        {
+            Id = ContentId.Parse("core:contract_0"),
+            Payment = 0,
+            Risk = 0,
+            RequiredCrew = requiredCrew,
+            Tags = tags ?? ImmutableSortedSet<ContentId>.Empty,
+            Status = ContractStatus.Offered,
+            RespondedBy = ImmutableSortedSet.Create(new HeroId(0)),
+            AcceptedBy = acceptedBy ?? ImmutableSortedSet<HeroId>.Empty,
+        };
 
     // Loaded once: the seed search below runs the scenario repeatedly, and
     // re-reading the same files each time would measure the filesystem rather

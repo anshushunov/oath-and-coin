@@ -1145,23 +1145,23 @@ public class ContractOfferScreenModelTests
         private static GameState BuildState(
             ImmutableSortedDictionary<HeroId, HeroState> heroes,
             ImmutableSortedDictionary<ContentId, ContractState> contracts) => new()
-        {
-            Metadata = new GameMetadata
             {
-                SaveSchemaVersion = 1,
-                RulesetVersion = "test/1",
-                ContentVersion = "test",
-                CampaignSeed = 1,
-                StateVersion = 0,
-                LogicalTime = 0,
-                NextEventId = 0,
-                NextTraceId = 0,
-                NextDecisionOrdinal = 0,
-            },
-            Heroes = heroes,
-            Contracts = contracts,
-            Traces = ImmutableSortedDictionary<long, CausalTrace>.Empty,
-            History = ImmutableArray<DomainEvent>.Empty,
-        };
+                Metadata = new GameMetadata
+                {
+                    SaveSchemaVersion = 1,
+                    RulesetVersion = "test/1",
+                    ContentVersion = "test",
+                    CampaignSeed = 1,
+                    StateVersion = 0,
+                    LogicalTime = 0,
+                    NextEventId = 0,
+                    NextTraceId = 0,
+                    NextDecisionOrdinal = 0,
+                },
+                Heroes = heroes,
+                Contracts = contracts,
+                Traces = ImmutableSortedDictionary<long, CausalTrace>.Empty,
+                History = ImmutableArray<DomainEvent>.Empty,
+            };
     }
 }

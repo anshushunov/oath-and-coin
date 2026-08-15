@@ -21,65 +21,65 @@ public class DecisionPropertyTests
     public void RaisingPaymentNeverTurnsAcceptanceIntoRefusal()
     {
         foreach (var greed in Grid)
-        foreach (var caution in Grid)
-        foreach (var pride in Grid)
-        foreach (var risk in Grid)
-        foreach (var ordinal in new ulong[] { 0, 1, 2, 3 })
-        {
-            var accepted = false;
-            foreach (var payment in Grid)
-            {
-                var decision = ContractDecisionRule.Decide(
-                    Context(greed, caution, pride, payment, risk, ordinal));
-                var accepts = decision.Result.SelectedAction == Actions.Accept;
+            foreach (var caution in Grid)
+                foreach (var pride in Grid)
+                    foreach (var risk in Grid)
+                        foreach (var ordinal in new ulong[] { 0, 1, 2, 3 })
+                        {
+                            var accepted = false;
+                            foreach (var payment in Grid)
+                            {
+                                var decision = ContractDecisionRule.Decide(
+                                    Context(greed, caution, pride, payment, risk, ordinal));
+                                var accepts = decision.Result.SelectedAction == Actions.Accept;
 
-                Assert.False(
-                    accepted && !accepts,
-                    $"greed={greed} caution={caution} pride={pride} risk={risk} "
-                    + $"ordinal={ordinal}: raising payment to {payment} turned acceptance into refusal");
-                accepted |= accepts;
-            }
-        }
+                                Assert.False(
+                                    accepted && !accepts,
+                                    $"greed={greed} caution={caution} pride={pride} risk={risk} "
+                                    + $"ordinal={ordinal}: raising payment to {payment} turned acceptance into refusal");
+                                accepted |= accepts;
+                            }
+                        }
     }
 
     [Fact]
     public void RaisingRiskNeverTurnsRefusalIntoAcceptance()
     {
         foreach (var greed in Grid)
-        foreach (var caution in Grid)
-        foreach (var pride in Grid)
-        foreach (var payment in Grid)
-        foreach (var ordinal in new ulong[] { 0, 1, 2, 3 })
-        {
-            var refused = false;
-            foreach (var risk in Grid)
-            {
-                var decision = ContractDecisionRule.Decide(
-                    Context(greed, caution, pride, payment, risk, ordinal));
-                var refuses = decision.Result.SelectedAction == Actions.Decline;
+            foreach (var caution in Grid)
+                foreach (var pride in Grid)
+                    foreach (var payment in Grid)
+                        foreach (var ordinal in new ulong[] { 0, 1, 2, 3 })
+                        {
+                            var refused = false;
+                            foreach (var risk in Grid)
+                            {
+                                var decision = ContractDecisionRule.Decide(
+                                    Context(greed, caution, pride, payment, risk, ordinal));
+                                var refuses = decision.Result.SelectedAction == Actions.Decline;
 
-                Assert.False(
-                    refused && !refuses,
-                    $"greed={greed} caution={caution} pride={pride} payment={payment} "
-                    + $"ordinal={ordinal}: raising risk to {risk} turned refusal into acceptance");
-                refused |= refuses;
-            }
-        }
+                                Assert.False(
+                                    refused && !refuses,
+                                    $"greed={greed} caution={caution} pride={pride} payment={payment} "
+                                    + $"ordinal={ordinal}: raising risk to {risk} turned refusal into acceptance");
+                                refused |= refuses;
+                            }
+                        }
     }
 
     [Fact]
     public void PrincipleHoldsAtEveryPaymentAndRisk()
     {
         foreach (var payment in Grid)
-        foreach (var risk in Grid)
-        foreach (var trust in Grid)
-        {
-            var decision = ContractDecisionRule.Decide(ContextWithPrinciple(payment, risk, trust));
+            foreach (var risk in Grid)
+                foreach (var trust in Grid)
+                {
+                    var decision = ContractDecisionRule.Decide(ContextWithPrinciple(payment, risk, trust));
 
-            Assert.Equal(Actions.Decline, decision.Result.SelectedAction);
-            Assert.Null(decision.Result.SelectedScore);
-            Assert.Equal(0ul, decision.OrdinalsConsumed);
-        }
+                    Assert.Equal(Actions.Decline, decision.Result.SelectedAction);
+                    Assert.Null(decision.Result.SelectedScore);
+                    Assert.Equal(0ul, decision.OrdinalsConsumed);
+                }
     }
 
     /// <summary>
@@ -100,17 +100,17 @@ public class DecisionPropertyTests
     public void ConsideredActionsAlwaysWeighBothAcceptAndDecline()
     {
         foreach (var greed in Grid)
-        foreach (var caution in Grid)
-        foreach (var pride in Grid)
-        foreach (var payment in Grid)
-        foreach (var risk in Grid)
-        {
-            var result = ContractDecisionRule.Decide(
-                Context(greed, caution, pride, payment, risk, ordinal: 0)).Result;
+            foreach (var caution in Grid)
+                foreach (var pride in Grid)
+                    foreach (var payment in Grid)
+                        foreach (var risk in Grid)
+                        {
+                            var result = ContractDecisionRule.Decide(
+                                Context(greed, caution, pride, payment, risk, ordinal: 0)).Result;
 
-            Assert.Contains(Actions.Accept, result.ConsideredActions);
-            Assert.Contains(Actions.Decline, result.ConsideredActions);
-        }
+                            Assert.Contains(Actions.Accept, result.ConsideredActions);
+                            Assert.Contains(Actions.Decline, result.ConsideredActions);
+                        }
     }
 
     /// <summary>

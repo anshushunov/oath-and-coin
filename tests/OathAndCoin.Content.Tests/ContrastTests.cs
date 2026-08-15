@@ -77,9 +77,9 @@ public class ContrastTests
     {
         var declaredBackwards = ContrastDefinition.Load(RepositoryFixtures.Contrast("payment_raised"))
             with
-            {
-                Expect = "accept_to_decline",
-            };
+        {
+            Expect = "accept_to_decline",
+        };
 
         var result = ContrastRunner.Run(declaredBackwards);
 
