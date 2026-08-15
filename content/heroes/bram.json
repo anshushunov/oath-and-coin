@@ -1,8 +1,11 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "id": "core:bram",
   "display_name_key": "hero.core.bram.name",
   "greed": 60,
   "caution": 30,
-  "trust_in_guild": 50
+  "pride": 40,
+  "trust_in_guild": 50,
+  "traits": ["core:hates_the_cult"],
+  "relationships": [{ "hero": "core:zara", "weight": -8 }]
 }

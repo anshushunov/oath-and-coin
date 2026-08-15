@@ -64,6 +64,7 @@ public sealed class ContentSchemas
             {
                 KeyValuePair.Create("heroes", ReadSchema(root, "hero.schema.json")),
                 KeyValuePair.Create("contracts", ReadSchema(root, "contract.schema.json")),
+                KeyValuePair.Create("traits", ReadSchema(root, "trait.schema.json")),
             }));
     }
 

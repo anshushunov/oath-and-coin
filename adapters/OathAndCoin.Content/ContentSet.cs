@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Text.Json.Nodes;
 using OathAndCoin.Simulation.Decisions;
 using OathAndCoin.Simulation.Events;
 using OathAndCoin.Simulation.Ids;
@@ -40,21 +41,30 @@ public sealed class ContentSet
     /// independent statements of one rule are only safe while something checks
     /// that they still say the same thing.
     /// </remarks>
-    public const int SupportedContentSchemaVersion = 1;
+    public const int SupportedContentSchemaVersion = 2;
 
     private ContentSet(
         ImmutableSortedDictionary<ContentId, HeroDefinition> heroes,
         ImmutableSortedDictionary<ContentId, ContractDefinition> contracts,
+        ImmutableSortedDictionary<ContentId, TraitDefinition> traits,
         string contentVersion)
     {
         Heroes = heroes;
         Contracts = contracts;
+        Traits = traits;
         ContentVersion = contentVersion;
     }
 
     public ImmutableSortedDictionary<ContentId, HeroDefinition> Heroes { get; }
 
     public ImmutableSortedDictionary<ContentId, ContractDefinition> Contracts { get; }
+
+    /// <summary>
+    /// Traits authored as standalone content, keyed by id. Read before heroes
+    /// (see <see cref="Load"/>) because a hero's <c>traits</c> list names
+    /// these ids — whether every name resolves is Task 2's concern.
+    /// </summary>
+    public ImmutableSortedDictionary<ContentId, TraitDefinition> Traits { get; }
 
     /// <summary>
     /// A digest of the loaded files (see <see cref="ContentDigest"/>), not a
@@ -86,28 +96,47 @@ public sealed class ContentSet
 
         var seenIds = new Dictionary<ContentId, string>();
 
+        // Traits before heroes: a hero's `traits` list names these ids, and
+        // reading them first is what will let Task 2 resolve those names.
+        var traits = ImmutableSortedDictionary.CreateBuilder<ContentId, TraitDefinition>();
+        foreach (var (relativePath, file) in ReadFiles<TraitFile>(root, "traits"))
+        {
+            RequireUniqueId(seenIds, file.Id, relativePath);
+            traits.Add(file.Id, ReadTrait(file, relativePath));
+        }
+
         var heroes = ImmutableSortedDictionary.CreateBuilder<ContentId, HeroDefinition>();
         foreach (var (relativePath, file) in ReadFiles<HeroFile>(root, "heroes"))
         {
-            RequireSupportedSchemaVersion(file.SchemaVersion, relativePath);
             RequireUniqueId(seenIds, file.Id, relativePath);
             heroes.Add(file.Id, new HeroDefinition(
                 file.Id,
                 RequireLocalizationKey(file.DisplayNameKey, relativePath),
                 RequireInRange(file.Greed, ContentBounds.TraitMin, ContentBounds.TraitMax, "greed", relativePath),
                 RequireInRange(file.Caution, ContentBounds.TraitMin, ContentBounds.TraitMax, "caution", relativePath),
+                RequireInRange(file.Pride, ContentBounds.TraitMin, ContentBounds.TraitMax, "pride", relativePath),
                 RequireInRange(
                     file.TrustInGuild,
                     ContentBounds.TraitMin,
                     ContentBounds.TraitMax,
                     "trust_in_guild",
-                    relativePath)));
+                    relativePath),
+                RequireAtMost(file.Traits, ContentLimits.MaxTraitsPerHero, "traits", relativePath),
+                RequireAtMost(file.Relationships, ContentLimits.MaxRelationshipsPerHero, "relationships", relativePath)
+                    .Select(relationship => new HeroRelationship(
+                        relationship.Hero,
+                        RequireInRange(
+                            relationship.Weight,
+                            ContentBounds.RelationshipWeightMin,
+                            ContentBounds.RelationshipWeightMax,
+                            "weight",
+                            relativePath)))
+                    .ToImmutableArray()));
         }
 
         var contracts = ImmutableSortedDictionary.CreateBuilder<ContentId, ContractDefinition>();
         foreach (var (relativePath, file) in ReadFiles<ContractFile>(root, "contracts"))
         {
-            RequireSupportedSchemaVersion(file.SchemaVersion, relativePath);
             RequireUniqueId(seenIds, file.Id, relativePath);
             contracts.Add(file.Id, new ContractDefinition(
                 file.Id,
@@ -118,13 +147,66 @@ public sealed class ContentSet
                     ContentBounds.PaymentMax,
                     "payment",
                     relativePath),
-                RequireInRange(file.Risk, ContentBounds.RiskMin, ContentBounds.RiskMax, "risk", relativePath)));
+                RequireInRange(file.Risk, ContentBounds.RiskMin, ContentBounds.RiskMax, "risk", relativePath),
+                RequireInRange(
+                    file.RequiredCrew,
+                    ContentBounds.RequiredCrewMin,
+                    ContentBounds.RequiredCrewMax,
+                    "required_crew",
+                    relativePath),
+                RequireAtMost(file.Tags, ContentLimits.MaxTagsPerContract, "tags", relativePath)));
         }
 
         return new ContentSet(
             heroes.ToImmutable(),
             contracts.ToImmutable(),
+            traits.ToImmutable(),
             ContentDigest.Compute(root)[..ContentDigest.VersionLength]);
+    }
+
+    /// <summary>
+    /// Parses a trait file's on-disk <c>kind</c> string into a
+    /// <see cref="TraitKind"/> and enforces the rule that gives weight its
+    /// meaning: a principle never carries one (it closes the decision instead
+    /// of contributing to it), and an inclination always does.
+    /// </summary>
+    private static TraitDefinition ReadTrait(TraitFile file, string relativePath)
+    {
+        var kind = file.Kind switch
+        {
+            "inclination" => TraitKind.Inclination,
+            "principle" => TraitKind.Principle,
+            _ => throw new InvalidDataException(
+                $"Trait '{file.Id}' in '{relativePath}' declares unknown kind '{file.Kind}'; "
+                + "expected 'inclination' or 'principle'."),
+        };
+
+        if (kind == TraitKind.Principle && file.Weight is not null)
+        {
+            throw new InvalidDataException(
+                $"Trait '{file.Id}' in '{relativePath}' is a principle and must not declare weight: "
+                + "a red line closes the decision instead of contributing to it.");
+        }
+
+        if (kind == TraitKind.Inclination && file.Weight is null)
+        {
+            throw new InvalidDataException(
+                $"Trait '{file.Id}' in '{relativePath}' is an inclination and must declare weight.");
+        }
+
+        return new TraitDefinition(
+            file.Id,
+            RequireLocalizationKey(file.DisplayNameKey, relativePath),
+            kind,
+            file.Tag,
+            kind == TraitKind.Inclination
+                ? RequireInRange(
+                    file.Weight!.Value,
+                    ContentBounds.InclinationWeightMin,
+                    ContentBounds.InclinationWeightMax,
+                    "weight",
+                    relativePath)
+                : 0);
     }
 
     /// <summary>
@@ -217,8 +299,36 @@ public sealed class ContentSet
 
         foreach (var file in files)
         {
+            // The version is checked against a bare peek at the JSON, before
+            // the strict typed read: a file authored for an earlier version
+            // legitimately lacks fields this version's model requires, and
+            // deserializing it straight into that model would fail on the
+            // missing fields rather than report the version mismatch that
+            // actually explains them.
+            RequireSupportedSchemaVersion(PeekSchemaVersion(file.RelativePath, file.FullPath), file.RelativePath);
             yield return (file.RelativePath, StrictJson.ReadFile<TFile>(file.RelativePath, file.FullPath));
         }
+    }
+
+    /// <summary>
+    /// Reads only <c>schema_version</c> out of a file, without binding the
+    /// rest of it to any particular version's model. See the remark in
+    /// <see cref="ReadFiles{TFile}"/> for why this has to happen separately
+    /// from the strict typed read.
+    /// </summary>
+    private static int PeekSchemaVersion(string relativePath, string fullPath)
+    {
+        var node = StrictJson.ParseNode(relativePath, fullPath);
+        if (node is not JsonObject obj
+            || !obj.TryGetPropertyValue("schema_version", out var versionNode)
+            || versionNode is not JsonValue versionValue
+            || !versionValue.TryGetValue(out int version))
+        {
+            throw new InvalidDataException(
+                $"Content file '{relativePath}' has no integer 'schema_version' property.");
+        }
+
+        return version;
     }
 
     private static void RequireSupportedSchemaVersion(int schemaVersion, string relativePath)
@@ -256,6 +366,26 @@ public sealed class ContentSet
         }
 
         return value;
+    }
+
+    /// <summary>
+    /// Enforces a <see cref="ContentLimits"/> ceiling on a list a hero or
+    /// contract file declares — the same "reject rather than truncate"
+    /// stance <see cref="RequireInRange"/> takes on a scalar.
+    /// </summary>
+    private static ImmutableArray<T> RequireAtMost<T>(
+        ImmutableArray<T> values,
+        int max,
+        string propertyName,
+        string relativePath)
+    {
+        if (values.Length > max)
+        {
+            throw new InvalidDataException(
+                $"Content file '{relativePath}' has {values.Length} '{propertyName}', over the {max} limit.");
+        }
+
+        return values;
     }
 
     private static string RequireLocalizationKey(string value, string relativePath)

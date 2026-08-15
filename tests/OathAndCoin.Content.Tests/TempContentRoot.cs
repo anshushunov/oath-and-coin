@@ -24,6 +24,7 @@ internal sealed class TempContentRoot : IDisposable
 
         Directory.CreateDirectory(Path.Combine(root, "heroes"));
         Directory.CreateDirectory(Path.Combine(root, "contracts"));
+        Directory.CreateDirectory(Path.Combine(root, "traits"));
         return new TempContentRoot(root);
     }
 
@@ -48,9 +49,11 @@ internal sealed class TempContentRoot : IDisposable
         return copy;
     }
 
-    public void WriteHero(string fileName, string json) => Write("heroes", fileName, json);
+    public void WriteHero(string name, string json) => Write("heroes", name, json);
 
-    public void WriteContract(string fileName, string json) => Write("contracts", fileName, json);
+    public void WriteContract(string name, string json) => Write("contracts", name, json);
+
+    public void WriteTrait(string name, string json) => Write("traits", name, json);
 
     public string ReadHero(string fileName) => File.ReadAllText(Path.Combine(Root, "heroes", fileName));
 
@@ -69,10 +72,10 @@ internal sealed class TempContentRoot : IDisposable
         }
     }
 
-    private void Write(string subdirectory, string fileName, string json)
+    private void Write(string subdirectory, string name, string json)
     {
         var directory = Path.Combine(Root, subdirectory);
         Directory.CreateDirectory(directory);
-        File.WriteAllText(Path.Combine(directory, fileName), json);
+        File.WriteAllText(Path.Combine(directory, name + ".json"), json);
     }
 }

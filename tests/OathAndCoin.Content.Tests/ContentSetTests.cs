@@ -11,12 +11,15 @@ public class ContentSetTests
 {
     private const string ValidHeroJson = """
         {
-          "schema_version": 1,
+          "schema_version": 2,
           "id": "core:hilda",
           "display_name_key": "hero.core.hilda.name",
           "greed": 50,
           "caution": 50,
-          "trust_in_guild": 50
+          "pride": 50,
+          "trust_in_guild": 50,
+          "traits": [],
+          "relationships": []
         }
         """;
 
@@ -45,6 +48,125 @@ public class ContentSetTests
         Assert.Equal(50, contract.Risk);
     }
 
+    [Fact]
+    public void Load_ReadsTraitDefinitions()
+    {
+        using var root = TempContentRoot.CreateEmpty();
+        root.WriteTrait("hates_the_cult", """
+            {"schema_version":2,"id":"core:hates_the_cult","display_name_key":"trait.core.hates_the_cult.name",
+             "kind":"inclination","tag":"target:cult","weight":12}
+            """);
+
+        var content = ContentSet.Load(root.Root);
+
+        var trait = content.Traits[ContentId.Parse("core:hates_the_cult")];
+        Assert.Equal(TraitKind.Inclination, trait.Kind);
+        Assert.Equal(ContentId.Parse("target:cult"), trait.Tag);
+        Assert.Equal(12, trait.Weight);
+    }
+
+    [Fact]
+    public void Load_ReadsPrincipleWithoutWeight()
+    {
+        using var root = TempContentRoot.CreateEmpty();
+        root.WriteTrait("will_not_strike_a_temple", """
+            {"schema_version":2,"id":"core:will_not_strike_a_temple",
+             "display_name_key":"trait.core.will_not_strike_a_temple.name",
+             "kind":"principle","tag":"target:temple"}
+            """);
+
+        var trait = ContentSet.Load(root.Root).Traits[ContentId.Parse("core:will_not_strike_a_temple")];
+
+        Assert.Equal(TraitKind.Principle, trait.Kind);
+        Assert.Equal(0, trait.Weight);
+    }
+
+    [Fact]
+    public void Load_RejectsWeightOnPrinciple()
+    {
+        using var root = TempContentRoot.CreateEmpty();
+        root.WriteTrait("bad", """
+            {"schema_version":2,"id":"core:bad","display_name_key":"trait.core.bad.name",
+             "kind":"principle","tag":"target:temple","weight":5}
+            """);
+
+        var error = Assert.Throws<InvalidDataException>(() => ContentSet.Load(root.Root));
+
+        Assert.Contains("principle", error.Message, StringComparison.Ordinal);
+        Assert.Contains("weight", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Load_RejectsSchemaVersionOne()
+    {
+        using var root = TempContentRoot.CreateEmpty();
+        root.WriteHero("bram", """
+            {"schema_version":1,"id":"core:bram","display_name_key":"hero.core.bram.name",
+             "greed":60,"caution":30,"trust_in_guild":50}
+            """);
+
+        var error = Assert.Throws<InvalidDataException>(() => ContentSet.Load(root.Root));
+
+        Assert.Contains("version 2", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Load_ReadsHeroTraitsAndRelationships()
+    {
+        using var root = TempContentRoot.CreateEmpty();
+        root.WriteTrait("hates_the_cult", """
+            {"schema_version":2,"id":"core:hates_the_cult","display_name_key":"trait.core.hates_the_cult.name",
+             "kind":"inclination","tag":"target:cult","weight":12}
+            """);
+        root.WriteHero("bram", """
+            {"schema_version":2,"id":"core:bram","display_name_key":"hero.core.bram.name",
+             "greed":60,"caution":30,"pride":45,"trust_in_guild":50,
+             "traits":["core:hates_the_cult"],
+             "relationships":[{"hero":"core:zara","weight":-8}]}
+            """);
+
+        var hero = ContentSet.Load(root.Root).Heroes[ContentId.Parse("core:bram")];
+
+        Assert.Equal(45, hero.Pride);
+        Assert.Equal(ContentId.Parse("core:hates_the_cult"), Assert.Single(hero.Traits));
+        var bond = Assert.Single(hero.Relationships);
+        Assert.Equal(ContentId.Parse("core:zara"), bond.Hero);
+        Assert.Equal(-8, bond.Weight);
+    }
+
+    [Fact]
+    public void Load_ReadsContractTagsAndCrew()
+    {
+        using var root = TempContentRoot.CreateEmpty();
+        root.WriteContract("escort", """
+            {"schema_version":2,"id":"core:escort","display_name_key":"contract.core.escort.name",
+             "payment":40,"risk":50,"required_crew":4,"tags":["target:bandits","patron:merchant_guild"]}
+            """);
+
+        var contract = ContentSet.Load(root.Root).Contracts[ContentId.Parse("core:escort")];
+
+        Assert.Equal(4, contract.RequiredCrew);
+        Assert.Equal(
+            new[] { ContentId.Parse("patron:merchant_guild"), ContentId.Parse("target:bandits") },
+            contract.Tags.OrderBy(t => t).ToArray());
+    }
+
+    [Theory]
+    [InlineData("weight", -31)]
+    [InlineData("weight", 31)]
+    public void Load_RejectsInclinationWeightOutOfRange(string field, int value)
+    {
+        using var root = TempContentRoot.CreateEmpty();
+        root.WriteTrait("bad", $$"""
+            {"schema_version":2,"id":"core:bad","display_name_key":"trait.core.bad.name",
+             "kind":"inclination","tag":"target:cult","weight":{{value}}}
+            """);
+
+        var error = Assert.Throws<InvalidDataException>(() => ContentSet.Load(root.Root));
+
+        Assert.Contains(field, error.Message, StringComparison.Ordinal);
+    }
+
     /// <summary>
     /// Hero ids are assigned by content id, never by the order the filesystem
     /// happens to return files in — otherwise the same content would produce
@@ -58,24 +180,30 @@ public class ContentSetTests
 
         // File names deliberately in the opposite order to the ids they carry:
         // ordinal file order is aaa < zzz, content id order is core:bram < core:zara.
-        temp.WriteHero("aaa.json", """
+        temp.WriteHero("aaa", """
             {
-              "schema_version": 1,
+              "schema_version": 2,
               "id": "core:zara",
               "display_name_key": "hero.core.zara.name",
               "greed": 20,
               "caution": 80,
-              "trust_in_guild": 40
+              "pride": 50,
+              "trust_in_guild": 40,
+              "traits": [],
+              "relationships": []
             }
             """);
-        temp.WriteHero("zzz.json", """
+        temp.WriteHero("zzz", """
             {
-              "schema_version": 1,
+              "schema_version": 2,
               "id": "core:bram",
               "display_name_key": "hero.core.bram.name",
               "greed": 60,
               "caution": 30,
-              "trust_in_guild": 50
+              "pride": 50,
+              "trust_in_guild": 50,
+              "traits": [],
+              "relationships": []
             }
             """);
 
@@ -100,8 +228,8 @@ public class ContentSetTests
     public void Load_FailsOnDuplicateId()
     {
         using var temp = TempContentRoot.CreateEmpty();
-        temp.WriteHero("first.json", ValidHeroJson);
-        temp.WriteHero("second.json", ValidHeroJson);
+        temp.WriteHero("first", ValidHeroJson);
+        temp.WriteHero("second", ValidHeroJson);
 
         var exception = Assert.Throws<InvalidDataException>(() => ContentSet.Load(temp.Root));
 
@@ -120,14 +248,17 @@ public class ContentSetTests
     public void Load_FailsOnOutOfRangeValue()
     {
         using var temp = TempContentRoot.CreateEmpty();
-        temp.WriteHero("greedy.json", """
+        temp.WriteHero("greedy", """
             {
-              "schema_version": 1,
+              "schema_version": 2,
               "id": "core:hilda",
               "display_name_key": "hero.core.hilda.name",
               "greed": 500,
               "caution": 50,
-              "trust_in_guild": 50
+              "pride": 50,
+              "trust_in_guild": 50,
+              "traits": [],
+              "relationships": []
             }
             """);
 
@@ -142,14 +273,17 @@ public class ContentSetTests
     public void Load_FailsOnUnknownProperty()
     {
         using var temp = TempContentRoot.CreateEmpty();
-        temp.WriteHero("typo.json", """
+        temp.WriteHero("typo", """
             {
-              "schema_version": 1,
+              "schema_version": 2,
               "id": "core:hilda",
               "display_name_key": "hero.core.hilda.name",
               "greed": 50,
               "caution": 50,
+              "pride": 50,
               "trust_in_guild": 50,
+              "traits": [],
+              "relationships": [],
               "trust_in_gild": 50
             }
             """);
@@ -170,15 +304,15 @@ public class ContentSetTests
     public void Load_FailsOnUnsupportedSchemaVersion()
     {
         using var temp = TempContentRoot.CreateEmpty();
-        temp.WriteHero("future.json", ValidHeroJson.Replace(
-            "\"schema_version\": 1",
+        temp.WriteHero("future", ValidHeroJson.Replace(
             "\"schema_version\": 2",
+            "\"schema_version\": 3",
             StringComparison.Ordinal));
 
         var exception = Assert.Throws<InvalidDataException>(() => ContentSet.Load(temp.Root));
 
         Assert.Contains("future.json", exception.Message, StringComparison.Ordinal);
-        Assert.Contains("schema_version 2", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("schema_version 3", exception.Message, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -198,7 +332,7 @@ public class ContentSetTests
     public void Load_FailsOnOversizedFile()
     {
         using var temp = TempContentRoot.CreateEmpty();
-        temp.WriteHero("bloated.json", ValidHeroJson.Replace(
+        temp.WriteHero("bloated", ValidHeroJson.Replace(
             "\"display_name_key\": \"hero.core.hilda.name\"",
             "\"display_name_key\": \"" + new string('x', (int)ContentLimits.MaxFileSizeBytes) + "\"",
             StringComparison.Ordinal));
@@ -225,7 +359,7 @@ public class ContentSetTests
         // digest must not depend on where the tree lives.
         Assert.Equal(production, untouchedCopy);
 
-        copy.WriteHero("bram.json", copy.ReadHero("bram.json").Replace("\"greed\": 60", "\"greed\": 61", StringComparison.Ordinal));
+        copy.WriteHero("bram", copy.ReadHero("bram.json").Replace("\"greed\": 60", "\"greed\": 61", StringComparison.Ordinal));
 
         Assert.NotEqual(production, ContentSet.Load(copy.Root).ContentVersion);
     }

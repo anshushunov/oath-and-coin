@@ -37,6 +37,57 @@ public class SchemaAgreementTests
         Assert.Equal(ContentBounds.PaymentMax, ReadBound(schema, "payment", "maximum"));
         Assert.Equal(ContentBounds.RiskMin, ReadBound(schema, "risk", "minimum"));
         Assert.Equal(ContentBounds.RiskMax, ReadBound(schema, "risk", "maximum"));
+        Assert.Equal(ContentBounds.RequiredCrewMin, ReadBound(schema, "required_crew", "minimum"));
+        Assert.Equal(ContentBounds.RequiredCrewMax, ReadBound(schema, "required_crew", "maximum"));
+    }
+
+    [Fact]
+    public void TraitSchemaBounds_MatchContentBounds()
+    {
+        using var schema = OpenSchema("trait.schema.json");
+
+        Assert.Equal(ContentBounds.InclinationWeightMin, ReadBound(schema, "weight", "minimum"));
+        Assert.Equal(ContentBounds.InclinationWeightMax, ReadBound(schema, "weight", "maximum"));
+    }
+
+    [Fact]
+    public void HeroSchemaRelationshipBounds_MatchContentBounds()
+    {
+        using var schema = OpenSchema("hero.schema.json");
+
+        var weight = schema.RootElement
+            .GetProperty("properties")
+            .GetProperty("relationships")
+            .GetProperty("items")
+            .GetProperty("properties")
+            .GetProperty("weight");
+
+        Assert.Equal(ContentBounds.RelationshipWeightMin, weight.GetProperty("minimum").GetInt32());
+        Assert.Equal(ContentBounds.RelationshipWeightMax, weight.GetProperty("maximum").GetInt32());
+    }
+
+    [Fact]
+    public void HeroSchemaLimits_MatchContentLimits()
+    {
+        using var schema = OpenSchema("hero.schema.json");
+
+        Assert.Equal(
+            ContentLimits.MaxTraitsPerHero,
+            schema.RootElement.GetProperty("properties").GetProperty("traits").GetProperty("maxItems").GetInt32());
+        Assert.Equal(
+            ContentLimits.MaxRelationshipsPerHero,
+            schema.RootElement.GetProperty("properties").GetProperty("relationships")
+                .GetProperty("maxItems").GetInt32());
+    }
+
+    [Fact]
+    public void ContractSchemaLimits_MatchContentLimits()
+    {
+        using var schema = OpenSchema("contract.schema.json");
+
+        Assert.Equal(
+            ContentLimits.MaxTagsPerContract,
+            schema.RootElement.GetProperty("properties").GetProperty("tags").GetProperty("maxItems").GetInt32());
     }
 
     /// <summary>
@@ -48,7 +99,7 @@ public class SchemaAgreementTests
     [Fact]
     public void SchemaVersionConst_MatchesLoaderSupportedVersion()
     {
-        foreach (var schemaFile in new[] { "hero.schema.json", "contract.schema.json" })
+        foreach (var schemaFile in new[] { "hero.schema.json", "contract.schema.json", "trait.schema.json" })
         {
             using var schema = OpenSchema(schemaFile);
 
@@ -83,7 +134,7 @@ public class SchemaAgreementTests
 
         using var oversized = TempContentRoot.CreateEmpty();
         oversized.WriteHero(
-            "bloated.json",
+            "bloated",
             "{\"display_name_key\": \"" + new string('x', (int)ContentLimits.MaxFileSizeBytes) + "\"}");
 
         var oversizedViolation = Assert.Single(schemas.Validate(oversized.Root));
@@ -92,7 +143,7 @@ public class SchemaAgreementTests
 
         using var deep = TempContentRoot.CreateEmpty();
         var depth = ContentLimits.MaxJsonDepth + 8;
-        deep.WriteHero("deep.json", new string('[', depth) + new string(']', depth));
+        deep.WriteHero("deep", new string('[', depth) + new string(']', depth));
 
         var deepViolation = Assert.Single(schemas.Validate(deep.Root));
         Assert.Contains("deep.json", deepViolation.RelativePath, StringComparison.Ordinal);
@@ -114,14 +165,17 @@ public class SchemaAgreementTests
         // not "checked nothing". A validator that silently found no files to
         // validate would pass the assertion above forever (spec §8.3).
         using var temp = TempContentRoot.CreateEmpty();
-        temp.WriteHero("greedy.json", """
+        temp.WriteHero("greedy", """
             {
-              "schema_version": 1,
+              "schema_version": 2,
               "id": "core:hilda",
               "display_name_key": "hero.core.hilda.name",
               "greed": 500,
               "caution": 50,
-              "trust_in_guild": 50
+              "pride": 50,
+              "trust_in_guild": 50,
+              "traits": [],
+              "relationships": []
             }
             """);
 

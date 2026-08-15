@@ -23,4 +23,18 @@ public static class ContentBounds
 
     public const int RiskMin = 0;
     public const int RiskMax = 100;
+
+    public const int InclinationWeightMin = -30;
+    public const int InclinationWeightMax = 30;
+
+    public const int RelationshipWeightMin = -20;
+    public const int RelationshipWeightMax = 20;
+
+    public const int RequiredCrewMin = 1;
+    public const int RequiredCrewMax = 6;
+
+    // Pride deliberately gets no constants of its own: it is a hero scale,
+    // the same kind of value greed, caution and trust_in_guild are, so its
+    // range is TraitMin..TraitMax. A second pair of constants carrying the
+    // same numbers would drift from this one the first time either changed.
 }
