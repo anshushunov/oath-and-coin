@@ -31,7 +31,19 @@ namespace OathAndCoin.Presentation;
 /// paths on purpose: a binding mistake breaks the match precisely because
 /// nothing here can "know" what the game actually rendered.
 /// </remarks>
-/// <param name="Texts">Every shown text, in the order a reader encounters it.</param>
+/// <param name="Texts">
+/// Every shown text, in the order a depth-first walk of the control tree
+/// visits it — title, screen state, error, contract, then the whole roster,
+/// then every response line. Not "the order a reader encounters it": the
+/// screen lays the roster and the responses out as two columns side by side
+/// (see <c>ContractOfferScreen.Render</c>), so a person reads them
+/// interleaved while the walk still visits every roster label before every
+/// response label. The walk's order is what both sides agree on, and it is
+/// the only thing this list promises — which matters, because this list is
+/// the whole of the second hash: if it described what a reader sees, a pure
+/// layout change would have to move it, and the hash would be asserting
+/// something no code on either side computes.
+/// </param>
 public sealed record RenderedUiSnapshot(ImmutableArray<string> Texts)
 {
     // 0x1F (Unit Separator) cannot occur inside ordinary UTF-8 text produced

@@ -16,11 +16,13 @@ namespace OathAndCoin.Simulation.State;
 /// <see cref="ContractState.RequiredCrew"/> greater than one: it means the
 /// offer has recruited a full crew — every seat in
 /// <see cref="ContractState.AcceptedBy"/> filled — not merely that one hero
-/// among several said yes. Recruiting several heroes for the same offer, and
-/// only marking it <see cref="Crewed"/> once enough of them have accepted, is
-/// a later task's concern; this task only carries the fields
-/// (<see cref="ContractState.RequiredCrew"/>, <see cref="ContractState.AcceptedBy"/>)
-/// that rule will need.
+/// among several said yes. That rule is implemented — see
+/// <see cref="Simulation.SimulationEngine.Apply(GameState,Commands.ProposeContractToHero)"/>,
+/// which reads <see cref="ContractState.AcceptedBy"/>'s count against
+/// <see cref="ContractState.RequiredCrew"/> rather than the single acceptance
+/// in front of it, and <c>ScenarioCoverageTests.CrewFilled_StatusBecomesCrewedOnceEverySeatIsTaken</c>,
+/// which drives it end to end. This comment used to call it a later task's
+/// concern; that stopped being true in this milestone.
 /// </summary>
 public enum ContractStatus
 {
@@ -39,12 +41,12 @@ public sealed record ContractState
 
     /// <summary>
     /// How many heroes must accept before this offer is
-    /// <see cref="ContractStatus.Crewed"/> (spec §3.2).
+    /// <see cref="ContractStatus.Crewed"/> (HERO_DECISION_SPEC §1.5).
     /// </summary>
     public required int RequiredCrew { get; init; }
 
     /// <summary>
-    /// Content ids a hero's traits latch onto (spec §3.2). Identifiers, not
+    /// Content ids a hero's traits latch onto (HERO_DECISION_SPEC §1.5). Identifiers, not
     /// the <c>Content.TraitDefinition</c> objects the tags happen to name —
     /// same reason as <see cref="HeroState.Traits"/>.
     /// </summary>

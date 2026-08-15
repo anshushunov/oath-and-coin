@@ -64,7 +64,7 @@ public enum ScreenState
 /// <param name="SourceDisplayNameKey">
 /// A localization key naming <paramref name="SourceEntity"/> in a way a
 /// player reads, or <c>null</c> when the source adds nothing the screen has
-/// not already said. Spec §5.2, verbatim: "Название черты в объяснении
+/// not already said. HERO_DECISION_SPEC §3, verbatim: "Название черты в объяснении
 /// берётся не из кода причины, а из <c>SourceEntity</c>: код говорит, чем
 /// мотив является, источник — чей он" — <see cref="ReasonCode"/> alone
 /// cannot distinguish, say, which of a hero's two convictions
@@ -126,7 +126,7 @@ public sealed record HeroCard(
 /// At most three reasons, strongest first — see
 /// <see cref="ContractOfferScreenModelFactory"/>'s remarks on ranking. Empty
 /// exactly when <see cref="BlockedByEntity"/> is set: a red line closes the
-/// decision before any reason has a magnitude to rank (spec §3.2), so there
+/// decision before any reason has a magnitude to rank (HERO_DECISION_SPEC §2.2), so there
 /// is nothing here to show alongside it.
 /// </param>
 /// <param name="BlockedByEntity">
@@ -138,10 +138,10 @@ public sealed record HeroCard(
 /// (<see cref="ContractOfferScreenModelFactory.TraitDisplayNameKey"/> — the
 /// same trait catalogue lookup <see cref="ReasonLine.SourceDisplayNameKey"/>
 /// uses for a trait-sourced reason), or <c>null</c> exactly when
-/// <paramref name="BlockedByEntity"/> is. Spec §4, on why a block carries an
+/// <paramref name="BlockedByEntity"/> is. HERO_DECISION_SPEC §3, on why a block carries an
 /// entity at all: before that, a trace could say a principle fired but never
 /// which one, and a screen would have had to guess from the hero alone —
-/// inventing a reason, which TDD §11.1 forbids outright. Spec §5.2 keeps this
+/// inventing a reason, which TDD §11.1 forbids outright. HERO_DECISION_SPEC §4.2 keeps this
 /// line separate from <see cref="Reasons"/> so a player can tell "too risky"
 /// (a reason with a magnitude, weighed against everything else) from
 /// "will not do this at all" (a red line, weighed against nothing) — a
@@ -150,7 +150,7 @@ public sealed record HeroCard(
 /// <param name="Wavered">
 /// <c>true</c> when this hero's mood flipped the answer the rest of the
 /// factors alone would have given — never set for a blocked line, which
-/// never drew a mood at all (spec §3.2). See
+/// never drew a mood at all (HERO_DECISION_SPEC §2.2). See
 /// <see cref="ContractOfferScreenModelFactory"/>'s remarks for exactly how
 /// this is computed: it is arithmetic over the same trace that produced the
 /// decision, not a separate judgment call.

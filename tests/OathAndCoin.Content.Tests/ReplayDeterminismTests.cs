@@ -19,7 +19,7 @@ namespace OathAndCoin.Content.Tests;
 /// human-readable report is produced alongside it (see <see cref="SpikeReport"/>)
 /// and is deliberately not what determinism is checked on: a report is written
 /// for people, so it will be reworded, and comparing runs on it would make
-/// every rewording look like a determinism failure (spec §8.6).
+/// every rewording look like a determinism failure (AGENTS.md §11).
 /// </remarks>
 public class ReplayDeterminismTests
 {
@@ -151,13 +151,13 @@ public class ReplayDeterminismTests
     }
 
     [Fact]
-    public void Artifact_DeclaresVersionTwoAndTheMilestoneOneRuleset()
+    public void Artifact_DeclaresItsShapeVersionAndTheMilestoneOneRuleset()
     {
         var outcome = RepositoryFixtures.RunScenario("gate0", seed: 7);
 
         var json = DeterminismArtifact.ToCanonicalJson(outcome);
 
-        Assert.Contains("\"artifact_version\":2", json, StringComparison.Ordinal);
+        Assert.Contains("\"artifact_version\":3", json, StringComparison.Ordinal);
         Assert.Contains("\"ruleset_version\":\"m1-decision/1\"", json, StringComparison.Ordinal);
     }
 
@@ -376,7 +376,91 @@ public class ReplayDeterminismTests
             DeterminismArtifact.ToCanonicalJson(accepted));
     }
 
-    private static ScenarioOutcome MinimalOutcome(HeroState hero, ContractState contract)
+    /// <summary>
+    /// Review finding (branch-level): six mutators covered six fields and left
+    /// roughly fifteen others — every scalar on a hero, the whole metadata
+    /// block, the contract's own money and status — with nothing asserting
+    /// they reach the artifact at all. These four close the ones a decision
+    /// actually turns on.
+    /// </summary>
+    [Theory]
+    [InlineData("greed")]
+    [InlineData("caution")]
+    [InlineData("trust_in_guild")]
+    [InlineData("display_name_key")]
+    public void Artifact_DistinguishesHeroesThatDifferOnlyIn(string field)
+    {
+        var baseline = MinimalOutcome(MinimalHero(), MinimalContract());
+        var mutated = MinimalOutcome(MutateHero(MinimalHero(), field), MinimalContract());
+
+        Assert.NotEqual(
+            DeterminismArtifact.ToCanonicalJson(baseline),
+            DeterminismArtifact.ToCanonicalJson(mutated));
+    }
+
+    [Theory]
+    [InlineData("payment")]
+    [InlineData("risk")]
+    [InlineData("status")]
+    [InlineData("responded_by")]
+    public void Artifact_DistinguishesContractsThatDifferOnlyIn(string field)
+    {
+        var baseline = MinimalOutcome(MinimalHero(), MinimalContract());
+        var mutated = MinimalOutcome(MinimalHero(), MutateContract(MinimalContract(), field));
+
+        Assert.NotEqual(
+            DeterminismArtifact.ToCanonicalJson(baseline),
+            DeterminismArtifact.ToCanonicalJson(mutated));
+    }
+
+    /// <summary>
+    /// The rulebook every decision is weighed against
+    /// (<see cref="GameState.TraitRules"/>) was projected by nothing at all,
+    /// so two states differing only in what a trait means hashed identically
+    /// — a state no replay could reconstruct from its own artifact. Each of
+    /// the three fields a rule carries is varied on its own, so projecting
+    /// only the id would not satisfy this.
+    /// </summary>
+    [Theory]
+    [InlineData("tag")]
+    [InlineData("is_principle")]
+    [InlineData("weight")]
+    public void Artifact_DistinguishesTraitRulesThatDifferOnlyIn(string field)
+    {
+        var traitId = ContentId.Parse("core:some_trait");
+        var baseline = new HeldTrait(traitId, ContentId.Parse("target:bandits"), IsPrinciple: false, Weight: 5);
+        var mutated = field switch
+        {
+            "tag" => baseline with { Tag = ContentId.Parse("target:cult") },
+            "is_principle" => baseline with { IsPrinciple = true, Weight = 0 },
+            "weight" => baseline with { Weight = 6 },
+            _ => throw new ArgumentOutOfRangeException(nameof(field), field, "Unknown trait rule field."),
+        };
+
+        Assert.NotEqual(
+            DeterminismArtifact.ToCanonicalJson(MinimalOutcome(MinimalHero(), MinimalContract(), baseline)),
+            DeterminismArtifact.ToCanonicalJson(MinimalOutcome(MinimalHero(), MinimalContract(), mutated)));
+    }
+
+    private static HeroState MutateHero(HeroState hero, string field) => field switch
+    {
+        "greed" => hero with { Greed = hero.Greed + 1 },
+        "caution" => hero with { Caution = hero.Caution + 1 },
+        "trust_in_guild" => hero with { TrustInGuild = hero.TrustInGuild + 1 },
+        "display_name_key" => hero with { DisplayNameKey = "hero.test.other.name" },
+        _ => throw new ArgumentOutOfRangeException(nameof(field), field, "Unknown hero field."),
+    };
+
+    private static ContractState MutateContract(ContractState contract, string field) => field switch
+    {
+        "payment" => contract with { Payment = contract.Payment + 1 },
+        "risk" => contract with { Risk = contract.Risk + 1 },
+        "status" => contract with { Status = ContractStatus.Crewed },
+        "responded_by" => contract with { RespondedBy = ImmutableSortedSet<HeroId>.Empty },
+        _ => throw new ArgumentOutOfRangeException(nameof(field), field, "Unknown contract field."),
+    };
+
+    private static ScenarioOutcome MinimalOutcome(HeroState hero, ContractState contract, HeldTrait? traitRule = null)
     {
         var state = new GameState
         {
@@ -396,6 +480,9 @@ public class ReplayDeterminismTests
             Contracts = ImmutableSortedDictionary.CreateRange(new[] { KeyValuePair.Create(contract.Id, contract) }),
             Traces = ImmutableSortedDictionary<long, CausalTrace>.Empty,
             History = ImmutableArray<DomainEvent>.Empty,
+            TraitRules = traitRule is null
+                ? ImmutableSortedDictionary<ContentId, HeldTrait>.Empty
+                : ImmutableSortedDictionary<ContentId, HeldTrait>.Empty.Add(traitRule.Id, traitRule),
         };
 
         return new ScenarioOutcome(state, ImmutableArray<StepOutcome>.Empty);

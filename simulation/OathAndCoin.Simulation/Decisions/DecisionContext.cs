@@ -14,7 +14,7 @@ namespace OathAndCoin.Simulation.Decisions;
 public sealed record HeldTrait(ContentId Id, ContentId Tag, bool IsPrinciple, int Weight);
 
 /// <summary>
-/// Everything a single decision is computable from (spec §3.1). Assembled by
+/// Everything a single decision is computable from (HERO_DECISION_SPEC §2.1). Assembled by
 /// the caller, never fetched: the rule holds no reference to GameState, so a
 /// test can pose a question without building a world.
 /// </summary>

@@ -86,10 +86,12 @@
 
 Ручной эксперимент (снятие `AwaitPostDraw`, четыре прогона) дал побайтово идентичный кадр. Причина не в скорости GPU: `Capture()` маршалится на главный поток через `CallDeferred`, а отложенный вызов движок выполняет на следующем idle-шаге — уже после того, как кадр отправлен и отрисован. То есть сам факт маршалинга уже даёт тот порядок, который барьер утверждает явно. Барьер остаётся: он держит протокол корректным, если маршалинг когда-нибудь изменится. **Теста, который заявлял бы, что ловит его отсутствие, нет и не будет** — такой тест утверждал бы ложное. Машинно проверен другой порядок — порядок вызовов протокола (`CaptureProtocol`), доказанный на поддельной поверхности.
 
-### Исключения по экрану-заглушке
+### Исключения по экрану-заглушке сняты
 
-- **Пять состояний экрана (`AGENTS.md` §7) на `SpikeScreen` не требуются.** Он не экран Milestone 1, а стенд для инструмента: у него два состояния — normal и error. Исключение снимается вместе с первым экраном Milestone 1, к которому §7 применяется целиком.
-- **Экран диагностический.** Он печатает внутренние счёты и сырые коды причин, а доводы «за» и «против» идут одним неразличимым списком. Что модель дошла до **экрана**, а не только до дерева контролов, машинно не доказано ничем: единственное свидетельство — человек посмотрел два конкретных кадра. Контроллер просмотрел оба кадра доказательных прогонов: на `gate0` видны Zara с отказом (−23) и Bram с согласием (9) со своими кодами причин, на `content_error` — `CONTENT_ROOT_NOT_FOUND`. Из этого же просмотра и вывод, что экран **не** читаем. Условие удаления то же: первый экран Milestone 1.
+Оба исключения ниже были выписаны на `SpikeScreen` и содержали одно и то же условие снятия — «вместе с первым экраном Milestone 1». Экран приехал (`game/ui/ContractOfferScreen.cs`, ветка `feature/hero-decision-core`), `SpikeScreen` и его `.uid` удалены, поэтому условие наступило и исключения сняты. Текст сохранён как история, а не как действующая оговорка:
+
+- ~~**Пять состояний экрана (`AGENTS.md` §7) на `SpikeScreen` не требуются.** Он не экран Milestone 1, а стенд для инструмента: у него два состояния — normal и error.~~ Снято: у `ContractOfferScreen` все пять состояний, у каждого свой сценарий (`scenarios/screen_loading|screen_empty|screen_error|screen_incomplete|screen_normal`), каждый объявляет `expected_screen_state`, и все пять прогоняет задача `runtime-smoke`.
+- ~~**Экран диагностический.**~~ Снято вместе с заглушкой. Что модель дошла до **экрана**, а не только до дерева контролов, по-прежнему машинно не доказано ничем — это ограничение вердикта, а не свойство заглушки, и оно названо в списке условий выше.
 
 ### Отложено, а не запрещено
 
@@ -137,7 +139,9 @@ scripts/code-lines.sh --cap 1050 tools/OathAndCoin.Harness # то же, что �
 
 ## Проверка
 
-Реализация: `tools/OathAndCoin.Harness/` (`SmokeRun.cs`, `SmokeVerdict.cs`, `RunLayout.cs`, `RunReport.cs`, `GodotEngine.cs`, `ProcessRunner.cs`, `FrameFile.cs`), `adapters/OathAndCoin.GameProtocol/` (`GameInvocation.cs`, `TerminalEvent.cs`, `CaptureProtocol.cs`), `adapters/OathAndCoin.Presentation/RenderedUiSnapshot.cs`, `game/` (`app/Main.cs`, `ui/SpikeScreen.cs`, `harness/GodotCaptureSurface.cs`), `scenarios/`, `.github/workflows/dotnet.yml`.
+Реализация: `tools/OathAndCoin.Harness/` (`SmokeRun.cs`, `SmokeVerdict.cs`, `RunLayout.cs`, `RunReport.cs`, `GodotEngine.cs`, `ProcessRunner.cs`, `FrameFile.cs`), `adapters/OathAndCoin.GameProtocol/` (`GameInvocation.cs`, `TerminalEvent.cs`, `CaptureProtocol.cs`), `adapters/OathAndCoin.Presentation/` (`RenderedUiSnapshot.cs`, `ContractOfferScreenModel.cs`, `ContractOfferScreenModelFactory.cs`), `game/` (`app/Main.cs`, `ui/ContractOfferScreen.cs`, `ui/TextSource.cs`, `harness/GodotCaptureSurface.cs`), `scenarios/`, `.github/workflows/dotnet.yml`.
+
+`game/ui/SpikeScreen.cs` и его `.uid` в этом списке больше не значатся: заглушка удалена вместе с приездом экрана Milestone 1. Из трёх `.uid`, названных выше в разделе «Godot `.uid` коммитятся», в дереве остались два (`game/app/Main.cs.uid`, `game/harness/GodotCaptureSurface.cs.uid`); третий ушёл вместе со своим скриптом — ровно тот случай осиротевшего `.uid`, цена которого там названа, только с правильным исходом.
 
 Прогон, который сломается при отмене решения:
 
@@ -146,7 +150,7 @@ dotnet run --project tools/OathAndCoin.Harness -- run-smoke --scenario gate0 \
   --godot "C:/gamedev/Godot_v4.7.1-stable_mono_win64/Godot_v4.7.1-stable_mono_win64.exe"
 ```
 
-Тот же прогон в CI — задача `runtime-smoke` в `.github/workflows/dotnet.yml`; она же ломается при отмене решения о движке в pipeline. На чистой машине с Linux он воспроизводится теми же командами, что стоят в задаче:
+Тот же прогон в CI — задача `runtime-smoke` в `.github/workflows/dotnet.yml`; она же ломается при отмене решения о движке в pipeline. С приездом экрана Milestone 1 она гоняет шесть сценариев вместо двух: `gate0` плюс пять `screen_*`, по одному на каждое состояние экрана. Сценарий `content_error` удалён — `screen_error` воспроизводит ту же неисправность `missing_content_root` и вдобавок объявляет ожидаемое состояние экрана, а держать оба значило гонять в CI именно ту копию, у которой проверки нет. Числа в таблице цены выше сняты 2026-08-14 на двух сценариях и с тех пор не пересняты; они занижают стоимость задачи и остаются как измерение своего дня, а не как оценка сегодняшней. На чистой машине с Linux он воспроизводится теми же командами, что стоят в задаче:
 
 ```bash
 sudo apt-get install -y --no-install-recommends xvfb xauth libgl1 libglx-mesa0 libgl1-mesa-dri
@@ -159,7 +163,7 @@ LIBGL_ALWAYS_SOFTWARE=1 xvfb-run --auto-servernum --server-args="-screen 0 1920x
 
 Тесты, которые сломаются при отмене решения: `tests/OathAndCoin.Harness.Tests/SmokeVerdictTests.cs` — `Verdict_RejectsMismatchedRenderedUiHash`, `Verdict_RejectsMismatchedCanonicalHash`, `Verdict_RejectsErrorCodeOtherThanExpected`, `Verdict_ReportsEveryFailedConditionAtOnce`, `Verdict_RejectsSingleColourFrame`, `Verdict_RejectsFrameThatIsNotTheRequestedResolution`, `Verdict_AcceptsRunWhoseOnlyErrorLineIsAboutTheEnvironment`, `Verdict_RejectsScriptErrorLine`, `Verdict_RejectsFatalEngineLine`; `FrameFileTests.Inspect_RejectsFileWithCorruptedIhdrCrc`; `ProcessRunnerTests.Run_KillsDescendantsOnTimeout`, `Run_ReturnsWhenAnExitedParentLeavesADescendantHoldingTheStreams`; `RunLayoutTests.Layout_UpdatesLatestSuccessOnlyOnPass`; `RunReportTests.Report_ContainsExactOrderedPhaseIds`, `Report_MarksDirtyRunAsNotReproducible`, `Report_ListsEngineDiagnosticsTheVerdictDidNotFailOn`; `SmokeRunTests.Run_PublishesEveryPhaseAndExitsThreeWhenTheEngineCannotBeResolved`; `tests/OathAndCoin.GameProtocol.Tests/CaptureProtocolTests.cs` — `Run_DoesNotCaptureBeforePostDraw`; `TerminalEventTests.ToLine_RoundTripsThroughParse`; `tests/OathAndCoin.Content.Tests/ScenarioManifestTests.cs` — `Load_FailsOnDuplicateCheckpointName`, `Load_FailsWhenScenarioFieldDisagreesWithFileName`; шаг CI `Verify game project is in the solution`.
 
-Пересмотр — с первым экраном Milestone 1 (тогда снимаются оба исключения по экрану-заглушке), при первом воспроизведённом ложном срабатывании leak-чеков на `4.7.1` и при первом ложном отказе `runtime-smoke` (задача, которая мигает, дороже, чем её отсутствие: тогда пересматривается либо её состав, либо её место в pipeline). Пересмотр «когда движок появится в CI» состоялся здесь: движок появился, поэтому вопрос о публикации артефакта стадией pipeline закрыт фактом, а формулировка `AGENTS.md` §7 приводится в соответствие отдельным решением.
+Пересмотр по экрану-заглушке состоялся: экран Milestone 1 приехал, оба исключения сняты (см. раздел выше). Остаются пересмотры при первом воспроизведённом ложном срабатывании leak-чеков на `4.7.1` и при первом ложном отказе `runtime-smoke` (задача, которая мигает, дороже, чем её отсутствие: тогда пересматривается либо её состав, либо её место в pipeline). Пересмотр «когда движок появится в CI» состоялся здесь: движок появился, поэтому вопрос о публикации артефакта стадией pipeline закрыт фактом, а формулировка `AGENTS.md` §7 приводится в соответствие отдельным решением.
 
 ## Связи
 

@@ -479,7 +479,7 @@ public class ContentSetTests
 
     /// <summary>
     /// The version is computed from the bytes, not declared in a constant
-    /// somebody has to remember to bump (spec §8.7).
+    /// somebody has to remember to bump (HERO_DECISION_SPEC §1.6).
     /// </summary>
     [Fact]
     public void ContentVersion_ChangesWhenContentChanges()

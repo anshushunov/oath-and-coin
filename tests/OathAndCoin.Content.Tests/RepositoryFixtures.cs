@@ -12,7 +12,7 @@ namespace OathAndCoin.Content.Tests;
 /// Deliberately not "walk up until a <c>.git</c> directory appears": in a git
 /// worktree <c>.git</c> is a file, not a directory, so that heuristic breaks
 /// precisely in the isolated workspaces this project's process recommends
-/// (spec §10). Assembly metadata is resolved by MSBuild at build time, so it
+/// (AGENTS.md §9). Assembly metadata is resolved by MSBuild at build time, so it
 /// is right by construction in every checkout layout.
 /// </remarks>
 internal static class RepositoryFixtures

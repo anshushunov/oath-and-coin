@@ -396,7 +396,7 @@ public class ProposeContractTests
     /// <summary>
     /// Without this, "the run is reproducible" stays green even if the seed
     /// never reaches the decision at all — an indicator passed off as a
-    /// verdict (spec §8.3).
+    /// verdict (AGENTS.md §8).
     /// </summary>
     [Fact]
     public void DifferentSeeds_ChangeTheMoodFactor()

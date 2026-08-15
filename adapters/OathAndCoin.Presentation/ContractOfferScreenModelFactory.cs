@@ -100,7 +100,13 @@ public static class ContractOfferScreenModelFactory
 
         var state = outcome.FinalState;
 
-        if (state.Contracts.IsEmpty)
+        // Both halves of the spec's own rule for this state: nothing to
+        // offer, or nobody to offer it to. Only the first was implemented,
+        // so a campaign with contracts and an empty roster fell through to
+        // the path below, where `RespondedBy.Count >= roster.Length` reads
+        // 0 >= 0 and reported Normal — a screen telling the player everyone
+        // had answered, above an empty table.
+        if (state.Contracts.IsEmpty || state.Heroes.IsEmpty)
         {
             return new ContractOfferScreenModel
             {
@@ -269,7 +275,7 @@ public static class ContractOfferScreenModelFactory
     /// <summary>
     /// A hero's own principle or inclination keys, named from each trait's
     /// own identifier (<see cref="TraitDisplayNameKey"/>) — not its tag: the
-    /// tag is what a <em>contract</em> latches onto (spec §3.2), and reusing
+    /// tag is what a <em>contract</em> latches onto (HERO_DECISION_SPEC §1.1), and reusing
     /// it here would name a hero's principle after the category it reacts
     /// to (e.g. "Temple") rather than the principle itself (e.g. "will not
     /// strike a temple") — a different piece of content with a different
@@ -328,13 +334,13 @@ public static class ContractOfferScreenModelFactory
         if (!decision.Trace.BlockedBy.IsEmpty)
         {
             // A red line closes the decision before any score or mood exists
-            // (spec §3.2): no reasons to rank, and Wavered is false without
+            // (HERO_DECISION_SPEC §2.2): no reasons to rank, and Wavered is false without
             // computing anything, never a guess. The block's own SourceEntity
             // is always a principle's trait id (ContractDecisionRule.Decide's
             // gate: BlockedBy is only ever built from trait.Id), so its
             // display name resolves the same way a trait-sourced
             // ReasonLine's does — see ReasonLine.SourceDisplayNameKey's
-            // remarks and spec §4 on why a block names an entity at all.
+            // remarks and HERO_DECISION_SPEC §3 on why a block names an entity at all.
             var block = decision.Trace.BlockedBy[0];
             return new ResponseLine(
                 hero.Value, heroDisplayNameKey, decision.SelectedAction.Value, ImmutableArray<ReasonLine>.Empty,
@@ -444,9 +450,9 @@ public static class ContractOfferScreenModelFactory
 
     /// <summary>
     /// Whether this hero's mood flipped the answer the rest of the factors
-    /// alone would have given (spec §3.4). Mood already sits in the trace as
+    /// alone would have given (HERO_DECISION_SPEC §2.4). Mood already sits in the trace as
     /// an ordinary factor, and every factor in the trace sums to
-    /// <see cref="DecisionResult.SelectedScore"/> (spec §3.3) — so the score
+    /// <see cref="DecisionResult.SelectedScore"/> (HERO_DECISION_SPEC §2.3) — so the score
     /// <em>before</em> mood is exactly <c>final − mood</c>, computable from
     /// data that already went into the decision, never re-derived or
     /// guessed. "Wavered" is then just: did crossing zero change between

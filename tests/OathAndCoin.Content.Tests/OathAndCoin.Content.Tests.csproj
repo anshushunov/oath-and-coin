@@ -29,7 +29,7 @@
     Fixtures are located through assembly metadata, not by walking parent
     directories looking for `.git`: in a worktree `.git` is a file rather than
     a directory, so that search fails exactly where parallel agent work
-    happens (spec §10).
+    happens (AGENTS.md §9).
   -->
   <ItemGroup>
     <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">

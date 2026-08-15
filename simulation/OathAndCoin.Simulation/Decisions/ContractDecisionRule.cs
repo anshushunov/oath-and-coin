@@ -32,9 +32,10 @@ public sealed record HeroDecision(DecisionResult Result, ulong OrdinalsConsumed)
 /// <summary>
 /// How a hero answers a contract offer (TDD §8). Deliberately the smallest
 /// rule that produces two different, explainable answers from two different
-/// heroes: whether hero AI ends up a utility model or a rule model is BQ-004,
-/// still open for Milestone 1, and nothing here should make that choice
-/// harder to change.
+/// heroes. Which model hero AI uses is no longer an open question — BQ-004 is
+/// closed by DEC-010, and this is that decision implemented (see
+/// HERO_DECISION_SPEC §2); the rule is kept small because the milestone
+/// wants it legible, not because the choice might still be reversed.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -45,7 +46,7 @@ public sealed record HeroDecision(DecisionResult Result, ulong OrdinalsConsumed)
 /// each a sum of signed per-source contributions (a hero's own traits;
 /// comrades already committed to the same contract). Every term divides on
 /// its own, before being added into the sum — dividing the sum instead would
-/// round differently under integer division (spec §3.3). Every term is
+/// round differently under integer division (HERO_DECISION_SPEC §2.3). Every term is
 /// integer arithmetic (TDD §7.4): the core has no floating point at all, and
 /// the boundary guard fails the build if any appears.
 /// </para>
@@ -122,7 +123,7 @@ public static class ContractDecisionRule
     /// spot, with no score and no mood draw. Nothing after the gate can
     /// overturn it, because nothing after the gate runs at all — a red line
     /// is not a very large negative contribution that money could outweigh,
-    /// it is the absence of a sum to outweigh (spec §3.2).
+    /// it is the absence of a sum to outweigh (HERO_DECISION_SPEC §2.2).
     /// </remarks>
     public static HeroDecision Decide(DecisionContext context)
     {
@@ -156,7 +157,7 @@ public static class ContractDecisionRule
             };
 
             // No mood draw happened on this path: a decision the gate closes
-            // must not spend randomness it never needed (spec §3.2).
+            // must not spend randomness it never needed (HERO_DECISION_SPEC §2.2).
             return new HeroDecision(blockedResult, 0);
         }
 
@@ -169,7 +170,7 @@ public static class ContractDecisionRule
         var positive = ImmutableArray.CreateBuilder<TraceFactor>();
         var negative = ImmutableArray.CreateBuilder<TraceFactor>();
 
-        // Order below is the spec §3.3 table, verbatim: payment, risk, insult,
+        // Order below is the HERO_DECISION_SPEC §2.3 table, verbatim: payment, risk, insult,
         // inclinations (by trait Id, already the order Traits is sorted in),
         // trust, bonds (by HeroId). That order is not cosmetic — it is what
         // ends up in the trace, and the trace is a canonical artifact.

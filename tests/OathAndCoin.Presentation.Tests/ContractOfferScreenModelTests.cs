@@ -184,7 +184,7 @@ public class ContractOfferScreenModelTests
 
     /// <summary>
     /// Review finding (Critical, round 4): a block used to carry only the
-    /// raw trait id (<see cref="ResponseLine.BlockedByEntity"/>) — spec §4's
+    /// raw trait id (<see cref="ResponseLine.BlockedByEntity"/>) — HERO_DECISION_SPEC §3's
     /// own reason for putting an entity on a block at all was so a screen
     /// never has to guess which principle fired from the hero alone, and a
     /// raw id the screen refuses to show (TDD §11.1) leaves it guessing
@@ -234,6 +234,20 @@ public class ContractOfferScreenModelTests
     public void FromOutcome_ReportsEmptyWhenTheSetHasNoContracts()
     {
         Assert.Equal(ScreenState.Empty, Factory.FromOutcome(Outcomes.NoContracts()).State);
+    }
+
+    /// <summary>
+    /// The second half of the spec's own rule for this state — "no contract
+    /// at all, or no hero at all" — which the factory did not implement.
+    /// Before this, a campaign with a contract and an empty roster fell
+    /// through to the completeness check, where <c>0 &gt;= 0</c> reported
+    /// <see cref="ScreenState.Normal"/>: a screen telling the player everyone
+    /// had answered, above an empty table.
+    /// </summary>
+    [Fact]
+    public void FromOutcome_ReportsEmptyWhenTheSetHasNoHeroes()
+    {
+        Assert.Equal(ScreenState.Empty, Factory.FromOutcome(Outcomes.NoHeroes()).State);
     }
 
     /// <summary>
@@ -580,13 +594,13 @@ public class ContractOfferScreenModelTests
             }
         }
 
-        // Positive control (spec §5.2): the fixture's trait-sourced reason
+        // Positive control (HERO_DECISION_SPEC §3): the fixture's trait-sourced reason
         // must actually resolve to its own trait's name, not merely "some
         // key or other happened to be null and the loop above never ran".
         Assert.Contains("trait.core.loyal_to_the_merchant_guild.name", catalogue.Keys);
         Assert.Contains(catalogue["trait.core.loyal_to_the_merchant_guild.name"], snapshot.Texts);
 
-        // Positive control (spec §4): the fixture's blocked response must
+        // Positive control (HERO_DECISION_SPEC §3): the fixture's blocked response must
         // actually resolve to its own principle's name, not merely "some
         // key or other happened to be null and the loop above never ran".
         Assert.Contains("trait.core.will_not_strike_a_temple.name", catalogue.Keys);
@@ -938,6 +952,24 @@ public class ContractOfferScreenModelTests
             });
 
             var state = BuildState(heroes, ImmutableSortedDictionary<ContentId, ContractState>.Empty);
+
+            return new ScenarioOutcome(state, ImmutableArray<StepOutcome>.Empty);
+        }
+
+        /// <summary>
+        /// A contract on offer and nobody to offer it to. Reachable in
+        /// principle (a campaign whose roster is empty), and the half of the
+        /// spec's Empty rule the factory did not implement until this branch
+        /// of fixes.
+        /// </summary>
+        public static ScenarioOutcome NoHeroes()
+        {
+            var contracts = ImmutableSortedDictionary.CreateRange(new[]
+            {
+                new KeyValuePair<ContentId, ContractState>(Contract, BuildContract()),
+            });
+
+            var state = BuildState(ImmutableSortedDictionary<HeroId, HeroState>.Empty, contracts);
 
             return new ScenarioOutcome(state, ImmutableArray<StepOutcome>.Empty);
         }

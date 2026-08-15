@@ -6,7 +6,7 @@ using OathAndCoin.Simulation.State;
 namespace OathAndCoin.Content.Scenarios;
 
 /// <summary>
-/// The human-readable half of a run's output (spec §8.6): what each hero
+/// The human-readable half of a run's output (AGENTS.md §11): what each hero
 /// decided and why, for the person who has to judge whether the decisions make
 /// sense as a game.
 /// </summary>

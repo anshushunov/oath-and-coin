@@ -38,7 +38,7 @@ namespace OathAndCoin.Content.Scenarios;
 /// including the one divergence this field exists to catch, where one branch
 /// takes the gate path (spends nothing) and the other scores and draws a
 /// mood (spends one). Read afterwards, "the same ordinal on both sides"
-/// (spec §8.3) is a claim about the two runs rather than about their shared
+/// (HERO_DECISION_SPEC §7.3) is a claim about the two runs rather than about their shared
 /// starting point: it says the difference between the branches is the varied
 /// input, not a different roll of the same dice.
 /// </remarks>

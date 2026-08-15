@@ -133,7 +133,8 @@ public sealed record GameState
     /// and provides none.
     /// </summary>
     /// <remarks>
-    /// The one property here without <c>required</c>, and deliberately so.
+    /// One of the two properties here without <c>required</c> — the other is
+    /// <see cref="TraitRules"/> — and deliberately so.
     /// Every other member of this record was part of the contract package
     /// before any state existed to construct; this one arrived afterwards,
     /// with a default that is both correct and the only sensible reading of
@@ -162,7 +163,7 @@ public sealed record GameState
     /// <see cref="HeldTrait"/> per id) crosses into state.
     /// </summary>
     /// <remarks>
-    /// The one property here without <c>required</c>, for the same reason as
+    /// The other property here without <c>required</c>, for the same reason as
     /// <see cref="AppliedCommandIds"/>: it arrived after every existing
     /// construction site in this repository had already been written, and its
     /// absence has a single correct reading — "no trait carries any rule at

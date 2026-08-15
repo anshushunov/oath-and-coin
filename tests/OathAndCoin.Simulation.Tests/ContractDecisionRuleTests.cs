@@ -6,7 +6,7 @@ using OathAndCoin.Simulation.State;
 namespace OathAndCoin.Simulation.Tests;
 
 /// <summary>
-/// The gate step of <see cref="ContractDecisionRule.Decide"/> (spec §3.2):
+/// The gate step of <see cref="ContractDecisionRule.Decide"/> (HERO_DECISION_SPEC §2.2):
 /// a violated principle closes the decision before any arithmetic, with no
 /// score and no mood draw. The scored path (payment/risk/trust/mood) is
 /// still exercised end to end through <see cref="SimulationEngine"/> in
@@ -65,7 +65,7 @@ public class ContractDecisionRuleTests
     }
 
     /// <summary>
-    /// The sum-of-motives step (spec §3.3): payment, risk, insult, personal
+    /// The sum-of-motives step (HERO_DECISION_SPEC §2.3): payment, risk, insult, personal
     /// inclinations, guild trust and bonds to already-committed comrades —
     /// each its own signed, individually-divided term, each surfacing as its
     /// own trace factor with a stable reason code and a source entity a

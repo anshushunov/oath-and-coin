@@ -10,7 +10,7 @@ namespace OathAndCoin.Content.Tests;
 /// <summary>
 /// Task 13's own claim: at least twenty scenarios, each replaying byte for
 /// byte to a canonical artifact checked in beside its manifest and commands
-/// (spec §8.1, this task's brief).
+/// (HERO_DECISION_SPEC §7.3).
 /// </summary>
 /// <remarks>
 /// <para>
@@ -509,7 +509,7 @@ public class ScenarioCoverageTests
     /// <summary>
     /// The one scenario built to prove the artifact reproduces the
     /// no-randomness path and the randomness-consuming path <em>together</em>,
-    /// not merely each in isolation elsewhere in this file (spec §8.1): a
+    /// not merely each in isolation elsewhere in this file (HERO_DECISION_SPEC §7.3): a
     /// principle block first (zero RNG ordinals spent), then two ordinary
     /// decisions (one ordinal each). <c>NextDecisionOrdinal</c> ending at
     /// exactly 2 — not 3 — is the direct proof that the gate really drew

@@ -4,7 +4,7 @@ using System.Text;
 namespace OathAndCoin.Content;
 
 /// <summary>
-/// The content version, computed from the content itself (spec §8.7) rather
+/// The content version, computed from the content itself (HERO_DECISION_SPEC §1.6) rather
 /// than declared in a constant somebody has to remember to bump. A declared
 /// version is wrong exactly when it matters most — after an edit — and a
 /// replay that says "same content version" while the numbers underneath moved

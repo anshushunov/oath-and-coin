@@ -204,7 +204,7 @@ public class SchemaAgreementTests
 
         // Positive control: a green run above must mean "checked and clean",
         // not "checked nothing". A validator that silently found no files to
-        // validate would pass the assertion above forever (spec §8.3).
+        // validate would pass the assertion above forever (AGENTS.md §8).
         using var temp = TempContentRoot.CreateEmpty();
         temp.WriteHero("greedy", """
             {

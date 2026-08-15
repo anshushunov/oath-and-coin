@@ -12,7 +12,7 @@ using OathAndCoin.Simulation.State;
 namespace OathAndCoin.Content.Scenarios;
 
 /// <summary>
-/// The machine-readable half of a run's output (spec §8.6): the seed, the
+/// The machine-readable half of a run's output (AGENTS.md §11): the seed, the
 /// versions, every command, every decision, and the final state with its whole
 /// event log and every stored explanation. This is what two runs are compared
 /// on — never the human-readable report, which exists to be reworded.
@@ -34,9 +34,12 @@ public static class DeterminismArtifact
     /// tells them apart. Bumped to 2 for the M1 decision rules (Tasks 3-8):
     /// the projected state and trace shapes changed underneath the same
     /// number, and an artifact built under the old rules must not look
-    /// comparable to one built under these.
+    /// comparable to one built under these. Bumped to 3 when
+    /// <c>trait_rules</c> was added: the projection had been silent about the
+    /// rulebook every decision is weighed against, so a version 2 artifact
+    /// cannot be compared to one of these field for field.
     /// </summary>
-    public const int ArtifactVersion = 2;
+    public const int ArtifactVersion = 3;
 
     private static readonly JsonWriterOptions WriterOptions = new()
     {
@@ -182,6 +185,22 @@ public static class DeterminismArtifact
         ["history"] = new JsonArray(state.History.Select(Describe).ToArray<JsonNode?>()),
         ["applied_command_ids"] = new JsonArray(
             state.AppliedCommandIds.Select(id => (JsonNode?)id).ToArray()),
+
+        // Review finding (branch-level): the rulebook every decision is
+        // weighed against was the one part of GameState this projection did
+        // not carry, so two states differing only in what a trait means —
+        // its tag, whether it is a red line, what it weighs — produced
+        // byte-identical artifacts. That is a state a replay cannot
+        // reconstruct from its own artifact, which is the one thing an
+        // artifact is for. Keyed by trait id, which is already the
+        // dictionary's sort order.
+        ["trait_rules"] = new JsonArray(state.TraitRules.Values.Select(trait => (JsonNode?)new JsonObject
+        {
+            ["id"] = trait.Id.Value,
+            ["tag"] = trait.Tag.Value,
+            ["is_principle"] = trait.IsPrinciple,
+            ["weight"] = trait.Weight,
+        }).ToArray()),
     };
 
     /// <summary>

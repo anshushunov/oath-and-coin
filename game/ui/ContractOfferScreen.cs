@@ -57,12 +57,13 @@ namespace OathAndCoin.Game.Ui;
 /// <see cref="RenderedUiSnapshot.Expected(ContractOfferScreenModel, System.Collections.Generic.IReadOnlyDictionary{string,string})"/>
 /// puts in its list, in the same order, and nothing else — an extra label
 /// would show up in <see cref="Snapshot"/> and break every hash comparison
-/// the runtime harness makes. The one exception is
-/// <see cref="ContractOfferScreenModel.ErrorDetail"/>: shown, for a person
-/// reading the screen, as a <see cref="Label.TooltipText"/> on the resolved
-/// error label rather than a second <see cref="Label"/>, because the
-/// expected snapshot never includes it (see that method's remarks) and
-/// <see cref="Snapshot"/> only ever reads <see cref="Label.Text"/>.
+/// the runtime harness makes. There is no exception:
+/// <see cref="ContractOfferScreenModel.ErrorDetail"/> does not reach this
+/// screen at all. It carried a machine's absolute path and an exception's own
+/// text — assembled in code, never resolved from the catalogue — and it
+/// arrived as a tooltip, which neither hash covers by design, so nothing
+/// could have noticed. The error's own key names the failure to the player;
+/// the detail belongs to <c>report.json</c> and <c>run.log</c>.
 /// </para>
 /// </remarks>
 public sealed partial class ContractOfferScreen : VBoxContainer
@@ -94,9 +95,18 @@ public sealed partial class ContractOfferScreen : VBoxContainer
 
         if (model.ErrorCode is not null)
         {
-            var errorLabel = BuildLabel(textSource.Resolve(ErrorKeys.For(model.ErrorCode)));
-            errorLabel.TooltipText = model.ErrorDetail;
-            AddChild(errorLabel);
+            // ErrorDetail deliberately does not reach the screen. It is
+            // assembled in code — an absolute path off this machine, the raw
+            // text of an exception — and a string a player reads that was
+            // built in code rather than resolved from the catalogue is
+            // exactly what TDD §11.1 forbids. It used to arrive here as the
+            // label's tooltip, where no check could see it: both hashes
+            // exclude the detail on purpose, so the one player-facing string
+            // in the whole screen that was never localized was also the one
+            // string nothing compared. The allowed error key already names
+            // the failure; the detail stays in the report and the log, which
+            // is where a developer reads it and a player does not.
+            AddChild(BuildLabel(textSource.Resolve(ErrorKeys.For(model.ErrorCode))));
         }
 
         if (model.Contract is { } contract)
@@ -221,7 +231,7 @@ public sealed partial class ContractOfferScreen : VBoxContainer
 
         // Same shape as a reason's source above: a branch on the model fact
         // ResponseLine.BlockedByDisplayNameKey (null exactly when nothing
-        // blocked this hero), never on any code. Spec §4/§5.2: a block names
+        // blocked this hero), never on any code. HERO_DECISION_SPEC §3 and §4.2: a block names
         // its principle so the screen does not have to guess one from the
         // hero alone, and stays its own line so "too risky" reads
         // differently from "will not do this at all".

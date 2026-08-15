@@ -38,7 +38,7 @@ public sealed record TraceFactor(string ReasonCode, ContentId SourceEntity, int 
 /// A hard constraint that ruled an action out entirely, together with the
 /// content entity that carries it. A block has no magnitude on purpose: a red
 /// line is not a very large negative contribution, it closes the path before
-/// any contribution exists (spec §3.2).
+/// any contribution exists (HERO_DECISION_SPEC §2.2).
 /// </summary>
 /// <param name="ReasonCode">
 /// A stable code from <see cref="ReasonCodes"/>, the same closed engine

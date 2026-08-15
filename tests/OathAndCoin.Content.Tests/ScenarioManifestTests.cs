@@ -324,7 +324,7 @@ public class ScenarioManifestTests
         }
 
         // Positive control: a green run above must mean "checked and clean",
-        // not "checked nothing" (spec §8.3) — the same idiom
+        // not "checked nothing" (AGENTS.md §8) — the same idiom
         // AllContentFiles_SatisfyTheirSchema uses.
         using var invalid = TempManifest.Write("broken", """
             {

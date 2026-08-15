@@ -5,7 +5,7 @@ namespace OathAndCoin.Content;
 
 /// <summary>
 /// Whether a trait contributes a strength to a decision or closes it outright
-/// (spec §3.2).
+/// (HERO_DECISION_SPEC §1.3).
 /// </summary>
 public enum TraitKind
 {
@@ -16,7 +16,7 @@ public enum TraitKind
 /// <summary>
 /// A named trait a hero can carry. <see cref="Weight"/> is meaningful only
 /// for <see cref="TraitKind.Inclination"/> and is always 0 for a principle:
-/// a red line has no strength, it closes the path (spec §3.2).
+/// a red line has no strength, it closes the path (HERO_DECISION_SPEC §1.3).
 /// </summary>
 public sealed record TraitDefinition(
     ContentId Id,
@@ -52,7 +52,7 @@ public sealed record HeroDefinition(
 
 /// <summary>
 /// A contract offer as authored in content. <see cref="Tags"/> are what a
-/// hero's traits latch onto (spec §3.2) — a hero's trait names a
+/// hero's traits latch onto (HERO_DECISION_SPEC §1.4) — a hero's trait names a
 /// <c>Tag</c>, and a contract carrying that same tag is where the trait has
 /// something to say.
 /// </summary>
