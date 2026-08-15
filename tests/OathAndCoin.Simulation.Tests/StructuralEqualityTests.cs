@@ -125,6 +125,39 @@ public class StructuralEqualityTests
         Assert.NotEqual(left, BuildContract(respondedBy: new HeroId(2)));
     }
 
+    [Fact]
+    public void ContractState_EqualityComparesAcceptedByMemberwise()
+    {
+        var left = Fixtures.Contract() with { AcceptedBy = ImmutableSortedSet.Create(new HeroId(1)) };
+        var right = Fixtures.Contract() with { AcceptedBy = ImmutableSortedSet.Create(new HeroId(1)) };
+
+        Assert.Equal(left, right);
+        Assert.Equal(left.GetHashCode(), right.GetHashCode());
+    }
+
+    [Fact]
+    public void ContractState_EqualityComparesTagsMemberwise()
+    {
+        var left = Fixtures.Contract() with { Tags = ImmutableSortedSet.Create(ContentId.Parse("target:cult")) };
+        var right = Fixtures.Contract() with { Tags = ImmutableSortedSet.Create(ContentId.Parse("target:cult")) };
+
+        Assert.Equal(left, right);
+    }
+
+    [Fact]
+    public void HeroState_EqualityComparesRelationshipsMemberwise()
+    {
+        var bonds = ImmutableSortedDictionary<ContentId, int>.Empty.Add(ContentId.Parse("core:zara"), -8);
+        var left = Fixtures.Hero() with { Relationships = bonds };
+        var right = Fixtures.Hero() with
+        {
+            Relationships = ImmutableSortedDictionary<ContentId, int>.Empty.Add(ContentId.Parse("core:zara"), -8),
+        };
+
+        Assert.Equal(left, right);
+        Assert.Equal(left.GetHashCode(), right.GetHashCode());
+    }
+
     // The Equals/GetHashCode contract, stated directly: equal values must
     // hash equally. Asserted over a set of values that includes both equal
     // pairs and near-miss pairs, so it is not satisfied by a constant hash
@@ -370,7 +403,10 @@ public class StructuralEqualityTests
         DisplayNameKey = "hero.display_name." + definition.Name,
         Greed = 5,
         Caution = 5,
+        Pride = 5,
         TrustInGuild = 5,
+        Traits = ImmutableArray<ContentId>.Empty,
+        Relationships = ImmutableSortedDictionary<ContentId, int>.Empty,
     };
 
     private static ContractState BuildContract(HeroId respondedBy) =>
@@ -381,8 +417,11 @@ public class StructuralEqualityTests
         Id = id ?? ContractId,
         Payment = 100,
         Risk = 5,
+        RequiredCrew = 1,
+        Tags = ImmutableSortedSet<ContentId>.Empty,
         Status = ContractStatus.Offered,
         RespondedBy = respondedBy,
+        AcceptedBy = ImmutableSortedSet<HeroId>.Empty,
     };
 
     // Block bodies, not expression bodies, on these two: an expression-bodied

@@ -182,7 +182,7 @@ public static class DeterminismArtifact
     private static string Describe(ContractStatus status) => status switch
     {
         ContractStatus.Offered => "offered",
-        ContractStatus.Accepted => "accepted",
+        ContractStatus.Crewed => "crewed",
         _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unmapped contract status."),
     };
 }

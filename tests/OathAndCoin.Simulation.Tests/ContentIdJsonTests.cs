@@ -56,7 +56,10 @@ public class ContentIdJsonTests
             DisplayNameKey = "hero.display_name.bram",
             Greed = 5,
             Caution = 4,
+            Pride = 2,
             TrustInGuild = 3,
+            Traits = ImmutableArray<ContentId>.Empty,
+            Relationships = ImmutableSortedDictionary<ContentId, int>.Empty,
         };
 
         var restored = JsonSerializer.Deserialize<HeroState>(JsonSerializer.Serialize(hero, Options), Options);

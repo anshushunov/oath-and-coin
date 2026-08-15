@@ -492,7 +492,10 @@ public class GameStateTests
         DisplayNameKey = "hero.display_name.bram",
         Greed = greed,
         Caution = 5,
+        Pride = 5,
         TrustInGuild = 5,
+        Traits = ImmutableArray<ContentId>.Empty,
+        Relationships = ImmutableSortedDictionary<ContentId, int>.Empty,
     };
 
     private static ContractState CreateContract(ContentId id) => new()
@@ -500,8 +503,11 @@ public class GameStateTests
         Id = id,
         Payment = 100,
         Risk = 5,
+        RequiredCrew = 1,
+        Tags = ImmutableSortedSet<ContentId>.Empty,
         Status = ContractStatus.Offered,
         RespondedBy = ImmutableSortedSet<HeroId>.Empty,
+        AcceptedBy = ImmutableSortedSet<HeroId>.Empty,
     };
 
     private static CausalTrace CreateEmptyTrace(long traceId) => new()

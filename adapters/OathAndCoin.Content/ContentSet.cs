@@ -312,7 +312,12 @@ public sealed class ContentSet
                 DisplayNameKey = definition.DisplayNameKey,
                 Greed = definition.Greed,
                 Caution = definition.Caution,
+                Pride = definition.Pride,
                 TrustInGuild = definition.TrustInGuild,
+                Traits = definition.Traits,
+                Relationships = ImmutableSortedDictionary.CreateRange(
+                    definition.Relationships.Select(
+                        relationship => new KeyValuePair<ContentId, int>(relationship.Hero, relationship.Weight))),
             });
         }
 
@@ -324,8 +329,11 @@ public sealed class ContentSet
                 Id = definition.Id,
                 Payment = definition.Payment,
                 Risk = definition.Risk,
+                RequiredCrew = definition.RequiredCrew,
+                Tags = ImmutableSortedSet.CreateRange(definition.Tags),
                 Status = ContractStatus.Offered,
                 RespondedBy = ImmutableSortedSet<HeroId>.Empty,
+                AcceptedBy = ImmutableSortedSet<HeroId>.Empty,
             });
         }
 

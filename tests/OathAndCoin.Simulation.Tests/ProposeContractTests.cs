@@ -58,7 +58,7 @@ public class ProposeContractTests
         Assert.Contains(
             result.Decision.Trace.PositiveFactors,
             factor => factor.ReasonCode == ReasonCodes.PaymentAttractive);
-        Assert.Equal(ContractStatus.Accepted, result.State.Contract(ContractId).Status);
+        Assert.Equal(ContractStatus.Crewed, result.State.Contract(ContractId).Status);
         Assert.IsType<HeroAcceptedContract>(Assert.Single(result.Events));
     }
 
@@ -296,7 +296,10 @@ public class ProposeContractTests
                 DisplayNameKey = "hero.core.bram.name",
                 Greed = 60,
                 Caution = 30,
+                Pride = 50,
                 TrustInGuild = 50,
+                Traits = ImmutableArray<ContentId>.Empty,
+                Relationships = ImmutableSortedDictionary<ContentId, int>.Empty,
             }),
             KeyValuePair.Create(Zara, new HeroState
             {
@@ -305,7 +308,10 @@ public class ProposeContractTests
                 DisplayNameKey = "hero.core.zara.name",
                 Greed = 20,
                 Caution = 80,
+                Pride = 55,
                 TrustInGuild = 40,
+                Traits = ImmutableArray<ContentId>.Empty,
+                Relationships = ImmutableSortedDictionary<ContentId, int>.Empty,
             }),
         }),
         Contracts = ImmutableSortedDictionary.CreateRange(new[]
@@ -315,8 +321,11 @@ public class ProposeContractTests
                 Id = ContractId,
                 Payment = 40,
                 Risk = 50,
+                RequiredCrew = 1,
+                Tags = ImmutableSortedSet<ContentId>.Empty,
                 Status = ContractStatus.Offered,
                 RespondedBy = ImmutableSortedSet<HeroId>.Empty,
+                AcceptedBy = ImmutableSortedSet<HeroId>.Empty,
             }),
         }),
         Traces = ImmutableSortedDictionary<long, CausalTrace>.Empty,

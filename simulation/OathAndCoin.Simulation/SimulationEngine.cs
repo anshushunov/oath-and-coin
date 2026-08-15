@@ -96,7 +96,7 @@ public sealed class SimulationEngine
         // two heroes disagreeing about the same job.
         var respondedContract = contract with
         {
-            Status = accepted ? ContractStatus.Accepted : contract.Status,
+            Status = accepted ? ContractStatus.Crewed : contract.Status,
             RespondedBy = contract.RespondedBy.Add(command.HeroId),
         };
 

@@ -61,7 +61,7 @@ public static class SpikeReport
 
         foreach (var contract in outcome.FinalState.Contracts.Values)
         {
-            var status = contract.Status == ContractStatus.Accepted ? "accepted" : "still on offer";
+            var status = contract.Status == ContractStatus.Crewed ? "crewed" : "still on offer";
             Line(report, $"contract {contract.Id.Value}: {status}");
         }
 

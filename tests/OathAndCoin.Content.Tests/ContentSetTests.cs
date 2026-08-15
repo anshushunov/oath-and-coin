@@ -332,6 +332,22 @@ public class ContentSetTests
     }
 
     [Fact]
+    public void CreateInitialState_CopiesTraitsTagsAndCrew()
+    {
+        var content = ContentSet.Load(RepositoryFixtures.ContentRoot);
+
+        var state = content.CreateInitialState(campaignSeed: 1, rulesetVersion: "test/1");
+
+        var contract = state.Contracts[ContentId.Parse("core:escort_the_caravan")];
+        Assert.Equal(4, contract.RequiredCrew);
+        Assert.Empty(contract.AcceptedBy);
+        Assert.Contains(ContentId.Parse("target:bandits"), contract.Tags);
+
+        var bram = state.Heroes.Values.Single(h => h.Definition == ContentId.Parse("core:bram"));
+        Assert.NotEmpty(bram.Traits);
+    }
+
+    [Fact]
     public void CreateInitialState_IsRepeatable()
     {
         var first = ContentSet.Load(RepositoryFixtures.ContentRoot)
