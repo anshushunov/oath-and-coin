@@ -21,7 +21,7 @@ public class SchemaAgreementTests
     {
         using var schema = OpenSchema("hero.schema.json");
 
-        foreach (var trait in new[] { "greed", "caution", "trust_in_guild" })
+        foreach (var trait in new[] { "greed", "caution", "pride", "trust_in_guild" })
         {
             Assert.Equal(ContentBounds.TraitMin, ReadBound(schema, trait, "minimum"));
             Assert.Equal(ContentBounds.TraitMax, ReadBound(schema, trait, "maximum"));
@@ -112,6 +112,31 @@ public class SchemaAgreementTests
                 schema.RootElement.GetProperty("required").EnumerateArray().Select(item => item.GetString()),
                 name => name == "schema_version");
         }
+    }
+
+    /// <summary>
+    /// The rule the whole trait format exists for — a principle never carries
+    /// weight — is expressed in the schema only through <c>oneOf</c>. Nothing
+    /// else in this file exercises that branch: every other schema test here
+    /// runs valid content through it. Collapsing <c>oneOf</c> into a flat
+    /// schema (say, just making <c>weight</c> optional) would leave every
+    /// other test in this class green while this exact combination stopped
+    /// being rejected.
+    /// </summary>
+    [Fact]
+    public void TraitSchema_RejectsPrincipleWithWeight()
+    {
+        var schemas = ContentSchemas.Load(RepositoryFixtures.SchemaRoot);
+
+        using var temp = TempContentRoot.CreateEmpty();
+        temp.WriteTrait("bad", """
+            {"schema_version":2,"id":"core:bad","display_name_key":"trait.core.bad.name",
+             "kind":"principle","tag":"target:temple","weight":5}
+            """);
+
+        var violations = schemas.Validate(temp.Root);
+
+        Assert.NotEmpty(violations);
     }
 
     /// <summary>

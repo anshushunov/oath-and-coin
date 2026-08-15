@@ -107,7 +107,45 @@ public class ContentSetTests
 
         var error = Assert.Throws<InvalidDataException>(() => ContentSet.Load(root.Root));
 
-        Assert.Contains("version 2", error.Message, StringComparison.Ordinal);
+        Assert.Contains(
+            $"version {ContentSet.SupportedContentSchemaVersion}",
+            error.Message,
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The scenario the previous test actually has to cover, and does not on
+    /// its own: a real pre-Task-1 content tree has <c>heroes/</c> and
+    /// <c>contracts/</c>, but no <c>traits/</c> directory at all —
+    /// <see cref="TempContentRoot.CreateEmpty"/> always creates one, so the
+    /// previous test alone would stay green even if <see cref="ContentSet.Load"/>
+    /// tried <c>traits/</c> first and failed with "no 'traits' directory"
+    /// instead of ever reporting the version mismatch.
+    /// </summary>
+    [Fact]
+    public void Load_RejectsSchemaVersionOneWithoutTraitsDirectory()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "oath-and-coin-tests", Guid.NewGuid().ToString("n"));
+        Directory.CreateDirectory(Path.Combine(root, "heroes"));
+        Directory.CreateDirectory(Path.Combine(root, "contracts"));
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "heroes", "bram.json"), """
+                {"schema_version":1,"id":"core:bram","display_name_key":"hero.core.bram.name",
+                 "greed":60,"caution":30,"trust_in_guild":50}
+                """);
+
+            var error = Assert.Throws<InvalidDataException>(() => ContentSet.Load(root));
+
+            Assert.Contains(
+                $"version {ContentSet.SupportedContentSchemaVersion}",
+                error.Message,
+                StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
     }
 
     [Fact]
@@ -152,9 +190,9 @@ public class ContentSetTests
     }
 
     [Theory]
-    [InlineData("weight", -31)]
-    [InlineData("weight", 31)]
-    public void Load_RejectsInclinationWeightOutOfRange(string field, int value)
+    [InlineData(ContentBounds.InclinationWeightMin - 1)]
+    [InlineData(ContentBounds.InclinationWeightMax + 1)]
+    public void Load_RejectsInclinationWeightOutOfRange(int value)
     {
         using var root = TempContentRoot.CreateEmpty();
         root.WriteTrait("bad", $$"""
@@ -164,7 +202,86 @@ public class ContentSetTests
 
         var error = Assert.Throws<InvalidDataException>(() => ContentSet.Load(root.Root));
 
-        Assert.Contains(field, error.Message, StringComparison.Ordinal);
+        Assert.Contains("weight", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Load_RejectsUnknownTraitKind()
+    {
+        using var root = TempContentRoot.CreateEmpty();
+        root.WriteTrait("bad", """
+            {"schema_version":2,"id":"core:bad","display_name_key":"trait.core.bad.name",
+             "kind":"obsession","tag":"target:cult"}
+            """);
+
+        var error = Assert.Throws<InvalidDataException>(() => ContentSet.Load(root.Root));
+
+        Assert.Contains("unknown kind", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Load_RejectsTooManyTraits()
+    {
+        using var root = TempContentRoot.CreateEmpty();
+        var traits = string.Join(
+            ",",
+            Enumerable.Range(0, ContentLimits.MaxTraitsPerHero + 1).Select(i => $"\"core:trait_{i}\""));
+        root.WriteHero("bram", $$"""
+            {"schema_version":2,"id":"core:bram","display_name_key":"hero.core.bram.name",
+             "greed":60,"caution":30,"pride":50,"trust_in_guild":50,
+             "traits":[{{traits}}],"relationships":[]}
+            """);
+
+        var error = Assert.Throws<InvalidDataException>(() => ContentSet.Load(root.Root));
+
+        Assert.Contains("traits", error.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(ContentBounds.RelationshipWeightMin - 1)]
+    [InlineData(ContentBounds.RelationshipWeightMax + 1)]
+    public void Load_RejectsRelationshipWeightOutOfRange(int weight)
+    {
+        using var root = TempContentRoot.CreateEmpty();
+        root.WriteHero("bram", $$"""
+            {"schema_version":2,"id":"core:bram","display_name_key":"hero.core.bram.name",
+             "greed":60,"caution":30,"pride":50,"trust_in_guild":50,
+             "traits":[],"relationships":[{"hero":"core:zara","weight":{{weight}}}]}
+            """);
+
+        var error = Assert.Throws<InvalidDataException>(() => ContentSet.Load(root.Root));
+
+        Assert.Contains("weight", error.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(ContentBounds.RequiredCrewMin - 1)]
+    [InlineData(ContentBounds.RequiredCrewMax + 1)]
+    public void Load_RejectsRequiredCrewOutOfRange(int requiredCrew)
+    {
+        using var root = TempContentRoot.CreateEmpty();
+        root.WriteContract("escort", $$"""
+            {"schema_version":2,"id":"core:escort","display_name_key":"contract.core.escort.name",
+             "payment":40,"risk":50,"required_crew":{{requiredCrew}},"tags":[]}
+            """);
+
+        var error = Assert.Throws<InvalidDataException>(() => ContentSet.Load(root.Root));
+
+        Assert.Contains("required_crew", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Load_RejectsFileWithoutIntegerSchemaVersion()
+    {
+        using var root = TempContentRoot.CreateEmpty();
+        root.WriteHero("bram", """
+            {"id":"core:bram","display_name_key":"hero.core.bram.name",
+             "greed":60,"caution":30,"pride":50,"trust_in_guild":50,"traits":[],"relationships":[]}
+            """);
+
+        var error = Assert.Throws<InvalidDataException>(() => ContentSet.Load(root.Root));
+
+        Assert.Contains("schema_version", error.Message, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -359,7 +476,7 @@ public class ContentSetTests
         // digest must not depend on where the tree lives.
         Assert.Equal(production, untouchedCopy);
 
-        copy.WriteHero("bram", copy.ReadHero("bram.json").Replace("\"greed\": 60", "\"greed\": 61", StringComparison.Ordinal));
+        copy.WriteHero("bram", copy.ReadHero("bram").Replace("\"greed\": 60", "\"greed\": 61", StringComparison.Ordinal));
 
         Assert.NotEqual(production, ContentSet.Load(copy.Root).ContentVersion);
     }

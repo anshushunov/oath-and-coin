@@ -60,9 +60,10 @@ public sealed class ContentSet
     public ImmutableSortedDictionary<ContentId, ContractDefinition> Contracts { get; }
 
     /// <summary>
-    /// Traits authored as standalone content, keyed by id. Read before heroes
-    /// (see <see cref="Load"/>) because a hero's <c>traits</c> list names
-    /// these ids — whether every name resolves is Task 2's concern.
+    /// Traits authored as standalone content, keyed by id. A hero's
+    /// <c>traits</c> list names these ids; whether every name resolves is
+    /// Task 2's concern, not this loader's (see the ordering note in
+    /// <see cref="Load"/>).
     /// </summary>
     public ImmutableSortedDictionary<ContentId, TraitDefinition> Traits { get; }
 
@@ -96,15 +97,15 @@ public sealed class ContentSet
 
         var seenIds = new Dictionary<ContentId, string>();
 
-        // Traits before heroes: a hero's `traits` list names these ids, and
-        // reading them first is what will let Task 2 resolve those names.
-        var traits = ImmutableSortedDictionary.CreateBuilder<ContentId, TraitDefinition>();
-        foreach (var (relativePath, file) in ReadFiles<TraitFile>(root, "traits"))
-        {
-            RequireUniqueId(seenIds, file.Id, relativePath);
-            traits.Add(file.Id, ReadTrait(file, relativePath));
-        }
-
+        // Heroes and contracts before traits. Nothing in this task resolves a
+        // hero's `traits`/`relationships` against the loaded dictionaries
+        // (that is Task 2's job), so the order among the three is free — and
+        // it is deliberately not "traits first": a real pre-Task-1 content
+        // tree has `heroes/` and `contracts/` but no `traits/` directory at
+        // all, and reading traits first would make that tree fail with "no
+        // 'traits' directory" before ever reporting the schema_version
+        // mismatch that is the actually useful diagnostic for someone
+        // upgrading old content.
         var heroes = ImmutableSortedDictionary.CreateBuilder<ContentId, HeroDefinition>();
         foreach (var (relativePath, file) in ReadFiles<HeroFile>(root, "heroes"))
         {
@@ -155,6 +156,13 @@ public sealed class ContentSet
                     "required_crew",
                     relativePath),
                 RequireAtMost(file.Tags, ContentLimits.MaxTagsPerContract, "tags", relativePath)));
+        }
+
+        var traits = ImmutableSortedDictionary.CreateBuilder<ContentId, TraitDefinition>();
+        foreach (var (relativePath, file) in ReadFiles<TraitFile>(root, "traits"))
+        {
+            RequireUniqueId(seenIds, file.Id, relativePath);
+            traits.Add(file.Id, ReadTrait(file, relativePath));
         }
 
         return new ContentSet(

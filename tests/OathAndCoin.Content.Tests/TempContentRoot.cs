@@ -55,7 +55,7 @@ internal sealed class TempContentRoot : IDisposable
 
     public void WriteTrait(string name, string json) => Write("traits", name, json);
 
-    public string ReadHero(string fileName) => File.ReadAllText(Path.Combine(Root, "heroes", fileName));
+    public string ReadHero(string name) => File.ReadAllText(Path.Combine(Root, "heroes", FileNameFor(name)));
 
     public void Dispose()
     {
@@ -76,6 +76,26 @@ internal sealed class TempContentRoot : IDisposable
     {
         var directory = Path.Combine(Root, subdirectory);
         Directory.CreateDirectory(directory);
-        File.WriteAllText(Path.Combine(directory, name + ".json"), json);
+        File.WriteAllText(Path.Combine(directory, FileNameFor(name)), json);
+    }
+
+    /// <summary>
+    /// Every method here takes a bare content id, not a filename: the
+    /// extension is added here, once. A caller passing <c>"bram.json"</c>
+    /// out of habit from before this type existed would silently get
+    /// <c>bram.json.json</c> instead of a build error — the two contracts
+    /// share a signature, so nothing else would catch the mistake.
+    /// </summary>
+    private static string FileNameFor(string name)
+    {
+        if (name.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException(
+                $"'{name}' already ends with '.json'; pass the bare content id, "
+                + "the extension is added for you.",
+                nameof(name));
+        }
+
+        return name + ".json";
     }
 }
