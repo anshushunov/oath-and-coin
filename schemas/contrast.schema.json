@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oath-and-coin.invalid/schemas/contrast.schema.json",
+  "title": "Contrast",
+  "description": "Two runs and the single named difference between them: the same content, the same seed, the same hero asked about the same contract, differing in exactly one field a player can perceive changing. ContrastDefinition.Load/.Parse enforce the same rules this schema states.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "contrast",
+    "content_root",
+    "seed",
+    "hero",
+    "contract",
+    "vary",
+    "expect"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Version of this contrast format. Pinned by const so a contrast authored for a later format is refused by tooling, not read under today's assumptions; ContrastDefinition.SupportedContrastSchemaVersion states the same number."
+    },
+    "contrast": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable name of this contrast; must equal the stem of the file holding it (e.g. payment_raised.json declares \"payment_raised\")."
+    },
+    "content_root": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Repository-relative directory both branches load their content from — the production content/ tree, or a fixture tree for a case production content cannot reach."
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "The one campaign seed both branches are built with."
+    },
+    "hero": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$",
+      "description": "Content id of the hero definition both branches ask the same question of."
+    },
+    "contract": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$",
+      "description": "Content id of the contract definition the vary is applied to and the hero is asked about."
+    },
+    "vary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input", "from", "to"],
+      "description": "The one input that differs between the two branches, and its two values.",
+      "properties": {
+        "input": {
+          "type": "string",
+          "enum": [
+            "contract.payment",
+            "contract.risk",
+            "contract.tags",
+            "contract.accepted_by"
+          ],
+          "description": "The only conditions a player can perceive changing. Closed rather than open: any field ContractDefinition carries could technically be varied, but only these four are things a player at the table could have noticed."
+        },
+        "from": {
+          "description": "The value the first branch's contract carries for this input before the hero is asked. An integer for contract.payment/contract.risk, an array of content ids for contract.tags/contract.accepted_by."
+        },
+        "to": {
+          "description": "The value the second branch's contract carries for the same input. Must differ from 'from' — a contrast with nothing to compare proves nothing."
+        }
+      }
+    },
+    "expect": {
+      "type": "string",
+      "enum": ["decline_to_accept", "accept_to_decline"],
+      "description": "The direction the hero's answer is declared to flip, from the 'from' branch to the 'to' branch."
+    }
+  }
+}

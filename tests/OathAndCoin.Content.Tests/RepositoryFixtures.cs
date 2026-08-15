@@ -24,6 +24,15 @@ internal static class RepositoryFixtures
     /// <summary>Directory holding scenario command files and their manifests.</summary>
     public static string ScenarioRoot => Resolve("ScenarioRoot");
 
+    /// <summary>
+    /// Directory holding contrast files (Task 14). A subdirectory of
+    /// <see cref="ScenarioRoot"/> rather than its own assembly metadata key:
+    /// a contrast is, like a scenario, input data authored alongside the
+    /// scenarios it sits next to, and it needs no root of its own that
+    /// <see cref="ScenarioRoot"/> does not already name.
+    /// </summary>
+    public static string ContrastRoot => Path.Combine(ScenarioRoot, "contrasts");
+
     /// <summary>The Gate 0 scenario the spike is reproduced from.</summary>
     public static string ScenarioPath => Path.Combine(ScenarioRoot, "gate0.commands.json");
 
@@ -106,6 +115,15 @@ internal static class RepositoryFixtures
     /// never actually checked in.
     /// </summary>
     public static string CanonicalArtifact(string name) => Path.Combine(ScenarioRoot, $"{name}.canonical.json");
+
+    /// <summary>Path to the named contrast file under <see cref="ContrastRoot"/>.</summary>
+    public static string Contrast(string name) => Path.Combine(ContrastRoot, $"{name}.json");
+
+    /// <summary>Every contrast file shipped under <see cref="ContrastRoot"/>.</summary>
+    public static IReadOnlyList<string> ContrastFiles() =>
+        Directory.GetFiles(ContrastRoot, "*.json")
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .ToList();
 
     private static string Resolve(string key)
     {

@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "contrast": "risk_raised",
+  "content_root": "content",
+  "seed": 2,
+  "hero": "core:mira",
+  "contract": "core:escort_the_caravan",
+  "vary": { "input": "contract.risk", "from": 0, "to": 100 },
+  "expect": "accept_to_decline"
+}
