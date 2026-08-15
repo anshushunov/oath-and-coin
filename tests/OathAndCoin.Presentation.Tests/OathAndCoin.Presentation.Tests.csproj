@@ -22,6 +22,15 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\adapters\OathAndCoin.Presentation\OathAndCoin.Presentation.csproj" />
+
+    <!--
+      Task 11's catalogue-completeness test loads content and locale
+      directly (ContentSet.Load, LocaleCatalogue.Load) rather than only
+      consuming ScenarioOutcome's shape — an explicit reference states that,
+      even though OathAndCoin.Presentation's own ProjectReference chain
+      already makes the assembly available transitively.
+    -->
+    <ProjectReference Include="..\..\adapters\OathAndCoin.Content\OathAndCoin.Content.csproj" />
   </ItemGroup>
 
   <!--

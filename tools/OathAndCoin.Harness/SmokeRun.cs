@@ -358,7 +358,7 @@ public static class SmokeRun
                 Path.Combine(repositoryRoot, "content"),
                 Path.Combine(repositoryRoot, "artifacts", "faults", runId));
 
-            SpikeScreenModel model;
+            ContractOfferScreenModel model;
             string? canonicalHash = null;
 
             if (!Directory.Exists(contentRoot))
@@ -366,8 +366,8 @@ public static class SmokeRun
                 // The game's own first loading stage, reproduced (see
                 // Main.LoadModel). The detail differs and does not have to
                 // match: neither hash includes it.
-                model = SpikeScreenModelFactory.FromError(
-                    "CONTENT_ROOT_NOT_FOUND", $"Content root '{contentRoot}' does not exist.");
+                model = ContractOfferScreenModelFactory.FromOutcome(
+                    ("CONTENT_ROOT_NOT_FOUND", $"Content root '{contentRoot}' does not exist."));
             }
             else
             {
@@ -376,7 +376,7 @@ public static class SmokeRun
                     CheckpointResolver.CommandsUpTo(inputs.Commands, inputs.Checkpoint),
                     seed);
 
-                model = SpikeScreenModelFactory.FromOutcome(outcome);
+                model = ContractOfferScreenModelFactory.FromOutcome(outcome);
                 canonicalHash = DeterminismArtifact.Hash(outcome);
             }
 
@@ -392,7 +392,7 @@ public static class SmokeRun
             return new Expectation(
                 contentRoot,
                 canonicalHash,
-                SpikeScreenModelFactory.ReadModelHash(model),
+                ContractOfferScreenModelFactory.ReadModelHash(model),
                 RenderedUiSnapshot.Hash(RenderedUiSnapshot.Expected(model)));
         }
 

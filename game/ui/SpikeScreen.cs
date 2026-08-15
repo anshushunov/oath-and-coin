@@ -6,23 +6,21 @@ using OathAndCoin.Presentation;
 namespace OathAndCoin.Game.Ui;
 
 /// <summary>
-/// The gate 0 spike screen, built entirely in code from a
-/// <see cref="SpikeScreenModel"/> — the type's only input; this class never
-/// reaches into <c>GameState</c> or reloads content, so nothing it shows can
-/// disagree with the model <c>Main</c> already computed.
+/// A diagnostic rendering of a <see cref="ContractOfferScreenModel"/>, built
+/// entirely in code — the type's only input; this class never reaches into
+/// <c>GameState</c> or reloads content, so nothing it shows can disagree with
+/// the model <c>Main</c> already computed.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>This screen is diagnostic, not a product screen.</b> It shows the raw
-/// decision score and reason codes a player is never meant to read —
-/// <see cref="SpikeScreenLine.Score"/>, <see cref="SpikeScreenLine.For"/>,
-/// <see cref="SpikeScreenLine.Against"/> verbatim, and an error state that
-/// prints <see cref="SpikeScreenModel.ErrorCode"/> rather than a translated
-/// message. It exists only to prove the runtime harness's pipeline — that a
-/// model built off-engine and a model built by the running game agree, and
-/// that the second one actually reached the screen (see
-/// <see cref="Snapshot"/>). It is meant to be deleted, not evolved: its
-/// removal condition is the first screen Milestone 1 actually ships.
+/// <b>This screen is diagnostic, not a product screen.</b> It shows every
+/// key and qualitative grade the model carries verbatim — reason codes,
+/// tag keys, localization keys — rather than resolved, localized text. It
+/// exists only to prove the runtime harness's pipeline — that a model built
+/// off-engine and a model built by the running game agree, and that the
+/// second one actually reached the screen (see <see cref="Snapshot"/>). The
+/// real contract-offer screen, resolving these keys through a locale
+/// catalogue, is a later task's work.
 /// </para>
 /// <para>
 /// <b>Node order is the wire format.</b> <see cref="Render"/> adds exactly
@@ -30,9 +28,9 @@ namespace OathAndCoin.Game.Ui;
 /// puts in its list, in the same order, and nothing else — an extra label
 /// (a caption, a separator) would show up in <see cref="Snapshot"/> and break
 /// every hash comparison the runtime harness makes. The one exception is
-/// <see cref="SpikeScreenModel.ErrorDetail"/>: it is shown, for a person
-/// reading the screen, but as a <see cref="Label.TooltipText"/> rather than a
-/// second <see cref="Label"/>, because <see cref="RenderedUiSnapshot.Expected"/>
+/// <see cref="ContractOfferScreenModel.ErrorDetail"/>: it is shown, for a
+/// person reading the screen, but as a <see cref="Label.TooltipText"/> rather
+/// than a second <see cref="Label"/>, because <see cref="RenderedUiSnapshot.Expected"/>
 /// never includes it (see that method's remarks) and <see cref="Snapshot"/>
 /// only ever reads <see cref="Label.Text"/>.
 /// </para>
@@ -47,7 +45,7 @@ public sealed partial class SpikeScreen : VBoxContainer
     /// disposable view over one model, never rebound to a second one, so
     /// there is no "clear and rebuild" path to keep correct.
     /// </summary>
-    public void Render(SpikeScreenModel model)
+    public void Render(ContractOfferScreenModel model)
     {
         ArgumentNullException.ThrowIfNull(model);
 
@@ -60,7 +58,7 @@ public sealed partial class SpikeScreen : VBoxContainer
 
         _rendered = true;
 
-        AddChild(BuildLabel(model.Title));
+        AddChild(BuildLabel(model.TitleKey));
 
         if (model.ErrorCode is not null)
         {
@@ -69,9 +67,19 @@ public sealed partial class SpikeScreen : VBoxContainer
             AddChild(errorLabel);
         }
 
-        foreach (var line in model.Lines)
+        if (model.Contract is { } contract)
         {
-            AddChild(BuildLine(line));
+            AddChild(BuildContractLine(contract));
+        }
+
+        foreach (var hero in model.Roster)
+        {
+            AddChild(BuildHeroCard(hero));
+        }
+
+        foreach (var response in model.Responses)
+        {
+            AddChild(BuildResponseLine(response));
         }
     }
 
@@ -93,22 +101,66 @@ public sealed partial class SpikeScreen : VBoxContainer
         return new RenderedUiSnapshot(texts.ToImmutable());
     }
 
-    private static VBoxContainer BuildLine(SpikeScreenLine line)
+    private static VBoxContainer BuildContractLine(ContractLine contract)
     {
         var block = new VBoxContainer();
-        block.AddChild(BuildLabel(line.HeroDefinition));
-        block.AddChild(BuildLabel(line.Action));
-        block.AddChild(BuildLabel(line.Score.ToString(CultureInfo.InvariantCulture)));
+        block.AddChild(BuildLabel(contract.Definition));
+        block.AddChild(BuildLabel(contract.DisplayNameKey));
+        block.AddChild(BuildLabel(contract.Payment.ToString(CultureInfo.InvariantCulture)));
+        block.AddChild(BuildLabel(contract.Risk.ToString()));
 
-        foreach (var reason in line.For)
+        foreach (var tagKey in contract.TagKeys)
         {
-            block.AddChild(BuildLabel(reason));
+            block.AddChild(BuildLabel(tagKey));
         }
 
-        foreach (var reason in line.Against)
+        block.AddChild(BuildLabel(contract.RequiredCrew.ToString(CultureInfo.InvariantCulture)));
+        block.AddChild(BuildLabel(contract.AcceptedCount.ToString(CultureInfo.InvariantCulture)));
+
+        return block;
+    }
+
+    private static VBoxContainer BuildHeroCard(HeroCard hero)
+    {
+        var block = new VBoxContainer();
+        block.AddChild(BuildLabel(hero.Definition));
+        block.AddChild(BuildLabel(hero.DisplayNameKey));
+        block.AddChild(BuildLabel(hero.Greed.ToString()));
+        block.AddChild(BuildLabel(hero.Caution.ToString()));
+        block.AddChild(BuildLabel(hero.Pride.ToString()));
+
+        foreach (var key in hero.PrincipleKeys)
         {
-            block.AddChild(BuildLabel(reason));
+            block.AddChild(BuildLabel(key));
         }
+
+        foreach (var key in hero.InclinationKeys)
+        {
+            block.AddChild(BuildLabel(key));
+        }
+
+        return block;
+    }
+
+    private static VBoxContainer BuildResponseLine(ResponseLine response)
+    {
+        var block = new VBoxContainer();
+        block.AddChild(BuildLabel(response.HeroDefinition));
+        block.AddChild(BuildLabel(response.Action));
+
+        foreach (var reason in response.Reasons)
+        {
+            block.AddChild(BuildLabel(reason.ReasonCode));
+            block.AddChild(BuildLabel(reason.SourceEntity));
+            block.AddChild(BuildLabel(reason.Strength.ToString()));
+        }
+
+        if (response.BlockedByEntity is not null)
+        {
+            block.AddChild(BuildLabel(response.BlockedByEntity));
+        }
+
+        block.AddChild(BuildLabel(response.Wavered.ToString()));
 
         return block;
     }

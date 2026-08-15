@@ -46,7 +46,7 @@ namespace OathAndCoin.GameProtocol;
 /// <paramref name="ContentVersion"/>.
 /// </param>
 /// <param name="ReadModelHash">
-/// <c>OathAndCoin.Presentation.SpikeScreenModelFactory.ReadModelHash</c> of
+/// <c>OathAndCoin.Presentation.ContractOfferScreenModelFactory.ReadModelHash</c> of
 /// the screen the game built — present even on an error outcome, because an
 /// error still renders a screen (with its own error code and no lines) that
 /// can be hashed like any other.

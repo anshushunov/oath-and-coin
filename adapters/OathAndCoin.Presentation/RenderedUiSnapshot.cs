@@ -8,22 +8,22 @@ namespace OathAndCoin.Presentation;
 /// <summary>
 /// A flat list of texts, in the order a control tree would present them —
 /// the second of the two hashes this task adds (see the remarks on
-/// <see cref="SpikeScreenModelFactory"/>).
+/// <see cref="ContractOfferScreenModelFactory"/>).
 /// </summary>
 /// <remarks>
-/// <see cref="SpikeScreenModelFactory.ReadModelHash"/> proves the tool and
-/// the game built the same <see cref="SpikeScreenModel"/>. It proves nothing
-/// about whether that model reached the screen: a forgotten <c>Label</c>
-/// binding, two swapped lines, or a dropped reason all leave it green. This
-/// type is what closes that gap. <see cref="Expected"/> builds the snapshot
-/// a correct screen should produce, from the model alone — never by walking
-/// any actual node tree. The game side builds its own
-/// <see cref="RenderedUiSnapshot"/> by walking its real Godot control tree in
-/// tree order (later runtime-harness task; not part of this assembly, which
-/// stays engine-free — see <see cref="PresentationBoundaryTests"/>). The two
-/// snapshots are produced by unrelated code paths on purpose: a binding
-/// mistake breaks the match precisely because nothing here can "know" what
-/// the game actually rendered.
+/// <see cref="ContractOfferScreenModelFactory.ReadModelHash"/> proves the
+/// tool and the game built the same <see cref="ContractOfferScreenModel"/>.
+/// It proves nothing about whether that model reached the screen: a
+/// forgotten <c>Label</c> binding, two swapped lines, or a dropped reason all
+/// leave it green. This type is what closes that gap. <see cref="Expected"/>
+/// builds the snapshot a correct screen should produce, from the model
+/// alone — never by walking any actual node tree. The game side builds its
+/// own <see cref="RenderedUiSnapshot"/> by walking its real Godot control
+/// tree in tree order (a later runtime-harness task; not part of this
+/// assembly, which stays engine-free — see <see cref="PresentationBoundaryTests"/>
+/// in the test project). The two snapshots are produced by unrelated code
+/// paths on purpose: a binding mistake breaks the match precisely because
+/// nothing here can "know" what the game actually rendered.
 /// </remarks>
 /// <param name="Texts">Every shown text, in the order a reader encounters it.</param>
 public sealed record RenderedUiSnapshot(ImmutableArray<string> Texts)
@@ -36,32 +36,67 @@ public sealed record RenderedUiSnapshot(ImmutableArray<string> Texts)
 
     /// <summary>
     /// The snapshot a correctly bound screen should produce for
-    /// <paramref name="model"/>: the title, the error code if the run
-    /// failed, and per line the hero, the action, the score and every reason
-    /// — for, then against. Deliberately excludes
-    /// <see cref="SpikeScreenModel.ErrorDetail"/>, for the same reason
-    /// <see cref="SpikeScreenModelFactory.ReadModelHash"/> does (see its
-    /// remarks): it is not a value either side can agree on ahead of time.
+    /// <paramref name="model"/>: the title key, the error code if the run
+    /// failed, and then the contract, the roster and every response line —
+    /// each field the model carries, in the same order
+    /// <see cref="ContractOfferScreenModelFactory.ReadModelHash"/> reads
+    /// them in. Deliberately excludes
+    /// <see cref="ContractOfferScreenModel.ErrorDetail"/>, for the same
+    /// reason <c>ReadModelHash</c> does (see its remarks): it is not a value
+    /// either side can agree on ahead of time.
     /// </summary>
-    public static RenderedUiSnapshot Expected(SpikeScreenModel model)
+    public static RenderedUiSnapshot Expected(ContractOfferScreenModel model)
     {
         ArgumentNullException.ThrowIfNull(model);
 
         var texts = ImmutableArray.CreateBuilder<string>();
-        texts.Add(model.Title);
+        texts.Add(model.TitleKey);
 
         if (model.ErrorCode is not null)
         {
             texts.Add(model.ErrorCode);
         }
 
-        foreach (var line in model.Lines)
+        if (model.Contract is { } contract)
         {
-            texts.Add(line.HeroDefinition);
-            texts.Add(line.Action);
-            texts.Add(line.Score.ToString(CultureInfo.InvariantCulture));
-            texts.AddRange(line.For);
-            texts.AddRange(line.Against);
+            texts.Add(contract.Definition);
+            texts.Add(contract.DisplayNameKey);
+            texts.Add(contract.Payment.ToString(CultureInfo.InvariantCulture));
+            texts.Add(contract.Risk.ToString());
+            texts.AddRange(contract.TagKeys);
+            texts.Add(contract.RequiredCrew.ToString(CultureInfo.InvariantCulture));
+            texts.Add(contract.AcceptedCount.ToString(CultureInfo.InvariantCulture));
+        }
+
+        foreach (var hero in model.Roster)
+        {
+            texts.Add(hero.Definition);
+            texts.Add(hero.DisplayNameKey);
+            texts.Add(hero.Greed.ToString());
+            texts.Add(hero.Caution.ToString());
+            texts.Add(hero.Pride.ToString());
+            texts.AddRange(hero.PrincipleKeys);
+            texts.AddRange(hero.InclinationKeys);
+        }
+
+        foreach (var response in model.Responses)
+        {
+            texts.Add(response.HeroDefinition);
+            texts.Add(response.Action);
+
+            foreach (var reason in response.Reasons)
+            {
+                texts.Add(reason.ReasonCode);
+                texts.Add(reason.SourceEntity);
+                texts.Add(reason.Strength.ToString());
+            }
+
+            if (response.BlockedByEntity is not null)
+            {
+                texts.Add(response.BlockedByEntity);
+            }
+
+            texts.Add(response.Wavered.ToString());
         }
 
         return new RenderedUiSnapshot(texts.ToImmutable());

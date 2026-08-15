@@ -37,7 +37,7 @@ namespace OathAndCoin.Harness;
 /// never reaches a hashed state.
 /// </param>
 /// <param name="ExpectedReadModelHash">
-/// <c>OathAndCoin.Presentation.SpikeScreenModelFactory.ReadModelHash</c> the
+/// <c>OathAndCoin.Presentation.ContractOfferScreenModelFactory.ReadModelHash</c> the
 /// tool computed for the screen this run should show.
 /// </param>
 /// <param name="ExpectedRenderedUiHash">

@@ -64,7 +64,7 @@ public partial class Main : Control
             return;
         }
 
-        var readModelHash = SpikeScreenModelFactory.ReadModelHash(loaded.Model);
+        var readModelHash = ContractOfferScreenModelFactory.ReadModelHash(loaded.Model);
         var renderedUiHash = RenderedUiSnapshot.Hash(screen.Snapshot());
         var outcomeKind = loaded.Model.ErrorCode is null ? "success" : "error";
         var surface = new GodotCaptureSurface(GetViewport(), GetTree(), arguments.ScreenshotPath);
@@ -104,7 +104,7 @@ public partial class Main : Control
     /// <param name="CanonicalHash">
     /// <see cref="DeterminismArtifact.Hash"/> of the run, or <c>null</c> for the same reason.
     /// </param>
-    private readonly record struct LoadResult(SpikeScreenModel Model, string? ContentVersion, string? CanonicalHash);
+    private readonly record struct LoadResult(ContractOfferScreenModel Model, string? ContentVersion, string? CanonicalHash);
 
     /// <summary>
     /// Loads content and runs the requested scenario up to its checkpoint.
@@ -135,9 +135,8 @@ public partial class Main : Control
         if (!Directory.Exists(contentRoot))
         {
             return new LoadResult(
-                SpikeScreenModelFactory.FromError(
-                    "CONTENT_ROOT_NOT_FOUND",
-                    $"Content root '{contentRoot}' does not exist."),
+                ContractOfferScreenModelFactory.FromOutcome(
+                    ("CONTENT_ROOT_NOT_FOUND", $"Content root '{contentRoot}' does not exist.")),
                 ContentVersion: null,
                 CanonicalHash: null);
         }
@@ -154,7 +153,7 @@ public partial class Main : Control
         catch (InvalidDataException exception)
         {
             return new LoadResult(
-                SpikeScreenModelFactory.FromError("SCHEMA_INVALID", exception.Message),
+                ContractOfferScreenModelFactory.FromOutcome(("SCHEMA_INVALID", exception.Message)),
                 ContentVersion: null,
                 CanonicalHash: null);
         }
@@ -167,7 +166,7 @@ public partial class Main : Control
         catch (InvalidDataException exception)
         {
             return new LoadResult(
-                SpikeScreenModelFactory.FromError("CONTENT_INVALID", exception.Message),
+                ContractOfferScreenModelFactory.FromOutcome(("CONTENT_INVALID", exception.Message)),
                 ContentVersion: null,
                 CanonicalHash: null);
         }
@@ -189,7 +188,7 @@ public partial class Main : Control
         catch (InvalidDataException exception)
         {
             return new LoadResult(
-                SpikeScreenModelFactory.FromError("SCENARIO_INVALID", exception.Message),
+                ContractOfferScreenModelFactory.FromOutcome(("SCENARIO_INVALID", exception.Message)),
                 ContentVersion: null,
                 CanonicalHash: null);
         }
@@ -202,7 +201,7 @@ public partial class Main : Control
         catch (InvalidDataException exception)
         {
             return new LoadResult(
-                SpikeScreenModelFactory.FromError("CHECKPOINT_UNKNOWN", exception.Message),
+                ContractOfferScreenModelFactory.FromOutcome(("CHECKPOINT_UNKNOWN", exception.Message)),
                 ContentVersion: null,
                 CanonicalHash: null);
         }
@@ -211,7 +210,7 @@ public partial class Main : Control
 
         var outcome = ScenarioRunner.Run(content, commandsUpTo, arguments.Seed);
         return new LoadResult(
-            SpikeScreenModelFactory.FromOutcome(outcome),
+            ContractOfferScreenModelFactory.FromOutcome(outcome),
             content.ContentVersion,
             DeterminismArtifact.Hash(outcome));
     }

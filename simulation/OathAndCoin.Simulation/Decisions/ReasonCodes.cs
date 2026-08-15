@@ -1,3 +1,5 @@
+using System.Collections.Immutable;
+
 namespace OathAndCoin.Simulation.Decisions;
 
 /// <summary>
@@ -42,4 +44,23 @@ public static class ReasonCodes
 
     /// <summary>A red line — a principle that forbids this action outright, independent of score.</summary>
     public const string PrincipleForbids = "hero.decision.principle_forbids";
+
+    /// <summary>
+    /// Every code above, in declaration order. A screen that needs to check
+    /// every reason code against a localization catalogue (e.g. Task 11's
+    /// read model) would otherwise have to enumerate them by hand, and a
+    /// hand-written list drifts from this one the moment a code is added or
+    /// renamed here without anyone updating the copy.
+    /// </summary>
+    public static readonly ImmutableArray<string> All = ImmutableArray.Create(
+        PaymentAttractive,
+        RiskTooHigh,
+        TrustsTheGuild,
+        UnpredictableMood,
+        PaymentInsulting,
+        PersonalConviction,
+        PersonalAversion,
+        StandsWithComrade,
+        WillNotWorkWith,
+        PrincipleForbids);
 }
