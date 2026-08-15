@@ -219,6 +219,17 @@ public sealed partial class ContractOfferScreen : VBoxContainer
             block.AddChild(BuildLabel(textSource.Resolve(QualitativeScale.KeyFor(reason.Strength))));
         }
 
+        // Same shape as a reason's source above: a branch on the model fact
+        // ResponseLine.BlockedByDisplayNameKey (null exactly when nothing
+        // blocked this hero), never on any code. Spec §4/§5.2: a block names
+        // its principle so the screen does not have to guess one from the
+        // hero alone, and stays its own line so "too risky" reads
+        // differently from "will not do this at all".
+        if (response.BlockedByDisplayNameKey is not null)
+        {
+            block.AddChild(BuildLabel(textSource.Resolve(response.BlockedByDisplayNameKey)));
+        }
+
         block.AddChild(BuildLabel(textSource.Resolve(WaveredKeys.For(response.Wavered))));
 
         return block;

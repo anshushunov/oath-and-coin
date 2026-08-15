@@ -122,6 +122,11 @@ public sealed record RenderedUiSnapshot(ImmutableArray<string> Texts)
                 texts.Add(Resolve(catalogue, QualitativeScale.KeyFor(reason.Strength)));
             }
 
+            if (response.BlockedByDisplayNameKey is not null)
+            {
+                texts.Add(Resolve(catalogue, response.BlockedByDisplayNameKey));
+            }
+
             texts.Add(Resolve(catalogue, WaveredKeys.For(response.Wavered)));
         }
 

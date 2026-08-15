@@ -302,11 +302,16 @@ public static class ContractOfferScreenModelFactory
         {
             // A red line closes the decision before any score or mood exists
             // (spec §3.2): no reasons to rank, and Wavered is false without
-            // computing anything, never a guess.
+            // computing anything, never a guess. The block's own SourceEntity
+            // is always a principle's trait id (ContractDecisionRule.Decide's
+            // gate: BlockedBy is only ever built from trait.Id), so its
+            // display name resolves the same way a trait-sourced
+            // ReasonLine's does — see ReasonLine.SourceDisplayNameKey's
+            // remarks and spec §4 on why a block names an entity at all.
             var block = decision.Trace.BlockedBy[0];
             return new ResponseLine(
                 hero.Value, heroDisplayNameKey, decision.SelectedAction.Value, ImmutableArray<ReasonLine>.Empty,
-                block.SourceEntity.Value, Wavered: false);
+                block.SourceEntity.Value, TraitDisplayNameKey(block.SourceEntity), Wavered: false);
         }
 
         return new ResponseLine(
@@ -315,6 +320,7 @@ public static class ContractOfferScreenModelFactory
             decision.SelectedAction.Value,
             RankReasons(decision.Trace, heroDisplayNameKeys),
             BlockedByEntity: null,
+            BlockedByDisplayNameKey: null,
             Wavered: ComputeWavered(decision));
     }
 
@@ -469,6 +475,7 @@ public static class ContractOfferScreenModelFactory
         ["action"] = response.Action,
         ["reasons"] = new JsonArray(response.Reasons.Select(DescribeReason).ToArray<JsonNode?>()),
         ["blocked_by_entity"] = response.BlockedByEntity,
+        ["blocked_by_display_name_key"] = response.BlockedByDisplayNameKey,
         ["wavered"] = response.Wavered,
     };
 

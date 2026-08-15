@@ -133,6 +133,20 @@ public sealed record HeroCard(
 /// The content id text of the entity carrying the principle that blocked
 /// this hero outright, or <c>null</c> when nothing did.
 /// </param>
+/// <param name="BlockedByDisplayNameKey">
+/// The localization key naming the principle in <paramref name="BlockedByEntity"/>
+/// (<see cref="ContractOfferScreenModelFactory.TraitDisplayNameKey"/> — the
+/// same trait catalogue lookup <see cref="ReasonLine.SourceDisplayNameKey"/>
+/// uses for a trait-sourced reason), or <c>null</c> exactly when
+/// <paramref name="BlockedByEntity"/> is. Spec §4, on why a block carries an
+/// entity at all: before that, a trace could say a principle fired but never
+/// which one, and a screen would have had to guess from the hero alone —
+/// inventing a reason, which TDD §11.1 forbids outright. Spec §5.2 keeps this
+/// line separate from <see cref="Reasons"/> so a player can tell "too risky"
+/// (a reason with a magnitude, weighed against everything else) from
+/// "will not do this at all" (a red line, weighed against nothing) — a
+/// principle named without saying which one only gets half of that told.
+/// </param>
 /// <param name="Wavered">
 /// <c>true</c> when this hero's mood flipped the answer the rest of the
 /// factors alone would have given — never set for a blocked line, which
@@ -147,6 +161,7 @@ public sealed record ResponseLine(
     string Action,
     ImmutableArray<ReasonLine> Reasons,
     string? BlockedByEntity,
+    string? BlockedByDisplayNameKey,
     bool Wavered);
 
 /// <summary>

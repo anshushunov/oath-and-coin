@@ -174,6 +174,29 @@ public class ContractOfferScreenModelTests
         Assert.False(line.Wavered);
     }
 
+    /// <summary>
+    /// Review finding (Critical, round 4): a block used to carry only the
+    /// raw trait id (<see cref="ResponseLine.BlockedByEntity"/>) — spec §4's
+    /// own reason for putting an entity on a block at all was so a screen
+    /// never has to guess which principle fired from the hero alone, and a
+    /// raw id the screen refuses to show (TDD §11.1) leaves it guessing
+    /// exactly the same way an empty field would. No fixture reaches this
+    /// through a real Godot frame at seed 7 today (no scenario's tags happen
+    /// to cross a hero's principle) — a scenario that does is later work —
+    /// so this is the model-level proof the coordinator asked for in its
+    /// place: the resolved key is present, distinct from both the raw id and
+    /// from nothing at all.
+    /// </summary>
+    [Fact]
+    public void FromOutcome_NamesTheBlockingPrincipleNotJustTheHero()
+    {
+        var line = Factory.FromOutcome(Outcomes.PrincipleBlocked()).Responses.Single();
+
+        Assert.Equal("trait.core.will_not_strike_a_temple.name", line.BlockedByDisplayNameKey);
+        Assert.NotEqual(line.BlockedByEntity, line.BlockedByDisplayNameKey);
+        Assert.NotNull(line.BlockedByDisplayNameKey);
+    }
+
     [Fact]
     public void FromOutcome_MarksWaveredWhenMoodFlippedTheAnswer()
     {
@@ -423,6 +446,7 @@ public class ContractOfferScreenModelTests
             { "response-hero-display-name-key", normal, WithResponse(normal, acceptResponse with { HeroDisplayNameKey = "hero.core.other.name" }) },
             { "response-action", normal, WithResponse(normal, acceptResponse with { Action = "action:decline" }) },
             { "response-blocked-by-entity", normal, WithResponse(normal, acceptResponse with { BlockedByEntity = "core:something" }) },
+            { "response-blocked-by-display-name-key", normal, WithResponse(normal, acceptResponse with { BlockedByDisplayNameKey = "trait.extra" }) },
             { "response-wavered", normal, WithResponse(normal, acceptResponse with { Wavered = !acceptResponse.Wavered }) },
             { "reason-code", normal, WithResponse(normal, acceptResponse with { Reasons = acceptResponse.Reasons.SetItem(0, reason with { ReasonCode = "other" }) }) },
             { "reason-source-entity", normal, WithResponse(normal, acceptResponse with { Reasons = acceptResponse.Reasons.SetItem(0, reason with { SourceEntity = "core:other" }) }) },
@@ -521,6 +545,11 @@ public class ContractOfferScreenModelTests
             {
                 Assert.DoesNotContain(response.BlockedByEntity, snapshot.Texts);
             }
+
+            if (response.BlockedByDisplayNameKey is not null)
+            {
+                Assert.Contains(catalogue[response.BlockedByDisplayNameKey], snapshot.Texts);
+            }
         }
 
         // Positive control (spec §5.2): the fixture's trait-sourced reason
@@ -528,6 +557,12 @@ public class ContractOfferScreenModelTests
         // key or other happened to be null and the loop above never ran".
         Assert.Contains("trait.core.loyal_to_the_merchant_guild.name", catalogue.Keys);
         Assert.Contains(catalogue["trait.core.loyal_to_the_merchant_guild.name"], snapshot.Texts);
+
+        // Positive control (spec §4): the fixture's blocked response must
+        // actually resolve to its own principle's name, not merely "some
+        // key or other happened to be null and the loop above never ran".
+        Assert.Contains("trait.core.will_not_strike_a_temple.name", catalogue.Keys);
+        Assert.Contains(catalogue["trait.core.will_not_strike_a_temple.name"], snapshot.Texts);
     }
 
     [Fact]
@@ -610,11 +645,14 @@ public class ContractOfferScreenModelTests
                     new ReasonLine(
                         ReasonCodes.PersonalConviction, "core:loyal_to_the_merchant_guild", QualitativeGrade.Low,
                         SourceDisplayNameKey: "trait.core.loyal_to_the_merchant_guild.name")),
-                null,
+                BlockedByEntity: null,
+                BlockedByDisplayNameKey: null,
                 false),
             new ResponseLine(
                 "core:zara", "hero.core.zara.name", "action:decline", ImmutableArray<ReasonLine>.Empty,
-                "core:will_not_strike_a_temple", false)),
+                BlockedByEntity: "core:will_not_strike_a_temple",
+                BlockedByDisplayNameKey: "trait.core.will_not_strike_a_temple.name",
+                Wavered: false)),
         ErrorCode = null,
         ErrorDetail = null,
     };
