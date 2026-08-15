@@ -194,6 +194,45 @@ public class ContractDecisionRuleTests
     }
 
     /// <summary>
+    /// Mood (Task 7) is added to the trace like any other factor: present
+    /// exactly when its value is non-zero, and living in whichever list its
+    /// sign says. <see cref="ContractDecisionRule.DrawMood"/> is asked
+    /// directly for the same <c>(seed, ordinal)</c> the context uses, rather
+    /// than assuming a particular draw — the point is that mood follows the
+    /// same "zero stays out of the trace" rule, not that this test knows
+    /// what mood 42/0 happens to draw.
+    /// </summary>
+    [Fact]
+    public void Decide_AddsMoodAsAnOrdinaryFactor()
+    {
+        var decision = ContractDecisionRule.Decide(Context(seed: 42, ordinal: 0));
+
+        var mood = decision.Result.Trace.PositiveFactors
+            .Concat(decision.Result.Trace.NegativeFactors)
+            .SingleOrDefault(f => f.ReasonCode == ReasonCodes.UnpredictableMood);
+
+        var expected = ContractDecisionRule.DrawMood(42, 0);
+        Assert.Equal(expected.Value == 0, mood is null);
+        Assert.True(decision.OrdinalsConsumed >= 1);
+    }
+
+    /// <summary>
+    /// The trace is not decoration alongside the score — it is the
+    /// arithmetic, so the sum of every factor's magnitude (positive minus
+    /// negative) must equal <see cref="DecisionResult.SelectedScore"/>
+    /// exactly, mood included.
+    /// </summary>
+    [Fact]
+    public void Decide_SumOfFactorsEqualsSelectedScore()
+    {
+        var decision = ContractDecisionRule.Decide(Context(greed: 70, payment: 60, caution: 40, risk: 50, trust: 30));
+
+        var positive = decision.Result.Trace.PositiveFactors.Sum(f => f.Magnitude);
+        var negative = decision.Result.Trace.NegativeFactors.Sum(f => f.Magnitude);
+        Assert.Equal(decision.Result.SelectedScore, positive - negative);
+    }
+
+    /// <summary>
     /// Finds the one factor with <paramref name="reasonCode"/> across both
     /// <see cref="CausalTrace.PositiveFactors"/> and
     /// <see cref="CausalTrace.NegativeFactors"/> — which list it actually
@@ -226,7 +265,7 @@ public class ContractDecisionRuleTests
     /// <c>Crew</c> — needs to be able to put someone in <c>Crew</c> without
     /// also putting them here.
     /// </param>
-    private static DecisionContext Context(
+    internal static DecisionContext Context(
         (string PrincipleId, string Tag)[]? principles = null,
         string[]? contractTags = null,
         (string TraitId, string Tag, int Weight)[]? inclinations = null,
@@ -293,4 +332,34 @@ public class ContractDecisionRuleTests
             TraceId = traceId,
         };
     }
+
+    /// <summary>
+    /// Positional overload used by <see cref="DecisionPropertyTests"/>'s
+    /// grids: those tests hold <c>trust</c>, <c>seed</c> and the
+    /// tag/relationship/crew shape fixed and sweep only the six numbers a
+    /// score is made of, so a positional signature reads better at each of
+    /// the thousands of call sites than the named-argument form above.
+    /// Delegates to the named overload above rather than duplicating its
+    /// construction logic — the extra <c>trust: 50</c> argument (a name this
+    /// overload does not have) is what forces overload resolution to prefer
+    /// that method over recursing into this one.
+    /// </summary>
+    internal static DecisionContext Context(
+        int greed, int caution, int pride, int payment, int risk, ulong ordinal) =>
+        Context(greed: greed, caution: caution, pride: pride, payment: payment, risk: risk, ordinal: ordinal, trust: 50);
+
+    /// <summary>
+    /// A hero with exactly one principle, tagged so it always matches the
+    /// contract — the gate closes the decision before <paramref name="payment"/>,
+    /// <paramref name="risk"/> or <paramref name="trust"/> are ever read, which
+    /// is the property <see cref="DecisionPropertyTests.PrincipleHoldsAtEveryPaymentAndRisk"/>
+    /// exists to pin down.
+    /// </summary>
+    internal static DecisionContext ContextWithPrinciple(int payment, int risk, int trust) =>
+        Context(
+            principles: [("core:property_test_principle", "target:property_test")],
+            contractTags: ["target:property_test"],
+            payment: payment,
+            risk: risk,
+            trust: trust);
 }
