@@ -1,6 +1,6 @@
 {
   "commands": [
-    { "command_id": 1, "hero_index": 2, "contract": "fixture:crew_job", "expected_state_version": 0 },
-    { "command_id": 2, "hero_index": 3, "contract": "fixture:crew_job", "expected_state_version": 1 }
+    { "command_id": 1, "hero_index": 1, "contract": "fixture:crew_job", "expected_state_version": 0 },
+    { "command_id": 2, "hero_index": 2, "contract": "fixture:crew_job", "expected_state_version": 1 }
   ]
 }

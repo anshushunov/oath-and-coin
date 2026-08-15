@@ -1,9 +1,0 @@
-{
-  "schema_version": 2,
-  "id": "fixture:job_beta",
-  "display_name_key": "contract.fixture.job_beta.name",
-  "payment": 0,
-  "risk": 20,
-  "required_crew": 2,
-  "tags": []
-}
