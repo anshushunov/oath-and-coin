@@ -38,25 +38,32 @@ public sealed record HeroDecision(DecisionResult Result, ulong OrdinalsConsumed)
 /// </summary>
 /// <remarks>
 /// <para>
-/// <c>score = payment*greed/100 − risk*caution/100 + trust/10 + mood</c>,
-/// accepted at <c>score &gt;= 0</c>. Every term is integer arithmetic (TDD
-/// §7.4): the core has no floating point at all, and the boundary guard fails
-/// the build if any appears.
+/// <c>score = payment*greed/100 − risk*caution/100 − insult + inclinations +
+/// trust/10 + bonds + mood</c>, accepted at <c>score &gt;= 0</c>. <c>insult</c>
+/// is <c>(risk − payment)*pride/100</c> when payment is below risk, otherwise
+/// absent entirely — not a zero term. <c>inclinations</c> and <c>bonds</c> are
+/// each a sum of signed per-source contributions (a hero's own traits;
+/// comrades already committed to the same contract). Every term divides on
+/// its own, before being added into the sum — dividing the sum instead would
+/// round differently under integer division (spec §3.3). Every term is
+/// integer arithmetic (TDD §7.4): the core has no floating point at all, and
+/// the boundary guard fails the build if any appears.
 /// </para>
 /// <para>
 /// Every term that contributed also appears in the trace, with the same
-/// magnitude the score used. The explanation is not reconstructed after the
-/// fact from the outcome — it is the arithmetic itself, written down (DEC-004,
-/// DEC-006).
+/// magnitude the score used — never negative: which list (Positive/Negative)
+/// a factor lives in already says which way it pulled. The explanation is
+/// not reconstructed after the fact from the outcome — it is the arithmetic
+/// itself, written down (DEC-004, DEC-006).
 /// </para>
 /// </remarks>
 public static class ContractDecisionRule
 {
     /// <summary>
     /// Mood is what keeps two runs of the same campaign from being the same
-    /// story, and it is bounded on purpose: at ±5 against Bram's +14 and
-    /// Zara's −28, it colours a decision without ever overturning one. A hero
-    /// whose refusal flips to acceptance because of the weather is not a
+    /// story, and it is bounded on purpose: at ±5 against scores an order of
+    /// magnitude larger, it colours a decision without ever overturning one.
+    /// A hero whose refusal flips to acceptance because of the weather is not a
     /// character the player can learn (DEC-006).
     /// </summary>
     public const int MoodMin = -5;
@@ -120,33 +127,107 @@ public static class ContractDecisionRule
         var decisionOrdinal = context.DecisionOrdinal;
         var traceId = context.TraceId;
 
-        var paymentPull = contract.Payment * hero.Greed / 100;
-        var riskAversion = contract.Risk * hero.Caution / 100;
-        var guildTrust = hero.TrustInGuild / 10;
-        var mood = DrawMood(campaignSeed, decisionOrdinal);
-
-        var score = paymentPull - riskAversion + guildTrust + mood.Value;
-
         var positive = ImmutableArray.CreateBuilder<TraceFactor>();
         var negative = ImmutableArray.CreateBuilder<TraceFactor>();
 
-        // The contract is the source of the money and of the danger; the hero
-        // is the source of their own trust and their own mood. A factor points
-        // at the thing a player could go and look at to understand it.
+        // Order below is the spec §3.3 table, verbatim: payment, risk, insult,
+        // inclinations (by trait Id, already the order Traits is sorted in),
+        // trust, bonds (by HeroId). That order is not cosmetic — it is what
+        // ends up in the trace, and the trace is a canonical artifact.
+
+        // Выгода: what the contract pays, pulled toward acceptance by greed.
+        // The contract is the source of the money; a factor points at the
+        // thing a player could go and look at to understand it.
+        var paymentPull = contract.Payment * hero.Greed / 100;
         if (paymentPull > 0)
         {
             positive.Add(new TraceFactor(ReasonCodes.PaymentAttractive, contract.Id, paymentPull));
         }
 
+        // Риск: what the contract risks, pushed toward refusal by caution.
+        var riskAversion = contract.Risk * hero.Caution / 100;
         if (riskAversion > 0)
         {
             negative.Add(new TraceFactor(ReasonCodes.RiskTooHigh, contract.Id, riskAversion));
         }
 
+        // Обида: only when the payment does not even cover the risk being
+        // asked — paid fairly or better, there is no insult at all, not a
+        // zero-magnitude one.
+        var insult = contract.Payment < contract.Risk
+            ? (contract.Risk - contract.Payment) * hero.Pride / 100
+            : 0;
+        if (insult > 0)
+        {
+            negative.Add(new TraceFactor(ReasonCodes.PaymentInsulting, contract.Id, insult));
+        }
+
+        // Склонности: every non-principle trait whose tag the contract
+        // carries, walked in the hero's own Traits order (Id-sorted, asserted
+        // above) — principles were already consumed by the gate above and
+        // never reach here.
+        var inclinationSum = 0;
+        foreach (var trait in context.Traits)
+        {
+            if (trait.IsPrinciple || !contract.Tags.Contains(trait.Tag))
+            {
+                continue;
+            }
+
+            inclinationSum += trait.Weight;
+
+            if (trait.Weight > 0)
+            {
+                positive.Add(new TraceFactor(ReasonCodes.PersonalConviction, trait.Id, trait.Weight));
+            }
+            else if (trait.Weight < 0)
+            {
+                negative.Add(new TraceFactor(ReasonCodes.PersonalAversion, trait.Id, -trait.Weight));
+            }
+        }
+
+        // Доверие: the hero's own trust in the guild.
+        var guildTrust = hero.TrustInGuild / 10;
         if (guildTrust > 0)
         {
             positive.Add(new TraceFactor(ReasonCodes.TrustsTheGuild, hero.Definition, guildTrust));
         }
+
+        // Связи: only heroes who have already accepted this same contract,
+        // walked in AcceptedBy's own HeroId order. A hero listed in
+        // AcceptedBy with no matching Crew entry is a context-assembly bug —
+        // the engine forgot to carry that hero along — not an absent
+        // relationship, so it fails loudly instead of reading as "no
+        // opinion".
+        var bondSum = 0;
+        foreach (var heroId in contract.AcceptedBy)
+        {
+            if (!context.Crew.TryGetValue(heroId, out var comrade))
+            {
+                throw new InvalidOperationException(
+                    $"Contract '{contract.Id}' lists hero {heroId} in AcceptedBy, but "
+                    + $"DecisionContext.Crew has no entry for hero {heroId} — an accepted hero "
+                    + "missing from Crew is a context-assembly bug, not an absent relationship.");
+            }
+
+            if (!hero.Relationships.TryGetValue(comrade, out var weight))
+            {
+                continue;
+            }
+
+            bondSum += weight;
+
+            if (weight > 0)
+            {
+                positive.Add(new TraceFactor(ReasonCodes.StandsWithComrade, comrade, weight));
+            }
+            else if (weight < 0)
+            {
+                negative.Add(new TraceFactor(ReasonCodes.WillNotWorkWith, comrade, -weight));
+            }
+        }
+
+        var mood = DrawMood(campaignSeed, decisionOrdinal);
 
         // Magnitudes are stated as strengths, never as signed contributions:
         // which list a factor is in already says which way it pulled, and a
@@ -160,6 +241,8 @@ public static class ContractDecisionRule
         {
             negative.Add(new TraceFactor(ReasonCodes.UnpredictableMood, hero.Definition, -mood.Value));
         }
+
+        var score = paymentPull - riskAversion - insult + inclinationSum + guildTrust + bondSum + mood.Value;
 
         var result = new DecisionResult
         {

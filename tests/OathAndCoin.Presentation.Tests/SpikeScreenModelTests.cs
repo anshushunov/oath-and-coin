@@ -48,11 +48,11 @@ public class SpikeScreenModelTests
 
         Assert.Equal("core:zara", model.Lines[0].HeroDefinition);
         Assert.Equal(Actions.Decline.Value, model.Lines[0].Action);
-        Assert.Equal(-23, model.Lines[0].Score);
+        Assert.Equal(-28, model.Lines[0].Score);
 
         Assert.Equal("core:bram", model.Lines[1].HeroDefinition);
         Assert.Equal(Actions.Accept.Value, model.Lines[1].Action);
-        Assert.Equal(9, model.Lines[1].Score);
+        Assert.Equal(5, model.Lines[1].Score);
     }
 
     /// <summary>

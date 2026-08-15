@@ -26,8 +26,9 @@ public class ProposeContractTests
     private static readonly ContentId ContractId = ContentId.Parse("core:escort_the_caravan");
 
     /// <summary>
-    /// Zara's numbers put her decision at -28 before mood, which the mood
-    /// range (-5..+5) cannot reach — so this asserts a decision, not a seed.
+    /// Zara's numbers put her decision at -33 before mood (payment pull 8,
+    /// risk aversion 40, insult 5, trust 4), which the mood range (-5..+5)
+    /// cannot reach — so this asserts a decision, not a seed.
     /// </summary>
     [Fact]
     public void CautiousHero_DeclinesAndTraceNamesRisk()
@@ -45,7 +46,10 @@ public class ProposeContractTests
         Assert.IsType<HeroDeclinedContract>(Assert.Single(result.Events));
     }
 
-    /// <summary>Bram sits at +14 before mood — the same argument, mirrored.</summary>
+    /// <summary>
+    /// Bram sits at +9 before mood (payment pull 24, risk aversion 15, insult
+    /// 5, trust 5) — the same argument, mirrored.
+    /// </summary>
     [Fact]
     public void GreedyHero_AcceptsAndTraceNamesPayment()
     {
