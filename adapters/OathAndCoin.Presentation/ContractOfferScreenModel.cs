@@ -67,13 +67,16 @@ public sealed record ReasonLine(string ReasonCode, string SourceEntity, Qualitat
 /// One hero in the roster, as the screen shows them: qualitative traits, and
 /// the principles/inclinations that could make a contract land differently
 /// for this hero than for another. Neither <see cref="PrincipleKeys"/> nor
-/// <see cref="InclinationKeys"/> is a trait's own display name — the
+/// <see cref="InclinationKeys"/> is a trait's own authored display name — the
 /// simulation core carries a trait only as a resolved
 /// <see cref="OathAndCoin.Simulation.Decisions.HeldTrait"/> (id, tag, kind,
 /// weight; ADR-002 forbids it from referencing the content assembly that
-/// would know an authored name) — so each key is the trait's <c>Tag</c> run
-/// through <see cref="TagKeys.For"/>, the same convention
-/// <see cref="ContractLine.TagKeys"/> uses for a contract's own tags.
+/// would know an authored name) — so each key is built from the trait's own
+/// <c>Id</c> by the same <c>"trait.{namespace}.{name}.name"</c> convention
+/// <see cref="ContractLine.DisplayNameKey"/> uses for a contract (see
+/// <see cref="ContractOfferScreenModelFactory.TraitDisplayNameKey"/>), never
+/// from the trait's <c>Tag</c> — a tag is what a <em>contract</em> latches
+/// onto, a different piece of content with its own authored name.
 /// </summary>
 public sealed record HeroCard(
     string Definition,

@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Globalization;
 using OathAndCoin.Content;
 using OathAndCoin.Content.Scenarios;
 using OathAndCoin.Content.Tests;
@@ -56,10 +57,37 @@ public class ContractOfferScreenModelTests
         var content = ContentSet.Load(RepositoryFixtures.ContentRoot);
         var catalogue = LocaleCatalogue.Load(RepositoryFixtures.LocaleFile("ru"));
 
+        // Review finding (Important 2 and 3): ContractDisplayNameKey and
+        // TraitDisplayNameKey reconstruct a key from a bare ContentId by
+        // convention, because neither ContractState nor HeldTrait carries the
+        // authored key the way HeroState does. That convention was invisible
+        // to every test — an author spelling display_name_key differently
+        // than the convention assumes would still leave every other check
+        // green while the screen showed a key nobody translated. Asserting
+        // the reconstruction against the loaded content's own authored key,
+        // for every contract and every trait, is what makes the convention a
+        // checked fact instead of an assumption.
+        foreach (var contract in content.Contracts.Values)
+        {
+            Assert.Equal(
+                contract.DisplayNameKey, ContractOfferScreenModelFactory.ContractDisplayNameKey(contract.Id));
+        }
+
+        foreach (var trait in content.Traits.Values)
+        {
+            Assert.Equal(trait.DisplayNameKey, ContractOfferScreenModelFactory.TraitDisplayNameKey(trait.Id));
+        }
+
+        // Review finding (Important 7): the screen's own title key and every
+        // reconstructed contract key are values ContractOfferScreenModel can
+        // put on screen, same as a tag or a reason code, and were missing
+        // from the set this test actually checks against the catalogue.
         var keys = content.Contracts.Values.SelectMany(c => c.Tags).Select(TagKeys.For)
             .Concat(content.Traits.Values.Select(t => TagKeys.For(t.Tag)))
             .Concat(ReasonCodes.All)
-            .Concat(QualitativeScale.AllKeys);
+            .Concat(QualitativeScale.AllKeys)
+            .Concat(new[] { ContractOfferScreenModelFactory.TitleKey })
+            .Concat(content.Contracts.Keys.Select(ContractOfferScreenModelFactory.ContractDisplayNameKey));
 
         foreach (var key in keys)
         {
@@ -165,6 +193,49 @@ public class ContractOfferScreenModelTests
         Assert.Equal(ScreenState.Empty, Factory.FromOutcome(Outcomes.NoContracts()).State);
     }
 
+    /// <summary>
+    /// Review finding (Important 1): the contract shown and the responses
+    /// listed used to be resolved independently — the contract from the
+    /// first step, the responses from every step — so a run with two offers
+    /// in flight would show contract A's line with a stray answer to
+    /// contract B mixed in.
+    /// </summary>
+    [Fact]
+    public void FromOutcome_OnlyShowsResponsesToTheDisplayedContract()
+    {
+        var model = Factory.FromOutcome(Outcomes.TwoContractsOneShown());
+
+        var response = Assert.Single(model.Responses);
+        Assert.Equal("core:bram", response.HeroDefinition);
+    }
+
+    /// <summary>
+    /// Review finding (Important 1, second half): completeness used to be
+    /// <c>responses.Length &gt;= roster.Length</c> — a hero who somehow
+    /// produced two response lines for the same contract would count twice.
+    /// <c>ContractState.RespondedBy</c> is a set, so it cannot.
+    /// </summary>
+    [Fact]
+    public void FromOutcome_CountsCompletenessByRespondedHeroesNotResponseLines()
+    {
+        Assert.Equal(ScreenState.Incomplete, Factory.FromOutcome(Outcomes.SameHeroAnsweredTwice()).State);
+    }
+
+    /// <summary>
+    /// Review finding (Important 5): every other fixture's heroes carry no
+    /// traits at all, so the principle/inclination split, the sort and the
+    /// rulebook lookup in <c>ContractOfferScreenModelFactory.TraitKeys</c>
+    /// never actually ran under any test.
+    /// </summary>
+    [Fact]
+    public void FromOutcome_BuildsPrincipleAndInclinationKeysFromTheHeroesOwnTraits()
+    {
+        var bram = Factory.FromOutcome(Outcomes.HeroWithTraits()).Roster.Single(h => h.Definition == "core:bram");
+
+        Assert.Equal(new[] { "trait.core.will_not_strike_a_temple.name" }, bram.PrincipleKeys.ToArray());
+        Assert.Equal(new[] { "trait.core.hates_the_cult.name" }, bram.InclinationKeys.ToArray());
+    }
+
     [Fact]
     public void ReadModelHash_IgnoresErrorDetailButNotErrorCode()
     {
@@ -184,6 +255,300 @@ public class ContractOfferScreenModelTests
 
         Assert.NotEqual(Factory.ReadModelHash(incomplete), Factory.ReadModelHash(normal));
     }
+
+    // --- Model validation (review finding, Important 4) -----------------
+    //
+    // Sixty lines of "which fields a state may carry" validation on
+    // ContractOfferScreenModel had zero tests: nobody tried to build a
+    // roster on an error, an orphaned ErrorDetail, or a model with{}'d from
+    // one shape into another. The two With_ tests below are also the direct
+    // proof for the claim in this task's report that re-validation survives
+    // a `with` — the very reason the type stopped being a positional record.
+
+    [Fact]
+    public void Model_RejectsARosterOnAnErrorState()
+    {
+        var oneHero = ImmutableArray.Create(
+            new HeroCard(
+                "core:bram", "hero.core.bram.name", QualitativeGrade.Low, QualitativeGrade.Low,
+                QualitativeGrade.Low, ImmutableArray<string>.Empty, ImmutableArray<string>.Empty));
+
+        Assert.Throws<ArgumentException>(() => new ContractOfferScreenModel
+        {
+            State = ScreenState.Error,
+            TitleKey = Factory.TitleKey,
+            Contract = null,
+            Roster = oneHero,
+            Responses = ImmutableArray<ResponseLine>.Empty,
+            ErrorCode = "SOME_ERROR",
+            ErrorDetail = null,
+        });
+    }
+
+    [Fact]
+    public void Model_RejectsAnErrorDetailWithoutAnErrorCode()
+    {
+        Assert.Throws<ArgumentException>(() => new ContractOfferScreenModel
+        {
+            State = ScreenState.Empty,
+            TitleKey = Factory.TitleKey,
+            Contract = null,
+            Roster = ImmutableArray<HeroCard>.Empty,
+            Responses = ImmutableArray<ResponseLine>.Empty,
+            ErrorCode = null,
+            ErrorDetail = "a detail with nothing to detail",
+        });
+    }
+
+    [Fact]
+    public void Model_RejectsAnIncompleteStateWithNoContractToOffer()
+    {
+        Assert.Throws<ArgumentException>(() => new ContractOfferScreenModel
+        {
+            State = ScreenState.Incomplete,
+            TitleKey = Factory.TitleKey,
+            Contract = null,
+            Roster = ImmutableArray<HeroCard>.Empty,
+            Responses = ImmutableArray<ResponseLine>.Empty,
+            ErrorCode = null,
+            ErrorDetail = null,
+        });
+    }
+
+    [Fact]
+    public void Model_RevalidatesOnWith_RejectsBecomingEmptyWithoutClearingTheOffer()
+    {
+        var normal = RichModel();
+
+        Assert.Throws<ArgumentException>(() => normal with { State = ScreenState.Empty });
+    }
+
+    [Fact]
+    public void Model_RevalidatesOnWith_RejectsAnErrorCodeAppearingOnANormalState()
+    {
+        var normal = RichModel();
+
+        Assert.Throws<ArgumentException>(() => normal with { ErrorCode = "SOME_ERROR" });
+    }
+
+    // --- RenderedUiSnapshot and ReadModelHash coverage (review Critical) -
+    //
+    // Deleting SpikeScreenModelTests.cs deleted every test of the third
+    // harness hash (RenderedUiSnapshot) along with it, and left
+    // ReadModelHash without the one test shaped to catch "a field silently
+    // stopped contributing to the hash" — the actual failure mode a
+    // read-model/rendered-UI comparison exists to catch. Ported below onto
+    // the new model: every category the old mutator theory covered
+    // (state/title/error code/contract fields/roster order/response
+    // order/reason fields), plus stability and culture-invariance.
+
+    [Fact]
+    public void ReadModelHash_IsStableAcrossRuns()
+    {
+        var model = RichModel();
+
+        Assert.Equal(Factory.ReadModelHash(model), Factory.ReadModelHash(model));
+    }
+
+    /// <summary>
+    /// Mirrors <c>ReplayDeterminismTests.CanonicalArtifact_IsCultureInvariant</c>
+    /// and the old <c>SpikeScreenModelTests</c> test of the same name: the
+    /// host machine's locale is a forbidden input, and hashing is where it
+    /// would leak in first if a number were ever formatted through it.
+    /// </summary>
+    [Fact]
+    public void ReadModelHash_IsCultureInvariant()
+    {
+        var model = RichModel();
+        var invariant = Factory.ReadModelHash(model);
+
+        var hostile = (CultureInfo)CultureInfo.GetCultureInfo("de-DE").Clone();
+        hostile.NumberFormat.NegativeSign = "!";
+        hostile.NumberFormat.NumberDecimalSeparator = ",";
+
+        var previousCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = hostile;
+            Assert.Equal(invariant, Factory.ReadModelHash(model));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previousCulture;
+        }
+    }
+
+    public static TheoryData<string, ContractOfferScreenModel, ContractOfferScreenModel> HashMutators()
+    {
+        var normal = RichModel();
+        var contract = normal.Contract!;
+        var bram = normal.Roster[0];
+        var acceptResponse = normal.Responses[0];
+        var reason = acceptResponse.Reasons[0];
+
+        return new TheoryData<string, ContractOfferScreenModel, ContractOfferScreenModel>
+        {
+            { "state", normal, normal with { State = ScreenState.Incomplete } },
+            { "title-key", normal, normal with { TitleKey = normal.TitleKey + "!" } },
+            { "error-code", ErrorModel("CODE_A"), ErrorModel("CODE_B") },
+            { "contract-definition", normal, normal with { Contract = contract with { Definition = "core:other" } } },
+            { "contract-display-name-key", normal, normal with { Contract = contract with { DisplayNameKey = "x" } } },
+            { "contract-payment", normal, normal with { Contract = contract with { Payment = contract.Payment + 1 } } },
+            { "contract-risk", normal, normal with { Contract = contract with { Risk = QualitativeGrade.Extreme } } },
+            { "contract-tag-keys", normal, normal with { Contract = contract with { TagKeys = contract.TagKeys.Add("tag.extra") } } },
+            { "contract-required-crew", normal, normal with { Contract = contract with { RequiredCrew = contract.RequiredCrew + 1 } } },
+            { "contract-accepted-count", normal, normal with { Contract = contract with { AcceptedCount = contract.AcceptedCount + 1 } } },
+            { "roster-order", normal, normal with { Roster = normal.Roster.SetItem(0, normal.Roster[1]).SetItem(1, normal.Roster[0]) } },
+            { "roster-hero-field", normal, WithHero(normal, bram with { Greed = QualitativeGrade.Extreme }) },
+            { "roster-principle-keys", normal, WithHero(normal, bram with { PrincipleKeys = bram.PrincipleKeys.Add("trait.extra") }) },
+            { "responses-order", normal, normal with { Responses = normal.Responses.SetItem(0, normal.Responses[1]).SetItem(1, normal.Responses[0]) } },
+            { "response-action", normal, WithResponse(normal, acceptResponse with { Action = "action:decline" }) },
+            { "response-blocked-by-entity", normal, WithResponse(normal, acceptResponse with { BlockedByEntity = "core:something" }) },
+            { "response-wavered", normal, WithResponse(normal, acceptResponse with { Wavered = !acceptResponse.Wavered }) },
+            { "reason-code", normal, WithResponse(normal, acceptResponse with { Reasons = acceptResponse.Reasons.SetItem(0, reason with { ReasonCode = "other" }) }) },
+            { "reason-source-entity", normal, WithResponse(normal, acceptResponse with { Reasons = acceptResponse.Reasons.SetItem(0, reason with { SourceEntity = "core:other" }) }) },
+            { "reason-strength", normal, WithResponse(normal, acceptResponse with { Reasons = acceptResponse.Reasons.SetItem(0, reason with { Strength = QualitativeGrade.Extreme }) }) },
+        };
+    }
+
+    [Theory]
+    [MemberData(nameof(HashMutators))]
+    public void ReadModelHash_ChangesWhenAnyShownValueChanges(
+        string label, ContractOfferScreenModel original, ContractOfferScreenModel mutated)
+    {
+        Assert.True(
+            Factory.ReadModelHash(original) != Factory.ReadModelHash(mutated),
+            $"hash did not change when '{label}' changed");
+    }
+
+    [Fact]
+    public void ExpectedSnapshot_ContainsEveryShownValue()
+    {
+        var model = RichModel();
+        var snapshot = RenderedUiSnapshot.Expected(model);
+
+        Assert.Contains(model.TitleKey, snapshot.Texts);
+
+        var contract = model.Contract!;
+        Assert.Contains(contract.Definition, snapshot.Texts);
+        Assert.Contains(contract.DisplayNameKey, snapshot.Texts);
+        Assert.Contains(contract.Payment.ToString(CultureInfo.InvariantCulture), snapshot.Texts);
+        Assert.Contains(contract.Risk.ToString(), snapshot.Texts);
+        Assert.Contains(contract.RequiredCrew.ToString(CultureInfo.InvariantCulture), snapshot.Texts);
+        Assert.Contains(contract.AcceptedCount.ToString(CultureInfo.InvariantCulture), snapshot.Texts);
+
+        foreach (var tagKey in contract.TagKeys)
+        {
+            Assert.Contains(tagKey, snapshot.Texts);
+        }
+
+        foreach (var hero in model.Roster)
+        {
+            Assert.Contains(hero.Definition, snapshot.Texts);
+            Assert.Contains(hero.DisplayNameKey, snapshot.Texts);
+            Assert.Contains(hero.Greed.ToString(), snapshot.Texts);
+            Assert.Contains(hero.Caution.ToString(), snapshot.Texts);
+            Assert.Contains(hero.Pride.ToString(), snapshot.Texts);
+
+            foreach (var key in hero.PrincipleKeys.Concat(hero.InclinationKeys))
+            {
+                Assert.Contains(key, snapshot.Texts);
+            }
+        }
+
+        foreach (var response in model.Responses)
+        {
+            Assert.Contains(response.HeroDefinition, snapshot.Texts);
+            Assert.Contains(response.Action, snapshot.Texts);
+
+            foreach (var reason in response.Reasons)
+            {
+                Assert.Contains(reason.ReasonCode, snapshot.Texts);
+                Assert.Contains(reason.SourceEntity, snapshot.Texts);
+                Assert.Contains(reason.Strength.ToString(), snapshot.Texts);
+            }
+
+            if (response.BlockedByEntity is not null)
+            {
+                Assert.Contains(response.BlockedByEntity, snapshot.Texts);
+            }
+
+            Assert.Contains(response.Wavered.ToString(), snapshot.Texts);
+        }
+    }
+
+    [Fact]
+    public void SnapshotHash_ChangesOnTextOrOrderChange()
+    {
+        var model = RichModel();
+        var snapshot = RenderedUiSnapshot.Expected(model);
+
+        Assert.True(snapshot.Texts.Length >= 2, "The fixture is expected to carry more than one text.");
+
+        var swapped = new RenderedUiSnapshot(
+            snapshot.Texts.SetItem(0, snapshot.Texts[1]).SetItem(1, snapshot.Texts[0]));
+
+        Assert.NotEqual(RenderedUiSnapshot.Hash(snapshot), RenderedUiSnapshot.Hash(swapped));
+    }
+
+    /// <summary>
+    /// A fully populated, valid <see cref="ScreenState.Normal"/> model: two
+    /// heroes (one with a principle and an inclination), one contract with
+    /// two tags, and two responses — one accepted with a ranked reason, one
+    /// declined and blocked. Shared by the hash-mutator theory and the
+    /// snapshot tests above, so every field either of them exercises is
+    /// actually populated with something a mutation can change.
+    /// </summary>
+    private static ContractOfferScreenModel RichModel() => new()
+    {
+        State = ScreenState.Normal,
+        TitleKey = Factory.TitleKey,
+        Contract = new ContractLine(
+            "core:escort_the_caravan",
+            "contract.core.escort_the_caravan.name",
+            40,
+            QualitativeGrade.Moderate,
+            ImmutableArray.Create("tag.patron.merchant_guild", "tag.target.bandits"),
+            2,
+            1),
+        Roster = ImmutableArray.Create(
+            new HeroCard(
+                "core:bram", "hero.core.bram.name", QualitativeGrade.High, QualitativeGrade.Low,
+                QualitativeGrade.Moderate,
+                ImmutableArray.Create("trait.core.will_not_strike_a_temple.name"),
+                ImmutableArray.Create("trait.core.hates_the_cult.name")),
+            new HeroCard(
+                "core:zara", "hero.core.zara.name", QualitativeGrade.Low, QualitativeGrade.High,
+                QualitativeGrade.Negligible, ImmutableArray<string>.Empty, ImmutableArray<string>.Empty)),
+        Responses = ImmutableArray.Create(
+            new ResponseLine(
+                "core:bram",
+                "action:accept",
+                ImmutableArray.Create(new ReasonLine(ReasonCodes.PaymentAttractive, "core:escort_the_caravan", QualitativeGrade.High)),
+                null,
+                false),
+            new ResponseLine(
+                "core:zara", "action:decline", ImmutableArray<ReasonLine>.Empty, "core:will_not_strike_a_temple", false)),
+        ErrorCode = null,
+        ErrorDetail = null,
+    };
+
+    private static ContractOfferScreenModel ErrorModel(string code) => new()
+    {
+        State = ScreenState.Error,
+        TitleKey = Factory.TitleKey,
+        Contract = null,
+        Roster = ImmutableArray<HeroCard>.Empty,
+        Responses = ImmutableArray<ResponseLine>.Empty,
+        ErrorCode = code,
+        ErrorDetail = "detail",
+    };
+
+    private static ContractOfferScreenModel WithHero(ContractOfferScreenModel model, HeroCard hero) =>
+        model with { Roster = model.Roster.SetItem(0, hero) };
+
+    private static ContractOfferScreenModel WithResponse(ContractOfferScreenModel model, ResponseLine response) =>
+        model with { Responses = model.Responses.SetItem(0, response) };
 
     /// <summary>
     /// Hand-built <see cref="ScenarioOutcome"/>s for each Step 2 test, in the
@@ -402,7 +767,15 @@ public class ContractOfferScreenModelTests
         public static (string ErrorCode, string ErrorDetail) Failed(string errorCode, string errorDetail) =>
             (errorCode, errorDetail);
 
-        /// <summary>Four heroes, one offered contract, and however many of the four have answered so far.</summary>
+        /// <summary>
+        /// Four heroes, one offered contract, and however many of the four
+        /// have answered so far. <c>RespondedBy</c>/<c>AcceptedBy</c> are set
+        /// to match the steps below the same way <c>SimulationEngine.Apply</c>
+        /// itself would (see its <c>with</c> on <c>ContractState</c>) —
+        /// without this, <c>FromOutcome</c>'s completeness check (which reads
+        /// <c>ContractState.RespondedBy</c>, not the response line count) would
+        /// see an empty set regardless of <paramref name="answered"/>.
+        /// </summary>
         private static ScenarioOutcome Roster(int answered)
         {
             var names = new[] { "bram", "zara", "kestrel", "ilsa" };
@@ -410,9 +783,12 @@ public class ContractOfferScreenModelTests
             var heroes = ImmutableSortedDictionary.CreateRange(
                 names.Select((name, index) => new KeyValuePair<HeroId, HeroState>(new HeroId(index), Hero(index, name))));
 
+            var responded = ImmutableSortedSet.CreateRange(Enumerable.Range(0, answered).Select(index => new HeroId(index)));
+
             var contracts = ImmutableSortedDictionary.CreateRange(new[]
             {
-                new KeyValuePair<ContentId, ContractState>(Contract, BuildContract()),
+                new KeyValuePair<ContentId, ContractState>(
+                    Contract, BuildContract() with { RespondedBy = responded, AcceptedBy = responded }),
             });
 
             var state = BuildState(heroes, contracts);
@@ -423,6 +799,131 @@ public class ContractOfferScreenModelTests
                 .ToImmutableArray();
 
             return new ScenarioOutcome(state, steps);
+        }
+
+        /// <summary>
+        /// Two contracts, two heroes, one step each — but only the first
+        /// contract's step is what <c>FromOutcome</c> resolves as "the"
+        /// contract (it is the first step's own contract). Proves the
+        /// response filter: without it, zara's answer to the other contract
+        /// would leak onto this screen too.
+        /// </summary>
+        public static ScenarioOutcome TwoContractsOneShown()
+        {
+            var otherContract = ContentId.Parse("core:silence_the_cult");
+            var zara = ContentId.Parse("core:zara");
+
+            var heroes = ImmutableSortedDictionary.CreateRange(new[]
+            {
+                new KeyValuePair<HeroId, HeroState>(new HeroId(0), Hero(0, "bram")),
+                new KeyValuePair<HeroId, HeroState>(new HeroId(1), Hero(1, "zara")),
+            });
+
+            var contracts = ImmutableSortedDictionary.CreateRange(new[]
+            {
+                new KeyValuePair<ContentId, ContractState>(
+                    Contract,
+                    BuildContract() with
+                    {
+                        RespondedBy = ImmutableSortedSet.Create(new HeroId(0)),
+                        AcceptedBy = ImmutableSortedSet.Create(new HeroId(0)),
+                    }),
+                new KeyValuePair<ContentId, ContractState>(
+                    otherContract,
+                    BuildContract() with
+                    {
+                        Id = otherContract,
+                        RespondedBy = ImmutableSortedSet.Create(new HeroId(1)),
+                        AcceptedBy = ImmutableSortedSet.Create(new HeroId(1)),
+                    }),
+            });
+
+            var state = BuildState(heroes, contracts);
+
+            var steps = ImmutableArray.Create(
+                Step(0, 0, Contract, ContentId.Parse("core:bram"), SimpleAccept()),
+                Step(1, 1, otherContract, zara, SimpleAccept()));
+
+            return new ScenarioOutcome(state, steps);
+        }
+
+        /// <summary>
+        /// One hero, two steps that both somehow carry a decision for that
+        /// same hero on the same contract — a shape the real engine never
+        /// produces (a second proposal to an already-responded hero is
+        /// rejected, <c>RejectionCodes.AlreadyResponded</c>) but that a
+        /// naive "count response lines" completeness check would still be
+        /// fooled by. <c>ContractState.RespondedBy</c> — the ground truth this
+        /// factory actually reads — lists the hero exactly once, so the
+        /// screen must stay <see cref="ScreenState.Incomplete"/> against a
+        /// two-hero roster.
+        /// </summary>
+        public static ScenarioOutcome SameHeroAnsweredTwice()
+        {
+            var heroes = ImmutableSortedDictionary.CreateRange(new[]
+            {
+                new KeyValuePair<HeroId, HeroState>(new HeroId(0), Hero(0, "bram")),
+                new KeyValuePair<HeroId, HeroState>(new HeroId(1), Hero(1, "zara")),
+            });
+
+            var contracts = ImmutableSortedDictionary.CreateRange(new[]
+            {
+                new KeyValuePair<ContentId, ContractState>(
+                    Contract,
+                    BuildContract() with
+                    {
+                        RespondedBy = ImmutableSortedSet.Create(new HeroId(0)),
+                        AcceptedBy = ImmutableSortedSet.Create(new HeroId(0)),
+                    }),
+            });
+
+            var state = BuildState(heroes, contracts);
+            var bram = ContentId.Parse("core:bram");
+
+            var steps = ImmutableArray.Create(
+                Step(0, 0, Contract, bram, SimpleAccept()),
+                Step(1, 0, Contract, bram, SimpleAccept()));
+
+            return new ScenarioOutcome(state, steps);
+        }
+
+        /// <summary>
+        /// One hero carrying one principle and one inclination, resolved
+        /// through <c>GameState.TraitRules</c> exactly as content-loaded
+        /// state carries them — the only fixture in this file that actually
+        /// exercises <c>ContractOfferScreenModelFactory</c>'s principle/
+        /// inclination split, sort and rulebook lookup; every other fixture's
+        /// heroes carry no traits at all.
+        /// </summary>
+        public static ScenarioOutcome HeroWithTraits()
+        {
+            var bram = ContentId.Parse("core:bram");
+            var principle = ContentId.Parse("core:will_not_strike_a_temple");
+            var inclination = ContentId.Parse("core:hates_the_cult");
+            var temple = ContentId.Parse("target:temple");
+            var cult = ContentId.Parse("target:cult");
+
+            var hero = Hero(0, "bram") with { Traits = ImmutableArray.Create(inclination, principle) };
+
+            var heroes = ImmutableSortedDictionary.CreateRange(new[]
+            {
+                new KeyValuePair<HeroId, HeroState>(new HeroId(0), hero),
+            });
+
+            var contracts = ImmutableSortedDictionary.CreateRange(new[]
+            {
+                new KeyValuePair<ContentId, ContractState>(Contract, BuildContract()),
+            });
+
+            var traitRules = ImmutableSortedDictionary.CreateRange(new[]
+            {
+                new KeyValuePair<ContentId, HeldTrait>(principle, new HeldTrait(principle, temple, IsPrinciple: true, Weight: 0)),
+                new KeyValuePair<ContentId, HeldTrait>(inclination, new HeldTrait(inclination, cult, IsPrinciple: false, Weight: 14)),
+            });
+
+            var state = BuildState(heroes, contracts) with { TraitRules = traitRules };
+
+            return new ScenarioOutcome(state, ImmutableArray<StepOutcome>.Empty);
         }
 
         private static ScenarioOutcome Single(HeroState hero, DecisionResult decision)

@@ -22,9 +22,11 @@ public static class ContractOfferScreenModelFactory
     /// <summary>
     /// This screen's title. A localization key, not text — see the remarks on
     /// <see cref="ContractOfferScreenModel"/> and TDD §11.1: this assembly
-    /// never resolves one.
+    /// never resolves one. Internal (not private) so the catalogue-completeness
+    /// test can assert it is actually a key the locale carries — otherwise
+    /// nothing would have caught this constant naming a key nobody authored.
     /// </summary>
-    private const string TitleKey = "screen.contract_offer.title";
+    internal const string TitleKey = "screen.contract_offer.title";
 
     /// <summary>
     /// How many reasons a response line shows at most (spec: an explanation a
@@ -44,16 +46,21 @@ public static class ContractOfferScreenModelFactory
     /// Builds the screen from a completed scenario run.
     /// </summary>
     /// <remarks>
-    /// This factory represents one contract's offer at a time — the one
-    /// referenced by the outcome's own steps (all of which are expected to
-    /// offer the same contract; a scenario that proposes more than one
-    /// contract to a single roster is not a shape this screen has to
-    /// represent yet). When there are steps to read the contract from, the
-    /// first one's <see cref="ScenarioCommand.Contract"/> wins; with none at
-    /// all (nobody has been offered anything yet, but the content set still
-    /// has contracts), the lexicographically-first one is shown, since
-    /// <see cref="OathAndCoin.Simulation.State.GameState.Contracts"/> is
-    /// already sorted for exactly this kind of deterministic fallback.
+    /// This factory represents one contract's offer at a time. Which contract
+    /// is chosen from <see cref="OathAndCoin.Simulation.State.GameState.Contracts"/>:
+    /// the one referenced by the outcome's first step when there is one; with
+    /// no steps at all (nobody has been offered anything yet, but the content
+    /// set still has contracts), the lexicographically-first one, since that
+    /// dictionary is already sorted for exactly this kind of deterministic
+    /// fallback. <see cref="ContractOfferScreenModel.Responses"/> is then
+    /// filtered to steps that answered <em>that</em> contract specifically —
+    /// a run that offered a second contract to other heroes must not leak
+    /// their answers onto this screen, and completeness
+    /// (<see cref="ScreenState.Incomplete"/> vs. <see cref="ScreenState.Normal"/>)
+    /// is read from <see cref="ContractState.RespondedBy"/> — the engine's own
+    /// deduplicated count of who has answered this contract — rather than
+    /// from how many response lines this filter happened to keep, which would
+    /// double-count a hero who somehow appears in more than one step.
     /// </remarks>
     public static ContractOfferScreenModel FromOutcome(ScenarioOutcome outcome)
     {
@@ -81,11 +88,11 @@ public static class ContractOfferScreenModelFactory
         var roster = state.Heroes.Values.Select(hero => ToHeroCard(hero, state.TraitRules)).ToImmutableArray();
 
         var responses = outcome.Steps
-            .Where(step => step.Decision is not null)
+            .Where(step => step.Decision is not null && step.Command.Contract == contract.Id)
             .Select(ToResponseLine)
             .ToImmutableArray();
 
-        var screenState = responses.Length >= roster.Length ? ScreenState.Normal : ScreenState.Incomplete;
+        var screenState = contract.RespondedBy.Count >= roster.Length ? ScreenState.Normal : ScreenState.Incomplete;
 
         return new ContractOfferScreenModel
         {
@@ -178,9 +185,25 @@ public static class ContractOfferScreenModelFactory
     /// that key from content into state, so there is nothing on the state
     /// this factory reads to carry it faithfully. This rebuilds it from the
     /// convention instead of leaving the field unset; see this task's report
-    /// for why that is flagged as open rather than settled.
+    /// for why the real fix (carrying the key on <see cref="ContractState"/>
+    /// itself) is left open. Internal, not private: the convention is
+    /// otherwise invisible to any test — <c>EveryTagReasonAndGradeKeyExistsInTheCatalogue</c>
+    /// asserts this reconstruction agrees with every shipped contract's own
+    /// authored key, so an author spelling a key differently than this
+    /// convention assumes fails loudly instead of shipping a screen that
+    /// shows a key nobody translated.
     /// </summary>
-    private static string ContractDisplayNameKey(ContentId id) => $"contract.{id.Namespace}.{id.Name}.name";
+    internal static string ContractDisplayNameKey(ContentId id) => $"contract.{id.Namespace}.{id.Name}.name";
+
+    /// <summary>
+    /// The same convention as <see cref="ContractDisplayNameKey"/>, for a
+    /// trait. <see cref="HeldTrait"/> — the only shape of a trait this
+    /// factory ever sees (ADR-002: the core, and therefore
+    /// <see cref="OathAndCoin.Simulation.State.GameState.TraitRules"/>, never
+    /// carries a content-side <c>TraitDefinition</c>) — has an <c>Id</c> but
+    /// no authored display key, exactly like <see cref="ContractState"/>.
+    /// </summary>
+    internal static string TraitDisplayNameKey(ContentId id) => $"trait.{id.Namespace}.{id.Name}.name";
 
     private static ContractLine ToContractLine(ContractState contract) => new(
         contract.Id.Value,
@@ -197,17 +220,44 @@ public static class ContractOfferScreenModelFactory
         QualitativeScale.ForValue(hero.Greed),
         QualitativeScale.ForValue(hero.Caution),
         QualitativeScale.ForValue(hero.Pride),
-        TraitKeys(hero.Traits, traitRules, principle: true),
-        TraitKeys(hero.Traits, traitRules, principle: false));
+        TraitKeys(hero, traitRules, principle: true),
+        TraitKeys(hero, traitRules, principle: false));
 
+    /// <summary>
+    /// A hero's own principle or inclination keys, named from each trait's
+    /// own identifier (<see cref="TraitDisplayNameKey"/>) — not its tag: the
+    /// tag is what a <em>contract</em> latches onto (spec §3.2), and reusing
+    /// it here would name a hero's principle after the category it reacts
+    /// to (e.g. "Temple") rather than the principle itself (e.g. "will not
+    /// strike a temple") — a different piece of content with a different
+    /// authored name.
+    /// </summary>
     private static ImmutableArray<string> TraitKeys(
-        ImmutableArray<ContentId> traits, ImmutableSortedDictionary<ContentId, HeldTrait> traitRules, bool principle) =>
-        traits
-            .Select(id => traitRules[id])
+        HeroState hero, ImmutableSortedDictionary<ContentId, HeldTrait> traitRules, bool principle) =>
+        hero.Traits
+            .Select(id => ResolveTrait(hero, id, traitRules))
             .Where(trait => trait.IsPrinciple == principle)
-            .OrderBy(trait => trait.Tag)
-            .Select(trait => TagKeys.For(trait.Tag))
+            .OrderBy(trait => trait.Id)
+            .Select(trait => TraitDisplayNameKey(trait.Id))
             .ToImmutableArray();
+
+    /// <summary>
+    /// A bare indexer here would surface a missing id as a bare
+    /// <see cref="KeyNotFoundException"/> with no clue which id, which hero,
+    /// or where the rulebook is even filled — the same failure mode
+    /// <see cref="OathAndCoin.Simulation.SimulationEngine.Apply(OathAndCoin.Simulation.State.GameState,OathAndCoin.Simulation.Commands.ProposeContractToHero)"/>
+    /// already guards against for the identical lookup. A hero naming a
+    /// trait id absent from <c>TraitRules</c> is a content-loading bug, not
+    /// a hero with no opinion, so this fails loudly, with enough to find the
+    /// cause.
+    /// </summary>
+    private static HeldTrait ResolveTrait(
+        HeroState hero, ContentId traitId, ImmutableSortedDictionary<ContentId, HeldTrait> traitRules) =>
+        traitRules.TryGetValue(traitId, out var trait)
+            ? trait
+            : throw new InvalidOperationException(
+                $"Hero '{hero.Definition}' carries trait id '{traitId}', but GameState.TraitRules has no "
+                + "entry for it — a content-loading bug, not a hero with no opinion.");
 
     private static ResponseLine ToResponseLine(StepOutcome step)
     {
