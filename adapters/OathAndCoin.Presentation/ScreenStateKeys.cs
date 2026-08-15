@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Linq;
 
 namespace OathAndCoin.Presentation;
 
@@ -14,13 +15,14 @@ namespace OathAndCoin.Presentation;
 /// </summary>
 public static class ScreenStateKeys
 {
-    /// <summary>Every key <see cref="For"/> can produce, for the catalogue-completeness test.</summary>
-    public static readonly ImmutableArray<string> AllKeys = ImmutableArray.Create(
-        For(ScreenState.Loading),
-        For(ScreenState.Empty),
-        For(ScreenState.Error),
-        For(ScreenState.Incomplete),
-        For(ScreenState.Normal));
+    /// <summary>
+    /// Every key <see cref="For"/> can produce, for the catalogue-completeness
+    /// test. Built from <see cref="Enum.GetValues{TEnum}"/> rather than from a
+    /// second, hand-written list of the five states — see the same remark on
+    /// <see cref="QualitativeScale.AllKeys"/>.
+    /// </summary>
+    public static readonly ImmutableArray<string> AllKeys =
+        Enum.GetValues<ScreenState>().Select(For).ToImmutableArray();
 
     public static string For(ScreenState state) => "screen.contract_offer.state." + state switch
     {

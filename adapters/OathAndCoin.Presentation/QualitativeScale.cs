@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Linq;
 
 namespace OathAndCoin.Presentation;
 
@@ -37,12 +38,17 @@ public static class QualitativeScale
     /// against a locale catalogue without enumerating the five grades by
     /// hand.
     /// </summary>
-    public static readonly ImmutableArray<string> AllKeys = ImmutableArray.Create(
-        KeyFor(QualitativeGrade.Negligible),
-        KeyFor(QualitativeGrade.Low),
-        KeyFor(QualitativeGrade.Moderate),
-        KeyFor(QualitativeGrade.High),
-        KeyFor(QualitativeGrade.Extreme));
+    /// <remarks>
+    /// Built from <see cref="Enum.GetValues{TEnum}"/>, not from a written-out
+    /// list of the five grades. A written-out list is a second declaration of
+    /// a closed set that the compiler cannot check against the first: a sixth
+    /// grade added to <see cref="QualitativeGrade"/> and forgotten here would
+    /// simply stop being checked against the catalogue, and the completeness
+    /// test this feeds would keep passing while the screen showed an
+    /// untranslated key.
+    /// </remarks>
+    public static readonly ImmutableArray<string> AllKeys =
+        Enum.GetValues<QualitativeGrade>().Select(KeyFor).ToImmutableArray();
 
     /// <summary>
     /// The hero scale: greed, caution, pride and a contract's risk are all

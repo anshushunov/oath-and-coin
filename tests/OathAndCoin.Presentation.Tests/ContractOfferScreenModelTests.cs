@@ -161,7 +161,15 @@ public class ContractOfferScreenModelTests
     {
         var line = Factory.FromOutcome(Outcomes.ManyReasons()).Responses.Single();
 
-        Assert.True(line.Reasons.Length <= 3);
+        // The exact three, in order, not "no more than three": the weaker
+        // assertion passes on an empty list, so a factory that dropped every
+        // reason — or ranked them the wrong way round and kept the three
+        // smallest — would have satisfied it. Outcomes.ManyReasons() carries
+        // five factors of magnitudes 50/40/10/8/3, so the three strongest are
+        // payment, risk and trust, in that order.
+        Assert.Equal(
+            new[] { ReasonCodes.PaymentAttractive, ReasonCodes.RiskTooHigh, ReasonCodes.TrustsTheGuild },
+            line.Reasons.Select(reason => reason.ReasonCode));
     }
 
     [Fact]
@@ -377,12 +385,32 @@ public class ContractOfferScreenModelTests
     // (state/title/error code/contract fields/roster order/response
     // order/reason fields), plus stability and culture-invariance.
 
+    /// <summary>
+    /// The claim this hash exists for: two processes that built the same
+    /// model agree on it. Hashing one instance twice — what this test used to
+    /// do — proves only that the function is not random between two calls in
+    /// one process, which no failure mode of interest would break.
+    /// </summary>
+    /// <remarks>
+    /// Two halves, and both are needed. Two independently constructed but
+    /// equal models must hash alike, which rules out the hash depending on
+    /// object identity or on anything a second construction would not
+    /// reproduce. And the value itself is pinned, which is the only half that
+    /// can speak about a <em>different</em> process: string hash
+    /// randomization, a serializer's ordering, a culture leak — every one of
+    /// those is per-process and reproduces perfectly within one. The pinned
+    /// value is exactly what the runtime harness compares across its two
+    /// processes, so a change here that is not also a deliberate change to
+    /// the model's wire shape is the bug this catches.
+    /// </remarks>
     [Fact]
     public void ReadModelHash_IsStableAcrossRuns()
     {
-        var model = RichModel();
+        Assert.Equal(Factory.ReadModelHash(RichModel()), Factory.ReadModelHash(RichModel()));
 
-        Assert.Equal(Factory.ReadModelHash(model), Factory.ReadModelHash(model));
+        Assert.Equal(
+            "4ff05b6b44d3e3aa9a5638e803cc8199b5d07e6e13f025a68d52bc49abe25b7f",
+            Factory.ReadModelHash(RichModel()));
     }
 
     /// <summary>

@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Linq;
 using OathAndCoin.Simulation.Decisions;
 
 namespace OathAndCoin.Presentation;
@@ -14,10 +15,14 @@ namespace OathAndCoin.Presentation;
 /// </summary>
 public static class ActionKeys
 {
-    /// <summary>Every key <see cref="For"/> can produce, for the catalogue-completeness test.</summary>
-    public static readonly ImmutableArray<string> AllKeys = ImmutableArray.Create(
-        For(Actions.Accept.Value),
-        For(Actions.Decline.Value));
+    /// <summary>
+    /// Every key <see cref="For"/> can produce, for the catalogue-completeness
+    /// test — derived from <see cref="Actions.All"/> rather than naming the
+    /// two actions again here, so a third action cannot arrive in the core
+    /// and quietly go unchecked against the catalogue.
+    /// </summary>
+    public static readonly ImmutableArray<string> AllKeys =
+        Actions.All.Select(action => For(action.Value)).ToImmutableArray();
 
     public static string For(string action) => action.Replace(':', '.');
 }

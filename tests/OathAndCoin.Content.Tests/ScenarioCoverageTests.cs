@@ -82,10 +82,15 @@ public class ScenarioCoverageTests
     /// Kestrel takes <c>cleanse_the_crypt</c> for the money: payment is the
     /// single largest factor in either direction, ahead of her own
     /// inclination, trust, the risk she is discounting and the mood of the
-    /// day.
+    /// day — and it also decides the answer, not merely tops the list. Both
+    /// halves are asserted, because the first alone is a weaker claim than
+    /// this file's own remarks promise: a factor can be the biggest one
+    /// present and still be irrelevant to the sign, and a scenario named
+    /// <c>accept_by_payment</c> that no longer turned on payment would keep
+    /// passing on "biggest" forever.
     /// </summary>
     [Fact]
-    public void AcceptByPayment_PaymentIsTheLargestFactorEitherWay()
+    public void AcceptByPayment_PaymentIsTheLargestFactorAndDecidesTheAnswer()
     {
         var outcome = RepositoryFixtures.RunScenario("accept_by_payment", seed: 7);
         var decision = SoleDecision(outcome);
@@ -93,11 +98,21 @@ public class ScenarioCoverageTests
         Assert.Equal(Actions.Accept, decision.SelectedAction);
         var strongest = StrongestFactor(decision.Trace);
         Assert.Equal(ReasonCodes.PaymentAttractive, strongest.ReasonCode);
+
+        var payment = SingleFactor(decision.Trace.PositiveFactors, ReasonCodes.PaymentAttractive);
+        Assert.True(decision.SelectedScore >= 0);
+        Assert.True(decision.SelectedScore - payment.Magnitude < 0,
+            "Removing the payment should have flipped this decision to decline.");
     }
 
-    /// <summary>Zara refuses <c>silence_the_cult</c>: risk dwarfs every other factor.</summary>
+    /// <summary>
+    /// Zara refuses <c>silence_the_cult</c>: risk dwarfs every other factor,
+    /// and removing it alone would have flipped her to accept. Same two-part
+    /// claim as <see cref="AcceptByPayment_PaymentIsTheLargestFactorAndDecidesTheAnswer"/>,
+    /// for the same reason.
+    /// </summary>
     [Fact]
-    public void DeclineByRisk_RiskIsTheLargestFactorEitherWay()
+    public void DeclineByRisk_RiskIsTheLargestFactorAndDecidesTheAnswer()
     {
         var outcome = RepositoryFixtures.RunScenario("decline_by_risk", seed: 7);
         var decision = SoleDecision(outcome);
@@ -105,6 +120,11 @@ public class ScenarioCoverageTests
         Assert.Equal(Actions.Decline, decision.SelectedAction);
         var strongest = StrongestFactor(decision.Trace);
         Assert.Equal(ReasonCodes.RiskTooHigh, strongest.ReasonCode);
+
+        var risk = SingleFactor(decision.Trace.NegativeFactors, ReasonCodes.RiskTooHigh);
+        Assert.True(decision.SelectedScore < 0);
+        Assert.True(decision.SelectedScore + risk.Magnitude >= 0,
+            "Removing the risk should have flipped this decision to accept.");
     }
 
     /// <summary>
@@ -112,10 +132,11 @@ public class ScenarioCoverageTests
     /// the money — the sole hero <c>collect_the_debt</c> can ever reach a
     /// decision from (every other hero is blocked; see
     /// <see cref="RefusalByPrinciple_NamesTheViolatedPrinciple"/> and its two
-    /// siblings).
+    /// siblings). The payment is both the largest factor and the one that
+    /// decides it, asserted for the same reason as its two neighbours above.
     /// </summary>
     [Fact]
-    public void AcceptByPaymentAlt_TheOneHeroNoPrincipleForbidsAccepts()
+    public void AcceptByPaymentAlt_TheOneHeroNoPrincipleForbidsAcceptsAndThePaymentDecidesIt()
     {
         var outcome = RepositoryFixtures.RunScenario("accept_by_payment_alt", seed: 7);
         var decision = SoleDecision(outcome);
@@ -124,6 +145,11 @@ public class ScenarioCoverageTests
         Assert.Empty(decision.Trace.BlockedBy);
         var strongest = StrongestFactor(decision.Trace);
         Assert.Equal(ReasonCodes.PaymentAttractive, strongest.ReasonCode);
+
+        var payment = SingleFactor(decision.Trace.PositiveFactors, ReasonCodes.PaymentAttractive);
+        Assert.True(decision.SelectedScore >= 0);
+        Assert.True(decision.SelectedScore - payment.Magnitude < 0,
+            "Removing the payment should have flipped this decision to decline.");
     }
 
     /// <summary>

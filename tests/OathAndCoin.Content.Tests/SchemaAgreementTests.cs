@@ -1,4 +1,5 @@
 using System.Text.Json;
+using OathAndCoin.Content.Scenarios;
 
 namespace OathAndCoin.Content.Tests;
 
@@ -209,6 +210,102 @@ public class SchemaAgreementTests
         Assert.Contains(
             controlViolations,
             violation => violation.RelativePath.Contains("greedy.json", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// The fixture content roots under <c>scenarios/fixtures/</c> get the same
+    /// stage-1 validation the production tree gets.
+    /// </summary>
+    /// <remarks>
+    /// Review finding (branch-level): these roots are loaded by
+    /// <see cref="RepositoryFixtures.RunScenario"/> through
+    /// <c>ContentSet.Load</c>, which enforces the loader's own invariants but
+    /// never runs a schema over anything — so a fixture could carry a field no
+    /// schema allows, or miss one every schema requires, and nothing would
+    /// say so. Discovered by walking <c>scenarios/fixtures/</c> rather than
+    /// from a list, so a fixture added tomorrow is covered by the same rule as
+    /// today's.
+    /// </remarks>
+    [Fact]
+    public void EveryScenarioFixtureContentRoot_SatisfiesItsSchema()
+    {
+        var schemas = ContentSchemas.Load(RepositoryFixtures.SchemaRoot);
+        var roots = Directory.GetDirectories(Path.Combine(RepositoryFixtures.ScenarioRoot, "fixtures"))
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .ToList();
+
+        // A floor, for the same reason the contrast and scenario counts have
+        // one: an emptied or renamed fixtures/ directory would otherwise make
+        // this a green loop over nothing.
+        Assert.NotEmpty(roots);
+
+        foreach (var root in roots)
+        {
+            var violations = schemas.Validate(root);
+
+            Assert.True(
+                violations.IsEmpty,
+                $"Fixture content root '{Path.GetFileName(root)}' violates its schema:" + Environment.NewLine
+                + string.Join(
+                    Environment.NewLine,
+                    violations.Select(v => $"  {v.RelativePath} {v.InstanceLocation}: {v.Message}")));
+        }
+    }
+
+    /// <summary>
+    /// The closed sets a contrast may name, stated twice — once in
+    /// <c>schemas/contrast.schema.json</c> for an author's editor, once in
+    /// <see cref="ContrastDefinition"/> for the loader — and, until now,
+    /// never compared. A schema listing an input the loader rejects is
+    /// content that validates in tooling and then fails to load; the reverse
+    /// is worse.
+    /// </summary>
+    [Fact]
+    public void ContrastSchemaEnums_MatchTheClosedListsInCode()
+    {
+        using var schema = OpenSchema("contrast.schema.json");
+
+        var inputs = schema.RootElement
+            .GetProperty("properties").GetProperty("vary")
+            .GetProperty("properties").GetProperty("input")
+            .GetProperty("enum").EnumerateArray().Select(value => value.GetString()!);
+
+        Assert.Equal(ContrastDefinition.AllowedInputs, inputs);
+
+        var expectations = schema.RootElement
+            .GetProperty("properties").GetProperty("expect")
+            .GetProperty("enum").EnumerateArray().Select(value => value.GetString()!);
+
+        Assert.Equal(ContrastDefinition.AllowedExpectations, expectations);
+    }
+
+    /// <summary>
+    /// The same comparison for the manifest format's own two closed sets:
+    /// which outcomes a scenario may declare, and which screen state it may
+    /// name. <see cref="ScenarioManifest.KnownScreenStates"/> is itself held
+    /// to the <c>ScreenState</c> enum by
+    /// <c>OathAndCoin.Presentation.Tests.ClosedListTests</c>, so the schema,
+    /// the manifest reader and the enum are one chain rather than three
+    /// independent opinions.
+    /// </summary>
+    [Fact]
+    public void ScenarioManifestSchemaEnums_MatchTheClosedListsInCode()
+    {
+        using var schema = OpenSchema("scenario-manifest.schema.json");
+
+        var outcomes = schema.RootElement
+            .GetProperty("properties").GetProperty("expected_outcome")
+            .GetProperty("enum").EnumerateArray().Select(value => value.GetString()!);
+
+        Assert.Equal(
+            Enum.GetValues<ScenarioOutcomeKind>().Select(kind => kind.ToString().ToLowerInvariant()),
+            outcomes);
+
+        var screenStates = schema.RootElement
+            .GetProperty("properties").GetProperty("expected_screen_state")
+            .GetProperty("enum").EnumerateArray().Select(value => value.GetString()!);
+
+        Assert.Equal(ScenarioManifest.KnownScreenStates, screenStates);
     }
 
     private static JsonDocument OpenSchema(string fileName) =>

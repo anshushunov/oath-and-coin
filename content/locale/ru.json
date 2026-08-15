@@ -58,6 +58,22 @@
     "error.schema_invalid": "Контент не соответствует схеме",
     "error.content_invalid": "Контент повреждён",
     "error.scenario_invalid": "Некорректный сценарий",
-    "error.checkpoint_unknown": "Неизвестная контрольная точка"
+    "error.checkpoint_unknown": "Неизвестная контрольная точка",
+    "hero.fixture.averse_hero.name": "Неприязненный",
+    "hero.fixture.crew_leader.name": "Вожак артели",
+    "hero.fixture.crew_recruit.name": "Новобранец артели",
+    "hero.fixture.crew_skeptic.name": "Скептик артели",
+    "hero.fixture.double_principle_hero.name": "Дважды принципиальный",
+    "hero.core.roster_only_hero.name": "Герой без предложений",
+    "contract.fixture.crew_job.name": "Работа на артель",
+    "contract.fixture.double_trouble_contract.name": "Двойная беда",
+    "contract.fixture.gamma_job.name": "Гамма-подряд",
+    "contract.fixture.job_alpha.name": "Подряд «Альфа»",
+    "trait.fixture.principle_alpha.name": "Принцип «Альфа»",
+    "trait.fixture.principle_beta.name": "Принцип «Бета»",
+    "trait.fixture.test_aversion.name": "Испытательная неприязнь",
+    "tag.test.alpha": "Проба «альфа»",
+    "tag.test.beta": "Проба «бета»",
+    "tag.test.gamma": "Проба «гамма»"
   }
 }

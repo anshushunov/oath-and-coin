@@ -1,3 +1,5 @@
+using System.Text.Json.Nodes;
+using Json.Schema;
 using OathAndCoin.Content.Scenarios;
 using OathAndCoin.Simulation.Decisions;
 
@@ -29,14 +31,103 @@ public class ContrastTests
         }
     }
 
+    /// <summary>
+    /// <c>schemas/contrast.schema.json</c> was named by no <c>.cs</c> file in
+    /// the repository: shipped contrasts were never validated against their
+    /// own schema, unlike content files and scenario manifests. A schema
+    /// nothing loads is documentation, not validation.
+    /// </summary>
+    /// <remarks>
+    /// The positive control is the same idiom
+    /// <c>SchemaAgreementTests.AllContentFiles_SatisfyTheirSchema</c> and
+    /// <c>ScenarioManifestTests.AllScenarioManifests_SatisfyTheirSchema</c>
+    /// use: a green loop has to mean "checked and clean", not "found nothing
+    /// to check".
+    /// </remarks>
+    [Fact]
+    public void EveryShippedContrast_SatisfiesItsSchema()
+    {
+        var schema = JsonSchema.FromText(
+            File.ReadAllText(Path.Combine(RepositoryFixtures.SchemaRoot, "contrast.schema.json")));
+        var options = new EvaluationOptions { OutputFormat = OutputFormat.List };
+
+        var files = RepositoryFixtures.ContrastFiles();
+        Assert.NotEmpty(files);
+
+        foreach (var path in files)
+        {
+            var result = schema.Evaluate(JsonNode.Parse(File.ReadAllText(path)), options);
+
+            Assert.True(
+                result.IsValid,
+                $"Shipped contrast '{Path.GetFileName(path)}' violates contrast.schema.json.");
+        }
+
+        var rejected = schema.Evaluate(
+            JsonNode.Parse("""
+                {"schema_version":1,"contrast":"broken","content_root":"content","seed":1,
+                 "hero":"core:bram","contract":"core:escort_the_caravan",
+                 "vary":{"input":"hero.greed","from":10,"to":90},"expect":"decline_to_accept"}
+                """),
+            options);
+
+        Assert.False(rejected.IsValid, "The schema accepted a vary.input outside its own closed list.");
+    }
+
+    /// <summary>
+    /// The floor <c>ScenarioCoverageTests.AtLeastTwentyScenariosAreShipped</c>
+    /// already gives the scenarios, applied to contrasts, which had none:
+    /// <see cref="EveryShippedContrastFlipsAsDeclared"/> walks a directory, so
+    /// an emptied, renamed or moved <c>scenarios/contrasts/</c> turns
+    /// Milestone 1's exit criterion into a green loop over nothing.
+    /// </summary>
+    /// <remarks>
+    /// Two claims, because a count alone would be satisfied by four contrasts
+    /// all varying the payment. Every input a contrast is allowed to vary
+    /// (<see cref="ContrastDefinition.AllowedInputs"/>) must have a shipped
+    /// contrast demonstrating it — the closed list and the shipped set are
+    /// checked against each other rather than each being trusted on its own,
+    /// so adding a fifth allowed input without a contrast for it fails here
+    /// instead of silently widening what "one understandable condition" may
+    /// mean.
+    /// </remarks>
+    [Fact]
+    public void EveryAllowedContrastInputHasAShippedContrast()
+    {
+        var inputs = RepositoryFixtures.ContrastFiles()
+            .Select(ContrastDefinition.Load)
+            .Select(definition => definition.Input)
+            .ToHashSet(StringComparer.Ordinal);
+
+        Assert.Equal(ContrastDefinition.AllowedInputs.Order(StringComparer.Ordinal), inputs.Order(StringComparer.Ordinal));
+        Assert.True(
+            RepositoryFixtures.ContrastFiles().Count >= ContrastDefinition.AllowedInputs.Length,
+            $"Only {RepositoryFixtures.ContrastFiles().Count} contrasts are shipped, fewer than the "
+            + $"{ContrastDefinition.AllowedInputs.Length} inputs a contrast may vary.");
+    }
+
+    /// <summary>
+    /// The ordinals are compared after each branch's one command, not before
+    /// it — see the remarks on <see cref="ContrastResult"/>. Read beforehand
+    /// this compared 0 with 0 on two freshly built states and could not have
+    /// failed; the assertion below fails the moment one branch takes the gate
+    /// path and spends nothing while the other scores and draws a mood.
+    /// </summary>
     [Fact]
     public void ContrastRunner_UsesTheSameSeedAndOrdinalOnBothSides()
     {
-        var definition = ContrastDefinition.Load(RepositoryFixtures.Contrast("payment_raised"));
+        foreach (var path in RepositoryFixtures.ContrastFiles())
+        {
+            var definition = ContrastDefinition.Load(path);
 
-        var result = ContrastRunner.Run(definition);
+            var result = ContrastRunner.Run(definition);
 
-        Assert.Equal(result.OrdinalUsedFrom, result.OrdinalUsedTo);
+            Assert.Equal(result.OrdinalUsedFrom, result.OrdinalUsedTo);
+
+            // And that the number means something: a pair of zeroes would be
+            // equal too, and would say the decision never reached the dice.
+            Assert.Equal(1UL, result.OrdinalUsedFrom);
+        }
     }
 
     [Fact]

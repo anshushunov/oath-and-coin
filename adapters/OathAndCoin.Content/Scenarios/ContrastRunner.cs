@@ -26,19 +26,21 @@ namespace OathAndCoin.Content.Scenarios;
 /// <param name="ActionFrom">What the hero decided in the <c>from</c> branch.</param>
 /// <param name="ActionTo">What the hero decided in the <c>to</c> branch.</param>
 /// <param name="OrdinalUsedFrom">
-/// <see cref="GameMetadata.NextDecisionOrdinal"/> the <c>from</c> branch's one
-/// decision was asked at.
+/// <see cref="GameMetadata.NextDecisionOrdinal"/> <em>after</em> the
+/// <c>from</c> branch's one command — that is, how many RNG ordinals the
+/// branch actually spent reaching its answer.
 /// </param>
 /// <param name="OrdinalUsedTo">The same, for the <c>to</c> branch.</param>
 /// <remarks>
-/// <see cref="OrdinalUsedFrom"/> and <see cref="OrdinalUsedTo"/> are always
-/// equal for every contrast <see cref="ContrastRunner"/> can produce — both
-/// branches are freshly built from the same content and the same seed, and
-/// each branch issues exactly one command, so each reaches its decision at
-/// ordinal 0. They are still reported, rather than assumed, because "the
-/// same ordinal on both sides" is this format's whole reason to exist
-/// (spec §8.3): the equality is a fact about how <see cref="Run"/> is built,
-/// not a promise a caller has to take on faith.
+/// Read after the command, not before. Both branches start from a freshly
+/// built state at ordinal 0, so reading it beforehand compared 0 with 0 and
+/// would have stayed equal no matter what either branch went on to do —
+/// including the one divergence this field exists to catch, where one branch
+/// takes the gate path (spends nothing) and the other scores and draws a
+/// mood (spends one). Read afterwards, "the same ordinal on both sides"
+/// (spec §8.3) is a claim about the two runs rather than about their shared
+/// starting point: it says the difference between the branches is the varied
+/// input, not a different roll of the same dice.
 /// </remarks>
 public sealed record ContrastResult(
     bool Flipped, ContentId ActionFrom, ContentId ActionTo, ulong OrdinalUsedFrom, ulong OrdinalUsedTo);
@@ -96,7 +98,6 @@ public static class ContrastRunner
         state = ApplyVary(state, definition.Input, definition.Contract, value);
 
         var heroId = ResolveHeroId(state, definition.Hero, definition.Name);
-        var ordinal = state.Metadata.NextDecisionOrdinal;
 
         var engine = new SimulationEngine();
         var result = engine.Apply(
@@ -116,7 +117,7 @@ public static class ContrastRunner
                 + "the two branches are not actually asking the same question.");
         }
 
-        return (result.Decision.SelectedAction, ordinal);
+        return (result.Decision.SelectedAction, result.State.Metadata.NextDecisionOrdinal);
     }
 
     /// <summary>
