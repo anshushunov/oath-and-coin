@@ -27,25 +27,12 @@ public class ProposeContractTests
 
     private static readonly SimulationEngine Engine = new();
 
-    // Per-instance, not per-call: xUnit builds a fresh ProposeContractTests
-    // for every [Fact], so these start at the same value for every test —
-    // and, within one test, they track exactly the (CommandId,
-    // ExpectedStateVersion) a caller composing commands one at a time would
-    // use: the campaign's StateVersion advances by exactly one on every
-    // *applied* proposal (Task 8: WithEvent bumps it unconditionally,
-    // whether the hero accepted, declined, or was blocked by a principle),
-    // so a plain per-test counter tracks it without ever having to ask the
-    // state what its own version is.
-    private long _nextCommandId = 1;
-
-    private long _nextExpectedStateVersion;
-
     [Fact]
     public void Propose_AddsAcceptingHeroToCrewAndKeepsOfferOpen()
     {
         var state = Fixtures.StateWithTwoHeroes(requiredCrew: 2);
 
-        var afterFirst = Engine.Apply(state, Propose(heroIndex: 0)).State;
+        var afterFirst = Engine.Apply(state, Propose(commandId: 1, new HeroId(0), state)).State;
 
         var contract = afterFirst.Contracts.Values.Single();
         Assert.Equal(ContractStatus.Offered, contract.Status);
@@ -58,11 +45,20 @@ public class ProposeContractTests
     {
         var state = Fixtures.StateWithTwoHeroes(requiredCrew: 2);
 
-        var after = Engine.Apply(
-            Engine.Apply(state, Propose(heroIndex: 0)).State,
-            Propose(heroIndex: 1)).State;
+        var first = Engine.Apply(state, Propose(commandId: 1, new HeroId(0), state));
+        // Review finding (Important 1): on the pre-fix engine, the first
+        // acceptance alone set Crewed, and this test's single assertion on
+        // the final Status could not tell that apart from the correct
+        // "reached RequiredCrew" behaviour — both paths land on Crewed here.
+        // Applied/count on *each* step is what actually distinguishes them.
+        Assert.True(first.Applied);
 
-        Assert.Equal(ContractStatus.Crewed, after.Contracts.Values.Single().Status);
+        var second = Engine.Apply(first.State, Propose(commandId: 2, new HeroId(1), first.State));
+        Assert.True(second.Applied);
+
+        var contract = second.State.Contracts.Values.Single();
+        Assert.Equal(ContractStatus.Crewed, contract.Status);
+        Assert.Equal(2, contract.AcceptedBy.Count);
     }
 
     [Fact]
@@ -71,7 +67,7 @@ public class ProposeContractTests
         var state = Fixtures.StateWithPrincipledHero();
         var before = state.Metadata.NextDecisionOrdinal;
 
-        var after = Engine.Apply(state, Propose(heroIndex: 0)).State;
+        var after = Engine.Apply(state, Propose(commandId: 1, new HeroId(0), state)).State;
 
         Assert.Equal(before, after.Metadata.NextDecisionOrdinal);
     }
@@ -82,65 +78,152 @@ public class ProposeContractTests
         var state = Fixtures.StateWithPrincipledHeroThenOrdinaryHero();
         var expectedOrdinal = state.Metadata.NextDecisionOrdinal;
 
-        var afterGate = Engine.Apply(state, Propose(heroIndex: 0)).State;
-        var afterScored = Engine.Apply(afterGate, Propose(heroIndex: 1)).State;
+        var afterGate = Engine.Apply(state, Propose(commandId: 1, new HeroId(0), state)).State;
+        var afterScored = Engine.Apply(afterGate, Propose(commandId: 2, new HeroId(1), afterGate)).State;
 
         var expectedMood = ContractDecisionRule.DrawMood(state.Metadata.CampaignSeed, expectedOrdinal);
         Assert.Equal(expectedOrdinal + expectedMood.OrdinalsConsumed, afterScored.Metadata.NextDecisionOrdinal);
     }
 
+    /// <summary>
+    /// Review finding (Important 1): a version of this test that only
+    /// checked <see cref="CommandResult.RejectionCode"/> was a verbatim
+    /// duplicate of <see cref="SecondResponseFromSameHero_IsRejected"/> —
+    /// same shape, same assertion, nothing new. This one uses a fixture
+    /// where hero 0 actually
+    /// <em>accepts</em> (unlike Zara, who declines in the fixture the older
+    /// test uses), so it additionally proves the rejected retry did not
+    /// double-count — or otherwise disturb — the crew membership the first,
+    /// accepted response already recorded.
+    /// </summary>
     [Fact]
     public void Propose_RejectsHeroWhoAlreadyResponded()
     {
         var state = Fixtures.StateWithTwoHeroes(requiredCrew: 2);
-        var after = Engine.Apply(state, Propose(heroIndex: 0)).State;
+        var after = Engine.Apply(state, Propose(commandId: 1, new HeroId(0), state)).State;
 
-        var result = Engine.Apply(after, Propose(heroIndex: 0));
+        var result = Engine.Apply(after, Propose(commandId: 2, new HeroId(0), after));
 
+        Assert.False(result.Applied);
         Assert.Equal(RejectionCodes.AlreadyResponded, result.RejectionCode);
+        Assert.Same(after, result.State);
+        Assert.Single(result.State.Contracts.Values.Single().AcceptedBy);
     }
 
+    /// <summary>
+    /// Review finding (Important 1): the previous version of this test only
+    /// asserted the subset relationship, which the pre-fix engine (AcceptedBy
+    /// permanently empty) satisfied trivially. Tracking how many proposals
+    /// actually resulted in an accepted decision, independently of the
+    /// engine's own bookkeeping, and asserting <c>AcceptedBy.Count</c> equals
+    /// that number on every step is what a fixed-but-wrong AcceptedBy cannot
+    /// pass by accident.
+    /// </summary>
     [Fact]
     public void Propose_KeepsAcceptedByASubsetOfRespondedBy()
     {
         var state = Fixtures.StateWithSixHeroes(requiredCrew: 4);
+        var acceptedCount = 0;
 
-        foreach (var index in new[] { 0, 1, 2, 3, 4, 5 })
+        for (var index = 0; index < 6; index++)
         {
-            var result = Engine.Apply(state, Propose(heroIndex: index));
+            var result = Engine.Apply(state, Propose(commandId: index + 1, new HeroId(index), state));
             state = result.State;
 
-            foreach (var contract in state.Contracts.Values)
+            if (result.Applied && result.Decision!.SelectedAction == Actions.Accept)
             {
-                Assert.True(
-                    contract.AcceptedBy.IsSubsetOf(contract.RespondedBy),
-                    $"after hero {index}: AcceptedBy left RespondedBy behind");
+                acceptedCount++;
             }
+
+            var contract = state.Contracts.Values.Single();
+            Assert.True(
+                contract.AcceptedBy.IsSubsetOf(contract.RespondedBy),
+                $"after hero {index}: AcceptedBy left RespondedBy behind");
+            Assert.Equal(acceptedCount, contract.AcceptedBy.Count);
         }
     }
 
     /// <summary>
-    /// Builds the next command in this test's own sequence — see the remarks
-    /// on <see cref="_nextCommandId"/>/<see cref="_nextExpectedStateVersion"/>
-    /// for why a plain counter is enough. Every fixture this helper is used
-    /// with (<see cref="Fixtures.StateWithTwoHeroes"/>,
-    /// <see cref="Fixtures.StateWithSixHeroes"/>,
-    /// <see cref="Fixtures.StateWithPrincipledHero"/>,
-    /// <see cref="Fixtures.StateWithPrincipledHeroThenOrdinaryHero"/>) offers
-    /// exactly one contract, at <see cref="Fixtures.ContractId"/>.
+    /// Review finding (Important 4): <see cref="RejectionCodes.ContractAlreadyResolved"/>
+    /// had no dedicated test anywhere in the repository. A hero who has
+    /// <em>not</em> responded yet, offered a contract that is already
+    /// <see cref="ContractStatus.Crewed"/>, is the one case that reaches this
+    /// code specifically — not <see cref="RejectionCodes.AlreadyResponded"/>,
+    /// which would fire first for a hero who already answered.
     /// </summary>
-    private ProposeContractToHero Propose(int heroIndex)
+    [Fact]
+    public void Propose_RejectsProposalOnAnAlreadyCrewedContract()
     {
-        var command = new ProposeContractToHero(
-            _nextCommandId,
-            new HeroId(heroIndex),
-            Fixtures.ContractId,
-            _nextExpectedStateVersion);
+        var state = Fixtures.StateWithTwoHeroes(requiredCrew: 1);
+        var afterFirst = Engine.Apply(state, Propose(commandId: 1, new HeroId(0), state)).State;
+        Assert.Equal(ContractStatus.Crewed, afterFirst.Contracts.Values.Single().Status);
 
-        _nextCommandId++;
-        _nextExpectedStateVersion++;
+        var result = Engine.Apply(afterFirst, Propose(commandId: 2, new HeroId(1), afterFirst));
 
-        return command;
+        Assert.False(result.Applied);
+        Assert.Equal(RejectionCodes.ContractAlreadyResolved, result.RejectionCode);
+        Assert.Same(afterFirst, result.State);
+    }
+
+    /// <summary>
+    /// Review finding (Important 2): <see cref="DecisionContext.Crew"/>'s
+    /// mapped <em>value</em> (which content id an accepted hero resolves to)
+    /// was covered structurally — every accepted hero has an entry — but
+    /// nothing checked that the entry names the right hero. A context that
+    /// mapped every entry to the deciding hero's own definition instead of
+    /// each comrade's would still pass every other test in this file (all of
+    /// them use heroes with empty <see cref="HeroState.Relationships"/>).
+    /// This fixture gives hero 1 a relationship keyed by hero 0's own
+    /// definition — the bond factor's <see cref="TraceFactor.SourceEntity"/>
+    /// must be hero 0's definition, or the wiring named the wrong comrade.
+    /// </summary>
+    [Fact]
+    public void Propose_RecordsBondFactorNamingTheAcceptedComradesDefinition()
+    {
+        var state = Fixtures.StateWithBondedHeroes(relationshipWeight: 7);
+
+        var afterFirst = Engine.Apply(state, Propose(commandId: 1, new HeroId(0), state));
+        Assert.True(afterFirst.Applied);
+
+        var second = Engine.Apply(afterFirst.State, Propose(commandId: 2, new HeroId(1), afterFirst.State));
+
+        var bondFactor = Assert.Single(
+            second.Decision!.Trace.PositiveFactors.Concat(second.Decision.Trace.NegativeFactors),
+            factor => factor.ReasonCode is ReasonCodes.StandsWithComrade or ReasonCodes.WillNotWorkWith);
+        Assert.Equal(Fixtures.BondedComradeDefinition, bondFactor.SourceEntity);
+    }
+
+    /// <summary>
+    /// Review finding (Important 3): no fixture ever gave a hero more than
+    /// one trait, and the real Gate 0 content gives both Bram and Zara
+    /// exactly one each — so nothing exercised the sort
+    /// <c>Apply</c> performs before handing <c>Traits</c> to
+    /// <see cref="ContractDecisionRule.Decide"/>, which asserts the ordering
+    /// rather than restoring it. This fixture authors two inclinations in
+    /// <see cref="HeroState.Traits"/> in the <em>reverse</em> of their id
+    /// order — if the engine ever stopped sorting, this would either throw
+    /// (the rule's own ordering assertion) or silently drop the sort's
+    /// effect, and either way this test would no longer see both factors,
+    /// correctly attributed, at their authored weights.
+    /// </summary>
+    [Fact]
+    public void Propose_ResolvesTraitsRegardlessOfTheirAuthoredOrder()
+    {
+        var state = Fixtures.StateWithTraitsAuthoredOutOfOrder();
+
+        var result = Engine.Apply(state, Propose(commandId: 1, new HeroId(0), state));
+
+        Assert.True(result.Applied);
+        Assert.Contains(
+            result.Decision!.Trace.PositiveFactors,
+            factor => factor.ReasonCode == ReasonCodes.PersonalConviction
+                && factor.SourceEntity == Fixtures.LowerTraitId
+                && factor.Magnitude == 3);
+        Assert.Contains(
+            result.Decision.Trace.PositiveFactors,
+            factor => factor.ReasonCode == ReasonCodes.PersonalConviction
+                && factor.SourceEntity == Fixtures.HigherTraitId
+                && factor.Magnitude == 5);
     }
 
     /// <summary>

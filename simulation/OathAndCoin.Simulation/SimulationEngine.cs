@@ -92,7 +92,28 @@ public sealed class SimulationEngine
         var traitsBuilder = ImmutableArray.CreateBuilder<HeldTrait>(traitIds.Count);
         foreach (var traitId in traitIds)
         {
-            traitsBuilder.Add(state.TraitRules[traitId]);
+            // A bare indexer here would surface a missing id as a bare
+            // KeyNotFoundException with no clue which id, which hero, or
+            // where the rulebook is even filled — unlike the equally
+            // "should never happen" case ContractDecisionRule.Decide guards
+            // ten lines into its own bonds walk (a hero in AcceptedBy with
+            // no Crew entry), which names the entity and explains the
+            // contract. This mirrors that shape: a hero naming a trait id
+            // absent from TraitRules is a content-loading bug (the id
+            // should have failed ContentSet.Load's own reference check
+            // before ever reaching a HeroState), not a hero with no
+            // opinion — so it fails loudly, with enough to find the cause.
+            if (!state.TraitRules.TryGetValue(traitId, out var trait))
+            {
+                throw new InvalidOperationException(
+                    $"Hero '{hero.Definition}' carries trait id '{traitId}', but "
+                    + "GameState.TraitRules has no entry for it. TraitRules is filled once, "
+                    + "by ContentSet.CreateInitialState from every trait the loaded content "
+                    + "defines — a hero referencing an id absent from that table is a "
+                    + "content-loading bug, not a hero with no opinion.");
+            }
+
+            traitsBuilder.Add(trait);
         }
 
         // Comrades already committed to this same offer — exactly

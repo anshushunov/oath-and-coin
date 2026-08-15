@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using OathAndCoin.Simulation.Commands;
 using OathAndCoin.Simulation.Decisions;
 using OathAndCoin.Simulation.Events;
 using OathAndCoin.Simulation.Ids;
@@ -30,6 +31,26 @@ internal static class Fixtures
     private static readonly ContentId PrincipleTraitId = ContentId.Parse("core:will_not_strike_a_temple");
 
     private static readonly ContentId PrincipleTag = ContentId.Parse("target:temple");
+
+    /// <summary>
+    /// The comrade definition <see cref="StateWithBondedHeroes"/>'s second
+    /// hero holds an opinion about — hero 0's own
+    /// <see cref="HeroState.Definition"/>.
+    /// </summary>
+    public static readonly ContentId BondedComradeDefinition = ContentId.Parse("core:hero_0");
+
+    /// <summary>
+    /// Two inclination ids used by <see cref="StateWithTraitsAuthoredOutOfOrder"/>,
+    /// named by their sort relationship to each other rather than by content
+    /// (<c>"core:trait_a"</c> sorts before <c>"core:trait_b"</c> ordinally) —
+    /// the fixture's whole point is that <see cref="HeroState.Traits"/>
+    /// authors them the other way round.
+    /// </summary>
+    public static readonly ContentId LowerTraitId = ContentId.Parse("core:trait_a");
+
+    public static readonly ContentId HigherTraitId = ContentId.Parse("core:trait_b");
+
+    private static readonly ContentId SharedInclinationTag = ContentId.Parse("target:bandits");
 
     public static HeroState Hero() => new()
     {
@@ -103,9 +124,14 @@ internal static class Fixtures
     /// <summary>
     /// Six heroes, same decisive-acceptance shape as
     /// <see cref="StateWithTwoHeroes"/> — enough heroes to run an offer past
-    /// <see cref="ContractState.RequiredCrew"/> and into proposals rejected
-    /// against an already-<see cref="ContractStatus.Crewed"/> contract, not
-    /// merely enough to fill it exactly.
+    /// <see cref="ContractState.RequiredCrew"/> and into proposals against an
+    /// already-<see cref="ContractStatus.Crewed"/> contract, not merely
+    /// enough to fill it exactly. Those later proposals land on
+    /// <see cref="RejectionCodes.ContractAlreadyResolved"/>
+    /// specifically — not, say, a stale <c>ExpectedStateVersion</c> — only
+    /// when the caller re-reads the version from the actual resulting state
+    /// before composing each next command, rather than assuming it advances
+    /// by one per proposal (a rejected proposal does not advance it at all).
     /// </summary>
     public static GameState StateWithSixHeroes(int requiredCrew)
     {
@@ -175,6 +201,54 @@ internal static class Fixtures
                 new HeldTrait(PrincipleTraitId, PrincipleTag, IsPrinciple: true, Weight: 0)),
         });
 
+    /// <summary>
+    /// Hero 0 (decisive, always accepts), then hero 1, who holds an opinion
+    /// (<paramref name="relationshipWeight"/>) about hero 0's own
+    /// <see cref="BondedComradeDefinition"/> — the pairing
+    /// <see cref="ProposeContractTests.Propose_RecordsBondFactorNamingTheAcceptedComradesDefinition"/>
+    /// needs to prove <see cref="DecisionContext.Crew"/>'s values, not merely
+    /// its keys, are wired to the right content id.
+    /// </summary>
+    public static GameState StateWithBondedHeroes(int relationshipWeight)
+    {
+        var heroes = ImmutableSortedDictionary.CreateBuilder<HeroId, HeroState>();
+        heroes.Add(new HeroId(0), DecisiveAcceptingHero(new HeroId(0), BondedComradeDefinition));
+        heroes.Add(new HeroId(1), BondedHero(new HeroId(1), ContentId.Parse("core:hero_1"), relationshipWeight));
+
+        return BuildState(
+            heroes.ToImmutable(),
+            requiredCrew: 2,
+            payment: 100,
+            risk: 0,
+            tags: ImmutableSortedSet<ContentId>.Empty);
+    }
+
+    /// <summary>
+    /// One hero holding two inclinations whose tag the contract offers,
+    /// authored in <see cref="HeroState.Traits"/> in the reverse of their id
+    /// order — see <see cref="LowerTraitId"/>/<see cref="HigherTraitId"/> and
+    /// <see cref="ProposeContractTests.Propose_ResolvesTraitsRegardlessOfTheirAuthoredOrder"/>.
+    /// </summary>
+    public static GameState StateWithTraitsAuthoredOutOfOrder()
+    {
+        var heroes = ImmutableSortedDictionary.CreateBuilder<HeroId, HeroState>();
+        heroes.Add(new HeroId(0), TwoInclinationsHero(new HeroId(0), ContentId.Parse("core:hero_0")));
+
+        var traitRules = ImmutableSortedDictionary.CreateRange(new[]
+        {
+            KeyValuePair.Create(LowerTraitId, new HeldTrait(LowerTraitId, SharedInclinationTag, IsPrinciple: false, Weight: 3)),
+            KeyValuePair.Create(HigherTraitId, new HeldTrait(HigherTraitId, SharedInclinationTag, IsPrinciple: false, Weight: 5)),
+        });
+
+        return BuildState(
+            heroes.ToImmutable(),
+            requiredCrew: 1,
+            payment: 40,
+            risk: 50,
+            tags: ImmutableSortedSet.Create(SharedInclinationTag),
+            traitRules: traitRules);
+    }
+
     private static HeroState DecisiveAcceptingHero(HeroId id, ContentId definition) => new()
     {
         Id = id,
@@ -211,6 +285,37 @@ internal static class Fixtures
         Pride = 50,
         TrustInGuild = 50,
         Traits = ImmutableArray<ContentId>.Empty,
+        Relationships = ImmutableSortedDictionary<ContentId, int>.Empty,
+    };
+
+    private static HeroState BondedHero(HeroId id, ContentId definition, int relationshipWeight) => new()
+    {
+        Id = id,
+        Definition = definition,
+        DisplayNameKey = "hero.test.bonded.name",
+        Greed = 50,
+        Caution = 50,
+        Pride = 50,
+        TrustInGuild = 50,
+        Traits = ImmutableArray<ContentId>.Empty,
+        Relationships = ImmutableSortedDictionary.CreateRange(new[]
+        {
+            KeyValuePair.Create(BondedComradeDefinition, relationshipWeight),
+        }),
+    };
+
+    private static HeroState TwoInclinationsHero(HeroId id, ContentId definition) => new()
+    {
+        Id = id,
+        Definition = definition,
+        DisplayNameKey = "hero.test.two_inclinations.name",
+        Greed = 50,
+        Caution = 50,
+        Pride = 50,
+        TrustInGuild = 50,
+        // Authored in the reverse of sorted (Id) order deliberately — see
+        // LowerTraitId/HigherTraitId and the test this fixture supports.
+        Traits = ImmutableArray.Create(HigherTraitId, LowerTraitId),
         Relationships = ImmutableSortedDictionary<ContentId, int>.Empty,
     };
 
