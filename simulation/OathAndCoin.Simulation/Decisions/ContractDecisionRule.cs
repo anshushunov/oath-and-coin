@@ -61,11 +61,29 @@ public static class ContractDecisionRule
 {
     /// <summary>
     /// Mood is what keeps two runs of the same campaign from being the same
-    /// story, and it is bounded on purpose: at ±5 against scores an order of
-    /// magnitude larger, it colours a decision without ever overturning one.
-    /// A hero whose refusal flips to acceptance because of the weather is not a
-    /// character the player can learn (DEC-006).
+    /// story, and its range is bounded by exactly what it can and cannot
+    /// overturn.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A decision whose sum of motives (payment, risk, insult, inclinations,
+    /// trust, bonds — everything <see cref="Decide"/> computes before drawing
+    /// mood) falls outside <c>[MoodMin, -MoodMin]</c> (i.e. <c>|sum| &gt; 5</c>)
+    /// cannot change sign no matter what mood draws, because mood can add at
+    /// most <see cref="MoodMax"/> or subtract at most <c>-MoodMin</c>. That is
+    /// arithmetic, not a promise about specific numbers — Bram's and Zara's
+    /// actual sums happen to sit outside the band today, but nothing here
+    /// assumes they always will.
+    /// </para>
+    /// <para>
+    /// Inside the band, mood genuinely can decide — that is not a case this
+    /// rule tries to close, it is a hero whose motives are already close to
+    /// indifferent reading as having wavered from one day to the next (the
+    /// colouring a later task adds on top of this one). A hero whose motives
+    /// sit decisively for or against never flips because of the weather;
+    /// that would not be a character the player could learn (DEC-006).
+    /// </para>
+    /// </remarks>
     public const int MoodMin = -5;
 
     public const int MoodMax = 5;

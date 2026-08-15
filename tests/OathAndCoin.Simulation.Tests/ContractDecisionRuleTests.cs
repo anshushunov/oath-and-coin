@@ -106,6 +106,17 @@ public class ContractDecisionRuleTests
 
         Assert.Equal(12, Single(drawn, ReasonCodes.PersonalConviction).Magnitude);
         Assert.Equal(9, Single(repelled, ReasonCodes.PersonalAversion).Magnitude);
+
+        // Magnitude alone would still pass an implementation that folded a
+        // negative weight into a positive magnitude and filed it under
+        // PositiveFactors anyway (e.g. via Math.Abs without routing by sign)
+        // — the whole point of "the list says the sign" is which list the
+        // factor is actually in.
+        Assert.Contains(drawn.Result.Trace.PositiveFactors, f => f.ReasonCode == ReasonCodes.PersonalConviction);
+        Assert.DoesNotContain(drawn.Result.Trace.NegativeFactors, f => f.ReasonCode == ReasonCodes.PersonalConviction);
+
+        Assert.Contains(repelled.Result.Trace.NegativeFactors, f => f.ReasonCode == ReasonCodes.PersonalAversion);
+        Assert.DoesNotContain(repelled.Result.Trace.PositiveFactors, f => f.ReasonCode == ReasonCodes.PersonalAversion);
     }
 
     [Fact]
@@ -124,13 +135,52 @@ public class ContractDecisionRuleTests
     public void Decide_BondsCountOnlyHeroesWhoAlreadyAccepted()
     {
         var zara = ContentId.Parse("core:zara");
+        var mira = ContentId.Parse("core:mira");
+
+        // Mira is in Crew (so the rule could resolve her ContentId if it
+        // looked her up) but never listed in AcceptedBy — a helper that
+        // walked context.Crew instead of contract.AcceptedBy would count her
+        // relationship anyway, and the two collections would be
+        // indistinguishable if this test built AcceptedBy from Crew's own
+        // keys, which is exactly why they are supplied separately here.
         var decision = ContractDecisionRule.Decide(Context(
-            relationships: [(zara, -8)],
-            crew: [(new HeroId(2), zara)]));
+            relationships: [(zara, -8), (mira, 7)],
+            crew: [(new HeroId(2), zara), (new HeroId(3), mira)],
+            acceptedBy: [new HeroId(2)]));
 
         var factor = Single(decision, ReasonCodes.WillNotWorkWith);
         Assert.Equal(8, factor.Magnitude);
         Assert.Equal(zara, factor.SourceEntity);
+        Assert.Contains(decision.Result.Trace.NegativeFactors, f => f.ReasonCode == ReasonCodes.WillNotWorkWith);
+        Assert.DoesNotContain(decision.Result.Trace.PositiveFactors, f => f.ReasonCode == ReasonCodes.WillNotWorkWith);
+
+        Assert.DoesNotContain(
+            decision.Result.Trace.PositiveFactors.Concat(decision.Result.Trace.NegativeFactors),
+            f => f.SourceEntity == mira);
+    }
+
+    /// <summary>
+    /// The mutant this guards against: folding the whole sum into one
+    /// division — <c>(payment*greed - risk*caution) / 100</c> instead of
+    /// <c>payment*greed/100 - risk*caution/100</c> — passes every other test
+    /// in this file, because none of them happen to pick numbers where
+    /// integer division on the combined numerator rounds differently than
+    /// dividing each term first. These do: 30*47/100 = 14 and 50*19/100 = 9
+    /// (14 - 9 = 5), while (30*47 - 50*19)/100 = 460/100 = 4 — one whole
+    /// point apart, on the boundary a real decision could straddle. Mood
+    /// still applies on top of either number, so the assertion adds
+    /// <see cref="ContractDecisionRule.DrawMood"/>'s own result for this
+    /// context's (seed, ordinal) rather than assuming it away.
+    /// </summary>
+    [Fact]
+    public void Decide_DividesEachTermSeparately_NotTheCombinedSum()
+    {
+        var context = Context(payment: 30, greed: 47, risk: 50, caution: 19, pride: 0, trust: 0);
+
+        var decision = ContractDecisionRule.Decide(context);
+        var mood = ContractDecisionRule.DrawMood(context.CampaignSeed, context.DecisionOrdinal).Value;
+
+        Assert.Equal(5 + mood, decision.Result.SelectedScore);
     }
 
     [Fact]
@@ -160,18 +210,29 @@ public class ContractDecisionRuleTests
     /// <summary>
     /// Builds a <see cref="DecisionContext"/> from the minimum a test needs to
     /// state: which principles/inclinations the hero carries, which tags the
-    /// contract offers, which comrades it should treat as already-accepted
-    /// crew, and the six hero/contract numbers the sum-of-motives step reads.
-    /// Numeric defaults (50) are chosen so the scored path, if it ran, would
-    /// not itself decide a gate test's outcome — a gate test failing for a
-    /// scoring reason would be a confusing way to fail.
+    /// contract offers, which comrades exist in <see cref="DecisionContext.Crew"/>,
+    /// which of those have actually accepted the contract, and the six
+    /// hero/contract numbers the sum-of-motives step reads. Numeric defaults
+    /// (50) are chosen so the scored path, if it ran, would not itself decide
+    /// a gate test's outcome — a gate test failing for a scoring reason would
+    /// be a confusing way to fail.
     /// </summary>
+    /// <param name="acceptedBy">
+    /// <see cref="ContractState.AcceptedBy"/> explicitly, defaulting to
+    /// <paramref name="crew"/>'s own <see cref="HeroId"/>s when omitted. Kept
+    /// as a separate parameter rather than always derived from
+    /// <paramref name="crew"/>: a test that wants to prove the rule walks
+    /// <c>AcceptedBy</c> — not every hero it happens to find in
+    /// <c>Crew</c> — needs to be able to put someone in <c>Crew</c> without
+    /// also putting them here.
+    /// </param>
     private static DecisionContext Context(
         (string PrincipleId, string Tag)[]? principles = null,
         string[]? contractTags = null,
         (string TraitId, string Tag, int Weight)[]? inclinations = null,
         (ContentId Definition, int Weight)[]? relationships = null,
         (HeroId HeroId, ContentId Definition)[]? crew = null,
+        HeroId[]? acceptedBy = null,
         int greed = 50,
         int caution = 50,
         int pride = 50,
@@ -187,6 +248,7 @@ public class ContractDecisionRuleTests
         inclinations ??= [];
         relationships ??= [];
         crew ??= [];
+        acceptedBy ??= crew.Select(c => c.HeroId).ToArray();
 
         var traits = principles
             .Select(p => new HeldTrait(ContentId.Parse(p.PrincipleId), ContentId.Parse(p.Tag), IsPrinciple: true, Weight: 0))
@@ -217,7 +279,7 @@ public class ContractDecisionRuleTests
             Tags = ImmutableSortedSet.CreateRange(contractTags.Select(ContentId.Parse)),
             Status = ContractStatus.Offered,
             RespondedBy = ImmutableSortedSet<HeroId>.Empty,
-            AcceptedBy = ImmutableSortedSet.CreateRange(crew.Select(c => c.HeroId)),
+            AcceptedBy = ImmutableSortedSet.CreateRange(acceptedBy),
         };
 
         return new DecisionContext
