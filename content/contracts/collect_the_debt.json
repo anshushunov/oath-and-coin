@@ -1,0 +1,9 @@
+{
+  "schema_version": 2,
+  "id": "core:collect_the_debt",
+  "display_name_key": "contract.core.collect_the_debt.name",
+  "payment": 30,
+  "risk": 20,
+  "required_crew": 2,
+  "tags": ["patron:slavers", "method:deception", "method:abandon_wounded"]
+}

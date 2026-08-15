@@ -1,0 +1,7 @@
+{
+  "schema_version": 2,
+  "id": "core:will_not_serve_slavers",
+  "display_name_key": "trait.core.will_not_serve_slavers.name",
+  "kind": "principle",
+  "tag": "patron:slavers"
+}

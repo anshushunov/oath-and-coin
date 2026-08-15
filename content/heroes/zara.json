@@ -2,10 +2,10 @@
   "schema_version": 2,
   "id": "core:zara",
   "display_name_key": "hero.core.zara.name",
-  "greed": 20,
-  "caution": 80,
-  "pride": 55,
+  "greed": 35,
+  "caution": 70,
+  "pride": 60,
   "trust_in_guild": 40,
-  "traits": ["core:will_not_strike_a_temple"],
+  "traits": ["core:refuses_deception", "core:fears_undeath"],
   "relationships": [{ "hero": "core:bram", "weight": -8 }]
 }

@@ -27,6 +27,9 @@ internal static class RepositoryFixtures
     /// <summary>The Gate 0 scenario the spike is reproduced from.</summary>
     public static string ScenarioPath => Path.Combine(ScenarioRoot, "gate0.commands.json");
 
+    /// <summary>Path to the named locale's catalogue under <c>content/locale/</c>.</summary>
+    public static string LocaleFile(string locale) => Path.Combine(ContentRoot, "locale", $"{locale}.json");
+
     /// <summary>
     /// Loads the repository's content and the named scenario's commands, then
     /// runs them with <paramref name="seed"/> through

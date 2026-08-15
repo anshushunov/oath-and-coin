@@ -28,8 +28,8 @@ public class ContentSetTests
     {
         var content = ContentSet.Load(RepositoryFixtures.ContentRoot);
 
-        Assert.Equal(2, content.Heroes.Count);
-        Assert.Single(content.Contracts);
+        Assert.Equal(6, content.Heroes.Count);
+        Assert.Equal(4, content.Contracts.Count);
 
         var bram = content.Heroes[ContentId.Parse("core:bram")];
         Assert.Equal("hero.core.bram.name", bram.DisplayNameKey);
@@ -38,8 +38,8 @@ public class ContentSetTests
         Assert.Equal(50, bram.TrustInGuild);
 
         var zara = content.Heroes[ContentId.Parse("core:zara")];
-        Assert.Equal(20, zara.Greed);
-        Assert.Equal(80, zara.Caution);
+        Assert.Equal(35, zara.Greed);
+        Assert.Equal(70, zara.Caution);
         Assert.Equal(40, zara.TrustInGuild);
 
         var contract = content.Contracts[ContentId.Parse("core:escort_the_caravan")];

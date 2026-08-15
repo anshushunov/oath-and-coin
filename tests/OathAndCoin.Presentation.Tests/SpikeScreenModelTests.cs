@@ -48,7 +48,7 @@ public class SpikeScreenModelTests
 
         Assert.Equal("core:zara", model.Lines[0].HeroDefinition);
         Assert.Equal(Actions.Decline.Value, model.Lines[0].Action);
-        Assert.Equal(-28, model.Lines[0].Score);
+        Assert.Equal(-18, model.Lines[0].Score);
 
         Assert.Equal("core:bram", model.Lines[1].HeroDefinition);
         Assert.Equal(Actions.Accept.Value, model.Lines[1].Action);
@@ -57,11 +57,11 @@ public class SpikeScreenModelTests
 
     /// <summary>
     /// Against the gate 0 seed, Zara's own positive factors are
-    /// payment_attractive (8), trusts_the_guild (4), unpredictable_mood (5) —
+    /// payment_attractive (14), trusts_the_guild (4), unpredictable_mood (5) —
     /// in that computation order, because
     /// <see cref="OathAndCoin.Simulation.Decisions.ContractDecisionRule"/>
     /// appends payment, then trust, then mood. Sorted by magnitude the order
-    /// is payment (8), mood (5), trust (4): different from computation
+    /// is payment (14), mood (5), trust (4): different from computation
     /// order, so this only passes if the factory actually sorts rather than
     /// forwarding the trace's own order.
     /// </summary>

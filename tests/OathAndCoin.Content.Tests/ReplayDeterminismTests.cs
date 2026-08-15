@@ -105,7 +105,7 @@ public class ReplayDeterminismTests
     ///
     /// What actually distinguishes the two explanations is what a player would
     /// read off them: which way each factor pulled, how hard, and which factor
-    /// decided the answer. Zara refuses because the risk (40) outweighs
+    /// decided the answer. Zara refuses because the risk (35) outweighs
     /// everything she was offered; Bram accepts because the payment (24) leads.
     /// </remarks>
     [Fact]

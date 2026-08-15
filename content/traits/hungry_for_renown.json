@@ -1,0 +1,8 @@
+{
+  "schema_version": 2,
+  "id": "core:hungry_for_renown",
+  "display_name_key": "trait.core.hungry_for_renown.name",
+  "kind": "inclination",
+  "tag": "method:public_contract",
+  "weight": 8
+}

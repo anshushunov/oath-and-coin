@@ -1,0 +1,15 @@
+{
+  "schema_version": 2,
+  "id": "core:doran",
+  "display_name_key": "hero.core.doran.name",
+  "greed": 50,
+  "caution": 45,
+  "pride": 35,
+  "trust_in_guild": 55,
+  "traits": [
+    "core:will_not_serve_slavers",
+    "core:hates_the_cult",
+    "core:loyal_to_the_merchant_guild"
+  ],
+  "relationships": [{ "hero": "core:bram", "weight": 10 }]
+}

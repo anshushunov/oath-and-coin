@@ -5,5 +5,5 @@
   "payment": 40,
   "risk": 50,
   "required_crew": 4,
-  "tags": ["target:bandits"]
+  "tags": ["patron:merchant_guild", "target:bandits"]
 }
