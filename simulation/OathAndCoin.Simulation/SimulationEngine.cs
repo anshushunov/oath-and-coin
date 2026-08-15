@@ -82,14 +82,25 @@ public sealed class SimulationEngine
             return CommandResult.Rejected(state, RejectionCodes.AlreadyResponded);
         }
 
-        // Traits and Crew are left empty here rather than resolved: resolving
-        // a hero's trait ids into HeldTrait needs the content each id names
-        // (TraitDefinition's Kind/Tag/Weight), and this engine has no
-        // ContentSet to resolve them against — wiring that lookup through is
-        // a later task's concern (see the plan). Until then the gate this
-        // context feeds is reachable and correct, just never fed a principle
-        // by this call site, and every existing test here carries heroes with
-        // no traits at all, so this is not yet a visible gap.
+        // Traits is left empty because it cannot be filled here at all:
+        // resolving a hero's trait ids into HeldTrait needs the content each
+        // id names (TraitDefinition's Kind/Tag/Weight), and this engine has
+        // no ContentSet to resolve them against — wiring that lookup through
+        // is a later task's concern (see the plan).
+        //
+        // Crew is left empty for a different reason, not a technical one:
+        // it could be assembled right here, cheaply, from contract.AcceptedBy
+        // and state.Heroes[...].Definition — both already live in GameState,
+        // no content lookup required. It is left empty anyway so this context
+        // is either fully wired or not wired at all, never half — filling
+        // Crew alone while Traits stays empty would make this context look
+        // more real than it is to whoever reads it next. The task that
+        // resolves Traits should fill both in the same pass.
+        //
+        // Until that task lands, the gate this context feeds is reachable
+        // and correct, just never fed a principle or a crew by this call
+        // site — and every existing test here carries heroes with no traits
+        // at all, so this is not yet a visible gap.
         var context = new DecisionContext
         {
             Hero = hero,
