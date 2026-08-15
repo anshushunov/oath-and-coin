@@ -372,7 +372,7 @@ Gate 0 завершён после ручного подтверждения в�
 | BQ-001 | Движок и язык | закрыт: [ADR-001](../decisions/ADR-001-engine-and-language.md), граница core — [ADR-002](../decisions/ADR-002-simulation-core-boundary.md) | ADR |
 | BQ-002 | Первая платформа и input | M4 | DEC + ADR |
 | BQ-003 | Граница контроля игрока | направление в [DEC-005](../decisions/DEC-005-retreat-signal.md) (proposed, принятие после M2); экспедиция — M1/M2 | DEC |
-| BQ-004 | Модель hero decision и переговоров | M1 | DEC + system spec |
+| BQ-004 | Модель hero decision и переговоров | закрыт: [DEC-010](../decisions/DEC-010-hero-decision-model.md), спека — [HERO_DECISION_SPEC](../technical/HERO_DECISION_SPEC.md), контракты — [ADR-009](../decisions/ADR-009-decision-contracts-and-content-v2.md); модель переговоров строится на этом ядре отдельной спекой ([DEC-008](../decisions/DEC-008-negotiation-first-differentiation.md)) | DEC + system spec |
 | BQ-005 | Публичность числовых шансов | закрыт: [DEC-006](../decisions/DEC-006-ranked-reasons-not-probabilities.md) | DEC |
 | BQ-006 | Пространство и время боя | M2 | DEC |
 | BQ-007 | Отступление и смерть | M2/M3 | DEC |
