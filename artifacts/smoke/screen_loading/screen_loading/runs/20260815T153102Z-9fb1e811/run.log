@@ -1,0 +1,4 @@
+StandardOutput	0	Godot Engine v4.7.1.stable.mono.official.a13da4feb - https://godotengine.org
+StandardOutput	1	OpenGL API 3.3.0 NVIDIA 577.09 - Compatibility - Using Device: NVIDIA - NVIDIA GeForce RTX 5060 Laptop GPU
+StandardOutput	2	
+StandardOutput	3	{"schema_version":1,"event":"terminal","outcome_kind":"loading","scenario":"screen_loading","seed":7,"checkpoint":"screen_loading","error_code":null,"content_version":null,"canonical_hash":null,"read_model_hash":"7eee29609a31bb76e30a0cc5e77598c86693435ba26c316f2a0420e8cfb94b4f","rendered_ui_hash":"7a9f7f55a0c55e4d9b313046ec7693165fcbee5bd2a66fffb600e23ff6ada126","frame_sha256":"3927eeb00dff7b67a4a45f32434c0e9fd9d351c54e8d2a4619e3959bf8becce2","frame_width":1280,"frame_height":720,"frame_distinct_colors":163}
