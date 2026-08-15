@@ -40,6 +40,33 @@ public enum ScreenState
 }
 
 /// <summary>
+/// Which way a reason pulled <em>relative to the answer the hero actually
+/// gave</em> — not "positive" or "negative" in the trace's own terms, which
+/// say nothing on their own about the decision they belong to: a risk that
+/// pushed toward refusal is a <see cref="Supported"/> reason on a refusal and
+/// an <see cref="Opposed"/> one on an acceptance.
+/// </summary>
+/// <remarks>
+/// A model fact, not something the screen may work out for itself. External
+/// review finding (blocker): a <see cref="ReasonLine"/> that carried no
+/// direction at all let the screen show a hero who accepted a contract three
+/// reasons all pointing the other way — "принял, потому что слишком
+/// рискованно" — with nothing anywhere in the model able to contradict it.
+/// The screen has <see cref="ResponseLine.Action"/> and could in principle
+/// have derived this, but deriving it there would put one more piece of
+/// decision meaning in the one layer HERO_DECISION_SPEC §4.3 keeps free of
+/// it, and would leave it out of both hashes.
+/// </remarks>
+public enum ReasonDirection
+{
+    /// <summary>This reason pulled toward the action the hero chose.</summary>
+    Supported,
+
+    /// <summary>This reason pulled against the action the hero chose, and lost.</summary>
+    Opposed,
+}
+
+/// <summary>
 /// One reason a hero's answer went the way it did, already translated onto
 /// the qualitative scale (spec: the interface never shows the player a raw
 /// number besides an objective fact like a payment in coins).
@@ -61,6 +88,12 @@ public enum ScreenState
 /// translated by <see cref="QualitativeScale.ForMagnitude"/> — never the raw
 /// integer.
 /// </param>
+/// <param name="Direction">
+/// Whether this reason pulled toward or against the answer this line belongs
+/// to — see <see cref="ReasonDirection"/> for why it is a field of the model
+/// rather than something the screen derives from
+/// <see cref="ResponseLine.Action"/>.
+/// </param>
 /// <param name="SourceDisplayNameKey">
 /// A localization key naming <paramref name="SourceEntity"/> in a way a
 /// player reads, or <c>null</c> when the source adds nothing the screen has
@@ -79,7 +112,11 @@ public enum ScreenState
 /// see its remarks.
 /// </param>
 public sealed record ReasonLine(
-    string ReasonCode, string SourceEntity, QualitativeGrade Strength, string? SourceDisplayNameKey);
+    string ReasonCode,
+    string SourceEntity,
+    QualitativeGrade Strength,
+    string? SourceDisplayNameKey,
+    ReasonDirection Direction);
 
 /// <summary>
 /// One hero in the roster, as the screen shows them: qualitative traits, and
@@ -123,7 +160,8 @@ public sealed record HeroCard(
 /// </param>
 /// <param name="Action">The content id text of the chosen action (see <see cref="OathAndCoin.Simulation.Decisions.Actions"/>).</param>
 /// <param name="Reasons">
-/// At most three reasons, strongest first — see
+/// At most three reasons: the ones that supported this answer first,
+/// strongest first, then the strongest that argued against it — see
 /// <see cref="ContractOfferScreenModelFactory"/>'s remarks on ranking. Empty
 /// exactly when <see cref="BlockedByEntity"/> is set: a red line closes the
 /// decision before any reason has a magnitude to rank (HERO_DECISION_SPEC §2.2), so there

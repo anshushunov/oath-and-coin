@@ -54,6 +54,8 @@
     "action.decline": "Отказался",
     "response.wavered.true": "Колебался",
     "response.wavered.false": "Не колебался",
+    "reason.direction.supported": "За решение",
+    "reason.direction.opposed": "Против решения",
     "error.content_root_not_found": "Не найден каталог с контентом",
     "error.schema_invalid": "Контент не соответствует схеме",
     "error.content_invalid": "Контент повреждён",

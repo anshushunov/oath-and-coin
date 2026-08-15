@@ -226,6 +226,11 @@ public sealed partial class ContractOfferScreen : VBoxContainer
                 block.AddChild(BuildLabel(textSource.Resolve(reason.SourceDisplayNameKey)));
             }
 
+            // Which way this reason pulled relative to the answer above it —
+            // read off the model (ReasonLine.Direction), never worked out
+            // here from response.Action, for the reason that field's own
+            // remarks give.
+            block.AddChild(BuildLabel(textSource.Resolve(ReasonDirectionKeys.For(reason.Direction))));
             block.AddChild(BuildLabel(textSource.Resolve(QualitativeScale.KeyFor(reason.Strength))));
         }
 

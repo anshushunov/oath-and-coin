@@ -98,6 +98,7 @@ public class ContractOfferScreenModelTests
             .Concat(content.Contracts.Keys.Select(ContractOfferScreenModelFactory.ContractDisplayNameKey))
             .Concat(ActionKeys.AllKeys)
             .Concat(WaveredKeys.AllKeys)
+            .Concat(ReasonDirectionKeys.AllKeys)
             .Concat(ErrorKeys.AllKeys)
             .Concat(ScreenStateKeys.AllKeys);
 
@@ -116,6 +117,83 @@ public class ContractOfferScreenModelTests
         Assert.Equal(
             new[] { ReasonCodes.RiskTooHigh, ReasonCodes.PaymentAttractive, ReasonCodes.TrustsTheGuild },
             line.Reasons.Select(r => r.ReasonCode).ToArray());
+
+        // The same three lines, now each stating which way it pulled relative
+        // to the refusal they explain: the risk carried it, the payment and
+        // the trust argued the other way and lost.
+        Assert.Equal(
+            new[] { ReasonDirection.Supported, ReasonDirection.Opposed, ReasonDirection.Opposed },
+            line.Reasons.Select(r => r.Direction).ToArray());
+    }
+
+    /// <summary>
+    /// External review finding (blocker), as a fixture: a hero accepts at +3
+    /// while the three largest magnitudes in the whole trace — risk 30,
+    /// insult 29, dislike 28 — all point at refusal, and the acceptance is
+    /// carried by five smaller motives (payment 20, three convictions at 20,
+    /// trust 10). Ranking everything together by magnitude and taking the top
+    /// three showed exactly those three objections under the word "accepted"
+    /// and nothing that explained the answer, which is the one thing this
+    /// screen exists to do.
+    /// </summary>
+    /// <remarks>
+    /// Written against the numbers rather than against the implementation:
+    /// the assertions below are "a supporting reason is visible", "the
+    /// supporting side holds the majority of the shown lines" and "the one
+    /// opposing line is the strongest objection", each of which fails on the
+    /// old rule (which showed three opposing lines and no supporting one) and
+    /// none of which restates the allocation arithmetic.
+    /// </remarks>
+    [Fact]
+    public void FromOutcome_ShowsWhatCarriedTheAnswerEvenWhenTheObjectionsWereLarger()
+    {
+        var line = Factory.FromOutcome(Outcomes.AcceptedAgainstLargerObjections()).Responses.Single();
+
+        Assert.Equal("action:accept", line.Action);
+
+        var supported = line.Reasons.Where(reason => reason.Direction == ReasonDirection.Supported).ToArray();
+        var opposed = line.Reasons.Where(reason => reason.Direction == ReasonDirection.Opposed).ToArray();
+
+        Assert.NotEmpty(supported);
+        Assert.True(
+            supported.Length > opposed.Length,
+            $"The answer was carried by {supported.Length} shown reason(s) against {opposed.Length} objection(s); "
+            + "an explanation of an acceptance that is mostly objections explains the wrong decision.");
+
+        // Not "some supporting reason or other": the strongest ones, in order,
+        // so a rule that kept a supporting slot but filled it with the
+        // weakest motive would still fail here.
+        Assert.Equal(
+            new[] { ReasonCodes.PaymentAttractive, ReasonCodes.PersonalConviction },
+            supported.Select(reason => reason.ReasonCode).ToArray());
+
+        // The counter-argument is still there, and it is the biggest one:
+        // "took it despite the risk" is the sentence, not "took it, no
+        // objections".
+        var objection = Assert.Single(opposed);
+        Assert.Equal(ReasonCodes.RiskTooHigh, objection.ReasonCode);
+    }
+
+    /// <summary>
+    /// The mirror case, so the direction is proven to follow the chosen
+    /// action rather than the trace's own Positive/Negative lists: the same
+    /// shape of trace on a refusal puts the negative factors on the
+    /// supporting side.
+    /// </summary>
+    [Fact]
+    public void FromOutcome_DirectionFollowsTheChosenActionNotTheTracesOwnLists()
+    {
+        var line = Factory.FromOutcome(Outcomes.DeclinedAgainstLargerTemptations()).Responses.Single();
+
+        Assert.Equal("action:decline", line.Action);
+
+        var supported = line.Reasons.Where(reason => reason.Direction == ReasonDirection.Supported).ToArray();
+        Assert.Equal(
+            new[] { ReasonCodes.RiskTooHigh, ReasonCodes.PersonalAversion },
+            supported.Select(reason => reason.ReasonCode).ToArray());
+
+        var objection = Assert.Single(line.Reasons.Where(reason => reason.Direction == ReasonDirection.Opposed));
+        Assert.Equal(ReasonCodes.PaymentAttractive, objection.ReasonCode);
     }
 
     /// <summary>
@@ -165,10 +243,14 @@ public class ContractOfferScreenModelTests
         // assertion passes on an empty list, so a factory that dropped every
         // reason — or ranked them the wrong way round and kept the three
         // smallest — would have satisfied it. Outcomes.ManyReasons() carries
-        // five factors of magnitudes 50/40/10/8/3, so the three strongest are
-        // payment, risk and trust, in that order.
+        // five factors of magnitudes 50/40/10/8/3 on an acceptance, so the
+        // two strongest that carried it are payment and trust, and the one
+        // slot left for a counter-argument goes to the risk. (Under the rule
+        // this replaced — top three by magnitude across both sides — the trust
+        // that helped carry the answer lost its place to the insult's larger
+        // neighbour; see MinSupportingReasons.)
         Assert.Equal(
-            new[] { ReasonCodes.PaymentAttractive, ReasonCodes.RiskTooHigh, ReasonCodes.TrustsTheGuild },
+            new[] { ReasonCodes.PaymentAttractive, ReasonCodes.TrustsTheGuild, ReasonCodes.RiskTooHigh },
             line.Reasons.Select(reason => reason.ReasonCode));
     }
 
@@ -423,7 +505,7 @@ public class ContractOfferScreenModelTests
         Assert.Equal(Factory.ReadModelHash(RichModel()), Factory.ReadModelHash(RichModel()));
 
         Assert.Equal(
-            "4ff05b6b44d3e3aa9a5638e803cc8199b5d07e6e13f025a68d52bc49abe25b7f",
+            "0b7fa0219d61e06338a17b6c4425e6101918594cea34072008190beb5f9a833a",
             Factory.ReadModelHash(RichModel()));
     }
 
@@ -494,6 +576,7 @@ public class ContractOfferScreenModelTests
             { "reason-source-entity", normal, WithResponse(normal, acceptResponse with { Reasons = acceptResponse.Reasons.SetItem(0, reason with { SourceEntity = "core:other" }) }) },
             { "reason-strength", normal, WithResponse(normal, acceptResponse with { Reasons = acceptResponse.Reasons.SetItem(0, reason with { Strength = QualitativeGrade.Extreme }) }) },
             { "reason-source-display-name-key", normal, WithResponse(normal, acceptResponse with { Reasons = acceptResponse.Reasons.SetItem(0, reason with { SourceDisplayNameKey = "trait.extra" }) }) },
+            { "reason-direction", normal, WithResponse(normal, acceptResponse with { Reasons = acceptResponse.Reasons.SetItem(0, reason with { Direction = ReasonDirection.Opposed }) }) },
         };
     }
 
@@ -574,6 +657,7 @@ public class ContractOfferScreenModelTests
             foreach (var reason in response.Reasons)
             {
                 Assert.Contains(catalogue[reason.ReasonCode], snapshot.Texts);
+                Assert.Contains(catalogue[ReasonDirectionKeys.For(reason.Direction)], snapshot.Texts);
                 Assert.Contains(catalogue[QualitativeScale.KeyFor(reason.Strength)], snapshot.Texts);
                 Assert.DoesNotContain(reason.SourceEntity, snapshot.Texts);
 
@@ -679,14 +763,24 @@ public class ContractOfferScreenModelTests
                     // contract is already named on screen (Critical, round 3).
                     new ReasonLine(
                         ReasonCodes.PaymentAttractive, "core:escort_the_caravan", QualitativeGrade.High,
-                        SourceDisplayNameKey: null),
+                        SourceDisplayNameKey: null, ReasonDirection.Supported),
 
                     // Trait-sourced: SourceDisplayNameKey names the specific
                     // conviction — ReasonCode alone only says "some
                     // conviction fired", not which of a hero's several.
                     new ReasonLine(
                         ReasonCodes.PersonalConviction, "core:loyal_to_the_merchant_guild", QualitativeGrade.Low,
-                        SourceDisplayNameKey: "trait.core.loyal_to_the_merchant_guild.name")),
+                        SourceDisplayNameKey: "trait.core.loyal_to_the_merchant_guild.name",
+                        ReasonDirection.Supported),
+
+                    // The objection this acceptance was made over. Present so
+                    // both ReasonDirection values appear in the fixture every
+                    // hash and snapshot test below shares — a fixture with
+                    // only one of them would let a snapshot that never
+                    // resolved the other key stay green.
+                    new ReasonLine(
+                        ReasonCodes.PersonalAversion, "core:fears_undeath", QualitativeGrade.Moderate,
+                        SourceDisplayNameKey: "trait.core.fears_undeath.name", ReasonDirection.Opposed)),
                 BlockedByEntity: null,
                 BlockedByDisplayNameKey: null,
                 false),
@@ -870,6 +964,83 @@ public class ContractOfferScreenModelTests
             };
 
             return Single(Hero(0, "doran"), decision);
+        }
+
+        /// <summary>
+        /// The external review's own counter-example, in numbers: five
+        /// motives carry an acceptance to +3 (payment 20, three convictions
+        /// at 20, trust 10 = 90) against three larger single objections
+        /// (30 + 29 + 28 = 87). Every value is inside what the rules can
+        /// produce — an inclination weight is authored within
+        /// <c>ContentBounds.InclinationWeightMin..Max</c> (−30..30), and
+        /// <c>ContentLimits.MaxTraitsPerHero</c> allows four — so this is a
+        /// legal trace, not a hypothetical one.
+        /// </summary>
+        public static ScenarioOutcome AcceptedAgainstLargerObjections()
+        {
+            var kestrel = ContentId.Parse("core:kestrel");
+
+            var trace = new CausalTrace
+            {
+                TraceId = 0,
+                PositiveFactors = ImmutableArray.Create(
+                    new TraceFactor(ReasonCodes.PaymentAttractive, Contract, 20),
+                    new TraceFactor(ReasonCodes.PersonalConviction, ContentId.Parse("core:hates_the_cult"), 20),
+                    new TraceFactor(ReasonCodes.PersonalConviction, ContentId.Parse("core:hungry_for_renown"), 20),
+                    new TraceFactor(
+                        ReasonCodes.PersonalConviction, ContentId.Parse("core:loyal_to_the_merchant_guild"), 20),
+                    new TraceFactor(ReasonCodes.TrustsTheGuild, kestrel, 10)),
+                NegativeFactors = ImmutableArray.Create(
+                    new TraceFactor(ReasonCodes.RiskTooHigh, Contract, 30),
+                    new TraceFactor(ReasonCodes.PaymentInsulting, Contract, 29),
+                    new TraceFactor(ReasonCodes.PersonalAversion, ContentId.Parse("core:fears_undeath"), 28)),
+                BlockedBy = ImmutableArray<TraceBlock>.Empty,
+            };
+
+            var decision = new DecisionResult
+            {
+                SelectedAction = Actions.Accept,
+                ConsideredActions = ImmutableArray.Create(Actions.Accept, Actions.Decline),
+                SelectedScore = 3,
+                Trace = trace,
+            };
+
+            return Single(Hero(0, "kestrel"), decision);
+        }
+
+        /// <summary>
+        /// The same shape reflected: a refusal at −3 whose largest single
+        /// factor is the payment that failed to buy it. Exists so
+        /// <see cref="ReasonDirection"/> cannot be satisfied by a factory that
+        /// simply labels <c>PositiveFactors</c> "supported" and
+        /// <c>NegativeFactors</c> "opposed" — which is right half the time,
+        /// and is exactly the confusion the finding is about.
+        /// </summary>
+        public static ScenarioOutcome DeclinedAgainstLargerTemptations()
+        {
+            var mira = ContentId.Parse("core:mira");
+
+            var trace = new CausalTrace
+            {
+                TraceId = 0,
+                PositiveFactors = ImmutableArray.Create(
+                    new TraceFactor(ReasonCodes.PaymentAttractive, Contract, 30),
+                    new TraceFactor(ReasonCodes.TrustsTheGuild, mira, 2)),
+                NegativeFactors = ImmutableArray.Create(
+                    new TraceFactor(ReasonCodes.RiskTooHigh, Contract, 20),
+                    new TraceFactor(ReasonCodes.PersonalAversion, ContentId.Parse("core:fears_undeath"), 15)),
+                BlockedBy = ImmutableArray<TraceBlock>.Empty,
+            };
+
+            var decision = new DecisionResult
+            {
+                SelectedAction = Actions.Decline,
+                ConsideredActions = ImmutableArray.Create(Actions.Accept, Actions.Decline),
+                SelectedScore = -3,
+                Trace = trace,
+            };
+
+            return Single(Hero(0, "mira"), decision);
         }
 
         public static ScenarioOutcome PrincipleBlocked()

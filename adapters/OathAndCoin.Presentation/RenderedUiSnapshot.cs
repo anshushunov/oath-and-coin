@@ -131,6 +131,7 @@ public sealed record RenderedUiSnapshot(ImmutableArray<string> Texts)
                     texts.Add(Resolve(catalogue, reason.SourceDisplayNameKey));
                 }
 
+                texts.Add(Resolve(catalogue, ReasonDirectionKeys.For(reason.Direction)));
                 texts.Add(Resolve(catalogue, QualitativeScale.KeyFor(reason.Strength)));
             }
 

@@ -36,10 +36,35 @@ public static class ContractOfferScreenModelFactory
     /// <summary>
     /// How many reasons a response line shows at most (spec: an explanation a
     /// player can actually hold in mind, not the whole trace dumped
-    /// verbatim). Applied after ranking, so the three shown are always the
-    /// three strongest.
+    /// verbatim). Applied after ranking, so the ones shown are always the
+    /// strongest of the side they were allotted to — see <see cref="RankReasons"/>.
     /// </summary>
     private const int MaxReasons = 3;
+
+    /// <summary>
+    /// How many of <see cref="MaxReasons"/> belong to reasons that supported
+    /// the answer the hero actually gave, whenever that many exist. The
+    /// remainder is what a counter-argument may take.
+    /// </summary>
+    /// <remarks>
+    /// External review finding (blocker). Ranking every factor together by
+    /// magnitude and taking the top three is a defensible rule for "the
+    /// biggest things that happened", and the wrong rule for "why this hero
+    /// answered this way": on entirely legal data a hero accepts at +3 while
+    /// risk (−30), insult (−29) and a dislike (−28) are the three largest
+    /// magnitudes in the trace, so the screen showed three reasons to refuse
+    /// beneath the word "accepted" and hid the payment, the convictions and
+    /// the trust that actually carried it. A majority of the slots therefore
+    /// goes to the side that won, which gives two properties this screen
+    /// needs and the old rule did not have: a supporting reason is always
+    /// visible when one exists at all, and a win carried by several smaller
+    /// motives against fewer larger ones cannot vanish behind the ones it
+    /// beat. One slot is deliberately left for the strongest opposing motive
+    /// — "took it anyway, despite the risk" is the sentence this screen is
+    /// for, and an explanation that only ever agreed with the outcome would
+    /// be a different kind of lie.
+    /// </remarks>
+    private const int MinSupportingReasons = 2;
 
     /// <summary>
     /// The screen shown before there is a <see cref="ScenarioOutcome"/> to
@@ -351,7 +376,7 @@ public static class ContractOfferScreenModelFactory
             hero.Value,
             heroDisplayNameKey,
             decision.SelectedAction.Value,
-            RankReasons(decision.Trace, heroDisplayNameKeys),
+            RankReasons(decision.Trace, decision.SelectedAction, heroDisplayNameKeys),
             BlockedByEntity: null,
             BlockedByDisplayNameKey: null,
             Wavered: ComputeWavered(decision));
@@ -376,32 +401,80 @@ public static class ContractOfferScreenModelFactory
         StringComparer.Ordinal, ReasonCodes.StandsWithComrade, ReasonCodes.WillNotWorkWith);
 
     /// <summary>
-    /// Reasons in the order a player reads them: strongest factor first,
-    /// ties broken ordinally by reason code, and — because two factors can
-    /// share both a magnitude and a reason code (e.g. two different comrades
-    /// each pulling <see cref="ReasonCodes.StandsWithComrade"/> by the same
-    /// weight) — ties on both of those broken ordinally by source entity.
-    /// Without every tie-break stated, two identical runs could rank a tied
-    /// pair in either order and disagree with themselves, which is exactly
-    /// what a hash comparison between two independently built models cannot
-    /// tolerate. Capped at <see cref="MaxReasons"/> only after sorting, so
-    /// the reasons shown are always the strongest, never whichever three the
-    /// trace happened to compute first.
+    /// The reasons this answer shows, in the order a player reads them: the
+    /// motives that supported the chosen action first, strongest first, then
+    /// the strongest that argued against it.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Which side a factor is on is decided here, once, from the action the
+    /// hero actually chose — <see cref="CausalTrace.PositiveFactors"/> pull
+    /// toward <see cref="Actions.Accept"/> and
+    /// <see cref="CausalTrace.NegativeFactors"/> toward
+    /// <see cref="Actions.Decline"/> (HERO_DECISION_SPEC §2.3), so on a
+    /// refusal it is the negative list that supported the answer. The screen
+    /// never repeats this reasoning: it reads
+    /// <see cref="ReasonLine.Direction"/>.
+    /// </para>
+    /// <para>
+    /// How many of each side are shown is <see cref="MinSupportingReasons"/>'s
+    /// business (see its remarks for the finding that produced the split).
+    /// Slots one side cannot fill go to the other, so a trace with nothing
+    /// against still shows three supporting reasons rather than two and a
+    /// gap.
+    /// </para>
+    /// <para>
+    /// Inside each side the order is the full one the read-model hash needs:
+    /// strongest first, ties broken ordinally by reason code, and — because
+    /// two factors can share both a magnitude and a reason code (e.g. two
+    /// different comrades each pulling <see cref="ReasonCodes.StandsWithComrade"/>
+    /// by the same weight) — ties on both of those broken ordinally by source
+    /// entity. Without every tie-break stated, two identical runs could rank
+    /// a tied pair in either order and disagree with themselves, which is
+    /// exactly what a hash comparison between two independently built models
+    /// cannot tolerate. Each side is capped only after sorting, so the ones
+    /// shown are always that side's strongest, never whichever the trace
+    /// happened to compute first.
+    /// </para>
+    /// </remarks>
     private static ImmutableArray<ReasonLine> RankReasons(
-        CausalTrace trace, IReadOnlyDictionary<string, string> heroDisplayNameKeys) =>
-        trace.PositiveFactors
-            .Concat(trace.NegativeFactors)
+        CausalTrace trace, ContentId selectedAction, IReadOnlyDictionary<string, string> heroDisplayNameKeys)
+    {
+        var accepted = selectedAction == Actions.Accept;
+        var supporting = Ranked(accepted ? trace.PositiveFactors : trace.NegativeFactors);
+        var opposing = Ranked(accepted ? trace.NegativeFactors : trace.PositiveFactors);
+
+        // Read in this order: the counter-argument may take what is left over
+        // once the supporting side has had its share, and then the supporting
+        // side takes back anything the counter-argument could not fill — and
+        // vice versa. Both directions are needed: either list can be shorter
+        // than its allowance.
+        var opposingShown = Math.Min(opposing.Length, MaxReasons - MinSupportingReasons);
+        var supportingShown = Math.Min(supporting.Length, MaxReasons - opposingShown);
+        opposingShown = Math.Min(opposing.Length, MaxReasons - supportingShown);
+
+        return supporting.Take(supportingShown)
+            .Select(factor => ToReasonLine(factor, ReasonDirection.Supported, heroDisplayNameKeys))
+            .Concat(opposing.Take(opposingShown)
+                .Select(factor => ToReasonLine(factor, ReasonDirection.Opposed, heroDisplayNameKeys)))
+            .ToImmutableArray();
+    }
+
+    private static ImmutableArray<TraceFactor> Ranked(ImmutableArray<TraceFactor> factors) =>
+        factors
             .OrderByDescending(factor => factor.Magnitude)
             .ThenBy(factor => factor.ReasonCode, StringComparer.Ordinal)
             .ThenBy(factor => factor.SourceEntity)
-            .Take(MaxReasons)
-            .Select(factor => new ReasonLine(
-                factor.ReasonCode,
-                factor.SourceEntity.Value,
-                QualitativeScale.ForMagnitude(factor.Magnitude),
-                ResolveSourceDisplayNameKey(factor, heroDisplayNameKeys)))
             .ToImmutableArray();
+
+    private static ReasonLine ToReasonLine(
+        TraceFactor factor, ReasonDirection direction, IReadOnlyDictionary<string, string> heroDisplayNameKeys) =>
+        new(
+            factor.ReasonCode,
+            factor.SourceEntity.Value,
+            QualitativeScale.ForMagnitude(factor.Magnitude),
+            ResolveSourceDisplayNameKey(factor, heroDisplayNameKeys),
+            direction);
 
     /// <summary>
     /// The fact <see cref="ReasonLine.SourceDisplayNameKey"/>'s own remarks
@@ -518,5 +591,6 @@ public static class ContractOfferScreenModelFactory
         ["source_entity"] = reason.SourceEntity,
         ["strength"] = reason.Strength.ToString(),
         ["source_display_name_key"] = reason.SourceDisplayNameKey,
+        ["direction"] = reason.Direction.ToString(),
     };
 }
