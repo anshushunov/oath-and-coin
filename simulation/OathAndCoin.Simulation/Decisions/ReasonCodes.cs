@@ -24,4 +24,22 @@ public static class ReasonCodes
     public const string RiskTooHigh = "hero.decision.risk_too_high";
     public const string TrustsTheGuild = "hero.decision.trusts_the_guild";
     public const string UnpredictableMood = "hero.decision.unpredictable_mood";
+
+    /// <summary>The offered payment is low enough to be a personal insult.</summary>
+    public const string PaymentInsulting = "hero.decision.payment_insulting";
+
+    /// <summary>A personal conviction speaks for taking the contract.</summary>
+    public const string PersonalConviction = "hero.decision.personal_conviction";
+
+    /// <summary>A personal aversion speaks against taking the contract.</summary>
+    public const string PersonalAversion = "hero.decision.personal_aversion";
+
+    /// <summary>The hero stands with a comrade already committed to this contract.</summary>
+    public const string StandsWithComrade = "hero.decision.stands_with_comrade";
+
+    /// <summary>The hero refuses to work alongside someone specific on this contract.</summary>
+    public const string WillNotWorkWith = "hero.decision.will_not_work_with";
+
+    /// <summary>A red line — a principle that forbids this action outright, independent of score.</summary>
+    public const string PrincipleForbids = "hero.decision.principle_forbids";
 }

@@ -221,7 +221,7 @@ public class GameStateTests
             TraceId = traceId,
             PositiveFactors = ImmutableArray.Create(new TraceFactor(ReasonCodes.PaymentAttractive, HeroDefinition, 3)),
             NegativeFactors = ImmutableArray<TraceFactor>.Empty,
-            BlockedBy = ImmutableArray<string>.Empty,
+            BlockedBy = ImmutableArray<TraceBlock>.Empty,
         };
         var secondEvent = new HeroDeclinedContract(
             afterFirst.Metadata.NextEventId, afterFirst.Metadata.LogicalTime, traceId, new HeroId(2), ContractId);
@@ -515,7 +515,7 @@ public class GameStateTests
         TraceId = traceId,
         PositiveFactors = ImmutableArray<TraceFactor>.Empty,
         NegativeFactors = ImmutableArray<TraceFactor>.Empty,
-        BlockedBy = ImmutableArray<string>.Empty,
+        BlockedBy = ImmutableArray<TraceBlock>.Empty,
     };
 
     private static GameState CreateState(ImmutableSortedDictionary<HeroId, HeroState>? heroes = null) => new()

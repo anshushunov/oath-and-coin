@@ -202,7 +202,7 @@ public class ProposeContractTests
         {
             var state = CreateState(seed);
             var result = new SimulationEngine().Apply(state, Propose(commandId: 1, Zara, state));
-            scores.Add(result.Decision!.SelectedScore);
+            scores.Add(result.Decision!.SelectedScore!.Value);
         }
 
         Assert.True(scores.Count > 1, "Eight different campaign seeds produced one single score.");

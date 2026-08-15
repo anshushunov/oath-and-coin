@@ -127,17 +127,19 @@ public class CausalTraceTests
     [Fact]
     public void ReasonCodes_AreEngineStringsNotContentIds()
     {
-        var codes = new[]
+        foreach (var code in new[]
+                 {
+                     ReasonCodes.PaymentInsulting,
+                     ReasonCodes.PersonalConviction,
+                     ReasonCodes.PersonalAversion,
+                     ReasonCodes.StandsWithComrade,
+                     ReasonCodes.WillNotWorkWith,
+                     ReasonCodes.PrincipleForbids,
+                 })
         {
-            ReasonCodes.PaymentAttractive,
-            ReasonCodes.RiskTooHigh,
-            ReasonCodes.TrustsTheGuild,
-            ReasonCodes.UnpredictableMood,
-        };
-
-        Assert.All(codes, code => Assert.False(
-            ContentId.TryParse(code, out _),
-            $"Reason code '{code}' parses as a ContentId; the two vocabularies must stay distinguishable."));
+            Assert.StartsWith("hero.decision.", code, StringComparison.Ordinal);
+            Assert.False(ContentId.TryParse(code, out _));
+        }
     }
 
     [Fact]
@@ -164,6 +166,49 @@ public class CausalTraceTests
         TraceId = 1,
         PositiveFactors = defaultOut == "PositiveFactors" ? default : ImmutableArray<TraceFactor>.Empty,
         NegativeFactors = defaultOut == "NegativeFactors" ? default : ImmutableArray<TraceFactor>.Empty,
-        BlockedBy = defaultOut == "BlockedBy" ? default : ImmutableArray<string>.Empty,
+        BlockedBy = defaultOut == "BlockedBy" ? default : ImmutableArray<TraceBlock>.Empty,
     };
+
+    [Fact]
+    public void BlockedBy_NamesTheEntityThatBlocked()
+    {
+        var trace = new CausalTrace
+        {
+            TraceId = 1,
+            PositiveFactors = ImmutableArray<TraceFactor>.Empty,
+            NegativeFactors = ImmutableArray<TraceFactor>.Empty,
+            BlockedBy = ImmutableArray.Create(
+                new TraceBlock(ReasonCodes.PrincipleForbids, ContentId.Parse("core:will_not_strike_a_temple"))),
+        };
+
+        var block = Assert.Single(trace.BlockedBy);
+        Assert.Equal(ContentId.Parse("core:will_not_strike_a_temple"), block.SourceEntity);
+    }
+
+    [Fact]
+    public void SelectedScore_IsNullExactlyWhenBlocked()
+    {
+        var blocked = Fixtures.Result(score: null, blockedBy: ImmutableArray.Create(
+            new TraceBlock(ReasonCodes.PrincipleForbids, ContentId.Parse("core:principle"))));
+        var scored = Fixtures.Result(score: 7, blockedBy: ImmutableArray<TraceBlock>.Empty);
+
+        Assert.Null(blocked.SelectedScore);
+        Assert.Equal(7, scored.SelectedScore);
+    }
+
+    [Fact]
+    public void DecisionResult_RejectsScoreTogetherWithBlock()
+    {
+        Assert.Throws<ArgumentException>(() => Fixtures.Result(
+            score: 7,
+            blockedBy: ImmutableArray.Create(new TraceBlock(ReasonCodes.PrincipleForbids, ContentId.Parse("core:p")))));
+    }
+
+    [Fact]
+    public void DecisionResult_RejectsMissingScoreWithoutBlock()
+    {
+        Assert.Throws<ArgumentException>(() => Fixtures.Result(
+            score: null,
+            blockedBy: ImmutableArray<TraceBlock>.Empty));
+    }
 }

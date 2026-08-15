@@ -131,7 +131,7 @@ public static class DeterminismArtifact
         ["trace_id"] = trace.TraceId,
         ["positive_factors"] = new JsonArray(trace.PositiveFactors.Select(Describe).ToArray()),
         ["negative_factors"] = new JsonArray(trace.NegativeFactors.Select(Describe).ToArray()),
-        ["blocked_by"] = new JsonArray(trace.BlockedBy.Select(code => (JsonNode?)code).ToArray()),
+        ["blocked_by"] = new JsonArray(trace.BlockedBy.Select(Describe).ToArray()),
         ["tie_break"] = trace.TieBreak,
     };
 
@@ -140,6 +140,12 @@ public static class DeterminismArtifact
         ["reason_code"] = factor.ReasonCode,
         ["source_entity"] = factor.SourceEntity.Value,
         ["magnitude"] = factor.Magnitude,
+    };
+
+    private static JsonNode? Describe(TraceBlock block) => new JsonObject
+    {
+        ["reason_code"] = block.ReasonCode,
+        ["source_entity"] = block.SourceEntity.Value,
     };
 
     private static JsonNode Describe(DomainEvent domainEvent)

@@ -51,7 +51,14 @@ public static class SpikeReport
 
             var hero = step.HeroDefinition?.Value ?? "unknown hero";
             var action = step.Decision.SelectedAction.Value;
-            var score = step.Decision.SelectedScore.ToString(CultureInfo.InvariantCulture);
+
+            // Gate 0 has no red line yet — ContractDecisionRule.Decide never
+            // leaves BlockedBy non-empty, so SelectedScore is never null here.
+            // The gates that make it null land in a later task; this report
+            // will need its own "blocked" rendering then.
+            var score = step.Decision.SelectedScore is { } selectedScore
+                ? selectedScore.ToString(CultureInfo.InvariantCulture)
+                : "blocked";
 
             Line(report, $"command {stepNumber}: {hero} chose {action} (score {score})");
             AppendFactors(report, "  for:     ", step.Decision.Trace.PositiveFactors);

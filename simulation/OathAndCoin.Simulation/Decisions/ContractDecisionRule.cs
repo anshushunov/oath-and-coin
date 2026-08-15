@@ -144,7 +144,7 @@ public static class ContractDecisionRule
                 TraceId = traceId,
                 PositiveFactors = positive.ToImmutable(),
                 NegativeFactors = negative.ToImmutable(),
-                BlockedBy = ImmutableArray<string>.Empty,
+                BlockedBy = ImmutableArray<TraceBlock>.Empty,
             },
         };
 

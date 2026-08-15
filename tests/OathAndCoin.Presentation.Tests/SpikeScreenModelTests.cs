@@ -105,7 +105,7 @@ public class SpikeScreenModelTests
                 new TraceFactor(ReasonCodes.UnpredictableMood, zara, 5),
                 new TraceFactor(ReasonCodes.PaymentAttractive, contract, 5)),
             NegativeFactors = ImmutableArray<TraceFactor>.Empty,
-            BlockedBy = ImmutableArray<string>.Empty,
+            BlockedBy = ImmutableArray<TraceBlock>.Empty,
         };
 
         var decision = new DecisionResult

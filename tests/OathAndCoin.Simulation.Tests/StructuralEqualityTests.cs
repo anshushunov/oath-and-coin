@@ -445,8 +445,8 @@ public class StructuralEqualityTests
             NegativeFactors = ImmutableArray.Create(
                 new TraceFactor(ReasonCodes.RiskTooHigh, ContractId, -1)),
             BlockedBy = extraBlocker is null
-                ? ImmutableArray<string>.Empty
-                : ImmutableArray.Create(extraBlocker),
+                ? ImmutableArray<TraceBlock>.Empty
+                : ImmutableArray.Create(new TraceBlock(extraBlocker, BramDefinition)),
             TieBreak = tieBreak,
         };
     }

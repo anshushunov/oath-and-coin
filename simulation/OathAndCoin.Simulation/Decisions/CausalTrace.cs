@@ -35,6 +35,27 @@ namespace OathAndCoin.Simulation.Decisions;
 public sealed record TraceFactor(string ReasonCode, ContentId SourceEntity, int Magnitude);
 
 /// <summary>
+/// A hard constraint that ruled an action out entirely, together with the
+/// content entity that carries it. A block has no magnitude on purpose: a red
+/// line is not a very large negative contribution, it closes the path before
+/// any contribution exists (spec §3.2).
+/// </summary>
+/// <param name="ReasonCode">
+/// A stable code from <see cref="ReasonCodes"/>, the same closed engine
+/// vocabulary <see cref="TraceFactor.ReasonCode"/> draws from — never the
+/// principle's own <see cref="ContentId"/>, for the same reason as there.
+/// </param>
+/// <param name="SourceEntity">
+/// The content entity that carries the principle this block enforces (e.g.
+/// the hero's own <see cref="State.HeroState.Definition"/> for a personal
+/// conviction, or the target's entity for "will not work with X"). Without
+/// this, a screen required to name the principle would have to guess at it
+/// from the hero — which is exactly the invented explanation this trace
+/// exists to rule out.
+/// </param>
+public sealed record TraceBlock(string ReasonCode, ContentId SourceEntity);
+
+/// <summary>
 /// The stored explanation for a decision (ADR-007, planned — TDD §21).
 /// Addressed by
 /// <see cref="TraceId"/> from <see cref="Events.DomainEvent.CausalTraceId"/>
@@ -59,7 +80,7 @@ public sealed record CausalTrace
 {
     private ImmutableArray<TraceFactor> _positiveFactors;
     private ImmutableArray<TraceFactor> _negativeFactors;
-    private ImmutableArray<string> _blockedBy;
+    private ImmutableArray<TraceBlock> _blockedBy;
 
     public required long TraceId { get; init; }
 
@@ -76,12 +97,17 @@ public sealed record CausalTrace
     }
 
     /// <summary>
-    /// Reason codes for hard constraints that ruled an action out entirely,
-    /// independent of score (TDD §8 invariant: "hard taboo/constraint не
-    /// обходится обычным положительным score"). Empty when nothing was
-    /// blocked.
+    /// Hard constraints that ruled an action out entirely, independent of
+    /// score (TDD §8 invariant: "hard taboo/constraint не обходится обычным
+    /// положительным score"). Empty when nothing was blocked.
     /// </summary>
-    public required ImmutableArray<string> BlockedBy
+    /// <remarks>
+    /// Non-empty here and a non-null <see cref="DecisionResult.SelectedScore"/>
+    /// are mutually exclusive; that joint rule is enforced on
+    /// <see cref="DecisionResult"/>, not here, because <see cref="CausalTrace"/>
+    /// has no business knowing about the result that embeds it.
+    /// </remarks>
+    public required ImmutableArray<TraceBlock> BlockedBy
     {
         get => _blockedBy;
         init => _blockedBy = RejectDefault(value, nameof(BlockedBy));
@@ -156,13 +182,25 @@ public sealed record CausalTrace
 /// already assigned when <see cref="SelectedAction"/> is. The C# 13 <c>field</c>
 /// keyword would remove the need for explicit backing fields, but this
 /// project is pinned to <c>LangVersion 12.0</c>.
+///
+/// <see cref="SelectedScore"/> and <see cref="Trace"/> are checked against
+/// each other the same way, for the same reason: a red line
+/// (<see cref="CausalTrace.BlockedBy"/> non-empty) closes the decision before
+/// any score exists, so exactly one of "there is a score" and "there is a
+/// block" may hold, and that joint rule has to live wherever both halves are
+/// visible together — which is here, not on <see cref="CausalTrace"/>, which
+/// has no reason to know about the result that embeds it.
 /// </remarks>
 public sealed record DecisionResult
 {
     private ContentId _selectedAction;
     private ImmutableArray<ContentId> _consideredActions;
+    private int? _selectedScore;
+    private CausalTrace _trace = null!;
     private bool _selectedActionAssigned;
     private bool _consideredActionsAssigned;
+    private bool _selectedScoreAssigned;
+    private bool _traceAssigned;
 
     /// <summary>
     /// The chosen action (see <see cref="Actions"/>) — not a target. Which
@@ -200,9 +238,35 @@ public sealed record DecisionResult
         }
     }
 
-    public required int SelectedScore { get; init; }
+    /// <summary>
+    /// The score that decided <see cref="SelectedAction"/> — null exactly
+    /// when <see cref="Trace"/>'s <see cref="CausalTrace.BlockedBy"/> is
+    /// non-empty (checked by <see cref="ValidateScoreMatchesBlock"/>). A red
+    /// line has no score to report, and zero would be the worst possible
+    /// stand-in: it is indistinguishable from an honest zero and, under the
+    /// "accept at score &gt;= 0" rule, would read as consent.
+    /// </summary>
+    public required int? SelectedScore
+    {
+        get => _selectedScore;
+        init
+        {
+            _selectedScore = value;
+            _selectedScoreAssigned = true;
+            ValidateScoreMatchesBlock();
+        }
+    }
 
-    public required CausalTrace Trace { get; init; }
+    public required CausalTrace Trace
+    {
+        get => _trace;
+        init
+        {
+            _trace = value;
+            _traceAssigned = true;
+            ValidateScoreMatchesBlock();
+        }
+    }
 
     /// <summary>
     /// Element-wise, for the same reason as
@@ -237,6 +301,42 @@ public sealed record DecisionResult
             throw new ArgumentException(
                 $"SelectedAction '{_selectedAction}' must be among ConsideredActions.",
                 nameof(SelectedAction));
+        }
+    }
+
+    /// <summary>
+    /// Enforces "<see cref="SelectedScore"/> is null exactly when
+    /// <see cref="Trace"/>'s <see cref="CausalTrace.BlockedBy"/> is
+    /// non-empty" from both <see cref="SelectedScore"/>'s and
+    /// <see cref="Trace"/>'s <c>init</c> accessors, the same way
+    /// <see cref="ValidateSelectedActionIsConsidered"/> guards against
+    /// object-initializer order: whichever of the two properties is written
+    /// second is the one whose accessor actually runs the check, so the rule
+    /// holds regardless of which one the caller happens to write first.
+    /// </summary>
+    private void ValidateScoreMatchesBlock()
+    {
+        if (!_selectedScoreAssigned || !_traceAssigned)
+        {
+            return;
+        }
+
+        var blocked = !_trace.BlockedBy.IsEmpty;
+
+        if (blocked && _selectedScore is not null)
+        {
+            throw new ArgumentException(
+                "SelectedScore must be null when Trace.BlockedBy is non-empty: a red line "
+                + "closes the decision before any score exists.",
+                nameof(SelectedScore));
+        }
+
+        if (!blocked && _selectedScore is null)
+        {
+            throw new ArgumentException(
+                "SelectedScore must not be null when Trace.BlockedBy is empty: a scored "
+                + "decision needs a score.",
+                nameof(SelectedScore));
         }
     }
 }

@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using OathAndCoin.Simulation.Decisions;
 using OathAndCoin.Simulation.Ids;
 using OathAndCoin.Simulation.State;
 
@@ -40,5 +41,27 @@ internal static class Fixtures
         Status = ContractStatus.Offered,
         RespondedBy = ImmutableSortedSet<HeroId>.Empty,
         AcceptedBy = ImmutableSortedSet<HeroId>.Empty,
+    };
+
+    /// <summary>
+    /// A minimal, otherwise-valid <see cref="DecisionResult"/> with
+    /// <paramref name="score"/> and <paramref name="blockedBy"/> as the only
+    /// two moving parts — for exercising the joint
+    /// "<see cref="DecisionResult.SelectedScore"/> is null exactly when
+    /// <paramref name="blockedBy"/> is non-empty" invariant without restating
+    /// the rest of a decision each time.
+    /// </summary>
+    public static DecisionResult Result(int? score, ImmutableArray<TraceBlock> blockedBy) => new()
+    {
+        SelectedAction = Actions.Accept,
+        ConsideredActions = ImmutableArray.Create(Actions.Accept, Actions.Decline),
+        SelectedScore = score,
+        Trace = new CausalTrace
+        {
+            TraceId = 1,
+            PositiveFactors = ImmutableArray<TraceFactor>.Empty,
+            NegativeFactors = ImmutableArray<TraceFactor>.Empty,
+            BlockedBy = blockedBy,
+        },
     };
 }

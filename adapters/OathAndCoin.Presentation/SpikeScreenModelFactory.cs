@@ -108,10 +108,19 @@ public static class SpikeScreenModelFactory
                 $"Step {step.Command.CommandId} produced a decision without a resolved hero — "
                 + "ScenarioRunner should never return that combination.");
 
+        // Gate 0 has no red line yet — ContractDecisionRule.Decide never
+        // leaves Trace.BlockedBy non-empty, so SelectedScore is never null
+        // here. Showing a blocked decision on this screen is a later task's
+        // problem, along with SpikeScreenLine's own shape for it.
+        var score = decision.SelectedScore
+            ?? throw new InvalidOperationException(
+                $"Step {step.Command.CommandId} decision has no score — SpikeScreenLine cannot "
+                + "represent a blocked decision yet.");
+
         return new SpikeScreenLine(
             hero.Value,
             decision.SelectedAction.Value,
-            decision.SelectedScore,
+            score,
             Rank(decision.Trace.PositiveFactors),
             Rank(decision.Trace.NegativeFactors));
     }
