@@ -1,4 +1,6 @@
 using System.Reflection;
+using OathAndCoin.Content;
+using OathAndCoin.Content.Scenarios;
 
 namespace OathAndCoin.Content.Tests;
 
@@ -24,6 +26,24 @@ internal static class RepositoryFixtures
 
     /// <summary>The Gate 0 scenario the spike is reproduced from.</summary>
     public static string ScenarioPath => Path.Combine(ScenarioRoot, "gate0.commands.json");
+
+    /// <summary>
+    /// Loads the repository's content and the named scenario's commands, then
+    /// runs them with <paramref name="seed"/> through
+    /// <see cref="ScenarioRunner.Run"/> — the two steps every scenario-backed
+    /// test needs, in the order <see cref="ScenarioRunner.Run"/> actually
+    /// requires them (a <see cref="ContentSet"/> and a command list, never a
+    /// path or a scenario name). Reloads both from disk on every call rather
+    /// than caching them: this helper is for one-shot tests, and a test that
+    /// needs the same content across many runs (a seed search, say) should
+    /// cache it itself, the way <c>ReplayDeterminismTests</c> already does.
+    /// </summary>
+    public static ScenarioOutcome RunScenario(string name, ulong seed)
+    {
+        var content = ContentSet.Load(ContentRoot);
+        var commands = ScenarioCommands.Load(Path.Combine(ScenarioRoot, $"{name}.commands.json"));
+        return ScenarioRunner.Run(content, commands, seed);
+    }
 
     private static string Resolve(string key)
     {

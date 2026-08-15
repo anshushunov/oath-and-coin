@@ -52,24 +52,35 @@ public static class SpikeReport
             var hero = step.HeroDefinition?.Value ?? "unknown hero";
             var action = step.Decision.SelectedAction.Value;
 
-            // Gate 0 has no red line yet — ContractDecisionRule.Decide never
-            // leaves BlockedBy non-empty, so SelectedScore is never null here.
-            // The gates that make it null land in a later task; this report
-            // will need its own "blocked" rendering then.
-            var score = step.Decision.SelectedScore is { } selectedScore
-                ? selectedScore.ToString(CultureInfo.InvariantCulture)
-                : "blocked";
+            // A red line (Trace.BlockedBy non-empty) closes the decision
+            // before any score exists (DecisionResult's own invariant) — the
+            // principle that closed it is the one thing worth naming here,
+            // not a placeholder score.
+            if (step.Decision.Trace.BlockedBy.IsEmpty)
+            {
+                var score = step.Decision.SelectedScore!.Value.ToString(CultureInfo.InvariantCulture);
+                Line(report, $"command {stepNumber}: {hero} chose {action} (score {score})");
+                AppendFactors(report, "  for:     ", step.Decision.Trace.PositiveFactors);
+                AppendFactors(report, "  against: ", step.Decision.Trace.NegativeFactors);
+            }
+            else
+            {
+                var principle = step.Decision.Trace.BlockedBy[0];
+                Line(
+                    report,
+                    $"command {stepNumber}: {hero} chose {action} "
+                    + $"(blocked by {principle.ReasonCode}, from {principle.SourceEntity.Value})");
+            }
 
-            Line(report, $"command {stepNumber}: {hero} chose {action} (score {score})");
-            AppendFactors(report, "  for:     ", step.Decision.Trace.PositiveFactors);
-            AppendFactors(report, "  against: ", step.Decision.Trace.NegativeFactors);
             Line(report, string.Empty);
         }
 
         foreach (var contract in outcome.FinalState.Contracts.Values)
         {
             var status = contract.Status == ContractStatus.Crewed ? "crewed" : "still on offer";
-            Line(report, $"contract {contract.Id.Value}: {status}");
+            var crewCount = contract.AcceptedBy.Count.ToString(CultureInfo.InvariantCulture);
+            var requiredCrew = contract.RequiredCrew.ToString(CultureInfo.InvariantCulture);
+            Line(report, $"contract {contract.Id.Value}: {status} ({crewCount}/{requiredCrew} crewed)");
         }
 
         return report.ToString();
