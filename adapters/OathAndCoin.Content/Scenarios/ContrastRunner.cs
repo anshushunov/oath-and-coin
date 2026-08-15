@@ -162,6 +162,21 @@ public static class ContrastRunner
     /// in the hands of whoever writes the next contrast instead of in this
     /// method's own structure.
     /// </summary>
+    /// <remarks>
+    /// <see cref="ContractState.Status"/> is recomputed by the same rule
+    /// <see cref="SimulationEngine.Apply"/> uses when a hero's own acceptance
+    /// fills the crew — reaching <see cref="ContractState.RequiredCrew"/>
+    /// closes the offer. Skipping this would let a precondition claim a
+    /// contract is still <see cref="ContractStatus.Offered"/> when the real
+    /// game would already have marked it <see cref="ContractStatus.Crewed"/>,
+    /// and the named hero's question would be one the game could never
+    /// actually reach. A crew this full also means
+    /// <see cref="SimulationEngine.Apply"/> rejects the branch's own command
+    /// with <see cref="RejectionCodes.ContractAlreadyResolved"/> — which
+    /// <c>RunBranch</c> already turns into a loud
+    /// <see cref="InvalidOperationException"/> rather than a silent, wrong
+    /// answer.
+    /// </remarks>
     private static ContractState WithAcceptedBy(
         GameState state, ContractState contract, ImmutableArray<ContentId> acceptedByDefinitions)
     {
@@ -172,6 +187,7 @@ public static class ContrastRunner
         {
             AcceptedBy = heroIds,
             RespondedBy = contract.RespondedBy.Union(heroIds),
+            Status = heroIds.Count >= contract.RequiredCrew ? ContractStatus.Crewed : contract.Status,
         };
     }
 

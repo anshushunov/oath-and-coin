@@ -1,4 +1,5 @@
 using OathAndCoin.Content.Scenarios;
+using OathAndCoin.Simulation.Decisions;
 
 namespace OathAndCoin.Content.Tests;
 
@@ -56,6 +57,38 @@ public class ContrastTests
     {
         Assert.Throws<InvalidDataException>(() => ContrastDefinition.Parse(
             ContrastJson(input: "contract.payment", from: "30", to: "30")));
+    }
+
+    /// <summary>
+    /// Guards <see cref="ContrastResult.Flipped"/>'s own honesty: a contrast
+    /// whose declared direction does not match what its two branches actually
+    /// answered must not be reported as flipped, even though the two answers
+    /// genuinely differ. Built from the real, shipped <c>payment_raised</c>
+    /// contrast (which does decline-to-accept) with its own
+    /// <see cref="ContrastDefinition.Expect"/> overridden to the wrong
+    /// direction — so this is a permanent stand-in for the manual check this
+    /// task's report once described as a one-off edit-and-revert: a future
+    /// change to <see cref="ContrastRunner.Run"/> that loosened "matches the
+    /// declared direction" into "the two answers differ" would fail this test
+    /// immediately.
+    /// </summary>
+    [Fact]
+    public void ContrastRunner_DoesNotCountAMismatchedDirectionAsFlipped()
+    {
+        var declaredBackwards = ContrastDefinition.Load(RepositoryFixtures.Contrast("payment_raised"))
+            with
+            {
+                Expect = "accept_to_decline",
+            };
+
+        var result = ContrastRunner.Run(declaredBackwards);
+
+        Assert.Equal(Actions.Decline, result.ActionFrom);
+        Assert.Equal(Actions.Accept, result.ActionTo);
+        Assert.False(
+            result.Flipped,
+            "The two answers differ, but the declared direction (accept_to_decline) does not match them "
+            + "(decline_to_accept) — this must not count as flipped.");
     }
 
     /// <summary>
