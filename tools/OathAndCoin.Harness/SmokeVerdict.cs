@@ -59,6 +59,14 @@ namespace OathAndCoin.Harness;
 /// </param>
 /// <param name="Frame">What <see cref="FrameFile.Inspect"/> found when it looked at the screenshot on disk.</param>
 /// <param name="FramePath">Where that screenshot was expected to be written, for reporting only.</param>
+/// <param name="ExpectedScreenState">
+/// <see cref="ScenarioManifest.ExpectedScreenState"/>, or <c>null</c> when
+/// the manifest states none — coarser than <paramref name="ExpectedOutcome"/>
+/// alone can express (that field cannot tell <c>incomplete</c> from
+/// <c>normal</c>), so a manifest that states this is checked against exactly
+/// the screen its own checkpoint name promises, not merely an outcome of the
+/// same broad kind.
+/// </param>
 public sealed record RunObservation(
     string Scenario,
     string Checkpoint,
@@ -75,7 +83,8 @@ public sealed record RunObservation(
     bool TimedOut,
     ImmutableArray<string> DiagnosticLines,
     FrameInspection Frame,
-    string FramePath);
+    string FramePath,
+    string? ExpectedScreenState = null);
 
 /// <summary>
 /// Whether a <c>run-smoke</c> invocation proved what it set out to prove,
@@ -253,6 +262,14 @@ public static class SmokeVerdict
             reasons.Add(
                 $"Terminal event reports error code '{terminalEvent.ErrorCode}', expected "
                 + $"'{observation.ExpectedErrorCode}'.");
+        }
+
+        if (observation.ExpectedScreenState is not null
+            && !string.Equals(terminalEvent.ScreenState, observation.ExpectedScreenState, StringComparison.Ordinal))
+        {
+            reasons.Add(
+                $"Terminal event reports screen_state '{terminalEvent.ScreenState}', expected "
+                + $"'{observation.ExpectedScreenState}'.");
         }
 
         if (!string.Equals(terminalEvent.CanonicalHash, observation.ExpectedCanonicalHash, StringComparison.Ordinal))

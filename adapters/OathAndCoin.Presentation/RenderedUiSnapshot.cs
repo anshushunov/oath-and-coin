@@ -18,10 +18,14 @@ namespace OathAndCoin.Presentation;
 /// It proves nothing about whether that model reached the screen: a
 /// forgotten <c>Label</c> binding, two swapped lines, or a dropped reason all
 /// leave it green. This type is what closes that gap. <see cref="Expected"/>
-/// builds the snapshot a correct screen should produce, from the model
-/// alone — never by walking any actual node tree. The game side builds its
-/// own <see cref="RenderedUiSnapshot"/> by walking its real Godot control
-/// tree in tree order (a later runtime-harness task; not part of this
+/// builds the snapshot a correctly bound screen should produce, resolving
+/// every field that is actually a localization key through
+/// <paramref name="catalogue"/> — never by walking any actual node tree, and
+/// never by showing the model's own raw key or a raw content id, which no
+/// real screen ever puts on a label either (see the remarks on
+/// <c>ContractOfferScreen</c>). The game side builds its own
+/// <see cref="RenderedUiSnapshot"/> by walking its real Godot control tree in
+/// tree order (see <c>ContractOfferScreen.Snapshot</c>; not part of this
 /// assembly, which stays engine-free — see <see cref="PresentationBoundaryTests"/>
 /// in the test project). The two snapshots are produced by unrelated code
 /// paths on purpose: a binding mistake breaks the match precisely because
@@ -38,86 +42,25 @@ public sealed record RenderedUiSnapshot(ImmutableArray<string> Texts)
 
     /// <summary>
     /// The snapshot a correctly bound screen should produce for
-    /// <paramref name="model"/>: the title key, the error code if the run
-    /// failed, and then the contract, the roster and every response line —
-    /// each field the model carries, in the same order
-    /// <see cref="ContractOfferScreenModelFactory.ReadModelHash"/> reads
-    /// them in. Deliberately excludes
-    /// <see cref="ContractOfferScreenModel.ErrorDetail"/>, for the same
-    /// reason <c>ReadModelHash</c> does (see its remarks): it is not a value
-    /// either side can agree on ahead of time.
-    /// </summary>
-    public static RenderedUiSnapshot Expected(ContractOfferScreenModel model)
-    {
-        ArgumentNullException.ThrowIfNull(model);
-
-        var texts = ImmutableArray.CreateBuilder<string>();
-        texts.Add(model.TitleKey);
-
-        if (model.ErrorCode is not null)
-        {
-            texts.Add(model.ErrorCode);
-        }
-
-        if (model.Contract is { } contract)
-        {
-            texts.Add(contract.Definition);
-            texts.Add(contract.DisplayNameKey);
-            texts.Add(contract.Payment.ToString(CultureInfo.InvariantCulture));
-            texts.Add(contract.Risk.ToString());
-            texts.AddRange(contract.TagKeys);
-            texts.Add(contract.RequiredCrew.ToString(CultureInfo.InvariantCulture));
-            texts.Add(contract.AcceptedCount.ToString(CultureInfo.InvariantCulture));
-        }
-
-        foreach (var hero in model.Roster)
-        {
-            texts.Add(hero.Definition);
-            texts.Add(hero.DisplayNameKey);
-            texts.Add(hero.Greed.ToString());
-            texts.Add(hero.Caution.ToString());
-            texts.Add(hero.Pride.ToString());
-            texts.AddRange(hero.PrincipleKeys);
-            texts.AddRange(hero.InclinationKeys);
-        }
-
-        foreach (var response in model.Responses)
-        {
-            texts.Add(response.HeroDefinition);
-            texts.Add(response.Action);
-
-            foreach (var reason in response.Reasons)
-            {
-                texts.Add(reason.ReasonCode);
-                texts.Add(reason.SourceEntity);
-                texts.Add(reason.Strength.ToString());
-            }
-
-            if (response.BlockedByEntity is not null)
-            {
-                texts.Add(response.BlockedByEntity);
-            }
-
-            texts.Add(response.Wavered.ToString());
-        }
-
-        return new RenderedUiSnapshot(texts.ToImmutable());
-    }
-
-    /// <summary>
-    /// The snapshot a correctly bound <em>product</em> screen should produce
-    /// for <paramref name="model"/>: the same walk as
-    /// <see cref="Expected(ContractOfferScreenModel)"/>, except every field
-    /// that is actually a localization key (<see cref="ContractOfferScreenModel.TitleKey"/>,
-    /// a display-name key, a tag key, a reason code, a
-    /// <see cref="QualitativeGrade"/> by way of <see cref="QualitativeScale.KeyFor"/>)
-    /// is resolved through <paramref name="catalogue"/> first, because that is
-    /// what a screen resolving keys through a locale catalogue actually shows
-    /// a player — the read model's raw key would never appear on such a
-    /// screen's own control tree. Fields that were never keys to begin with
-    /// (a content id, a payment, a bool) pass through unresolved, exactly as
-    /// in the single-argument overload — the game shows those literally too
-    /// (see <c>ContractOfferScreen</c>'s remarks).
+    /// <paramref name="model"/>, resolved against <paramref name="catalogue"/>:
+    /// the title, a text naming which of the five <see cref="ScreenState"/>
+    /// shapes this is (see <see cref="ScreenStateKeys"/> — otherwise
+    /// <see cref="ScreenState.Loading"/> and <see cref="ScreenState.Empty"/>,
+    /// both title-only, would render as byte-identical frames with nothing
+    /// but a hidden model field telling them apart), the error text if the
+    /// run failed, and then the contract, the roster and every response
+    /// line. Every content id the model carries for bookkeeping —
+    /// <see cref="ContractLine.Definition"/>, <see cref="HeroCard.Definition"/>,
+    /// <see cref="ResponseLine.HeroDefinition"/>,
+    /// <see cref="ReasonLine.SourceEntity"/>,
+    /// <see cref="ResponseLine.BlockedByEntity"/> — stays out of this
+    /// snapshot entirely: <see cref="ContractOfferScreenModelFactory.ReadModelHash"/>
+    /// still hashes every one of them, but none of them is a name a player
+    /// reads, and showing one next to the resolved name it duplicates is
+    /// exactly the raw-identifier leak TDD §11.1 forbids. Deliberately
+    /// excludes <see cref="ContractOfferScreenModel.ErrorDetail"/>, for the
+    /// same reason <c>ReadModelHash</c> does (see its remarks): it is not a
+    /// value either side can agree on ahead of time.
     /// </summary>
     /// <exception cref="InvalidOperationException">
     /// <paramref name="catalogue"/> has no entry for a key the model carries.
@@ -135,15 +78,15 @@ public sealed record RenderedUiSnapshot(ImmutableArray<string> Texts)
 
         var texts = ImmutableArray.CreateBuilder<string>();
         texts.Add(Resolve(catalogue, model.TitleKey));
+        texts.Add(Resolve(catalogue, ScreenStateKeys.For(model.State)));
 
         if (model.ErrorCode is not null)
         {
-            texts.Add(model.ErrorCode);
+            texts.Add(Resolve(catalogue, ErrorKeys.For(model.ErrorCode)));
         }
 
         if (model.Contract is { } contract)
         {
-            texts.Add(contract.Definition);
             texts.Add(Resolve(catalogue, contract.DisplayNameKey));
             texts.Add(contract.Payment.ToString(CultureInfo.InvariantCulture));
             texts.Add(Resolve(catalogue, QualitativeScale.KeyFor(contract.Risk)));
@@ -154,7 +97,6 @@ public sealed record RenderedUiSnapshot(ImmutableArray<string> Texts)
 
         foreach (var hero in model.Roster)
         {
-            texts.Add(hero.Definition);
             texts.Add(Resolve(catalogue, hero.DisplayNameKey));
             texts.Add(Resolve(catalogue, QualitativeScale.KeyFor(hero.Greed)));
             texts.Add(Resolve(catalogue, QualitativeScale.KeyFor(hero.Caution)));
@@ -165,22 +107,15 @@ public sealed record RenderedUiSnapshot(ImmutableArray<string> Texts)
 
         foreach (var response in model.Responses)
         {
-            texts.Add(response.HeroDefinition);
-            texts.Add(response.Action);
+            texts.Add(Resolve(catalogue, ActionKeys.For(response.Action)));
 
             foreach (var reason in response.Reasons)
             {
                 texts.Add(Resolve(catalogue, reason.ReasonCode));
-                texts.Add(reason.SourceEntity);
                 texts.Add(Resolve(catalogue, QualitativeScale.KeyFor(reason.Strength)));
             }
 
-            if (response.BlockedByEntity is not null)
-            {
-                texts.Add(response.BlockedByEntity);
-            }
-
-            texts.Add(response.Wavered.ToString());
+            texts.Add(Resolve(catalogue, WaveredKeys.For(response.Wavered)));
         }
 
         return new RenderedUiSnapshot(texts.ToImmutable());

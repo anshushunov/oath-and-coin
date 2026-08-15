@@ -4,5 +4,6 @@
   "expected_outcome": "error",
   "fault": { "kind": "missing_content_root", "path": "fixtures/does-not-exist" },
   "expected_error_code": "CONTENT_ROOT_NOT_FOUND",
+  "expected_screen_state": "error",
   "checkpoints": [{ "name": "screen_error", "after_command_id": 0 }]
 }

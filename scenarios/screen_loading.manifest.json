@@ -2,5 +2,6 @@
   "schema_version": 1,
   "scenario": "screen_loading",
   "expected_outcome": "loading",
+  "expected_screen_state": "loading",
   "checkpoints": [{ "name": "screen_loading", "after_command_id": 0 }]
 }

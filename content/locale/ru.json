@@ -44,6 +44,20 @@
     "qualitative.low": "Слабо",
     "qualitative.moderate": "Умеренно",
     "qualitative.high": "Сильно",
-    "qualitative.extreme": "Крайне"
+    "qualitative.extreme": "Крайне",
+    "screen.contract_offer.state.loading": "Загрузка…",
+    "screen.contract_offer.state.empty": "Контрактов нет",
+    "screen.contract_offer.state.error": "Ошибка",
+    "screen.contract_offer.state.incomplete": "Ждём ответов",
+    "screen.contract_offer.state.normal": "Все ответили",
+    "action.accept": "Принял контракт",
+    "action.decline": "Отказался",
+    "response.wavered.true": "Колебался",
+    "response.wavered.false": "Не колебался",
+    "error.content_root_not_found": "Не найден каталог с контентом",
+    "error.schema_invalid": "Контент не соответствует схеме",
+    "error.content_invalid": "Контент повреждён",
+    "error.scenario_invalid": "Некорректный сценарий",
+    "error.checkpoint_unknown": "Неизвестная контрольная точка"
   }
 }

@@ -304,6 +304,7 @@ public class RunReportTests
             CanonicalHash: "bbbb",
             ReadModelHash: "cccc",
             RenderedUiHash: "dddd",
+            ScreenState: "normal",
             FrameSha256: "eeee",
             FrameWidth: 1280,
             FrameHeight: 720,

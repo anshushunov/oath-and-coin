@@ -61,7 +61,26 @@ public sealed record Checkpoint(string Name, long AfterCommandId);
 /// has to be authored differently on purpose (e.g. heroes with no contracts,
 /// for <c>OathAndCoin.Presentation.ScreenState.Empty</c>), not one that has
 /// to be missing. Defaulted rather than required so every manifest predating
-/// this field keeps parsing unchanged.
+/// this field keeps parsing unchanged. Mutually exclusive with
+/// <paramref name="Fault"/>: both naming the content root a run reads from
+/// would leave one of them silently overruled by the other, and an error
+/// scenario whose fault is overruled would quietly stop reproducing the
+/// failure its own name promises.
+/// </param>
+/// <param name="ExpectedScreenState">
+/// The lowercase <c>OathAndCoin.Presentation.ScreenState</c> a run against
+/// this manifest's checkpoint should show — <c>"loading"</c>,
+/// <c>"empty"</c>, <c>"error"</c>, <c>"incomplete"</c> or <c>"normal"</c> —
+/// or <c>null</c> to state nothing. Deliberately not the
+/// <c>OathAndCoin.Presentation.ScreenState</c> enum itself: this assembly
+/// sits below <c>OathAndCoin.Presentation</c> (which already depends on
+/// <c>OathAndCoin.Content</c>), so the reverse reference would be circular.
+/// Coarser than that: <paramref name="ExpectedOutcome"/> only ever says
+/// <c>success</c>/<c>error</c>/<c>loading</c>, which cannot tell
+/// <c>Incomplete</c> from <c>Normal</c> — a run whose balance shifted enough
+/// to answer a different one of those two would keep passing under
+/// <paramref name="ExpectedOutcome"/> alone while silently checking a
+/// different screen than its own checkpoint name claims.
 /// </param>
 public sealed record ScenarioManifest(
     int SchemaVersion,
@@ -70,8 +89,19 @@ public sealed record ScenarioManifest(
     FaultInjection? Fault,
     string? ExpectedErrorCode,
     ImmutableArray<Checkpoint> Checkpoints,
-    string? ContentRoot = null)
+    string? ContentRoot = null,
+    string? ExpectedScreenState = null)
 {
+    /// <summary>
+    /// Every value <see cref="ExpectedScreenState"/> may hold — the same five
+    /// lowercase spellings <c>OathAndCoin.Presentation.ScreenStateKeys</c>
+    /// builds a catalogue key from, restated here rather than referenced
+    /// (see the remarks on <see cref="ExpectedScreenState"/> for why this
+    /// assembly cannot depend on that one).
+    /// </summary>
+    public static readonly ImmutableArray<string> KnownScreenStates = ImmutableArray.Create(
+        "loading", "empty", "error", "incomplete", "normal");
+
     /// <summary>
     /// The manifest format this build reads. Mirrors
     /// <see cref="ContentSet.SupportedContentSchemaVersion"/>: a manifest
@@ -152,6 +182,22 @@ public sealed record ScenarioManifest(
                 + "a content root at.");
         }
 
+        if (fault is not null && file.ContentRoot is not null)
+        {
+            throw new InvalidDataException(
+                $"Scenario manifest '{displayPath}' declares both a fault and a content_root — ambiguous "
+                + "which one decides the content root a run reads from. An error scenario combining both "
+                + "would have its fault silently overruled and would stop reproducing the failure its own "
+                + "name promises; state exactly one.");
+        }
+
+        if (file.ExpectedScreenState is not null && !KnownScreenStates.Contains(file.ExpectedScreenState))
+        {
+            throw new InvalidDataException(
+                $"Scenario manifest '{displayPath}' declares expected_screen_state "
+                + $"'{file.ExpectedScreenState}'; expected one of: {string.Join(", ", KnownScreenStates)}.");
+        }
+
         var checkpoints = ImmutableArray.CreateBuilder<Checkpoint>();
         var seenNames = new HashSet<string>(StringComparer.Ordinal);
         foreach (var checkpointFile in file.Checkpoints)
@@ -173,7 +219,8 @@ public sealed record ScenarioManifest(
             fault,
             file.ExpectedErrorCode,
             checkpoints.ToImmutable(),
-            file.ContentRoot);
+            file.ContentRoot,
+            file.ExpectedScreenState);
     }
 
     /// <summary>
@@ -212,6 +259,8 @@ public sealed record ScenarioManifest(
         public string? ExpectedErrorCode { get; init; }
 
         public string? ContentRoot { get; init; }
+
+        public string? ExpectedScreenState { get; init; }
 
         public required IReadOnlyList<CheckpointFile> Checkpoints { get; init; }
     }

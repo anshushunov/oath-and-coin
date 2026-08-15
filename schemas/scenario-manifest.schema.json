@@ -48,6 +48,11 @@
       "minLength": 1,
       "description": "The error code a caller running this scenario to failure should observe. Required when expected_outcome is error."
     },
+    "expected_screen_state": {
+      "type": "string",
+      "enum": ["loading", "empty", "error", "incomplete", "normal"],
+      "description": "The lowercase ContractOfferScreenModel.ScreenState a run against this manifest's checkpoint should show. Coarser than expected_outcome alone: outcome success covers both incomplete and normal, so this is what actually pins a checkpoint to the screen state its own name promises."
+    },
     "checkpoints": {
       "type": "array",
       "minItems": 1,

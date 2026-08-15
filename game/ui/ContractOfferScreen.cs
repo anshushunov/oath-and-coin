@@ -16,35 +16,45 @@ namespace OathAndCoin.Game.Ui;
 /// <remarks>
 /// <para>
 /// <b>This screen decides nothing itself.</b> Every field the model carries
-/// becomes exactly one label, in a fixed order, with no branch on a field's
+/// becomes at most one label, in a fixed order, with no branch on a field's
 /// value beyond <see cref="ContractOfferScreenModel.State"/> deciding which
 /// blocks exist at all — the same "any other branch means the model was
 /// incomplete" rule <see cref="ContractOfferScreenModelFactory"/> is held to.
+/// Reading <see cref="ScreenStateKeys.For"/> off <c>State</c> is exactly that
+/// one allowed branch, not an exception to it.
 /// </para>
 /// <para>
-/// <b>Resolving through <see cref="TextSource"/>, not verbatim, is what
-/// changed from the old diagnostic screen.</b> Every field that is actually a
-/// localization key — <see cref="ContractOfferScreenModel.TitleKey"/>, a
-/// display-name key, a tag key, a reason code, and a
+/// <b>No raw identifier ever becomes a label.</b> Every field that is
+/// actually a localization key — <see cref="ContractOfferScreenModel.TitleKey"/>,
+/// the screen-state key, a display-name key, a tag key, a reason code, an
+/// action, whether the hero wavered, the error code, and a
 /// <see cref="QualitativeGrade"/> by way of <see cref="QualitativeScale.KeyFor"/> —
-/// is resolved to player-facing text before it becomes a
-/// <see cref="Label"/>. A field that was never a key to begin with (a content
-/// id like <see cref="HeroCard.Definition"/>, a payment, a headcount, a
-/// bool) is shown literally, exactly as the old screen showed everything:
-/// those are stable, technical values this screen has no authored text to
-/// resolve them against, not player-facing narration.
+/// is resolved to player-facing text before it becomes a <see cref="Label"/>.
+/// A field that carries a raw content id purely for the model's own
+/// bookkeeping (<see cref="ContractLine.Definition"/>,
+/// <see cref="HeroCard.Definition"/>, <see cref="ResponseLine.HeroDefinition"/>,
+/// <see cref="ReasonLine.SourceEntity"/>, <see cref="ResponseLine.BlockedByEntity"/>)
+/// is not shown at all — it is not a name a player reads, showing it next to
+/// the resolved name it duplicates would be exactly the raw-identifier leak
+/// TDD §11.1 forbids, and <see cref="ContractOfferScreenModelFactory.ReadModelHash"/>
+/// already hashes it without any help from this screen. The two objective
+/// numbers spec calls out on purpose — <see cref="ContractLine.Payment"/>,
+/// <see cref="ContractLine.RequiredCrew"/>/<see cref="ContractLine.AcceptedCount"/> —
+/// are the one kind of value this screen still shows literally, because they
+/// were never a key to resolve in the first place.
 /// </para>
 /// <para>
 /// <b>Node order is the wire format.</b> <see cref="Render"/> adds exactly
-/// one <see cref="Label"/> per text <see cref="RenderedUiSnapshot.Expected(ContractOfferScreenModel, System.Collections.Generic.IReadOnlyDictionary{string,string})"/>
+/// one <see cref="Label"/> per text
+/// <see cref="RenderedUiSnapshot.Expected(ContractOfferScreenModel, System.Collections.Generic.IReadOnlyDictionary{string,string})"/>
 /// puts in its list, in the same order, and nothing else — an extra label
 /// would show up in <see cref="Snapshot"/> and break every hash comparison
 /// the runtime harness makes. The one exception is
 /// <see cref="ContractOfferScreenModel.ErrorDetail"/>: shown, for a person
-/// reading the screen, as a <see cref="Label.TooltipText"/> rather than a
-/// second <see cref="Label"/>, because the expected snapshot never includes
-/// it (see that method's remarks) and <see cref="Snapshot"/> only ever reads
-/// <see cref="Label.Text"/>.
+/// reading the screen, as a <see cref="Label.TooltipText"/> on the resolved
+/// error label rather than a second <see cref="Label"/>, because the
+/// expected snapshot never includes it (see that method's remarks) and
+/// <see cref="Snapshot"/> only ever reads <see cref="Label.Text"/>.
 /// </para>
 /// </remarks>
 public sealed partial class ContractOfferScreen : VBoxContainer
@@ -72,10 +82,11 @@ public sealed partial class ContractOfferScreen : VBoxContainer
         _rendered = true;
 
         AddChild(BuildLabel(textSource.Resolve(model.TitleKey)));
+        AddChild(BuildLabel(textSource.Resolve(ScreenStateKeys.For(model.State))));
 
         if (model.ErrorCode is not null)
         {
-            var errorLabel = BuildLabel(model.ErrorCode);
+            var errorLabel = BuildLabel(textSource.Resolve(ErrorKeys.For(model.ErrorCode)));
             errorLabel.TooltipText = model.ErrorDetail;
             AddChild(errorLabel);
         }
@@ -115,7 +126,6 @@ public sealed partial class ContractOfferScreen : VBoxContainer
     private static VBoxContainer BuildContractLine(ContractLine contract, TextSource textSource)
     {
         var block = new VBoxContainer();
-        block.AddChild(BuildLabel(contract.Definition));
         block.AddChild(BuildLabel(textSource.Resolve(contract.DisplayNameKey)));
         block.AddChild(BuildLabel(contract.Payment.ToString(CultureInfo.InvariantCulture)));
         block.AddChild(BuildLabel(textSource.Resolve(QualitativeScale.KeyFor(contract.Risk))));
@@ -134,7 +144,6 @@ public sealed partial class ContractOfferScreen : VBoxContainer
     private static VBoxContainer BuildHeroCard(HeroCard hero, TextSource textSource)
     {
         var block = new VBoxContainer();
-        block.AddChild(BuildLabel(hero.Definition));
         block.AddChild(BuildLabel(textSource.Resolve(hero.DisplayNameKey)));
         block.AddChild(BuildLabel(textSource.Resolve(QualitativeScale.KeyFor(hero.Greed))));
         block.AddChild(BuildLabel(textSource.Resolve(QualitativeScale.KeyFor(hero.Caution))));
@@ -156,22 +165,15 @@ public sealed partial class ContractOfferScreen : VBoxContainer
     private static VBoxContainer BuildResponseLine(ResponseLine response, TextSource textSource)
     {
         var block = new VBoxContainer();
-        block.AddChild(BuildLabel(response.HeroDefinition));
-        block.AddChild(BuildLabel(response.Action));
+        block.AddChild(BuildLabel(textSource.Resolve(ActionKeys.For(response.Action))));
 
         foreach (var reason in response.Reasons)
         {
             block.AddChild(BuildLabel(textSource.Resolve(reason.ReasonCode)));
-            block.AddChild(BuildLabel(reason.SourceEntity));
             block.AddChild(BuildLabel(textSource.Resolve(QualitativeScale.KeyFor(reason.Strength))));
         }
 
-        if (response.BlockedByEntity is not null)
-        {
-            block.AddChild(BuildLabel(response.BlockedByEntity));
-        }
-
-        block.AddChild(BuildLabel(response.Wavered.ToString()));
+        block.AddChild(BuildLabel(textSource.Resolve(WaveredKeys.For(response.Wavered))));
 
         return block;
     }

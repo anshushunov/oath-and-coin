@@ -82,12 +82,24 @@ public class ContractOfferScreenModelTests
         // reconstructed contract key are values ContractOfferScreenModel can
         // put on screen, same as a tag or a reason code, and were missing
         // from the set this test actually checks against the catalogue.
+        //
+        // Task 12 review (Critical 1 and 3): ActionKeys, WaveredKeys,
+        // ErrorKeys and ScreenStateKeys are the four key families the review
+        // added so the screen never shows a raw action id, a bare
+        // True/False, a raw error code, or nothing at all distinguishing
+        // Loading from Empty — each is exactly as much "a value
+        // ContractOfferScreenModel can put on screen" as a tag or a grade,
+        // and belongs in this same completeness check for the same reason.
         var keys = content.Contracts.Values.SelectMany(c => c.Tags).Select(TagKeys.For)
             .Concat(content.Traits.Values.Select(t => TagKeys.For(t.Tag)))
             .Concat(ReasonCodes.All)
             .Concat(QualitativeScale.AllKeys)
             .Concat(new[] { ContractOfferScreenModelFactory.TitleKey })
-            .Concat(content.Contracts.Keys.Select(ContractOfferScreenModelFactory.ContractDisplayNameKey));
+            .Concat(content.Contracts.Keys.Select(ContractOfferScreenModelFactory.ContractDisplayNameKey))
+            .Concat(ActionKeys.AllKeys)
+            .Concat(WaveredKeys.AllKeys)
+            .Concat(ErrorKeys.AllKeys)
+            .Concat(ScreenStateKeys.AllKeys);
 
         foreach (var key in keys)
         {
@@ -427,59 +439,80 @@ public class ContractOfferScreenModelTests
             $"hash did not change when '{label}' changed");
     }
 
+    /// <summary>
+    /// The only catalogue this project ships, loaded once for every test in
+    /// this file that resolves a key: <c>RichModel</c> below is built
+    /// entirely from real production ids and keys (the same heroes,
+    /// contract, tags and reason codes <c>content/</c> ships), so it never
+    /// needs a hand-rolled fixture dictionary of its own.
+    /// </summary>
+    private static ImmutableSortedDictionary<string, string> Catalogue() =>
+        LocaleCatalogue.Load(RepositoryFixtures.LocaleFile("ru"));
+
+    /// <summary>
+    /// Task 12 review (Critical 1): a raw content id shown next to the
+    /// resolved name it duplicates — <c>core:bram</c> beside "Брам" — is
+    /// exactly the leak this test now pins down as absent, not merely as
+    /// "some resolved text happens to also be present". Renamed from
+    /// <c>ExpectedSnapshot_ContainsEveryShownValue</c> (which asserted the
+    /// model's raw keys/ids were the snapshot, the opposite of what a
+    /// correctly bound screen shows) once <see cref="RenderedUiSnapshot.Expected(ContractOfferScreenModel, System.Collections.Generic.IReadOnlyDictionary{string,string})"/>
+    /// became the only overload with a real caller.
+    /// </summary>
     [Fact]
-    public void ExpectedSnapshot_ContainsEveryShownValue()
+    public void ExpectedSnapshot_ContainsEveryResolvedValueAndNoRawIdentifier()
     {
         var model = RichModel();
-        var snapshot = RenderedUiSnapshot.Expected(model);
+        var catalogue = Catalogue();
+        var snapshot = RenderedUiSnapshot.Expected(model, catalogue);
 
-        Assert.Contains(model.TitleKey, snapshot.Texts);
+        Assert.Contains(catalogue[model.TitleKey], snapshot.Texts);
+        Assert.Contains(catalogue[ScreenStateKeys.For(model.State)], snapshot.Texts);
 
         var contract = model.Contract!;
-        Assert.Contains(contract.Definition, snapshot.Texts);
-        Assert.Contains(contract.DisplayNameKey, snapshot.Texts);
+        Assert.Contains(catalogue[contract.DisplayNameKey], snapshot.Texts);
         Assert.Contains(contract.Payment.ToString(CultureInfo.InvariantCulture), snapshot.Texts);
-        Assert.Contains(contract.Risk.ToString(), snapshot.Texts);
+        Assert.Contains(catalogue[QualitativeScale.KeyFor(contract.Risk)], snapshot.Texts);
         Assert.Contains(contract.RequiredCrew.ToString(CultureInfo.InvariantCulture), snapshot.Texts);
         Assert.Contains(contract.AcceptedCount.ToString(CultureInfo.InvariantCulture), snapshot.Texts);
+        Assert.DoesNotContain(contract.Definition, snapshot.Texts);
 
         foreach (var tagKey in contract.TagKeys)
         {
-            Assert.Contains(tagKey, snapshot.Texts);
+            Assert.Contains(catalogue[tagKey], snapshot.Texts);
         }
 
         foreach (var hero in model.Roster)
         {
-            Assert.Contains(hero.Definition, snapshot.Texts);
-            Assert.Contains(hero.DisplayNameKey, snapshot.Texts);
-            Assert.Contains(hero.Greed.ToString(), snapshot.Texts);
-            Assert.Contains(hero.Caution.ToString(), snapshot.Texts);
-            Assert.Contains(hero.Pride.ToString(), snapshot.Texts);
+            Assert.Contains(catalogue[hero.DisplayNameKey], snapshot.Texts);
+            Assert.Contains(catalogue[QualitativeScale.KeyFor(hero.Greed)], snapshot.Texts);
+            Assert.Contains(catalogue[QualitativeScale.KeyFor(hero.Caution)], snapshot.Texts);
+            Assert.Contains(catalogue[QualitativeScale.KeyFor(hero.Pride)], snapshot.Texts);
+            Assert.DoesNotContain(hero.Definition, snapshot.Texts);
 
             foreach (var key in hero.PrincipleKeys.Concat(hero.InclinationKeys))
             {
-                Assert.Contains(key, snapshot.Texts);
+                Assert.Contains(catalogue[key], snapshot.Texts);
             }
         }
 
         foreach (var response in model.Responses)
         {
-            Assert.Contains(response.HeroDefinition, snapshot.Texts);
-            Assert.Contains(response.Action, snapshot.Texts);
+            Assert.Contains(catalogue[ActionKeys.For(response.Action)], snapshot.Texts);
+            Assert.Contains(catalogue[WaveredKeys.For(response.Wavered)], snapshot.Texts);
+            Assert.DoesNotContain(response.HeroDefinition, snapshot.Texts);
 
             foreach (var reason in response.Reasons)
             {
-                Assert.Contains(reason.ReasonCode, snapshot.Texts);
-                Assert.Contains(reason.SourceEntity, snapshot.Texts);
-                Assert.Contains(reason.Strength.ToString(), snapshot.Texts);
+                Assert.Contains(catalogue[reason.ReasonCode], snapshot.Texts);
+                Assert.Contains(catalogue[QualitativeScale.KeyFor(reason.Strength)], snapshot.Texts);
+                Assert.DoesNotContain(reason.SourceEntity, snapshot.Texts);
             }
 
             if (response.BlockedByEntity is not null)
             {
-                Assert.Contains(response.BlockedByEntity, snapshot.Texts);
+                Assert.DoesNotContain(response.BlockedByEntity, snapshot.Texts);
             }
-
-            Assert.Contains(response.Wavered.ToString(), snapshot.Texts);
         }
     }
 
@@ -487,7 +520,7 @@ public class ContractOfferScreenModelTests
     public void SnapshotHash_ChangesOnTextOrOrderChange()
     {
         var model = RichModel();
-        var snapshot = RenderedUiSnapshot.Expected(model);
+        var snapshot = RenderedUiSnapshot.Expected(model, Catalogue());
 
         Assert.True(snapshot.Texts.Length >= 2, "The fixture is expected to carry more than one text.");
 
@@ -495,6 +528,25 @@ public class ContractOfferScreenModelTests
             snapshot.Texts.SetItem(0, snapshot.Texts[1]).SetItem(1, snapshot.Texts[0]));
 
         Assert.NotEqual(RenderedUiSnapshot.Hash(snapshot), RenderedUiSnapshot.Hash(swapped));
+    }
+
+    /// <summary>
+    /// Task 12 review (Important 1): the perfectly-independent-sounding
+    /// catalogue-resolving overload had no test of its own contract — that
+    /// it actually throws, loudly, rather than falling back to the key —
+    /// which is the one behavior <c>TextSource.Resolve</c> and this method
+    /// are both supposed to share without sharing code.
+    /// </summary>
+    [Fact]
+    public void ExpectedSnapshot_ThrowsOnMissingCatalogueKey()
+    {
+        var model = RichModel();
+        var incompleteCatalogue = Catalogue().Remove(model.TitleKey);
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => RenderedUiSnapshot.Expected(model, incompleteCatalogue));
+
+        Assert.Contains(model.TitleKey, exception.Message, StringComparison.Ordinal);
     }
 
     /// <summary>

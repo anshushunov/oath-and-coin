@@ -83,6 +83,53 @@ public class SmokeVerdictTests
         Assert.Contains(verdict.Reasons, reason => reason.Contains("outcome", StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>
+    /// Review finding (Important 2): <c>outcome_kind</c> alone cannot tell
+    /// <c>Incomplete</c> from <c>Normal</c> — both report <c>"success"</c> —
+    /// so a manifest that names an <c>expected_screen_state</c> has to be
+    /// checked against that finer field, not just the coarse one every
+    /// scenario already carries.
+    /// </summary>
+    [Fact]
+    public void Verdict_AcceptsMatchingScreenState()
+    {
+        var verdict = SmokeVerdict.Evaluate(CleanRun(expectedScreenState: "normal"));
+
+        Assert.True(verdict.Passed);
+        Assert.Empty(verdict.Reasons);
+    }
+
+    [Fact]
+    public void Verdict_RejectsMismatchedScreenState()
+    {
+        var observation = CleanRun(
+            expectedScreenState: "normal",
+            eventOverride: CleanEvent() with { ScreenState = "incomplete" });
+
+        var verdict = SmokeVerdict.Evaluate(observation);
+
+        Assert.False(verdict.Passed);
+        Assert.Contains(verdict.Reasons, reason => reason.Contains("screen_state", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// A manifest that states nothing about <c>expected_screen_state</c>
+    /// (every manifest predating Task 12's review) must not suddenly fail a
+    /// run whose actual screen state happens to differ from this fixture's
+    /// own default ("normal") — the check only applies when a manifest
+    /// actually opts into it.
+    /// </summary>
+    [Fact]
+    public void Verdict_SkipsScreenStateCheckWhenManifestStatesNone()
+    {
+        var observation = CleanRun(eventOverride: CleanEvent() with { ScreenState = "incomplete" });
+
+        var verdict = SmokeVerdict.Evaluate(observation);
+
+        Assert.True(verdict.Passed);
+        Assert.Empty(verdict.Reasons);
+    }
+
     [Fact]
     public void Verdict_RejectsErrorCodeOtherThanExpected()
     {
@@ -413,7 +460,7 @@ public class SmokeVerdictTests
         Assert.Contains(verdict.Reasons, reason => reason.Contains("not written by this run", StringComparison.OrdinalIgnoreCase));
     }
 
-    private static TerminalEvent CleanEvent(bool errorOutcome = false, bool loadingOutcome = false) => new(
+    private static TerminalEvent CleanEvent(bool errorOutcome = false, bool loadingOutcome = false, string? screenState = null) => new(
         SchemaVersion: TerminalEvent.SupportedSchemaVersion,
         Event: "terminal",
         OutcomeKind: loadingOutcome ? "loading" : errorOutcome ? "error" : "success",
@@ -425,6 +472,7 @@ public class SmokeVerdictTests
         CanonicalHash: (errorOutcome || loadingOutcome) ? null : CanonicalHash,
         ReadModelHash: ReadModelHash,
         RenderedUiHash: RenderedUiHash,
+        ScreenState: screenState ?? (loadingOutcome ? "loading" : errorOutcome ? "error" : "normal"),
         FrameSha256: FrameSha256,
         FrameWidth: FrameWidth,
         FrameHeight: FrameHeight,
@@ -450,7 +498,8 @@ public class SmokeVerdictTests
         int exitCode = 0,
         bool timedOut = false,
         ImmutableArray<string>? diagnosticLines = null,
-        FrameInspection? frameOverride = null)
+        FrameInspection? frameOverride = null,
+        string? expectedScreenState = null)
     {
         var terminalEvent = eventOverride ?? CleanEvent(errorOutcome, loadingOutcome);
         var events = eventsOverride ?? ImmutableArray.Create(terminalEvent);
@@ -475,6 +524,7 @@ public class SmokeVerdictTests
             TimedOut: timedOut,
             DiagnosticLines: diagnosticLines ?? ImmutableArray<string>.Empty,
             Frame: frameOverride ?? CleanFrame(),
-            FramePath: FramePath);
+            FramePath: FramePath,
+            ExpectedScreenState: expectedScreenState);
     }
 }

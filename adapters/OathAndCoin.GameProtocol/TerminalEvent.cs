@@ -52,6 +52,14 @@ namespace OathAndCoin.GameProtocol;
 /// can be hashed like any other.
 /// </param>
 /// <param name="RenderedUiHash">The rendered-UI-snapshot hash of the same screen.</param>
+/// <param name="ScreenState">
+/// The screen's own <c>OathAndCoin.Presentation.ScreenState</c>, lowercased
+/// (e.g. <c>"normal"</c>, <c>"loading"</c>) — coarser fields already exist
+/// (<paramref name="OutcomeKind"/> collapses <c>Incomplete</c> and
+/// <c>Normal</c> into one <c>"success"</c>), and a scenario's manifest can
+/// name exactly this one to check that a run showed the screen state its own
+/// name promises, not merely an outcome of the same broad kind.
+/// </param>
 /// <param name="FrameSha256">SHA-256 of the screenshot frame the game wrote.</param>
 /// <param name="FrameWidth">The captured frame's width in pixels.</param>
 /// <param name="FrameHeight">The captured frame's height in pixels.</param>
@@ -68,6 +76,7 @@ public sealed record TerminalEvent(
     string? CanonicalHash,
     string ReadModelHash,
     string RenderedUiHash,
+    string ScreenState,
     string FrameSha256,
     int FrameWidth,
     int FrameHeight,
@@ -188,6 +197,7 @@ public sealed record TerminalEvent(
                 parsed.CanonicalHash,
                 parsed.ReadModelHash,
                 parsed.RenderedUiHash,
+                parsed.ScreenState,
                 parsed.FrameSha256,
                 parsed.FrameWidth,
                 parsed.FrameHeight,
@@ -220,6 +230,7 @@ public sealed record TerminalEvent(
             CanonicalHash = CanonicalHash,
             ReadModelHash = ReadModelHash,
             RenderedUiHash = RenderedUiHash,
+            ScreenState = ScreenState,
             FrameSha256 = FrameSha256,
             FrameWidth = FrameWidth,
             FrameHeight = FrameHeight,
@@ -262,6 +273,8 @@ public sealed record TerminalEvent(
         public required string ReadModelHash { get; init; }
 
         public required string RenderedUiHash { get; init; }
+
+        public required string ScreenState { get; init; }
 
         public required string FrameSha256 { get; init; }
 

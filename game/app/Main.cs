@@ -71,16 +71,39 @@ public partial class Main : Control
 
         var loaded = LoadModel(arguments);
 
-        // The locale catalogue is loaded from the repository's own
-        // content/locale tree, never from arguments.ContentRoot: a scenario
-        // simulating a broken or substituted content root (content_error,
-        // screen_empty) still has to show a title, and that tree is not
-        // where either scenario points --content at (see ResolveLocaleFile).
-        var catalogue = LocaleCatalogue.Load(ResolveLocaleFile(arguments));
-        var textSource = new TextSource(catalogue);
+        ContractOfferScreen screen;
+        try
+        {
+            // The locale catalogue is loaded from the repository's own
+            // content/locale tree, never from arguments.ContentRoot: a
+            // scenario simulating a broken or substituted content root
+            // (content_error, screen_empty) still has to show a title, and
+            // neither of those roots carries a locale/ directory (see
+            // ResolveLocaleFile).
+            var catalogue = LocaleCatalogue.Load(ResolveLocaleFile(arguments));
+            var textSource = new TextSource(catalogue);
 
-        var screen = new ContractOfferScreen();
-        screen.Render(loaded.Model, textSource);
+            screen = new ContractOfferScreen();
+            screen.Render(loaded.Model, textSource);
+        }
+        catch (Exception exception)
+        {
+            // A missing or malformed catalogue, or a key the model needs
+            // that the catalogue does not carry, is exactly the failure mode
+            // the try/catch around CaptureProtocol.Run further down already
+            // guards against: left uncaught here, it aborts _Ready before
+            // any child is added and before a terminal line is printed, and
+            // the harness would wait out its own external timeout for an
+            // event that was never going to arrive. There is no screen left
+            // to build at this point — TextSource is what resolves a key
+            // into anything a person reads — so this reports loudly and
+            // exits instead, the same shape GameArguments.Parse's own
+            // failure above already takes.
+            Console.Error.WriteLine($"SCRIPT ERROR: building the contract offer screen failed: {exception}");
+            GetTree().Quit(1);
+            return;
+        }
+
         AddChild(screen);
 
         if (!arguments.Smoke)
@@ -169,11 +192,11 @@ public partial class Main : Control
     /// by matching on an exception message, which is free text meant for a
     /// person, not a stable identifier a tool compares runs on:
     /// <list type="bullet">
-    /// <item><c>SCENARIO_INVALID</c> — <see cref="ScenarioManifest.Load"/> or <see cref="ScenarioCommands.Load"/> could not read the scenario's own files (missing, malformed, no commands).</item>
-    /// <item><c>CHECKPOINT_UNKNOWN</c> — <see cref="CheckpointResolver.Resolve"/> could not resolve <c>--checkpoint</c> against an otherwise valid scenario (unknown name, or a manifest with no checkpoints at all).</item>
-    /// <item><c>CONTENT_ROOT_NOT_FOUND</c> — the content directory itself is missing, checked directly rather than inferred from <see cref="ContentSet.Load"/>'s own message.</item>
-    /// <item><c>SCHEMA_INVALID</c> — <see cref="ContentSchemas.ValidateOrThrow"/> (validation stage 1, TDD §11.2) rejected a file.</item>
-    /// <item><c>CONTENT_INVALID</c> — <see cref="ContentSet.Load"/> itself rejected a file past schema validation (an id reused, a value out of range).</item>
+    /// <item><see cref="ErrorCodes.ScenarioInvalid"/> — <see cref="ScenarioManifest.Load"/> or <see cref="ScenarioCommands.Load"/> could not read the scenario's own files (missing, malformed, no commands).</item>
+    /// <item><see cref="ErrorCodes.CheckpointUnknown"/> — <see cref="CheckpointResolver.Resolve"/> could not resolve <c>--checkpoint</c> against an otherwise valid scenario (unknown name, or a manifest with no checkpoints at all).</item>
+    /// <item><see cref="ErrorCodes.ContentRootNotFound"/> — the content directory itself is missing, checked directly rather than inferred from <see cref="ContentSet.Load"/>'s own message.</item>
+    /// <item><see cref="ErrorCodes.SchemaInvalid"/> — <see cref="ContentSchemas.ValidateOrThrow"/> (validation stage 1, TDD §11.2) rejected a file.</item>
+    /// <item><see cref="ErrorCodes.ContentInvalid"/> — <see cref="ContentSet.Load"/> itself rejected a file past schema validation (an id reused, a value out of range).</item>
     /// </list>
     /// </para>
     /// </remarks>
@@ -202,7 +225,7 @@ public partial class Main : Control
         catch (InvalidDataException exception)
         {
             return new LoadResult(
-                ContractOfferScreenModelFactory.FromOutcome(("SCENARIO_INVALID", exception.Message)),
+                ContractOfferScreenModelFactory.FromOutcome((ErrorCodes.ScenarioInvalid, exception.Message)),
                 ContentVersion: null,
                 CanonicalHash: null);
         }
@@ -215,7 +238,7 @@ public partial class Main : Control
         catch (InvalidDataException exception)
         {
             return new LoadResult(
-                ContractOfferScreenModelFactory.FromOutcome(("CHECKPOINT_UNKNOWN", exception.Message)),
+                ContractOfferScreenModelFactory.FromOutcome((ErrorCodes.CheckpointUnknown, exception.Message)),
                 ContentVersion: null,
                 CanonicalHash: null);
         }
@@ -230,7 +253,7 @@ public partial class Main : Control
         {
             return new LoadResult(
                 ContractOfferScreenModelFactory.FromOutcome(
-                    ("CONTENT_ROOT_NOT_FOUND", $"Content root '{contentRoot}' does not exist.")),
+                    (ErrorCodes.ContentRootNotFound, $"Content root '{contentRoot}' does not exist.")),
                 ContentVersion: null,
                 CanonicalHash: null);
         }
@@ -247,7 +270,7 @@ public partial class Main : Control
         catch (InvalidDataException exception)
         {
             return new LoadResult(
-                ContractOfferScreenModelFactory.FromOutcome(("SCHEMA_INVALID", exception.Message)),
+                ContractOfferScreenModelFactory.FromOutcome((ErrorCodes.SchemaInvalid, exception.Message)),
                 ContentVersion: null,
                 CanonicalHash: null);
         }
@@ -260,7 +283,7 @@ public partial class Main : Control
         catch (InvalidDataException exception)
         {
             return new LoadResult(
-                ContractOfferScreenModelFactory.FromOutcome(("CONTENT_INVALID", exception.Message)),
+                ContractOfferScreenModelFactory.FromOutcome((ErrorCodes.ContentInvalid, exception.Message)),
                 ContentVersion: null,
                 CanonicalHash: null);
         }
@@ -332,6 +355,13 @@ public partial class Main : Control
             CanonicalHash: loaded.CanonicalHash,
             ReadModelHash: readModelHash,
             RenderedUiHash: renderedUiHash,
+
+            // The screen's own state, verbatim (lowercase, matching
+            // outcome_kind's own style) — SmokeVerdict compares this against
+            // a manifest's own expected_screen_state, when it states one,
+            // rather than only ever checking the coarser success/error/
+            // loading split (see the remarks on ScenarioManifest.ExpectedScreenState).
+            ScreenState: loaded.Model.State.ToString().ToLowerInvariant(),
             FrameSha256: capture.FrameSha256,
             FrameWidth: capture.FrameWidth,
             FrameHeight: capture.FrameHeight,

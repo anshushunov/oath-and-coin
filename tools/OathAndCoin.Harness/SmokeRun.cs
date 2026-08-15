@@ -268,7 +268,8 @@ public static class SmokeRun
 
             // The published path, not the staging one: the report and every
             // verdict reason point a reader at where the frame finally lives.
-            layout.Published(RunLayout.FrameFileName));
+            layout.Published(RunLayout.FrameFileName),
+            inputs.Manifest.ExpectedScreenState);
     }
 
     /// <summary>
@@ -376,6 +377,8 @@ public static class SmokeRun
 
             if (inputs.Manifest.ExpectedOutcome == ScenarioOutcomeKind.Loading)
             {
+                RequireExpectedScreenState(inputs.Manifest, LoadingModel);
+
                 // No content is read for this outcome — see the remarks on
                 // Main.LoadModel's reordering. The content root below is
                 // never actually consulted by the game for this manifest,
@@ -425,6 +428,8 @@ public static class SmokeRun
                     + "the scenario describes, so it has nothing honest to compare the game against.");
             }
 
+            RequireExpectedScreenState(inputs.Manifest, model);
+
             return new Expectation(
                 contentRoot,
                 canonicalHash,
@@ -448,6 +453,33 @@ public static class SmokeRun
                 $"Scenario fault kind '{fault.Kind}' has no reproduction here. Add one — a tool that skips the "
                 + "fault it was told to reproduce compares the game against the wrong screen."),
         };
+
+        /// <summary>
+        /// The same self-check as the error-code one above, for
+        /// <see cref="ScenarioManifest.ExpectedScreenState"/>: a manifest
+        /// that names an expected screen state is asserting a fact about
+        /// its own checkpoint, and the tool reproducing that checkpoint here
+        /// — independently of the game — has to actually land on it, or
+        /// there is nothing honest left to compare the game's own report
+        /// against (see SmokeVerdict's matching runtime check).
+        /// </summary>
+        private static void RequireExpectedScreenState(ScenarioManifest manifest, ContractOfferScreenModel model)
+        {
+            if (manifest.ExpectedScreenState is null)
+            {
+                return;
+            }
+
+            var actual = model.State.ToString().ToLowerInvariant();
+            if (!string.Equals(actual, manifest.ExpectedScreenState, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    $"Reproducing scenario '{manifest.Scenario}' here produced screen state '{actual}', but "
+                    + $"its manifest expects '{manifest.ExpectedScreenState}'. The tool did not reproduce the "
+                    + "screen state the scenario describes, so it has nothing honest to compare the game "
+                    + "against.");
+            }
+        }
     }
 
     /// <summary>
