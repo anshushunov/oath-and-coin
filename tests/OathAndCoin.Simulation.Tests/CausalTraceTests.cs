@@ -211,4 +211,33 @@ public class CausalTraceTests
             score: null,
             blockedBy: ImmutableArray<TraceBlock>.Empty));
     }
+
+    [Fact]
+    public void DecisionResult_ValidatesScoreAgainstBlockRegardlessOfInitializerOrder()
+    {
+        // Trace is written before SelectedScore here. Everywhere else in the
+        // repository — ContractDecisionRule.Decide, Fixtures.Result, and
+        // every test above — the order is the opposite: SelectedScore first,
+        // Trace second. Without this test, a validation call dropped from
+        // whichever accessor never runs first in practice could disappear
+        // and nothing here would notice, the same risk
+        // DecisionResult_ValidatesRegardlessOfInitializerOrder rules out for
+        // SelectedAction/ConsideredActions.
+        var exception = Assert.Throws<ArgumentException>(() => new DecisionResult
+        {
+            SelectedAction = Actions.Accept,
+            ConsideredActions = ImmutableArray.Create(Actions.Accept, Actions.Decline),
+            Trace = new CausalTrace
+            {
+                TraceId = 1,
+                PositiveFactors = ImmutableArray<TraceFactor>.Empty,
+                NegativeFactors = ImmutableArray<TraceFactor>.Empty,
+                BlockedBy = ImmutableArray.Create(
+                    new TraceBlock(ReasonCodes.PrincipleForbids, ContentId.Parse("core:principle"))),
+            },
+            SelectedScore = 7,
+        });
+
+        Assert.Contains(nameof(DecisionResult.SelectedScore), exception.Message, StringComparison.Ordinal);
+    }
 }
