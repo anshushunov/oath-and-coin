@@ -337,6 +337,19 @@ public sealed class ContentSet
             });
         }
 
+        // The rulebook the engine cannot read for itself (ADR-002: the core
+        // must not reference this assembly). Resolved exactly once, here, at
+        // content-load time — every hero's HeroState.Traits stays a plain
+        // list of ids, and the engine looks each one up in this table instead
+        // of ever seeing a TraitDefinition.
+        var traitRules = ImmutableSortedDictionary.CreateBuilder<ContentId, HeldTrait>();
+        foreach (var trait in Traits.Values)
+        {
+            traitRules.Add(
+                trait.Id,
+                new HeldTrait(trait.Id, trait.Tag, trait.Kind == TraitKind.Principle, trait.Weight));
+        }
+
         return new GameState
         {
             Metadata = new GameMetadata
@@ -353,6 +366,7 @@ public sealed class ContentSet
             },
             Heroes = heroes.ToImmutable(),
             Contracts = contracts.ToImmutable(),
+            TraitRules = traitRules.ToImmutable(),
             Traces = ImmutableSortedDictionary<long, CausalTrace>.Empty,
             History = ImmutableArray<DomainEvent>.Empty,
         };

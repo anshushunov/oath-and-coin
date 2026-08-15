@@ -25,6 +25,124 @@ public class ProposeContractTests
     private static readonly ContentId ZaraDefinition = ContentId.Parse("core:zara");
     private static readonly ContentId ContractId = ContentId.Parse("core:escort_the_caravan");
 
+    private static readonly SimulationEngine Engine = new();
+
+    // Per-instance, not per-call: xUnit builds a fresh ProposeContractTests
+    // for every [Fact], so these start at the same value for every test —
+    // and, within one test, they track exactly the (CommandId,
+    // ExpectedStateVersion) a caller composing commands one at a time would
+    // use: the campaign's StateVersion advances by exactly one on every
+    // *applied* proposal (Task 8: WithEvent bumps it unconditionally,
+    // whether the hero accepted, declined, or was blocked by a principle),
+    // so a plain per-test counter tracks it without ever having to ask the
+    // state what its own version is.
+    private long _nextCommandId = 1;
+
+    private long _nextExpectedStateVersion;
+
+    [Fact]
+    public void Propose_AddsAcceptingHeroToCrewAndKeepsOfferOpen()
+    {
+        var state = Fixtures.StateWithTwoHeroes(requiredCrew: 2);
+
+        var afterFirst = Engine.Apply(state, Propose(heroIndex: 0)).State;
+
+        var contract = afterFirst.Contracts.Values.Single();
+        Assert.Equal(ContractStatus.Offered, contract.Status);
+        Assert.Single(contract.AcceptedBy);
+        Assert.Single(contract.RespondedBy);
+    }
+
+    [Fact]
+    public void Propose_MarksContractCrewedWhenRequiredCrewIsReached()
+    {
+        var state = Fixtures.StateWithTwoHeroes(requiredCrew: 2);
+
+        var after = Engine.Apply(
+            Engine.Apply(state, Propose(heroIndex: 0)).State,
+            Propose(heroIndex: 1)).State;
+
+        Assert.Equal(ContractStatus.Crewed, after.Contracts.Values.Single().Status);
+    }
+
+    [Fact]
+    public void Propose_KeepsOrdinalUnchangedWhenAPrincipleBlocked()
+    {
+        var state = Fixtures.StateWithPrincipledHero();
+        var before = state.Metadata.NextDecisionOrdinal;
+
+        var after = Engine.Apply(state, Propose(heroIndex: 0)).State;
+
+        Assert.Equal(before, after.Metadata.NextDecisionOrdinal);
+    }
+
+    [Fact]
+    public void Propose_NextScoredDecisionReusesTheOrdinalTheGateDidNotRead()
+    {
+        var state = Fixtures.StateWithPrincipledHeroThenOrdinaryHero();
+        var expectedOrdinal = state.Metadata.NextDecisionOrdinal;
+
+        var afterGate = Engine.Apply(state, Propose(heroIndex: 0)).State;
+        var afterScored = Engine.Apply(afterGate, Propose(heroIndex: 1)).State;
+
+        var expectedMood = ContractDecisionRule.DrawMood(state.Metadata.CampaignSeed, expectedOrdinal);
+        Assert.Equal(expectedOrdinal + expectedMood.OrdinalsConsumed, afterScored.Metadata.NextDecisionOrdinal);
+    }
+
+    [Fact]
+    public void Propose_RejectsHeroWhoAlreadyResponded()
+    {
+        var state = Fixtures.StateWithTwoHeroes(requiredCrew: 2);
+        var after = Engine.Apply(state, Propose(heroIndex: 0)).State;
+
+        var result = Engine.Apply(after, Propose(heroIndex: 0));
+
+        Assert.Equal(RejectionCodes.AlreadyResponded, result.RejectionCode);
+    }
+
+    [Fact]
+    public void Propose_KeepsAcceptedByASubsetOfRespondedBy()
+    {
+        var state = Fixtures.StateWithSixHeroes(requiredCrew: 4);
+
+        foreach (var index in new[] { 0, 1, 2, 3, 4, 5 })
+        {
+            var result = Engine.Apply(state, Propose(heroIndex: index));
+            state = result.State;
+
+            foreach (var contract in state.Contracts.Values)
+            {
+                Assert.True(
+                    contract.AcceptedBy.IsSubsetOf(contract.RespondedBy),
+                    $"after hero {index}: AcceptedBy left RespondedBy behind");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Builds the next command in this test's own sequence — see the remarks
+    /// on <see cref="_nextCommandId"/>/<see cref="_nextExpectedStateVersion"/>
+    /// for why a plain counter is enough. Every fixture this helper is used
+    /// with (<see cref="Fixtures.StateWithTwoHeroes"/>,
+    /// <see cref="Fixtures.StateWithSixHeroes"/>,
+    /// <see cref="Fixtures.StateWithPrincipledHero"/>,
+    /// <see cref="Fixtures.StateWithPrincipledHeroThenOrdinaryHero"/>) offers
+    /// exactly one contract, at <see cref="Fixtures.ContractId"/>.
+    /// </summary>
+    private ProposeContractToHero Propose(int heroIndex)
+    {
+        var command = new ProposeContractToHero(
+            _nextCommandId,
+            new HeroId(heroIndex),
+            Fixtures.ContractId,
+            _nextExpectedStateVersion);
+
+        _nextCommandId++;
+        _nextExpectedStateVersion++;
+
+        return command;
+    }
+
     /// <summary>
     /// Zara's numbers put her decision at -33 before mood (payment pull 8,
     /// risk aversion 40, insult 5, trust 4), which the mood range (-5..+5)

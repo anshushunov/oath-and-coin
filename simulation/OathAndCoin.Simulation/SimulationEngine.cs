@@ -82,31 +82,38 @@ public sealed class SimulationEngine
             return CommandResult.Rejected(state, RejectionCodes.AlreadyResponded);
         }
 
-        // Traits is left empty because it cannot be filled here at all:
-        // resolving a hero's trait ids into HeldTrait needs the content each
-        // id names (TraitDefinition's Kind/Tag/Weight), and this engine has
-        // no ContentSet to resolve them against — wiring that lookup through
-        // is a later task's concern (see the plan).
-        //
-        // Crew is left empty for a different reason, not a technical one:
-        // it could be assembled right here, cheaply, from contract.AcceptedBy
-        // and state.Heroes[...].Definition — both already live in GameState,
-        // no content lookup required. It is left empty anyway so this context
-        // is either fully wired or not wired at all, never half — filling
-        // Crew alone while Traits stays empty would make this context look
-        // more real than it is to whoever reads it next. The task that
-        // resolves Traits should fill both in the same pass.
-        //
-        // Until that task lands, the gate this context feeds is reachable
-        // and correct, just never fed a principle or a crew by this call
-        // site — and every existing test here carries heroes with no traits
-        // at all, so this is not yet a visible gap.
+        // The hero's traits, resolved through the campaign's own trait
+        // rulebook (GameState.TraitRules — filled once, at content-load
+        // time, on the other side of the boundary this engine cannot cross;
+        // see the remarks there). Sorted by id, not merely copied in
+        // HeroState.Traits' authored order, because the rule asserts that
+        // ordering rather than re-sorting it itself.
+        var traitIds = ImmutableSortedSet.CreateRange(hero.Traits);
+        var traitsBuilder = ImmutableArray.CreateBuilder<HeldTrait>(traitIds.Count);
+        foreach (var traitId in traitIds)
+        {
+            traitsBuilder.Add(state.TraitRules[traitId]);
+        }
+
+        // Comrades already committed to this same offer — exactly
+        // contract.AcceptedBy, resolved to the content id the rule matches
+        // relationships against. Built from what already lives in GameState,
+        // no content lookup required, so every hero this decision's own
+        // bonds walk (ContractDecisionRule.Decide, via AcceptedBy) finds an
+        // entry here — an accepted hero missing from Crew is exactly the
+        // context-assembly bug that rule guards against.
+        var crewBuilder = ImmutableSortedDictionary.CreateBuilder<HeroId, ContentId>();
+        foreach (var acceptedHeroId in contract.AcceptedBy)
+        {
+            crewBuilder.Add(acceptedHeroId, state.Heroes[acceptedHeroId].Definition);
+        }
+
         var context = new DecisionContext
         {
             Hero = hero,
             Contract = contract,
-            Traits = ImmutableArray<HeldTrait>.Empty,
-            Crew = ImmutableSortedDictionary<HeroId, ContentId>.Empty,
+            Traits = traitsBuilder.ToImmutable(),
+            Crew = crewBuilder.ToImmutable(),
             CampaignSeed = state.Metadata.CampaignSeed,
             DecisionOrdinal = state.Metadata.NextDecisionOrdinal,
             TraceId = state.Metadata.NextTraceId,
@@ -121,9 +128,16 @@ public sealed class SimulationEngine
         // no to it (see ContractStatus). Without that, the first refusal would
         // remove the offer from everyone else and a campaign could never show
         // two heroes disagreeing about the same job.
+        //
+        // Crewed means what its own doc comment says: every seat filled, not
+        // merely one hero among several saying yes — so the transition reads
+        // AcceptedBy.Count against RequiredCrew, not the single accepted
+        // flag from this one response.
+        var acceptedBy = accepted ? contract.AcceptedBy.Add(command.HeroId) : contract.AcceptedBy;
         var respondedContract = contract with
         {
-            Status = accepted ? ContractStatus.Crewed : contract.Status,
+            Status = acceptedBy.Count >= contract.RequiredCrew ? ContractStatus.Crewed : contract.Status,
+            AcceptedBy = acceptedBy,
             RespondedBy = contract.RespondedBy.Add(command.HeroId),
         };
 
