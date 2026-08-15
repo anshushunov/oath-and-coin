@@ -27,8 +27,8 @@ public class SmokeVerdictTests
     private const int FrameHeight = 720;
     private const string FramePath = @"C:\repo\artifacts\smoke\run\frame.png";
 
-    private const string ErrorScenario = "content_error";
-    private const string ErrorCheckpoint = "load_failed";
+    private const string ErrorScenario = "screen_error";
+    private const string ErrorCheckpoint = "screen_error";
     private const string ErrorCode = "CONTENT_ROOT_NOT_FOUND";
 
     private const string LoadingScenario = "screen_loading";

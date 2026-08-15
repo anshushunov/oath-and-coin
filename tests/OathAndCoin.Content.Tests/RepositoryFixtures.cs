@@ -88,8 +88,7 @@ internal static class RepositoryFixtures
     /// <see cref="RunScenario"/> can actually run: a manifest with a sibling
     /// <c>&lt;scenario&gt;.commands.json</c> file. This excludes the harness-only
     /// fixtures that describe a broken or not-yet-loaded game
-    /// (<c>content_error</c>, <c>screen_error</c>, <c>screen_empty</c>,
-    /// <c>screen_loading</c>) — none of them has anything to replay, by
+    /// (<c>screen_error</c>, <c>screen_empty</c>, <c>screen_loading</c>) — none of them has anything to replay, by
     /// design (<see cref="ScenarioOutcomeKind.Loading"/>'s own remarks; a
     /// <c>fault</c> scenario breaks content loading itself, before any
     /// command could apply) — rather than by name, so a future manifest is

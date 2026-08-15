@@ -46,7 +46,7 @@ public class ScenarioManifestTests
     [Fact]
     public void Load_ReadsErrorManifestWithFault()
     {
-        var path = System.IO.Path.Combine(RepositoryFixtures.ScenarioRoot, "content_error.manifest.json");
+        var path = System.IO.Path.Combine(RepositoryFixtures.ScenarioRoot, "screen_error.manifest.json");
 
         var manifest = ScenarioManifest.Load(path);
 
@@ -117,10 +117,10 @@ public class ScenarioManifestTests
     [Fact]
     public void Load_FailsWhenErrorOutcomeHasNoErrorCode()
     {
-        using var temp = TempManifest.Write("content_error", """
+        using var temp = TempManifest.Write("screen_error", """
             {
               "schema_version": 1,
-              "scenario": "content_error",
+              "scenario": "screen_error",
               "expected_outcome": "error",
               "checkpoints": [{ "name": "load_failed", "after_command_id": 0 }]
             }
@@ -264,7 +264,7 @@ public class ScenarioManifestTests
     /// <see cref="Resolve_IncludesBoundaryCommand"/>: <c>after_command_id 0</c>
     /// is always legal — it means "before any command" — even though no real
     /// scenario ever assigns a command the id 0.
-    /// <c>content_error.manifest.json</c>'s <c>load_failed</c> checkpoint is
+    /// <c>screen_error.manifest.json</c>'s <c>screen_error</c> checkpoint is
     /// exactly this case, so the command list below deliberately contains no
     /// command with id 0: <see cref="CheckpointResolver.Resolve"/> must not
     /// require one to exist, and the resulting slice must be empty rather
@@ -275,7 +275,7 @@ public class ScenarioManifestTests
     {
         var manifest = new ScenarioManifest(
             1,
-            "content_error",
+            "screen_error",
             ScenarioOutcomeKind.Error,
             Fault: new FaultInjection("missing_content_root", "fixtures/does-not-exist"),
             ExpectedErrorCode: "CONTENT_ROOT_NOT_FOUND",
@@ -311,7 +311,7 @@ public class ScenarioManifestTests
             .ToList();
 
         Assert.Contains(manifestPaths, path => System.IO.Path.GetFileName(path) == "gate0.manifest.json");
-        Assert.Contains(manifestPaths, path => System.IO.Path.GetFileName(path) == "content_error.manifest.json");
+        Assert.Contains(manifestPaths, path => System.IO.Path.GetFileName(path) == "screen_error.manifest.json");
 
         foreach (var manifestPath in manifestPaths)
         {

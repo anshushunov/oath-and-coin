@@ -246,6 +246,27 @@ jobs:
           dotnet restore OathAndCoin.sln
           dotnet build tools/OathAndCoin.Harness/OathAndCoin.Harness.csproj -c Release --no-restore
 
+      # AGENTS.md §7 asks a UI task for five screen states and for the run
+      # artifact to be published by a CI stage. Both halves are here: every
+      # one of the five states named there has a scenario whose manifest
+      # states the screen state it expects, and each is run below.
+      #
+      # Stating that state is what makes the run mean anything. SmokeVerdict
+      # compares the game's own reported screen_state against the manifest's
+      # only when the manifest names one, and the harness refuses to run at
+      # all when its own independent reproduction lands on a different state
+      # — so a scenario that names none is checked against the far coarser
+      # success/error/loading split, which cannot tell `incomplete` from
+      # `normal` at all. Until this commit the pipeline ran exactly two
+      # scenarios and neither of them named a state, which left the whole
+      # distinction unexercised in CI.
+      #
+      # gate0 is kept and now names its own state (two of six heroes have
+      # answered at its checkpoint, so: incomplete). `content_error` is gone:
+      # it was the Gate 0 spike's error scenario and `screen_error` injects
+      # the same missing_content_root fault while also naming the state, so
+      # keeping both meant CI ran the unchecked copy of one scenario.
+      #
       # 1920x1080 rather than 1280x720: the window the run asks for is exactly
       # 1280x720, and a screen of exactly that size leaves no room for a
       # window manager's idea of a usable rect. There is no window manager
@@ -255,27 +276,38 @@ jobs:
       # --timeout 120 rather than the default 60: llvmpipe is several times
       # slower to bring up a context than a real GPU, and the measurement this
       # job exists for is the wall clock, not how close it sails to a limit.
-      - name: Runtime smoke — gate0
-        id: smoke_gate0
+      #
+      # One step with a loop rather than six steps: every scenario runs even
+      # when an earlier one fails — a failed `screen_empty` says nothing about
+      # whether the error screen still comes up, and the cost this job
+      # measures is what all six cost together — and the step is red if any
+      # of them was. The previous shape reached for the same thing with
+      # `if: always()` chained between two steps, which does not scale to six
+      # and reports a job that died at the download as several failures.
+      - name: Runtime smoke — every screen state
+        id: smoke
         shell: bash
         run: |
-          xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
-            dotnet run --project tools/OathAndCoin.Harness -c Release --no-build -- \
-            run-smoke --scenario gate0 --godot "$GODOT" --timeout 120
+          failed=()
 
-      # always(), because a failed gate0 says nothing about whether the error
-      # screen still comes up, and the cost this job is measuring is what both
-      # scenarios cost together. Guarded on the first scenario having run at
-      # all, so a job that died at the download does not report a second
-      # failure that is really the first one again.
-      - name: Runtime smoke — content_error
-        id: smoke_content_error
-        if: always() && steps.smoke_gate0.outcome != 'skipped'
-        shell: bash
-        run: |
-          xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
-            dotnet run --project tools/OathAndCoin.Harness -c Release --no-build -- \
-            run-smoke --scenario content_error --godot "$GODOT" --timeout 120
+          for scenario in gate0 screen_loading screen_empty screen_error screen_incomplete screen_normal; do
+            echo "::group::run-smoke $scenario"
+            if xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
+              dotnet run --project tools/OathAndCoin.Harness -c Release --no-build -- \
+              run-smoke --scenario "$scenario" --godot "$GODOT" --timeout 120
+            then
+              echo "$scenario: passed"
+            else
+              echo "::error::run-smoke $scenario failed with exit code $?."
+              failed+=("$scenario")
+            fi
+            echo "::endgroup::"
+          done
+
+          if [ "${#failed[@]}" -ne 0 ]; then
+            echo "::error::Runtime smoke failed for: ${failed[*]}" >&2
+            exit 1
+          fi
 
       # The numbers a reader of this job wants — which engine ran, how long
       # each phase took, the frame's hash and how many colours it held — are
@@ -283,7 +315,7 @@ jobs:
       # summary so they can be read without downloading the artifact, and so
       # two runs of this workflow can be compared line by line.
       - name: Summarise the runs
-        if: always() && steps.smoke_gate0.outcome != 'skipped'
+        if: always() && steps.smoke.outcome != 'skipped'
         shell: bash
         run: |
           shopt -s nullglob
@@ -312,7 +344,7 @@ jobs:
       # something to publish, and a failed run is exactly when the frame and
       # the log are worth reading.
       - name: Upload runtime evidence
-        if: always() && steps.smoke_gate0.outcome != 'skipped'
+        if: always() && steps.smoke.outcome != 'skipped'
         uses: actions/upload-artifact@v4
         with:
           name: runtime-smoke-evidence
