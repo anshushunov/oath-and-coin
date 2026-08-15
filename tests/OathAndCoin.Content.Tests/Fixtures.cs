@@ -37,4 +37,26 @@ internal static class Fixtures
                 new TraceBlock(ReasonCodes.PrincipleForbids, ContentId.Parse("core:will_not_strike_a_temple"))),
         },
     };
+
+    /// <summary>
+    /// An ordinary, unblocked decision: <c>SelectedScore</c> is a real
+    /// integer and <c>Trace.BlockedBy</c> is empty — the other half of the
+    /// "score is null exactly when blocked" invariant from
+    /// <see cref="BlockedDecision"/>. <see cref="Scenarios.DeterminismArtifact.RenderDecision"/>
+    /// must write a <c>selected_score</c> key here, never omit it just
+    /// because omitting it is also sometimes correct.
+    /// </summary>
+    public static DecisionResult ScoredDecision() => new()
+    {
+        SelectedAction = Actions.Accept,
+        ConsideredActions = ImmutableArray.Create(Actions.Accept, Actions.Decline),
+        SelectedScore = 12,
+        Trace = new CausalTrace
+        {
+            TraceId = 2,
+            PositiveFactors = ImmutableArray<TraceFactor>.Empty,
+            NegativeFactors = ImmutableArray<TraceFactor>.Empty,
+            BlockedBy = ImmutableArray<TraceBlock>.Empty,
+        },
+    };
 }

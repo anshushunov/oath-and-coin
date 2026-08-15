@@ -188,6 +188,22 @@ public class ReplayDeterminismTests
     }
 
     /// <summary>
+    /// The other half of the invariant <see cref="Artifact_OmitsSelectedScoreEntirelyWhenBlocked"/>
+    /// checks: omitting <c>selected_score</c> is only correct when the
+    /// decision was blocked. A mutant that stopped writing the key at all —
+    /// not just for blocked decisions — would pass every test in this file
+    /// that only ever exercises blocked or scenario-driven decisions unless
+    /// something asserts presence directly on an ordinary one.
+    /// </summary>
+    [Fact]
+    public void Artifact_IncludesSelectedScoreForAnOrdinaryDecision()
+    {
+        var json = DeterminismArtifact.RenderDecision(Fixtures.ScoredDecision());
+
+        Assert.Contains("\"selected_score\":12", json, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// The host machine's locale is a forbidden input (TDD §7.3), and
     /// serialization is where it would leak in first: one number formatted
     /// through the current culture is enough to make an artifact produced on a
