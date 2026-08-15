@@ -1,0 +1,6 @@
+{
+  "commands": [
+    { "command_id": 1, "hero_index": 0, "contract": "core:cleanse_the_crypt", "expected_state_version": 0 },
+    { "command_id": 2, "hero_index": 1, "contract": "core:cleanse_the_crypt", "expected_state_version": 1 }
+  ]
+}

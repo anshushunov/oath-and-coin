@@ -1,0 +1,11 @@
+{
+  "schema_version": 2,
+  "id": "fixture:crew_leader",
+  "display_name_key": "hero.fixture.crew_leader.name",
+  "greed": 100,
+  "caution": 0,
+  "pride": 0,
+  "trust_in_guild": 100,
+  "traits": [],
+  "relationships": []
+}

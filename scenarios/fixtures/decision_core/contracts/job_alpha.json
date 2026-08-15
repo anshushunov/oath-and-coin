@@ -1,0 +1,9 @@
+{
+  "schema_version": 2,
+  "id": "fixture:job_alpha",
+  "display_name_key": "contract.fixture.job_alpha.name",
+  "payment": 50,
+  "risk": 0,
+  "required_crew": 2,
+  "tags": []
+}

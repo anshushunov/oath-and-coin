@@ -1,0 +1,11 @@
+{
+  "commands": [
+    { "command_id": 1, "hero_index": 0, "contract": "core:escort_the_caravan", "expected_state_version": 0 },
+    { "command_id": 2, "hero_index": 2, "contract": "core:escort_the_caravan", "expected_state_version": 1 },
+    { "command_id": 3, "hero_index": 3, "contract": "core:escort_the_caravan", "expected_state_version": 2 },
+    { "command_id": 4, "hero_index": 4, "contract": "core:escort_the_caravan", "expected_state_version": 3 },
+    { "command_id": 5, "hero_index": 5, "contract": "core:escort_the_caravan", "expected_state_version": 4 },
+    { "command_id": 6, "hero_index": 3, "contract": "core:silence_the_cult", "expected_state_version": 5 },
+    { "command_id": 7, "hero_index": 1, "contract": "core:cleanse_the_crypt", "expected_state_version": 6 }
+  ]
+}

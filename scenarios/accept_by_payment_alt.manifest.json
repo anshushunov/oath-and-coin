@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "scenario": "accept_by_payment_alt",
+  "expected_outcome": "success",
+  "checkpoints": [{ "name": "final", "after_command_id": 1 }]
+}

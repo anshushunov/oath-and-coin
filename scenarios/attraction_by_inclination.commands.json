@@ -1,0 +1,5 @@
+{
+  "commands": [
+    { "command_id": 1, "hero_index": 1, "contract": "core:silence_the_cult", "expected_state_version": 0 }
+  ]
+}

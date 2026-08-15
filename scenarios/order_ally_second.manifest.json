@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "scenario": "order_ally_second",
+  "expected_outcome": "success",
+  "checkpoints": [{ "name": "final", "after_command_id": 2 }]
+}

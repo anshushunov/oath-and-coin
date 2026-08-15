@@ -1,0 +1,5 @@
+{
+  "commands": [
+    { "command_id": 1, "hero_index": 0, "contract": "fixture:gamma_job", "expected_state_version": 0 }
+  ]
+}
