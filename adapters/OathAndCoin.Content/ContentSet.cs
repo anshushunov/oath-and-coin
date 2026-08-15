@@ -76,14 +76,15 @@ public sealed class ContentSet
     public string ContentVersion { get; }
 
     /// <summary>
-    /// Reads <c>heroes/</c> and <c>contracts/</c> under
+    /// Reads <c>heroes/</c>, <c>contracts/</c> and <c>traits/</c> under
     /// <paramref name="contentRoot"/>.
     /// </summary>
     /// <exception cref="InvalidDataException">
     /// A file is missing, unreadable, malformed, has an unknown property, has
-    /// a value outside <see cref="ContentBounds"/>, or reuses an id another
-    /// file already defined. The message always names the file, and the JSON
-    /// path when there is one.
+    /// a value outside <see cref="ContentBounds"/>, reuses an id another file
+    /// already defined, or a hero names a trait or a hero id nothing defines,
+    /// twice, or to itself (see <see cref="ValidateReferences"/>). The message
+    /// always names the file, and the JSON path when there is one.
     /// </exception>
     public static ContentSet Load(string contentRoot)
     {
@@ -165,11 +166,73 @@ public sealed class ContentSet
             traits.Add(file.Id, ReadTrait(file, relativePath));
         }
 
+        var heroesById = heroes.ToImmutable();
+        var traitsById = traits.ToImmutable();
+        ValidateReferences(heroesById, traitsById);
+
         return new ContentSet(
-            heroes.ToImmutable(),
+            heroesById,
             contracts.ToImmutable(),
-            traits.ToImmutable(),
+            traitsById,
             ContentDigest.Compute(root)[..ContentDigest.VersionLength]);
+    }
+
+    /// <summary>
+    /// Checks every hero's <c>traits</c> and <c>relationships</c> against the
+    /// dictionaries built from all three directories — the check this loader
+    /// promises in its own doc comment ("references trait/hero ids that
+    /// exist") and that Task 1 deliberately left undone, because until every
+    /// directory has been read there is nothing complete to check against.
+    /// </summary>
+    /// <exception cref="InvalidDataException">
+    /// A hero names a trait no trait file defines, lists the same trait twice,
+    /// holds a relationship to itself, holds a relationship to a hero no hero
+    /// file defines, or holds more than one relationship to the same hero.
+    /// </exception>
+    private static void ValidateReferences(
+        ImmutableSortedDictionary<ContentId, HeroDefinition> heroes,
+        ImmutableSortedDictionary<ContentId, TraitDefinition> traits)
+    {
+        foreach (var hero in heroes.Values)
+        {
+            var seenTraits = new HashSet<ContentId>();
+            foreach (var trait in hero.Traits)
+            {
+                if (!traits.ContainsKey(trait))
+                {
+                    throw new InvalidDataException(
+                        $"Hero '{hero.Id}' references trait '{trait}', which no trait file defines.");
+                }
+
+                if (!seenTraits.Add(trait))
+                {
+                    throw new InvalidDataException(
+                        $"Hero '{hero.Id}' lists trait '{trait}' more than once.");
+                }
+            }
+
+            var seenTargets = new HashSet<ContentId>();
+            foreach (var bond in hero.Relationships)
+            {
+                if (bond.Hero == hero.Id)
+                {
+                    throw new InvalidDataException(
+                        $"Hero '{hero.Id}' holds a relationship to itself.");
+                }
+
+                if (!heroes.ContainsKey(bond.Hero))
+                {
+                    throw new InvalidDataException(
+                        $"Hero '{hero.Id}' holds a relationship to '{bond.Hero}', which no hero file defines.");
+                }
+
+                if (!seenTargets.Add(bond.Hero))
+                {
+                    throw new InvalidDataException(
+                        $"Hero '{hero.Id}' holds more than one relationship to '{bond.Hero}'.");
+                }
+            }
+        }
     }
 
     /// <summary>

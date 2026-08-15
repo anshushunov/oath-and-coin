@@ -156,6 +156,7 @@ public class ContentSetTests
             {"schema_version":2,"id":"core:hates_the_cult","display_name_key":"trait.core.hates_the_cult.name",
              "kind":"inclination","tag":"target:cult","weight":12}
             """);
+        root.WriteHero("zara", HeroJson("core:zara"));
         root.WriteHero("bram", """
             {"schema_version":2,"id":"core:bram","display_name_key":"hero.core.bram.name",
              "greed":60,"caution":30,"pride":45,"trust_in_guild":50,
@@ -488,4 +489,107 @@ public class ContentSetTests
             ContentDigest.Compute(RepositoryFixtures.ContentRoot),
             ContentDigest.Compute(RepositoryFixtures.ContentRoot));
     }
+
+    [Fact]
+    public void Load_RejectsUnknownTraitReference()
+    {
+        using var root = TempContentRoot.CreateEmpty();
+        root.WriteHero("bram", HeroJson("core:bram", traits: """["core:missing"]"""));
+
+        var error = Assert.Throws<InvalidDataException>(() => ContentSet.Load(root.Root));
+
+        Assert.Contains("core:missing", error.Message, StringComparison.Ordinal);
+        Assert.Contains("core:bram", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Load_RejectsDuplicateTraitOnHero()
+    {
+        using var root = TempContentRoot.CreateEmpty();
+        root.WriteTrait("hates_the_cult", InclinationJson("core:hates_the_cult", "target:cult", 12));
+        root.WriteHero("bram", HeroJson("core:bram", traits: """["core:hates_the_cult","core:hates_the_cult"]"""));
+
+        var error = Assert.Throws<InvalidDataException>(() => ContentSet.Load(root.Root));
+
+        Assert.Contains("core:hates_the_cult", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Load_RejectsSelfRelationship()
+    {
+        using var root = TempContentRoot.CreateEmpty();
+        root.WriteHero("bram", HeroJson("core:bram", relationships: """[{"hero":"core:bram","weight":5}]"""));
+
+        var error = Assert.Throws<InvalidDataException>(() => ContentSet.Load(root.Root));
+
+        Assert.Contains("itself", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Load_RejectsDuplicateRelationshipTarget()
+    {
+        using var root = TempContentRoot.CreateEmpty();
+        root.WriteHero("zara", HeroJson("core:zara"));
+        root.WriteHero("bram", HeroJson(
+            "core:bram",
+            relationships: """[{"hero":"core:zara","weight":5},{"hero":"core:zara","weight":-5}]"""));
+
+        Assert.Throws<InvalidDataException>(() => ContentSet.Load(root.Root));
+    }
+
+    [Fact]
+    public void Load_RejectsRelationshipToUnknownHero()
+    {
+        using var root = TempContentRoot.CreateEmpty();
+        root.WriteHero("bram", HeroJson("core:bram", relationships: """[{"hero":"core:ghost","weight":5}]"""));
+
+        var error = Assert.Throws<InvalidDataException>(() => ContentSet.Load(root.Root));
+
+        Assert.Contains("core:ghost", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Load_AcceptsPartialSetWhereNoContractCarriesTheTag()
+    {
+        using var root = TempContentRoot.CreateEmpty();
+        root.WriteTrait("hates_the_cult", InclinationJson("core:hates_the_cult", "target:cult", 12));
+        root.WriteHero("bram", HeroJson("core:bram", traits: """["core:hates_the_cult"]"""));
+
+        var content = ContentSet.Load(root.Root);
+
+        Assert.Single(content.Heroes);
+    }
+
+    /// <summary>
+    /// A valid version-2 hero file with every scalar at a neutral default, so
+    /// a reference-integrity test only has to spell out the one field it
+    /// cares about.
+    /// </summary>
+    private static string HeroJson(string id, string traits = "[]", string relationships = "[]") =>
+        $$"""
+        {
+          "schema_version": 2,
+          "id": "{{id}}",
+          "display_name_key": "hero.test.name",
+          "greed": 50,
+          "caution": 50,
+          "pride": 50,
+          "trust_in_guild": 50,
+          "traits": {{traits}},
+          "relationships": {{relationships}}
+        }
+        """;
+
+    /// <summary>A valid version-2 inclination trait file.</summary>
+    private static string InclinationJson(string id, string tag, int weight) =>
+        $$"""
+        {
+          "schema_version": 2,
+          "id": "{{id}}",
+          "display_name_key": "trait.test.name",
+          "kind": "inclination",
+          "tag": "{{tag}}",
+          "weight": {{weight}}
+        }
+        """;
 }
