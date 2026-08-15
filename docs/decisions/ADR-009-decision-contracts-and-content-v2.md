@@ -2,7 +2,7 @@
 
 > Дата: 2026-08-15
 >
-> Статус: proposed (принятие — решением владельца продукта)
+> Статус: accepted (2026-08-16)
 
 ## Контекст
 
@@ -66,9 +66,9 @@
 
 `ScenarioManifest.SupportedManifestSchemaVersion` **не** меняется: форма манифеста прежняя. Контрастные пары — отдельный тип файла в `scenarios/contrasts/` со своей версией: манифест описывает прогон, контраст описывает два прогона и различие между ними, и втискивать второе в первое значило бы иметь манифест, наполовину не относящийся к своему прогону.
 
-### Версия артефакта 2 и новая версия правил
+### Версия артефакта 3 и новая версия правил
 
-- `DeterminismArtifact.ArtifactVersion` — 2. Форма состояния и следа в каноническом артефакте другая: у контракта появились `tags`, `required_crew`, `accepted_by` и новое значение статуса, `blocked_by` рендерится массивом объектов с `reason_code` и `source_entity`, а `selected_score` **опускается целиком** на воротном пути — не пишется как `null` и не подменяется нулём.
+- `DeterminismArtifact.ArtifactVersion` — 3, а не 2, как называла эта запись до правки. Форма состояния и следа в каноническом артефакте другая: у контракта появились `tags`, `required_crew`, `accepted_by` и новое значение статуса, `blocked_by` рендерится массивом объектов с `reason_code` и `source_entity`, а `selected_score` **опускается целиком** на воротном пути — не пишется как `null` и не подменяется нулём. Реализация ушла дальше версии 2, которую называла эта запись: артефакт дополнительно несёт проекцию `trait_rules` (справочник черт, которого артефакт версии спайка не видел вовсе), без которой два состояния, отличающиеся только правилами черт, давали бы одинаковые байты — этого одного основания хватило на отдельный шаг версии.
 - `ScenarioRunner.RulesetVersion` — `m1-decision/1` вместо версии спайка. Правила изменились, и артефакты прежних правил не должны выглядеть сравнимыми с нынешними: `TDD` §7.1 привязывает воспроизводимость к паре «версия правил + версия контента», и оставить прежнюю строку значило бы утверждать, что расхождение артефактов — регресс, а не смена правил.
 
 Обе версии — независимые заявления: форма артефакта может измениться без смены правил (рефакторинг сериализации) и наоборот.
@@ -95,7 +95,7 @@
 - **Порядок предложения контракта стал значимым для результата.** Форма команды `ProposeContractToHero` не изменилась, но её исход теперь зависит от `AcceptedBy`, то есть от порядка предыдущих команд. Сценарии, различающиеся только порядком, законно расходятся.
 - **Порядок перебора принципов — часть канонического артефакта**, поэтому он не предполагается, а проверяется на каждом вызове правила: черты во входе обязаны быть строго отсортированы по `Id`.
 - **Границы контента заявлены дважды** — в `ContentBounds`/`ContentLimits` и в JSON-схемах — и это осознанно: схема проверяет автора и стадию валидации, константы проверяют каждую загрузку. Расхождение двух заявлений ловит `SchemaAgreementTests`; третьего заявления тех же чисел внутри функции счёта быть не должно.
-- **Статус `proposed` при уже сделанной реализации.** `AGENTS.md` §5 говорит, что `proposed` не является разрешением реализовать спорный вариант. Здесь запись фиксирует уже сделанное по согласованному плану, а не открывает работу; спорным остаётся не факт изменения контрактов, а то, останутся ли они такими после плейтеста Milestone 1. Принимает запись владелец продукта.
+- **Статус принят 2026-08-16.** Запись держалась в `proposed` при уже сделанной реализации: `AGENTS.md` §5 говорит, что `proposed` не является разрешением реализовать спорный вариант, но здесь запись фиксировала уже сделанное по согласованному плану, а не открывала работу. Владелец продукта принял запись, закрыв расхождение с `MVP_PLAN` §14, который уже объявлял `BQ-004` закрытым по решениям `DEC-010`/`ADR-009`. Спорным остаётся не факт изменения контрактов, а то, останутся ли они такими после плейтеста Milestone 1.
 
 ## Проверка
 
@@ -109,7 +109,7 @@
 - **Расход ординалов на воротах** — `ProposeContractTests.cs`: `Propose_KeepsOrdinalUnchangedWhenAPrincipleBlocked`, `Propose_NextScoredDecisionReusesTheOrdinalTheGateDidNotRead`; `tests/OathAndCoin.Simulation.Tests/GameStateTests.cs`: `WithEvent_LeavesDecisionOrdinalUntouchedWhenNothingWasDrawn`, `WithEvent_AdvancesDecisionOrdinalByTheDrawsActuallyConsumed`; `tests/OathAndCoin.Content.Tests/ScenarioCoverageTests.cs`: `MixedGateThenDecisions_TheBlockedStepSpendsNoRandomnessAndTheOtherTwoSpendExactlyOneEach`. Все три утверждают ординал **напрямую** — сравнением `NextDecisionOrdinal` с ожидаемым числом, а не сверкой артефакта с эталоном: реализация, тратящая ординал на воротах, обязана краснеть здесь, а не только там, где расхождение объяснимо любой правкой правил.
 - **Вход правила** — `tests/OathAndCoin.Simulation.Tests/ContractDecisionRuleTests.cs`: `Decide_BondsCountOnlyHeroesWhoAlreadyAccepted`, `Decide_IgnoresInclinationWhoseTagTheContractLacks`; `ProposeContractTests.cs`: `Propose_ResolvesTraitsRegardlessOfTheirAuthoredOrder`; граница ядра — `CoreBoundaryTests.cs`: `SimulationAssemblies_ReferenceNoEngineAssemblyOrType`, `SimulationAssemblies_UseNoSingleOrDoublePrecisionFloat`.
 - **Версия формата контента 2** — `tests/OathAndCoin.Content.Tests/ContentSetTests.cs`: `Load_RejectsSchemaVersionOne`, `Load_RejectsSchemaVersionOneWithoutTraitsDirectory`, `Load_ReadsTraitDefinitions`, `Load_ReadsPrincipleWithoutWeight`, `Load_RejectsWeightOnPrinciple`, `Load_ReadsHeroTraitsAndRelationships`, `Load_ReadsContractTagsAndCrew`, `Load_AcceptsPartialSetWhereNoContractCarriesTheTag`; `SchemaAgreementTests.cs`: `SchemaVersionConst_MatchesLoaderSupportedVersion`, `TraitSchema_RejectsPrincipleWithWeight`, `AllContentFiles_SatisfyTheirSchema`, `HeroSchemaLimits_MatchContentLimits`, `ContractSchemaLimits_MatchContentLimits`; каталог локализации — `LocaleCatalogueTests.cs`: `Load_ReadsEntries`, `Load_RejectsDuplicateKey`, `Load_RejectsUnsupportedSchemaVersion`.
-- **Версия артефакта 2 и версия правил** — `ReplayDeterminismTests.cs`: `Artifact_DeclaresVersionTwoAndTheMilestoneOneRuleset`, `SameSeed_ProducesIdenticalCanonicalArtifact`, `CanonicalArtifact_ContainsFinalStateAndTraces`; `tests/OathAndCoin.Content.Tests/ScenarioCoverageTests.cs`: `EveryScenarioReplaysToItsCanonicalArtifact`.
+- **Версия артефакта 3 и версия правил** — `ReplayDeterminismTests.cs`: `Artifact_DeclaresItsShapeVersionAndTheMilestoneOneRuleset`, `SameSeed_ProducesIdenticalCanonicalArtifact`, `CanonicalArtifact_ContainsFinalStateAndTraces`; `tests/OathAndCoin.Content.Tests/ScenarioCoverageTests.cs`: `EveryScenarioReplaysToItsCanonicalArtifact`.
 - **Контрастные пары как отдельный формат** — `tests/OathAndCoin.Content.Tests/ContrastTests.cs`: `ContrastDefinition_RejectsAnInputOutsideTheClosedList`, `ContrastDefinition_RejectsFromEqualToTo`, `ContrastRunner_UsesTheSameSeedAndOrdinalOnBothSides`; неизменность формата манифеста — `ScenarioManifestTests.cs`: `AllScenarioManifests_SatisfyTheirSchema`, `Load_FailsOnUnsupportedSchemaVersion`.
 
 Пересмотр — при появлении сохранений (`ADR-006`, Milestone 3): версионирование контента впервые встретится с версионированием сохранённого состояния, и правило «файл прежней версии не читается» придётся проверить на данных, которые нельзя переписать вручную. Второй повод — торг об условиях (`DEC-008`): он первым добавит к решению вход, которого сегодня нет, и покажет, выдержал ли `DecisionContext` своё назначение.

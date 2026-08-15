@@ -38,7 +38,7 @@ ADR-001-engine-and-language.md
 | [DEC-007](DEC-007-ui-first-presentation.md) | UI-first презентация и схематичный бой до валидации MVP | accepted |
 | [DEC-008](DEC-008-negotiation-first-differentiation.md) | Переговоры и обещания — приоритетный дифференциатор | accepted |
 | [DEC-009](DEC-009-hero-portraits-in-m1.md) | Шесть портретов героев в M1 как исключение из DEC-007 | accepted |
-| [DEC-010](DEC-010-hero-decision-model.md) | Модель решения героя: ворота и взвешенная сумма, непокупаемые красные линии | proposed |
+| [DEC-010](DEC-010-hero-decision-model.md) | Модель решения героя: ворота и взвешенная сумма, непокупаемые красные линии | accepted |
 
 Технические решения:
 
@@ -51,7 +51,7 @@ ADR-001-engine-and-language.md
 | [ADR-005](ADR-005-stable-ids.md) | Стабильные namespaced идентификаторы | accepted |
 | [ADR-007](ADR-007-events-and-causal-trace.md) | Конверт события и хранение causal trace в состоянии | accepted |
 | [ADR-008](ADR-008-runtime-harness.md) | Runtime harness: свой инструмент и состав условий успеха прогона | accepted |
-| [ADR-009](ADR-009-decision-contracts-and-content-v2.md) | Контракты решения и формат контента 2 | proposed |
+| [ADR-009](ADR-009-decision-contracts-and-content-v2.md) | Контракты решения и формат контента 2 | accepted |
 
 Зарезервированные номера: `ADR-006` — стратегия сохранений (Milestone 3). Номер `ADR-009` держали пустым под фиксированный симуляционный тик; тик отозван из Gate 0 и входит в постановку модели времени боя на старте Milestone 2, где получит свой номер, а `ADR-009` занят записью выше.
 
