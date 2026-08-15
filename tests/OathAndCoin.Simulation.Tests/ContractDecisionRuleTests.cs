@@ -335,18 +335,28 @@ public class ContractDecisionRuleTests
 
     /// <summary>
     /// Positional overload used by <see cref="DecisionPropertyTests"/>'s
-    /// grids: those tests hold <c>trust</c>, <c>seed</c> and the
-    /// tag/relationship/crew shape fixed and sweep only the six numbers a
-    /// score is made of, so a positional signature reads better at each of
-    /// the thousands of call sites than the named-argument form above.
-    /// Delegates to the named overload above rather than duplicating its
-    /// construction logic — the extra <c>trust: 50</c> argument (a name this
-    /// overload does not have) is what forces overload resolution to prefer
-    /// that method over recursing into this one.
+    /// grids: those tests hold the tag/relationship/crew shape and the seed
+    /// fixed and sweep the numbers a score is made of, so a positional
+    /// signature reads better at each of the thousands of call sites than the
+    /// named-argument form above. Delegates to the named overload above rather
+    /// than duplicating its construction logic — the explicit <c>seed: 1</c>
+    /// argument (a name this overload does not have) is what forces overload
+    /// resolution to prefer that method over recursing into this one.
+    /// <para>
+    /// <c>trust</c> is a parameter here, defaulted rather than hard-coded.
+    /// Review finding: it used to be pinned at 50 inside this method, so the
+    /// trust term contributed the identical 5 in every one of the tens of
+    /// thousands of grid calls, and the only test that swept trust at all took
+    /// the gate path, where the term is never computed —
+    /// <see cref="DecisionPropertyTests.TrustContributesItsOwnTenthOfTheScale"/>
+    /// and <see cref="DecisionPropertyTests.RaisingTrustNeverTurnsAcceptanceIntoRefusal"/>
+    /// are what actually vary it now.
     /// </summary>
     internal static DecisionContext Context(
-        int greed, int caution, int pride, int payment, int risk, ulong ordinal) =>
-        Context(greed: greed, caution: caution, pride: pride, payment: payment, risk: risk, ordinal: ordinal, trust: 50);
+        int greed, int caution, int pride, int payment, int risk, ulong ordinal, int trust = 50) =>
+        Context(
+            greed: greed, caution: caution, pride: pride, payment: payment, risk: risk, ordinal: ordinal,
+            trust: trust, seed: 1);
 
     /// <summary>
     /// A hero with exactly one principle, tagged so it always matches the

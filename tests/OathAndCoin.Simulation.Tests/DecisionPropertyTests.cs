@@ -192,6 +192,98 @@ public class DecisionPropertyTests
         Assert.Contains(Actions.Decline, seenActions);
     }
 
+    /// <summary>
+    /// The mood the grids above actually see. Every one of them sweeps
+    /// ordinals 0..3 at the helper's fixed seed 1, and the value of that
+    /// sweep depends entirely on those four ordinals covering the range —
+    /// which nothing asserted. A changed mixer, a changed stream number or a
+    /// changed default seed would narrow what tens of thousands of assertions
+    /// are exercising, silently and with everything still green.
+    /// </summary>
+    [Fact]
+    public void TheOrdinalsTheGridsSweepReachBothEndsOfTheMoodRange()
+    {
+        var moods = new[] { 0UL, 1UL, 2UL, 3UL }
+            .Select(ordinal => ContractDecisionRule.DrawMood(campaignSeed: 1, ordinal).Value)
+            .ToList();
+
+        Assert.Contains(ContractDecisionRule.MoodMin, moods);
+        Assert.Contains(ContractDecisionRule.MoodMax, moods);
+    }
+
+    /// <summary>
+    /// The trust axis, swept where the contribution is actually computed.
+    /// </summary>
+    /// <remarks>
+    /// Review finding: the positional helper the grids use pinned trust at 50,
+    /// so its term contributed the same 5 in every call, and the one test that
+    /// varied trust went down the gate path — where no contribution is
+    /// computed at all. Replacing the term's divisor (10) with the trait
+    /// scale (100) was caught by exactly one assertion in the whole suite.
+    /// The expectations below are a stated table, not a copy of the
+    /// expression: under a 100 divisor every row except the last collapses to
+    /// "no factor at all", and the last drops from 10 to 1.
+    /// </remarks>
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(1, 0)]
+    [InlineData(25, 2)]
+    [InlineData(50, 5)]
+    [InlineData(75, 7)]
+    [InlineData(99, 9)]
+    [InlineData(100, 10)]
+    public void TrustContributesItsOwnTenthOfTheScale(int trust, int expectedMagnitude)
+    {
+        var decision = ContractDecisionRule.Decide(
+            Context(greed: 0, caution: 0, pride: 0, payment: 0, risk: 0, ordinal: 0, trust: trust));
+
+        var trustFactors = decision.Result.Trace.PositiveFactors
+            .Where(factor => factor.ReasonCode == ReasonCodes.TrustsTheGuild)
+            .ToList();
+
+        if (expectedMagnitude == 0)
+        {
+            // Absent, not a zero-magnitude factor: a term that contributed
+            // nothing is not a reason a player was given.
+            Assert.Empty(trustFactors);
+            return;
+        }
+
+        Assert.Equal(expectedMagnitude, Assert.Single(trustFactors).Magnitude);
+    }
+
+    /// <summary>
+    /// The same monotonicity property the payment and risk grids assert, on
+    /// the axis they hold fixed: more trust in the guild never turns an
+    /// accepted contract down. Greed, caution and pride are sampled at the
+    /// ends and the middle rather than over the whole grid — the axis under
+    /// test is trust, and the full five-way product would multiply the
+    /// suite's slowest tests by seven for no extra claim.
+    /// </summary>
+    [Fact]
+    public void RaisingTrustNeverTurnsAcceptanceIntoRefusal()
+    {
+        foreach (var trait in new[] { 0, 50, 100 })
+            foreach (var payment in Grid)
+                foreach (var risk in Grid)
+                    foreach (var ordinal in new ulong[] { 0, 1, 2, 3 })
+                    {
+                        var accepted = false;
+                        foreach (var trust in Grid)
+                        {
+                            var decision = ContractDecisionRule.Decide(
+                                Context(trait, trait, trait, payment, risk, ordinal, trust));
+                            var accepts = decision.Result.SelectedAction == Actions.Accept;
+
+                            Assert.False(
+                                accepted && !accepts,
+                                $"greed=caution=pride={trait} payment={payment} risk={risk} "
+                                + $"ordinal={ordinal}: raising trust to {trust} turned acceptance into refusal");
+                            accepted |= accepts;
+                        }
+                    }
+    }
+
     [Fact]
     public void IrrelevantFieldsDoNotChangeTheDecision()
     {

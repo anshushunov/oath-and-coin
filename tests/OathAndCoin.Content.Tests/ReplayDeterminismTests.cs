@@ -454,9 +454,23 @@ public class ReplayDeterminismTests
             .ToHashSet();
 
     /// <summary>The factor that weighed most, and which way it pulled.</summary>
+    /// <remarks>
+    /// Every tie is broken explicitly. <see cref="SignedFactorsOf"/> returns a
+    /// hash set, and .NET randomizes string hashing per process, so two
+    /// factors of equal magnitude used to be ordered by whatever the set
+    /// happened to enumerate first — a flaky test with no code change behind
+    /// it, and one that would flake exactly on the grey-zone traces this file
+    /// searches seeds for. Magnitude, then reason code, then direction is a
+    /// total order over a set's elements, so the answer is the same on every
+    /// run whatever order the set is walked in.
+    /// </remarks>
     private static (string Direction, string ReasonCode) DecisiveFactorOf(CausalTrace trace)
     {
-        var strongest = SignedFactorsOf(trace).OrderByDescending(factor => factor.Magnitude).First();
+        var strongest = SignedFactorsOf(trace)
+            .OrderByDescending(factor => factor.Magnitude)
+            .ThenBy(factor => factor.ReasonCode, StringComparer.Ordinal)
+            .ThenBy(factor => factor.Direction, StringComparer.Ordinal)
+            .First();
         return (strongest.Direction, strongest.ReasonCode);
     }
 

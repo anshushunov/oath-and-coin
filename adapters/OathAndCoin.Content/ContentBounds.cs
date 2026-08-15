@@ -1,3 +1,5 @@
+using OathAndCoin.Simulation.Decisions;
+
 namespace OathAndCoin.Content;
 
 /// <summary>
@@ -16,7 +18,18 @@ namespace OathAndCoin.Content;
 public static class ContentBounds
 {
     public const int TraitMin = 0;
-    public const int TraitMax = 100;
+
+    /// <summary>
+    /// Derived from <see cref="ContractDecisionRule.TraitScale"/>, not stated
+    /// again as a literal: the scoring function divides trait-weighted terms
+    /// by that span, so a ceiling raised here without the divisor following
+    /// would be accepted by this loader and by the schema while every one of
+    /// those terms quietly weakened. <c>SchemaAgreementTests</c> holds the
+    /// schema literal to this value, which now makes one chain — divisor,
+    /// bound, schema — rather than three independent numbers that happen to
+    /// read 100.
+    /// </summary>
+    public const int TraitMax = TraitMin + ContractDecisionRule.TraitScale;
 
     public const int PaymentMin = 0;
     public const int PaymentMax = 100;

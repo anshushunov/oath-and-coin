@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
+using OathAndCoin.Tests.Shared;
 
 namespace OathAndCoin.Simulation.Tests;
 
@@ -133,9 +134,22 @@ public class CoreBoundaryTests
 {
     private const string EngineNeedle = "Godot";
 
+    /// <summary>
+    /// The other assembly the core must not know about. ADR-002 puts the
+    /// content pipeline strictly above the simulation — every path, stream
+    /// and byte lives there, and the core is handed already-loaded values —
+    /// but nothing asserted it: the direction was held up only by the fact
+    /// that OathAndCoin.Content already references OathAndCoin.Simulation, so
+    /// the reverse reference would not compile. That is a real guarantee, and
+    /// it is also the wrong place to read it from: it lives in a .csproj, not
+    /// beside the rule, and it says nothing at all about a second content
+    /// assembly appearing later with no cycle to stop it.
+    /// </summary>
+    private const string ContentAssemblyNeedle = "OathAndCoin.Content";
+
     // Whole types banned outright: any reference to the type at all is a
     // violation, regardless of which member is used.
-    private static readonly (string Namespace, string Name)[] BannedTypes =
+    private static readonly (string Namespace, string Name)[] BannedTypes = new (string Namespace, string Name)[]
     {
         // Non-deterministic / wall-clock by construction.
         //
@@ -148,18 +162,9 @@ public class CoreBoundaryTests
         ("System", "Random"),
         ("System.Diagnostics", "Stopwatch"),
 
-        // Filesystem types would break running the simulation headless and
-        // deterministically. System.IO.MemoryStream, StringWriter,
-        // BinaryWriter, etc. are deliberately NOT here — they are
-        // deterministic in-memory types the save-system work will need.
-        ("System.IO", "File"),
-        ("System.IO", "Directory"),
-        ("System.IO", "Path"),
-        ("System.IO", "FileStream"),
-        ("System.IO", "FileInfo"),
-        ("System.IO", "DirectoryInfo"),
-        ("System.IO", "StreamReader"),
-        ("System.IO", "StreamWriter"),
+        // Filesystem types are in ForbiddenTypes.Filesystem, concatenated
+        // below: the presentation boundary guard makes the same promise and
+        // used to keep a shorter list of its own.
 
         // Half is float16; .NET's Half arithmetic is implemented in terms of
         // float under the hood, so leaving it unbanned would be a complete,
@@ -209,7 +214,7 @@ public class CoreBoundaryTests
         // arithmetic are fully specified and produce identical results
         // cross-platform, unlike float/double. It is deliberately allowed
         // and must stay off this list.
-    };
+    }.Concat(ForbiddenTypes.Filesystem).ToArray();
 
     // Individual members banned on types that are otherwise legitimate to
     // use (e.g. DateTime itself, or CultureInfo.InvariantCulture, are fine —
@@ -366,6 +371,11 @@ public class CoreBoundaryTests
                 Assert.False(
                     name.Contains(EngineNeedle, StringComparison.OrdinalIgnoreCase),
                     $"[{project.Name}] AssemblyReference '{name}' contains '{EngineNeedle}'.");
+                Assert.False(
+                    name.Contains(ContentAssemblyNeedle, StringComparison.OrdinalIgnoreCase),
+                    $"[{project.Name}] AssemblyReference '{name}' names the content assembly — the core is "
+                    + "handed already-loaded values and must not reach for the pipeline that loads them "
+                    + "(ADR-002).");
             }
 
             foreach (var handle in reader.TypeReferences)

@@ -55,4 +55,14 @@
     </AssemblyAttribute>
   </ItemGroup>
 
+  <!--
+    One shared statement of the filesystem types this side of the boundary may
+    not reference — linked, the same way RepositoryFixtures already is,
+    because the core guard and the presentation guard used to keep two lists
+    and the shorter one silently allowed Path, FileInfo and DirectoryInfo.
+  -->
+  <ItemGroup>
+    <Compile Include="..\Shared\ForbiddenTypes.cs" Link="ForbiddenTypes.cs" />
+  </ItemGroup>
+
 </Project>

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using OathAndCoin.Content.Scenarios;
+using OathAndCoin.Simulation.Decisions;
 
 namespace OathAndCoin.Content.Tests;
 
@@ -17,6 +18,20 @@ namespace OathAndCoin.Content.Tests;
 /// </summary>
 public class SchemaAgreementTests
 {
+    /// <summary>
+    /// The one check that links the hero-trait range to the divisor the
+    /// scoring function actually uses. <see cref="ContentBounds.TraitMax"/> is
+    /// derived from <see cref="ContractDecisionRule.TraitScale"/>, so this
+    /// cannot fail today — which is the point: it fails the moment someone
+    /// writes the number back in as a literal, which is how the third
+    /// statement of this range got into the scoring function the first time.
+    /// </summary>
+    [Fact]
+    public void TraitRange_IsTheSameSpanTheDecisionRuleDividesBy()
+    {
+        Assert.Equal(ContractDecisionRule.TraitScale, ContentBounds.TraitMax - ContentBounds.TraitMin);
+    }
+
     [Fact]
     public void HeroSchemaBounds_MatchContentBounds()
     {

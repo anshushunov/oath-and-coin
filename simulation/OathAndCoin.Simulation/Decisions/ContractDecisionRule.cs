@@ -88,6 +88,27 @@ public static class ContractDecisionRule
 
     public const int MoodMax = 5;
 
+    /// <summary>
+    /// The span a hero's greed, caution and pride are expressed on, and
+    /// therefore the divisor every trait-weighted term below uses: a trait at
+    /// the top of its range contributes the whole of what it weighs, one at
+    /// the bottom contributes none of it.
+    /// </summary>
+    /// <remarks>
+    /// Declared here, in the layer that divides by it, and derived from here
+    /// by <c>OathAndCoin.Content.ContentBounds.TraitMax</c> — not the other
+    /// way round, because the content layer already depends on this one and
+    /// not the reverse. The rule this closes is <c>ContentBounds</c>'s own,
+    /// word for word: a range may be stated exactly twice, as a constant and
+    /// as a literal in the schema, and "what must not exist is a third,
+    /// hand-copied statement of the same range inside a scoring function".
+    /// Three such copies existed — <c>/ 100</c> in the payment, risk and
+    /// insult terms — so raising the authored ceiling would have been
+    /// accepted by the loader and the schema while every one of those terms
+    /// silently weakened.
+    /// </remarks>
+    public const int TraitScale = 100;
+
     private static readonly ImmutableArray<ContentId> Considered =
         ImmutableArray.Create(Actions.Accept, Actions.Decline);
 
@@ -156,14 +177,14 @@ public static class ContractDecisionRule
         // Выгода: what the contract pays, pulled toward acceptance by greed.
         // The contract is the source of the money; a factor points at the
         // thing a player could go and look at to understand it.
-        var paymentPull = contract.Payment * hero.Greed / 100;
+        var paymentPull = contract.Payment * hero.Greed / TraitScale;
         if (paymentPull > 0)
         {
             positive.Add(new TraceFactor(ReasonCodes.PaymentAttractive, contract.Id, paymentPull));
         }
 
         // Риск: what the contract risks, pushed toward refusal by caution.
-        var riskAversion = contract.Risk * hero.Caution / 100;
+        var riskAversion = contract.Risk * hero.Caution / TraitScale;
         if (riskAversion > 0)
         {
             negative.Add(new TraceFactor(ReasonCodes.RiskTooHigh, contract.Id, riskAversion));
@@ -173,7 +194,7 @@ public static class ContractDecisionRule
         // asked — paid fairly or better, there is no insult at all, not a
         // zero-magnitude one.
         var insult = contract.Payment < contract.Risk
-            ? (contract.Risk - contract.Payment) * hero.Pride / 100
+            ? (contract.Risk - contract.Payment) * hero.Pride / TraitScale
             : 0;
         if (insult > 0)
         {

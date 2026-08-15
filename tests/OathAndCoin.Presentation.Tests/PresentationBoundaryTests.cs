@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
+using OathAndCoin.Tests.Shared;
 
 namespace OathAndCoin.Presentation.Tests;
 
@@ -31,14 +32,14 @@ public class PresentationBoundaryTests
 {
     private const string EngineNeedle = "Godot";
 
-    private static readonly (string Namespace, string Name)[] BannedTypes =
-    {
-        ("System.IO", "File"),
-        ("System.IO", "Directory"),
-        ("System.IO", "FileStream"),
-        ("System.IO", "StreamReader"),
-        ("System.IO", "StreamWriter"),
-    };
+    /// <summary>
+    /// The shared list (<see cref="ForbiddenTypes.Filesystem"/>), not a
+    /// second one. This file used to keep its own five entries while
+    /// <c>CoreBoundaryTests</c> kept eight, so <c>Path</c>, <c>FileInfo</c>
+    /// and <c>DirectoryInfo</c> were free to appear here — the two assemblies
+    /// make the same promise and now read it from the same place.
+    /// </summary>
+    private static readonly (string Namespace, string Name)[] BannedTypes = ForbiddenTypes.Filesystem;
 
     [Fact]
     public void CompiledAssembly_ReferencesNoFilesystemOrEngineType()
