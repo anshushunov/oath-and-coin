@@ -31,6 +31,9 @@ public class SmokeVerdictTests
     private const string ErrorCheckpoint = "load_failed";
     private const string ErrorCode = "CONTENT_ROOT_NOT_FOUND";
 
+    private const string LoadingScenario = "screen_loading";
+    private const string LoadingCheckpoint = "screen_loading";
+
     [Fact]
     public void Verdict_AcceptsCleanSuccessRun()
     {
@@ -47,6 +50,37 @@ public class SmokeVerdictTests
 
         Assert.True(verdict.Passed);
         Assert.Empty(verdict.Reasons);
+    }
+
+    /// <summary>
+    /// <see cref="ScenarioOutcomeKind.Loading"/> is the outcome
+    /// <c>OathAndCoin.Content.Scenarios.ScenarioManifest</c> reserves for the
+    /// fifth <c>ContractOfferScreenModel.ScreenState</c> — the one the model
+    /// factory never builds, shown before any content is read at all. This
+    /// pins <see cref="SmokeVerdict.Evaluate"/>'s outcome-kind comparison
+    /// (<c>"loading"</c> on both sides) the same way the success and error
+    /// cases above already do.
+    /// </summary>
+    [Fact]
+    public void Verdict_AcceptsCleanLoadingRun()
+    {
+        var verdict = SmokeVerdict.Evaluate(CleanRun(loadingOutcome: true));
+
+        Assert.True(verdict.Passed);
+        Assert.Empty(verdict.Reasons);
+    }
+
+    [Fact]
+    public void Verdict_RejectsSuccessWhenManifestExpectsLoading()
+    {
+        var observation = CleanRun(
+            loadingOutcome: true,
+            eventOverride: CleanEvent(loadingOutcome: true) with { OutcomeKind = "success" });
+
+        var verdict = SmokeVerdict.Evaluate(observation);
+
+        Assert.False(verdict.Passed);
+        Assert.Contains(verdict.Reasons, reason => reason.Contains("outcome", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -379,16 +413,16 @@ public class SmokeVerdictTests
         Assert.Contains(verdict.Reasons, reason => reason.Contains("not written by this run", StringComparison.OrdinalIgnoreCase));
     }
 
-    private static TerminalEvent CleanEvent(bool errorOutcome = false) => new(
+    private static TerminalEvent CleanEvent(bool errorOutcome = false, bool loadingOutcome = false) => new(
         SchemaVersion: TerminalEvent.SupportedSchemaVersion,
         Event: "terminal",
-        OutcomeKind: errorOutcome ? "error" : "success",
-        Scenario: errorOutcome ? ErrorScenario : Scenario,
+        OutcomeKind: loadingOutcome ? "loading" : errorOutcome ? "error" : "success",
+        Scenario: loadingOutcome ? LoadingScenario : errorOutcome ? ErrorScenario : Scenario,
         Seed: Seed,
-        Checkpoint: errorOutcome ? ErrorCheckpoint : Checkpoint,
+        Checkpoint: loadingOutcome ? LoadingCheckpoint : errorOutcome ? ErrorCheckpoint : Checkpoint,
         ErrorCode: errorOutcome ? ErrorCode : null,
-        ContentVersion: errorOutcome ? null : "content-abc123",
-        CanonicalHash: errorOutcome ? null : CanonicalHash,
+        ContentVersion: (errorOutcome || loadingOutcome) ? null : "content-abc123",
+        CanonicalHash: (errorOutcome || loadingOutcome) ? null : CanonicalHash,
         ReadModelHash: ReadModelHash,
         RenderedUiHash: RenderedUiHash,
         FrameSha256: FrameSha256,
@@ -409,6 +443,7 @@ public class SmokeVerdictTests
     /// </summary>
     private static RunObservation CleanRun(
         bool errorOutcome = false,
+        bool loadingOutcome = false,
         TerminalEvent? eventOverride = null,
         ImmutableArray<TerminalEvent>? eventsOverride = null,
         ImmutableArray<string>? parseErrorsOverride = null,
@@ -417,18 +452,22 @@ public class SmokeVerdictTests
         ImmutableArray<string>? diagnosticLines = null,
         FrameInspection? frameOverride = null)
     {
-        var terminalEvent = eventOverride ?? CleanEvent(errorOutcome);
+        var terminalEvent = eventOverride ?? CleanEvent(errorOutcome, loadingOutcome);
         var events = eventsOverride ?? ImmutableArray.Create(terminalEvent);
 
+        var expectedOutcome = loadingOutcome
+            ? ScenarioOutcomeKind.Loading
+            : errorOutcome ? ScenarioOutcomeKind.Error : ScenarioOutcomeKind.Success;
+
         return new RunObservation(
-            Scenario: errorOutcome ? ErrorScenario : Scenario,
-            Checkpoint: errorOutcome ? ErrorCheckpoint : Checkpoint,
+            Scenario: loadingOutcome ? LoadingScenario : errorOutcome ? ErrorScenario : Scenario,
+            Checkpoint: loadingOutcome ? LoadingCheckpoint : errorOutcome ? ErrorCheckpoint : Checkpoint,
             Seed: Seed,
             RequestedWidth: FrameWidth,
             RequestedHeight: FrameHeight,
-            ExpectedOutcome: errorOutcome ? ScenarioOutcomeKind.Error : ScenarioOutcomeKind.Success,
+            ExpectedOutcome: expectedOutcome,
             ExpectedErrorCode: errorOutcome ? ErrorCode : null,
-            ExpectedCanonicalHash: errorOutcome ? null : CanonicalHash,
+            ExpectedCanonicalHash: (errorOutcome || loadingOutcome) ? null : CanonicalHash,
             ExpectedReadModelHash: ReadModelHash,
             ExpectedRenderedUiHash: RenderedUiHash,
             Terminal: new TerminalParseResult(events, parseErrorsOverride ?? ImmutableArray<string>.Empty),

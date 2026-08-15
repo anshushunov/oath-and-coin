@@ -22,11 +22,15 @@ public static class ContractOfferScreenModelFactory
     /// <summary>
     /// This screen's title. A localization key, not text — see the remarks on
     /// <see cref="ContractOfferScreenModel"/> and TDD §11.1: this assembly
-    /// never resolves one. Internal (not private) so the catalogue-completeness
-    /// test can assert it is actually a key the locale carries — otherwise
-    /// nothing would have caught this constant naming a key nobody authored.
+    /// never resolves one. Public: the catalogue-completeness test asserts it
+    /// is actually a key the locale carries, and — since Task 12 — both the
+    /// game (<c>ContractOfferScreen</c>'s <see cref="ScreenState.Loading"/>
+    /// model, which <see cref="FromOutcome(ScenarioOutcome)"/> never builds)
+    /// and the runtime harness (its own independent copy of that same model)
+    /// need the identical constant to agree on what that screen's title key
+    /// is without either one inventing its own spelling of it.
     /// </summary>
-    internal const string TitleKey = "screen.contract_offer.title";
+    public const string TitleKey = "screen.contract_offer.title";
 
     /// <summary>
     /// How many reasons a response line shows at most (spec: an explanation a

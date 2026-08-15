@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Threading.Tasks;
 using Godot;
 using OathAndCoin.Content;
@@ -12,11 +13,11 @@ namespace OathAndCoin.Game.App;
 /// <summary>
 /// The whole game, for now: parses the protocol's own argv
 /// (<see cref="GameArguments"/>), loads content and runs one scenario up to a
-/// checkpoint, shows the result on <see cref="SpikeScreen"/>, and — in
-/// <c>--smoke</c> mode only — drives an automated capture of that checkpoint
-/// through <see cref="CaptureProtocol"/>. There is exactly one scene
-/// (<c>Main.tscn</c>) and exactly one script; later runtime-harness tasks are
-/// expected to grow the game, not this file.
+/// checkpoint, shows the result on <see cref="ContractOfferScreen"/>, and —
+/// in <c>--smoke</c> mode only — drives an automated capture of that
+/// checkpoint through <see cref="CaptureProtocol"/>. There is exactly one
+/// scene (<c>Main.tscn</c>) and exactly one script; later runtime-harness
+/// tasks are expected to grow the game, not this file.
 /// </summary>
 public partial class Main : Control
 {
@@ -27,6 +28,26 @@ public partial class Main : Control
     /// different exit code so a caller can tell the two apart.
     /// </summary>
     private const int ExitArgumentError = 2;
+
+    /// <summary>
+    /// The model <see cref="ContractOfferScreenModelFactory"/> deliberately
+    /// never builds (see the remarks on <see cref="ScreenState.Loading"/>):
+    /// there is no <see cref="ScenarioOutcome"/> yet to build one from. This
+    /// is the one screen this file constructs by hand, shown exactly when a
+    /// scenario's manifest declares <see cref="ScenarioOutcomeKind.Loading"/>
+    /// — a checkpoint stood in for "before a <see cref="ScenarioOutcome"/>
+    /// exists", never reached by actually running anything.
+    /// </summary>
+    private static readonly ContractOfferScreenModel LoadingModel = new()
+    {
+        State = ScreenState.Loading,
+        TitleKey = ContractOfferScreenModelFactory.TitleKey,
+        Contract = null,
+        Roster = ImmutableArray<HeroCard>.Empty,
+        Responses = ImmutableArray<ResponseLine>.Empty,
+        ErrorCode = null,
+        ErrorDetail = null,
+    };
 
     public override void _Ready()
     {
@@ -50,8 +71,16 @@ public partial class Main : Control
 
         var loaded = LoadModel(arguments);
 
-        var screen = new SpikeScreen();
-        screen.Render(loaded.Model);
+        // The locale catalogue is loaded from the repository's own
+        // content/locale tree, never from arguments.ContentRoot: a scenario
+        // simulating a broken or substituted content root (content_error,
+        // screen_empty) still has to show a title, and that tree is not
+        // where either scenario points --content at (see ResolveLocaleFile).
+        var catalogue = LocaleCatalogue.Load(ResolveLocaleFile(arguments));
+        var textSource = new TextSource(catalogue);
+
+        var screen = new ContractOfferScreen();
+        screen.Render(loaded.Model, textSource);
         AddChild(screen);
 
         if (!arguments.Smoke)
@@ -66,7 +95,7 @@ public partial class Main : Control
 
         var readModelHash = ContractOfferScreenModelFactory.ReadModelHash(loaded.Model);
         var renderedUiHash = RenderedUiSnapshot.Hash(screen.Snapshot());
-        var outcomeKind = loaded.Model.ErrorCode is null ? "success" : "error";
+        var outcomeKind = OutcomeKindFor(loaded.Model);
         var surface = new GodotCaptureSurface(GetViewport(), GetTree(), arguments.ScreenshotPath);
 
         // See the remarks on GodotCaptureSurface for why this runs on a
@@ -95,11 +124,21 @@ public partial class Main : Control
         });
     }
 
+    /// <summary>
+    /// The terminal event's <c>outcome_kind</c> for <paramref name="model"/>:
+    /// <c>"loading"</c> for the one state the factory never builds,
+    /// otherwise the same success/error split as before.
+    /// </summary>
+    private static string OutcomeKindFor(ContractOfferScreenModel model) =>
+        model.State == ScreenState.Loading ? "loading" : model.ErrorCode is null ? "success" : "error";
+
     /// <summary>What loading content and running the scenario up to its checkpoint produced.</summary>
     /// <param name="Model">The screen to show — an error model when loading failed before any decision ran.</param>
     /// <param name="ContentVersion">
     /// <see cref="ContentSet.ContentVersion"/> of the loaded content, or
-    /// <c>null</c> when content never finished loading.
+    /// <c>null</c> when content never finished loading (including the
+    /// <see cref="ScreenState.Loading"/> screen, which never starts loading
+    /// at all).
     /// </param>
     /// <param name="CanonicalHash">
     /// <see cref="DeterminismArtifact.Hash"/> of the run, or <c>null</c> for the same reason.
@@ -107,30 +146,85 @@ public partial class Main : Control
     private readonly record struct LoadResult(ContractOfferScreenModel Model, string? ContentVersion, string? CanonicalHash);
 
     /// <summary>
-    /// Loads content and runs the requested scenario up to its checkpoint.
+    /// Loads the requested scenario's manifest and commands, resolves the
+    /// requested checkpoint against them, and then — unless the manifest
+    /// declares <see cref="ScreenState.Loading"/>, in which case there is
+    /// nothing further to do — loads content and runs the scenario up to
+    /// that checkpoint.
     /// </summary>
     /// <remarks>
-    /// Loading happens in five stages, each mapped to its own error code by
-    /// which stage failed — never by matching on an exception message, which
-    /// is free text meant for a person, not a stable identifier a tool
-    /// compares runs on. <see cref="ScenarioManifest.Load"/>,
-    /// <see cref="ScenarioCommands.Load"/> and <see cref="CheckpointResolver.Resolve"/>
-    /// all throw the same <see cref="InvalidDataException"/> the three
-    /// content stages do — including for an ordinary typo in <c>--scenario</c>
-    /// or <c>--checkpoint</c>, not just a corrupted file — so leaving them
-    /// uncaught would crash <see cref="_Ready"/> with no screen shown and no
-    /// terminal line emitted, right after four stages that carefully turn the
-    /// same exception type into an error screen instead:
+    /// The scenario stage runs before the four content stages, unlike the
+    /// task that first wrote this method: <see cref="ScreenState.Loading"/>
+    /// is a fact about the scenario alone (its manifest says so), decided
+    /// before this method would otherwise ask whether a content root even
+    /// exists — asking that first would mean a loading scenario's manifest
+    /// is never actually consulted, which defeats the one thing this stage
+    /// exists to decide. Reordering does not change what any other scenario
+    /// reports: <c>content_error</c>'s manifest is itself well-formed, so it
+    /// still falls through to the unmoved content-root check below exactly
+    /// as before.
+    /// <para>
+    /// Every stage past this one is caught the same way it always was — by
+    /// which <see cref="InvalidDataException"/>-throwing call failed, never
+    /// by matching on an exception message, which is free text meant for a
+    /// person, not a stable identifier a tool compares runs on:
     /// <list type="bullet">
+    /// <item><c>SCENARIO_INVALID</c> — <see cref="ScenarioManifest.Load"/> or <see cref="ScenarioCommands.Load"/> could not read the scenario's own files (missing, malformed, no commands).</item>
+    /// <item><c>CHECKPOINT_UNKNOWN</c> — <see cref="CheckpointResolver.Resolve"/> could not resolve <c>--checkpoint</c> against an otherwise valid scenario (unknown name, or a manifest with no checkpoints at all).</item>
     /// <item><c>CONTENT_ROOT_NOT_FOUND</c> — the content directory itself is missing, checked directly rather than inferred from <see cref="ContentSet.Load"/>'s own message.</item>
     /// <item><c>SCHEMA_INVALID</c> — <see cref="ContentSchemas.ValidateOrThrow"/> (validation stage 1, TDD §11.2) rejected a file.</item>
     /// <item><c>CONTENT_INVALID</c> — <see cref="ContentSet.Load"/> itself rejected a file past schema validation (an id reused, a value out of range).</item>
-    /// <item><c>SCENARIO_INVALID</c> — <see cref="ScenarioManifest.Load"/> or <see cref="ScenarioCommands.Load"/> could not read the scenario's own files (missing, malformed, no commands).</item>
-    /// <item><c>CHECKPOINT_UNKNOWN</c> — <see cref="CheckpointResolver.Resolve"/> could not resolve <c>--checkpoint</c> against an otherwise valid scenario (unknown name, or a manifest with no checkpoints at all).</item>
     /// </list>
+    /// </para>
     /// </remarks>
     private static LoadResult LoadModel(GameArguments arguments)
     {
+        var manifestPath = Path.Combine(arguments.ScenarioRoot, $"{arguments.Scenario}.manifest.json");
+        var commandsPath = Path.Combine(arguments.ScenarioRoot, $"{arguments.Scenario}.commands.json");
+
+        ScenarioManifest manifest;
+        IReadOnlyList<ScenarioCommand> commands;
+        try
+        {
+            manifest = ScenarioManifest.Load(manifestPath);
+
+            // A scenario that fails before any command runs has no command
+            // file at all (see scenarios/content_error.manifest.json), and
+            // neither does one that is shown before any content is read at
+            // all (scenarios/screen_loading.manifest.json). Resolve still
+            // refuses a checkpoint that names a command id, so a command
+            // file that has genuinely gone missing is caught there rather
+            // than assumed away.
+            commands = File.Exists(commandsPath)
+                ? ScenarioCommands.Load(commandsPath)
+                : Array.Empty<ScenarioCommand>();
+        }
+        catch (InvalidDataException exception)
+        {
+            return new LoadResult(
+                ContractOfferScreenModelFactory.FromOutcome(("SCENARIO_INVALID", exception.Message)),
+                ContentVersion: null,
+                CanonicalHash: null);
+        }
+
+        Checkpoint checkpoint;
+        try
+        {
+            checkpoint = CheckpointResolver.Resolve(manifest, commands, arguments.Checkpoint);
+        }
+        catch (InvalidDataException exception)
+        {
+            return new LoadResult(
+                ContractOfferScreenModelFactory.FromOutcome(("CHECKPOINT_UNKNOWN", exception.Message)),
+                ContentVersion: null,
+                CanonicalHash: null);
+        }
+
+        if (manifest.ExpectedOutcome == ScenarioOutcomeKind.Loading)
+        {
+            return new LoadResult(LoadingModel, ContentVersion: null, CanonicalHash: null);
+        }
+
         var contentRoot = Path.GetFullPath(arguments.ContentRoot);
         if (!Directory.Exists(contentRoot))
         {
@@ -171,41 +265,6 @@ public partial class Main : Control
                 CanonicalHash: null);
         }
 
-        // Scenario and commands files follow the naming convention every
-        // scenario under scenarios/ already uses: "<id>.manifest.json" and
-        // "<id>.commands.json" (see scenarios/gate0.manifest.json and
-        // scenarios/gate0.commands.json).
-        var manifestPath = Path.Combine(arguments.ScenarioRoot, $"{arguments.Scenario}.manifest.json");
-        var commandsPath = Path.Combine(arguments.ScenarioRoot, $"{arguments.Scenario}.commands.json");
-
-        ScenarioManifest manifest;
-        IReadOnlyList<ScenarioCommand> commands;
-        try
-        {
-            manifest = ScenarioManifest.Load(manifestPath);
-            commands = ScenarioCommands.Load(commandsPath);
-        }
-        catch (InvalidDataException exception)
-        {
-            return new LoadResult(
-                ContractOfferScreenModelFactory.FromOutcome(("SCENARIO_INVALID", exception.Message)),
-                ContentVersion: null,
-                CanonicalHash: null);
-        }
-
-        Checkpoint checkpoint;
-        try
-        {
-            checkpoint = CheckpointResolver.Resolve(manifest, commands, arguments.Checkpoint);
-        }
-        catch (InvalidDataException exception)
-        {
-            return new LoadResult(
-                ContractOfferScreenModelFactory.FromOutcome(("CHECKPOINT_UNKNOWN", exception.Message)),
-                ContentVersion: null,
-                CanonicalHash: null);
-        }
-
         var commandsUpTo = CheckpointResolver.CommandsUpTo(commands, checkpoint);
 
         var outcome = ScenarioRunner.Run(content, commandsUpTo, arguments.Seed);
@@ -213,6 +272,27 @@ public partial class Main : Control
             ContractOfferScreenModelFactory.FromOutcome(outcome),
             content.ContentVersion,
             DeterminismArtifact.Hash(outcome));
+    }
+
+    /// <summary>
+    /// The locale catalogue's file, resolved from the repository root rather
+    /// than <see cref="GameArguments.ContentRoot"/>: a scenario that points
+    /// <c>--content</c> at a faulted or substituted root
+    /// (<c>content_error</c>, <c>screen_empty</c>) still has to resolve
+    /// <see cref="ContractOfferScreenModelFactory.TitleKey"/> to something a
+    /// player reads, and neither of those roots carries a
+    /// <c>locale/</c> directory. <see cref="GameArguments.ScenarioRoot"/> is
+    /// never faulted or substituted by anything this codebase does today
+    /// (see <c>OathAndCoin.Harness.SmokeRun.GameRequest</c>), so its parent
+    /// is a stable way to find the repository root back.
+    /// </summary>
+    private static string ResolveLocaleFile(GameArguments arguments)
+    {
+        var repositoryRoot = Path.GetDirectoryName(Path.GetFullPath(arguments.ScenarioRoot))
+            ?? throw new InvalidOperationException(
+                $"Could not determine the repository root from scenario root '{arguments.ScenarioRoot}'.");
+
+        return Path.Combine(repositoryRoot, "content", "locale", "ru.json");
     }
 
     /// <summary>

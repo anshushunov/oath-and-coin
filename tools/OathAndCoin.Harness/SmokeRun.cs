@@ -351,12 +351,48 @@ public static class SmokeRun
         /// reproduced error code is checked against the manifest's for the
         /// same reason.
         /// </remarks>
+        /// <summary>
+        /// The model <see cref="ContractOfferScreenModelFactory"/> deliberately
+        /// never builds (see the remarks on <see cref="ScreenState.Loading"/>).
+        /// Built here, independently of <c>Main.LoadModel</c>'s own copy of
+        /// the same value, for the same reason the rest of this type
+        /// reproduces the game rather than asking it: this tool has to arrive
+        /// at "loading" without running anything, on its own.
+        /// </summary>
+        private static readonly ContractOfferScreenModel LoadingModel = new()
+        {
+            State = ScreenState.Loading,
+            TitleKey = ContractOfferScreenModelFactory.TitleKey,
+            Contract = null,
+            Roster = ImmutableArray<HeroCard>.Empty,
+            Responses = ImmutableArray<ResponseLine>.Empty,
+            ErrorCode = null,
+            ErrorDetail = null,
+        };
+
         public static Expectation Build(string repositoryRoot, string runId, ScenarioInputs inputs, ulong seed)
         {
-            var contentRoot = ApplyFault(
-                inputs.Manifest.Fault,
-                Path.Combine(repositoryRoot, "content"),
-                Path.Combine(repositoryRoot, "artifacts", "faults", runId));
+            var catalogue = LocaleCatalogue.Load(Path.Combine(repositoryRoot, "content", "locale", "ru.json"));
+
+            if (inputs.Manifest.ExpectedOutcome == ScenarioOutcomeKind.Loading)
+            {
+                // No content is read for this outcome — see the remarks on
+                // Main.LoadModel's reordering. The content root below is
+                // never actually consulted by the game for this manifest,
+                // but --content still needs some existing value to carry.
+                return new Expectation(
+                    Path.Combine(repositoryRoot, "content"),
+                    CanonicalHash: null,
+                    ContractOfferScreenModelFactory.ReadModelHash(LoadingModel),
+                    RenderedUiSnapshot.Hash(RenderedUiSnapshot.Expected(LoadingModel, catalogue)));
+            }
+
+            var contentRoot = inputs.Manifest.ContentRoot is { } overrideRoot
+                ? Path.GetFullPath(Path.Combine(repositoryRoot, overrideRoot))
+                : ApplyFault(
+                    inputs.Manifest.Fault,
+                    Path.Combine(repositoryRoot, "content"),
+                    Path.Combine(repositoryRoot, "artifacts", "faults", runId));
 
             ContractOfferScreenModel model;
             string? canonicalHash = null;
@@ -393,7 +429,7 @@ public static class SmokeRun
                 contentRoot,
                 canonicalHash,
                 ContractOfferScreenModelFactory.ReadModelHash(model),
-                RenderedUiSnapshot.Hash(RenderedUiSnapshot.Expected(model)));
+                RenderedUiSnapshot.Hash(RenderedUiSnapshot.Expected(model, catalogue)));
         }
 
         /// <summary>

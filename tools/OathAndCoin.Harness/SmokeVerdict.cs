@@ -313,6 +313,7 @@ public static class SmokeVerdict
     {
         ScenarioOutcomeKind.Success => "success",
         ScenarioOutcomeKind.Error => "error",
+        ScenarioOutcomeKind.Loading => "loading",
         _ => throw new ArgumentOutOfRangeException(nameof(outcome), outcome, "Unknown scenario outcome kind."),
     };
 }
