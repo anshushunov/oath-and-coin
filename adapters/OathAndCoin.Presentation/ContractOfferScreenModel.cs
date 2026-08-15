@@ -91,6 +91,18 @@ public sealed record HeroCard(
 /// One hero's answer to the offered contract.
 /// </summary>
 /// <param name="HeroDefinition">The content id text of the hero who answered.</param>
+/// <param name="HeroDisplayNameKey">
+/// The same localization key <see cref="HeroCard.DisplayNameKey"/> carries
+/// for this hero elsewhere on the screen (joined by
+/// <paramref name="HeroDefinition"/> — see
+/// <see cref="ContractOfferScreenModelFactory.FromOutcome(OathAndCoin.Content.Scenarios.ScenarioOutcome)"/>'s
+/// remarks). Review finding: without this, removing
+/// <paramref name="HeroDefinition"/> from the screen (it is a raw content
+/// id, never shown directly — TDD §11.1) left a response line naming no one
+/// at all; a player reading the screen has to know whose action and reasons
+/// these are, and the hero card above answers a different question
+/// (who is in the roster) than this one (who gave this particular answer).
+/// </param>
 /// <param name="Action">The content id text of the chosen action (see <see cref="OathAndCoin.Simulation.Decisions.Actions"/>).</param>
 /// <param name="Reasons">
 /// At most three reasons, strongest first — see
@@ -113,6 +125,7 @@ public sealed record HeroCard(
 /// </param>
 public sealed record ResponseLine(
     string HeroDefinition,
+    string HeroDisplayNameKey,
     string Action,
     ImmutableArray<ReasonLine> Reasons,
     string? BlockedByEntity,

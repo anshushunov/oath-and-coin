@@ -26,19 +26,22 @@ namespace OathAndCoin.Game.Ui;
 /// <para>
 /// <b>No raw identifier ever becomes a label.</b> Every field that is
 /// actually a localization key — <see cref="ContractOfferScreenModel.TitleKey"/>,
-/// the screen-state key, a display-name key, a tag key, a reason code, an
-/// action, whether the hero wavered, the error code, and a
-/// <see cref="QualitativeGrade"/> by way of <see cref="QualitativeScale.KeyFor"/> —
-/// is resolved to player-facing text before it becomes a <see cref="Label"/>.
-/// A field that carries a raw content id purely for the model's own
-/// bookkeeping (<see cref="ContractLine.Definition"/>,
-/// <see cref="HeroCard.Definition"/>, <see cref="ResponseLine.HeroDefinition"/>,
-/// <see cref="ReasonLine.SourceEntity"/>, <see cref="ResponseLine.BlockedByEntity"/>)
-/// is not shown at all — it is not a name a player reads, showing it next to
-/// the resolved name it duplicates would be exactly the raw-identifier leak
-/// TDD §11.1 forbids, and <see cref="ContractOfferScreenModelFactory.ReadModelHash"/>
-/// already hashes it without any help from this screen. The two objective
-/// numbers spec calls out on purpose — <see cref="ContractLine.Payment"/>,
+/// the screen-state key, a display-name key (including
+/// <see cref="ResponseLine.HeroDisplayNameKey"/>, joined onto a response by
+/// its hero's own id rather than carried as one — see that field's remarks),
+/// a tag key, a reason code, an action, whether the hero wavered, the error
+/// code, and a <see cref="QualitativeGrade"/> by way of
+/// <see cref="QualitativeScale.KeyFor"/> — is resolved to player-facing text
+/// before it becomes a <see cref="Label"/>. A field that carries a raw
+/// content id purely for the model's own bookkeeping
+/// (<see cref="ContractLine.Definition"/>, <see cref="HeroCard.Definition"/>,
+/// <see cref="ResponseLine.HeroDefinition"/>, <see cref="ReasonLine.SourceEntity"/>,
+/// <see cref="ResponseLine.BlockedByEntity"/>) is not shown at all — it is not
+/// a name a player reads, showing it next to the resolved name it duplicates
+/// would be exactly the raw-identifier leak TDD §11.1 forbids, and
+/// <see cref="ContractOfferScreenModelFactory.ReadModelHash"/> already hashes
+/// it without any help from this screen. The two objective numbers spec
+/// calls out on purpose — <see cref="ContractLine.Payment"/>,
 /// <see cref="ContractLine.RequiredCrew"/>/<see cref="ContractLine.AcceptedCount"/> —
 /// are the one kind of value this screen still shows literally, because they
 /// were never a key to resolve in the first place.
@@ -96,14 +99,38 @@ public sealed partial class ContractOfferScreen : VBoxContainer
             AddChild(BuildContractLine(contract, textSource));
         }
 
-        foreach (var hero in model.Roster)
+        // Roster and responses side by side, not stacked one after the
+        // other: review finding — a single vertical stack of six hero cards
+        // followed by up to six response blocks ran well past the window's
+        // fixed 720px height, and the captured frame is this proof's only
+        // evidence a person can actually read the screen. It cut off before
+        // a single response line, which is exactly backwards — a response
+        // and its reasons are what the milestone is meant to prove a tester
+        // notices. Two columns share the same fixed height instead of
+        // spending all of it on the roster first; CollectTexts still visits
+        // every roster label before every response label (a depth-first walk
+        // does not care which container a subtree hangs off), so this is a
+        // layout change only — the text order RenderedUiSnapshot.Expected
+        // expects is unchanged.
+        if (!model.Roster.IsEmpty || !model.Responses.IsEmpty)
         {
-            AddChild(BuildHeroCard(hero, textSource));
-        }
+            var columns = new HBoxContainer();
 
-        foreach (var response in model.Responses)
-        {
-            AddChild(BuildResponseLine(response, textSource));
+            var rosterColumn = new VBoxContainer();
+            foreach (var hero in model.Roster)
+            {
+                rosterColumn.AddChild(BuildHeroCard(hero, textSource));
+            }
+
+            var responsesColumn = new VBoxContainer();
+            foreach (var response in model.Responses)
+            {
+                responsesColumn.AddChild(BuildResponseLine(response, textSource));
+            }
+
+            columns.AddChild(rosterColumn);
+            columns.AddChild(responsesColumn);
+            AddChild(columns);
         }
     }
 
@@ -165,6 +192,7 @@ public sealed partial class ContractOfferScreen : VBoxContainer
     private static VBoxContainer BuildResponseLine(ResponseLine response, TextSource textSource)
     {
         var block = new VBoxContainer();
+        block.AddChild(BuildLabel(textSource.Resolve(response.HeroDisplayNameKey)));
         block.AddChild(BuildLabel(textSource.Resolve(ActionKeys.For(response.Action))));
 
         foreach (var reason in response.Reasons)

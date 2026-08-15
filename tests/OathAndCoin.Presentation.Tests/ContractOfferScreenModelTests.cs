@@ -420,6 +420,7 @@ public class ContractOfferScreenModelTests
             { "roster-inclination-keys", normal, WithHero(normal, bram with { InclinationKeys = bram.InclinationKeys.Add("trait.extra") }) },
             { "responses-order", normal, normal with { Responses = normal.Responses.SetItem(0, normal.Responses[1]).SetItem(1, normal.Responses[0]) } },
             { "response-hero-definition", normal, WithResponse(normal, acceptResponse with { HeroDefinition = "core:other" }) },
+            { "response-hero-display-name-key", normal, WithResponse(normal, acceptResponse with { HeroDisplayNameKey = "hero.core.other.name" }) },
             { "response-action", normal, WithResponse(normal, acceptResponse with { Action = "action:decline" }) },
             { "response-blocked-by-entity", normal, WithResponse(normal, acceptResponse with { BlockedByEntity = "core:something" }) },
             { "response-wavered", normal, WithResponse(normal, acceptResponse with { Wavered = !acceptResponse.Wavered }) },
@@ -498,6 +499,7 @@ public class ContractOfferScreenModelTests
 
         foreach (var response in model.Responses)
         {
+            Assert.Contains(catalogue[response.HeroDisplayNameKey], snapshot.Texts);
             Assert.Contains(catalogue[ActionKeys.For(response.Action)], snapshot.Texts);
             Assert.Contains(catalogue[WaveredKeys.For(response.Wavered)], snapshot.Texts);
             Assert.DoesNotContain(response.HeroDefinition, snapshot.Texts);
@@ -581,12 +583,14 @@ public class ContractOfferScreenModelTests
         Responses = ImmutableArray.Create(
             new ResponseLine(
                 "core:bram",
+                "hero.core.bram.name",
                 "action:accept",
                 ImmutableArray.Create(new ReasonLine(ReasonCodes.PaymentAttractive, "core:escort_the_caravan", QualitativeGrade.High)),
                 null,
                 false),
             new ResponseLine(
-                "core:zara", "action:decline", ImmutableArray<ReasonLine>.Empty, "core:will_not_strike_a_temple", false)),
+                "core:zara", "hero.core.zara.name", "action:decline", ImmutableArray<ReasonLine>.Empty,
+                "core:will_not_strike_a_temple", false)),
         ErrorCode = null,
         ErrorDetail = null,
     };

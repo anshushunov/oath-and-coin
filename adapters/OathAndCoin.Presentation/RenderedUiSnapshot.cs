@@ -107,6 +107,7 @@ public sealed record RenderedUiSnapshot(ImmutableArray<string> Texts)
 
         foreach (var response in model.Responses)
         {
+            texts.Add(Resolve(catalogue, response.HeroDisplayNameKey));
             texts.Add(Resolve(catalogue, ActionKeys.For(response.Action)));
 
             foreach (var reason in response.Reasons)

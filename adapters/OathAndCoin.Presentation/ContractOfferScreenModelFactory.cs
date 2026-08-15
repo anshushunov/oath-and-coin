@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -91,9 +92,20 @@ public static class ContractOfferScreenModelFactory
 
         var roster = state.Heroes.Values.Select(hero => ToHeroCard(hero, state.TraitRules)).ToImmutableArray();
 
+        // Review finding (Critical): a response line carries no display key
+        // of its own — HeroState has one (HeroState.DisplayNameKey), a
+        // StepOutcome does not — so it is joined here, by the hero's own
+        // Definition, against the same roster this factory already built.
+        // Built from state.Heroes directly rather than from roster (an
+        // equivalent join key either way): resolving before ToHeroCard would
+        // have meant threading the map through that method's own signature
+        // for no benefit.
+        var heroDisplayNameKeys = state.Heroes.Values.ToImmutableDictionary(
+            hero => hero.Definition.Value, hero => hero.DisplayNameKey);
+
         var responses = outcome.Steps
             .Where(step => step.Decision is not null && step.Command.Contract == contract.Id)
-            .Select(ToResponseLine)
+            .Select(step => ToResponseLine(step, heroDisplayNameKeys))
             .ToImmutableArray();
 
         var screenState = contract.RespondedBy.Count >= roster.Length ? ScreenState.Normal : ScreenState.Incomplete;
@@ -263,13 +275,28 @@ public static class ContractOfferScreenModelFactory
                 $"Hero '{hero.Definition}' carries trait id '{traitId}', but GameState.TraitRules has no "
                 + "entry for it — a content-loading bug, not a hero with no opinion.");
 
-    private static ResponseLine ToResponseLine(StepOutcome step)
+    private static ResponseLine ToResponseLine(
+        StepOutcome step, IReadOnlyDictionary<string, string> heroDisplayNameKeys)
     {
         var decision = step.Decision!;
         var hero = step.HeroDefinition
             ?? throw new InvalidOperationException(
                 $"Step {step.Command.CommandId} produced a decision without a resolved hero — "
                 + "ScenarioRunner should never return that combination.");
+
+        // A bare indexer here would surface a hero missing from the roster
+        // as a bare KeyNotFoundException with no clue which hero or which
+        // step — the same "should never happen, but name it when it does"
+        // stance ResolveTrait already takes for the identical shape of
+        // lookup. A step naming a hero absent from state.Heroes is a
+        // ScenarioRunner bug (it resolved HeroDefinition from that same
+        // dictionary), not a hero this screen has no name for.
+        var heroDisplayNameKey = heroDisplayNameKeys.TryGetValue(hero.Value, out var key)
+            ? key
+            : throw new InvalidOperationException(
+                $"Step {step.Command.CommandId} answered for hero '{hero.Value}', but the roster this "
+                + "factory built has no display-name key for it — a content-loading or roster-building bug, "
+                + "not a hero with no name.");
 
         if (!decision.Trace.BlockedBy.IsEmpty)
         {
@@ -278,12 +305,13 @@ public static class ContractOfferScreenModelFactory
             // computing anything, never a guess.
             var block = decision.Trace.BlockedBy[0];
             return new ResponseLine(
-                hero.Value, decision.SelectedAction.Value, ImmutableArray<ReasonLine>.Empty,
+                hero.Value, heroDisplayNameKey, decision.SelectedAction.Value, ImmutableArray<ReasonLine>.Empty,
                 block.SourceEntity.Value, Wavered: false);
         }
 
         return new ResponseLine(
             hero.Value,
+            heroDisplayNameKey,
             decision.SelectedAction.Value,
             RankReasons(decision.Trace),
             BlockedByEntity: null,
@@ -369,6 +397,7 @@ public static class ContractOfferScreenModelFactory
     private static JsonObject DescribeResponse(ResponseLine response) => new()
     {
         ["hero_definition"] = response.HeroDefinition,
+        ["hero_display_name_key"] = response.HeroDisplayNameKey,
         ["action"] = response.Action,
         ["reasons"] = new JsonArray(response.Reasons.Select(DescribeReason).ToArray<JsonNode?>()),
         ["blocked_by_entity"] = response.BlockedByEntity,
