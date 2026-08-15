@@ -41,6 +41,33 @@ public static class ContractOfferScreenModelFactory
     /// </summary>
     private const int MaxReasons = 3;
 
+    /// <summary>
+    /// The screen shown before there is a <see cref="ScenarioOutcome"/> to
+    /// build one from — the one state <see cref="FromOutcome(ScenarioOutcome)"/>
+    /// never produces (see the remarks on <see cref="ScreenState.Loading"/>).
+    /// </summary>
+    /// <remarks>
+    /// Stated once, here, rather than hand-written by each side that needs it.
+    /// It used to be written out twice — in <c>game/app/Main.cs</c> and again
+    /// in the runtime harness's own expectation — and two hand-written copies
+    /// of one value is the shape of drift this repository has already paid
+    /// for once, with the terminal event's writer (ADR-008). The harness stays
+    /// independent of the running game in the way that matters: it never asks
+    /// the game what screen it built, it builds the model itself from this
+    /// assembly, exactly as it already does for every other state through
+    /// <see cref="FromOutcome(ScenarioOutcome)"/>.
+    /// </remarks>
+    public static ContractOfferScreenModel Loading { get; } = new()
+    {
+        State = ScreenState.Loading,
+        TitleKey = TitleKey,
+        Contract = null,
+        Roster = ImmutableArray<HeroCard>.Empty,
+        Responses = ImmutableArray<ResponseLine>.Empty,
+        ErrorCode = null,
+        ErrorDetail = null,
+    };
+
     private static readonly JsonWriterOptions WriterOptions = new()
     {
         Indented = false,

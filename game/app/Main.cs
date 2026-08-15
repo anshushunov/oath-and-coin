@@ -29,26 +29,6 @@ public partial class Main : Control
     /// </summary>
     private const int ExitArgumentError = 2;
 
-    /// <summary>
-    /// The model <see cref="ContractOfferScreenModelFactory"/> deliberately
-    /// never builds (see the remarks on <see cref="ScreenState.Loading"/>):
-    /// there is no <see cref="ScenarioOutcome"/> yet to build one from. This
-    /// is the one screen this file constructs by hand, shown exactly when a
-    /// scenario's manifest declares <see cref="ScenarioOutcomeKind.Loading"/>
-    /// — a checkpoint stood in for "before a <see cref="ScenarioOutcome"/>
-    /// exists", never reached by actually running anything.
-    /// </summary>
-    private static readonly ContractOfferScreenModel LoadingModel = new()
-    {
-        State = ScreenState.Loading,
-        TitleKey = ContractOfferScreenModelFactory.TitleKey,
-        Contract = null,
-        Roster = ImmutableArray<HeroCard>.Empty,
-        Responses = ImmutableArray<ResponseLine>.Empty,
-        ErrorCode = null,
-        ErrorDetail = null,
-    };
-
     public override void _Ready()
     {
         GameArguments arguments;
@@ -77,7 +57,7 @@ public partial class Main : Control
             // The locale catalogue is loaded from the repository's own
             // content/locale tree, never from arguments.ContentRoot: a
             // scenario simulating a broken or substituted content root
-            // (content_error, screen_empty) still has to show a title, and
+            // (screen_error, screen_empty) still has to show a title, and
             // neither of those roots carries a locale/ directory (see
             // ResolveLocaleFile).
             var catalogue = LocaleCatalogue.Load(ResolveLocaleFile(arguments));
@@ -183,7 +163,7 @@ public partial class Main : Control
     /// exists — asking that first would mean a loading scenario's manifest
     /// is never actually consulted, which defeats the one thing this stage
     /// exists to decide. Reordering does not change what any other scenario
-    /// reports: <c>content_error</c>'s manifest is itself well-formed, so it
+    /// reports: <c>screen_error</c>'s manifest is itself well-formed, so it
     /// still falls through to the unmoved content-root check below exactly
     /// as before.
     /// <para>
@@ -212,7 +192,7 @@ public partial class Main : Control
             manifest = ScenarioManifest.Load(manifestPath);
 
             // A scenario that fails before any command runs has no command
-            // file at all (see scenarios/content_error.manifest.json), and
+            // file at all (see scenarios/screen_error.manifest.json), and
             // neither does one that is shown before any content is read at
             // all (scenarios/screen_loading.manifest.json). Resolve still
             // refuses a checkpoint that names a command id, so a command
@@ -245,7 +225,15 @@ public partial class Main : Control
 
         if (manifest.ExpectedOutcome == ScenarioOutcomeKind.Loading)
         {
-            return new LoadResult(LoadingModel, ContentVersion: null, CanonicalHash: null);
+            // The one screen no ScenarioOutcome can produce, shown exactly
+            // when a scenario's manifest declares it — a checkpoint stood in
+            // for "before a ScenarioOutcome exists", never reached by
+            // actually running anything. Taken from the factory rather than
+            // written out here: the runtime harness needs the identical model
+            // to compare against, and two hand-written copies of one value
+            // drift (see ContractOfferScreenModelFactory.Loading).
+            return new LoadResult(
+                ContractOfferScreenModelFactory.Loading, ContentVersion: null, CanonicalHash: null);
         }
 
         var contentRoot = Path.GetFullPath(arguments.ContentRoot);
@@ -301,13 +289,21 @@ public partial class Main : Control
     /// The locale catalogue's file, resolved from the repository root rather
     /// than <see cref="GameArguments.ContentRoot"/>: a scenario that points
     /// <c>--content</c> at a faulted or substituted root
-    /// (<c>content_error</c>, <c>screen_empty</c>) still has to resolve
+    /// (<c>screen_error</c>, <c>screen_empty</c>) still has to resolve
     /// <see cref="ContractOfferScreenModelFactory.TitleKey"/> to something a
     /// player reads, and neither of those roots carries a
     /// <c>locale/</c> directory. <see cref="GameArguments.ScenarioRoot"/> is
     /// never faulted or substituted by anything this codebase does today
     /// (see <c>OathAndCoin.Harness.SmokeRun.GameRequest</c>), so its parent
     /// is a stable way to find the repository root back.
+    /// <para>
+    /// Which catalogue, though, comes from <see cref="GameArguments.Locale"/>
+    /// — the same value <see cref="TranslationServer.SetLocale"/> is given
+    /// above, and the same one the harness names in its report. This used to
+    /// be hard-coded to <c>ru.json</c> while <c>--locale</c> said something
+    /// else entirely, which made the flag inert and the report wrong about
+    /// the frame it was published beside.
+    /// </para>
     /// </summary>
     private static string ResolveLocaleFile(GameArguments arguments)
     {
@@ -315,7 +311,7 @@ public partial class Main : Control
             ?? throw new InvalidOperationException(
                 $"Could not determine the repository root from scenario root '{arguments.ScenarioRoot}'.");
 
-        return Path.Combine(repositoryRoot, "content", "locale", "ru.json");
+        return Path.Combine(repositoryRoot, "content", "locale", $"{arguments.Locale}.json");
     }
 
     /// <summary>

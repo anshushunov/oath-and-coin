@@ -51,9 +51,22 @@ public static class SmokeRun
     /// <summary>
     /// The locale every run states. Carried in argv rather than inherited
     /// from the machine (see <c>GameArguments.Locale</c>), because it decides
-    /// what the frame says.
+    /// what the frame says — and it decides it on both sides: this value
+    /// names the catalogue this tool loads (<see cref="LocaleFile"/>) and,
+    /// travelling in argv, the one the game loads
+    /// (<c>Main.ResolveLocaleFile</c>). It used to say <c>en</c> while both
+    /// sides read <c>ru.json</c> regardless, so the report named a locale no
+    /// part of the run had used.
     /// </summary>
-    private const string Locale = "en";
+    private const string Locale = "ru";
+
+    /// <summary>
+    /// The catalogue <paramref name="locale"/> names, under the repository's
+    /// own <c>content/locale/</c> tree — the same derivation
+    /// <c>Main.ResolveLocaleFile</c> makes from the same value in argv.
+    /// </summary>
+    private static string LocaleFile(string repositoryRoot, string locale) =>
+        Path.Combine(repositoryRoot, "content", "locale", $"{locale}.json");
 
     public static int Execute(ParsedArguments arguments, IProcessRunner runner, TextWriter output, TextWriter error)
     {
@@ -313,7 +326,7 @@ public static class SmokeRun
             var manifest = ScenarioManifest.Load(Path.Combine(scenarioRoot, $"{arguments.Scenario}.manifest.json"));
 
             // A scenario that fails before any command runs has no command
-            // file at all — see scenarios/content_error.manifest.json, whose
+            // file at all — see scenarios/screen_error.manifest.json, whose
             // only checkpoint sits after command id 0. Resolve still refuses a
             // checkpoint that names a command id, so a command file that has
             // genuinely gone missing is caught there rather than assumed away.
@@ -346,67 +359,41 @@ public static class SmokeRun
         /// </summary>
         /// <remarks>
         /// The fault is applied from its own description, never from the
-        /// scenario's name: a tool that recognised <c>content_error</c> by
+        /// scenario's name: a tool that recognised <c>screen_error</c> by
         /// name would agree with a manifest it had not actually reproduced,
         /// which is the one thing this comparison exists to rule out. The
-        /// reproduced error code is checked against the manifest's for the
-        /// same reason.
+        /// reproduced error code and screen state are checked against the
+        /// manifest's for the same reason — see <see cref="RequireReproduced"/>.
         /// </remarks>
-        /// <summary>
-        /// The model <see cref="ContractOfferScreenModelFactory"/> deliberately
-        /// never builds (see the remarks on <see cref="ScreenState.Loading"/>).
-        /// Built here, independently of <c>Main.LoadModel</c>'s own copy of
-        /// the same value, for the same reason the rest of this type
-        /// reproduces the game rather than asking it: this tool has to arrive
-        /// at "loading" without running anything, on its own.
-        /// </summary>
-        private static readonly ContractOfferScreenModel LoadingModel = new()
-        {
-            State = ScreenState.Loading,
-            TitleKey = ContractOfferScreenModelFactory.TitleKey,
-            Contract = null,
-            Roster = ImmutableArray<HeroCard>.Empty,
-            Responses = ImmutableArray<ResponseLine>.Empty,
-            ErrorCode = null,
-            ErrorDetail = null,
-        };
-
         public static Expectation Build(string repositoryRoot, string runId, ScenarioInputs inputs, ulong seed)
         {
-            var catalogue = LocaleCatalogue.Load(Path.Combine(repositoryRoot, "content", "locale", "ru.json"));
+            var manifest = inputs.Manifest;
 
-            if (inputs.Manifest.ExpectedOutcome == ScenarioOutcomeKind.Loading)
-            {
-                RequireExpectedScreenState(inputs.Manifest, LoadingModel);
-
-                // No content is read for this outcome — see the remarks on
-                // Main.LoadModel's reordering. The content root below is
-                // never actually consulted by the game for this manifest,
-                // but --content still needs some existing value to carry.
-                return new Expectation(
-                    Path.Combine(repositoryRoot, "content"),
-                    CanonicalHash: null,
-                    ContractOfferScreenModelFactory.ReadModelHash(LoadingModel),
-                    RenderedUiSnapshot.Hash(RenderedUiSnapshot.Expected(LoadingModel, catalogue)));
-            }
-
-            var contentRoot = inputs.Manifest.ContentRoot is { } overrideRoot
+            // For a loading manifest this root is never actually consulted by
+            // anyone — no content is read at all (see Main.LoadModel's
+            // reordering) — but --content still needs an existing value to
+            // carry, and the repository's own tree is that value.
+            var contentRoot = manifest.ContentRoot is { } overrideRoot
                 ? Path.GetFullPath(Path.Combine(repositoryRoot, overrideRoot))
                 : ApplyFault(
-                    inputs.Manifest.Fault,
+                    manifest.Fault,
                     Path.Combine(repositoryRoot, "content"),
                     Path.Combine(repositoryRoot, "artifacts", "faults", runId));
 
             ContractOfferScreenModel model;
             string? canonicalHash = null;
 
-            if (!Directory.Exists(contentRoot))
+            if (manifest.ExpectedOutcome == ScenarioOutcomeKind.Loading)
+            {
+                model = ContractOfferScreenModelFactory.Loading;
+            }
+            else if (!Directory.Exists(contentRoot))
             {
                 // The game's own first loading stage, reproduced (see
                 // Main.LoadModel). The detail differs and does not have to
                 // match: neither hash includes it.
                 model = ContractOfferScreenModelFactory.FromOutcome(
-                    ("CONTENT_ROOT_NOT_FOUND", $"Content root '{contentRoot}' does not exist."));
+                    (ErrorCodes.ContentRootNotFound, $"Content root '{contentRoot}' does not exist."));
             }
             else
             {
@@ -419,16 +406,15 @@ public static class SmokeRun
                 canonicalHash = DeterminismArtifact.Hash(outcome);
             }
 
-            if (!string.Equals(model.ErrorCode, inputs.Manifest.ExpectedErrorCode, StringComparison.Ordinal))
+            RequireReproduced(manifest, "error code", model.ErrorCode, manifest.ExpectedErrorCode);
+
+            if (manifest.ExpectedScreenState is not null)
             {
-                throw new InvalidOperationException(
-                    $"Reproducing scenario '{inputs.Manifest.Scenario}' here produced error code "
-                    + $"'{model.ErrorCode ?? "(none)"}', but its manifest expects "
-                    + $"'{inputs.Manifest.ExpectedErrorCode ?? "(none)"}'. The tool did not reproduce the fault "
-                    + "the scenario describes, so it has nothing honest to compare the game against.");
+                RequireReproduced(
+                    manifest, "screen state", model.State.ToString().ToLowerInvariant(), manifest.ExpectedScreenState);
             }
 
-            RequireExpectedScreenState(inputs.Manifest, model);
+            var catalogue = LocaleCatalogue.Load(LocaleFile(repositoryRoot, Locale));
 
             return new Expectation(
                 contentRoot,
@@ -455,30 +441,26 @@ public static class SmokeRun
         };
 
         /// <summary>
-        /// The same self-check as the error-code one above, for
-        /// <see cref="ScenarioManifest.ExpectedScreenState"/>: a manifest
-        /// that names an expected screen state is asserting a fact about
-        /// its own checkpoint, and the tool reproducing that checkpoint here
-        /// — independently of the game — has to actually land on it, or
-        /// there is nothing honest left to compare the game's own report
-        /// against (see SmokeVerdict's matching runtime check).
+        /// The tool's self-check: a manifest naming an expected error code or
+        /// screen state is asserting a fact about its own checkpoint, and the
+        /// tool reproducing that checkpoint here — independently of the game
+        /// — has to actually land on it, or there is nothing honest left to
+        /// compare the game's own report against (see SmokeVerdict's matching
+        /// runtime checks). One helper for both, because the two failures
+        /// differ only in which value is quoted.
         /// </summary>
-        private static void RequireExpectedScreenState(ScenarioManifest manifest, ContractOfferScreenModel model)
+        private static void RequireReproduced(
+            ScenarioManifest manifest, string what, string? actual, string? expected)
         {
-            if (manifest.ExpectedScreenState is null)
+            if (string.Equals(actual, expected, StringComparison.Ordinal))
             {
                 return;
             }
 
-            var actual = model.State.ToString().ToLowerInvariant();
-            if (!string.Equals(actual, manifest.ExpectedScreenState, StringComparison.Ordinal))
-            {
-                throw new InvalidOperationException(
-                    $"Reproducing scenario '{manifest.Scenario}' here produced screen state '{actual}', but "
-                    + $"its manifest expects '{manifest.ExpectedScreenState}'. The tool did not reproduce the "
-                    + "screen state the scenario describes, so it has nothing honest to compare the game "
-                    + "against.");
-            }
+            throw new InvalidOperationException(
+                $"Reproducing scenario '{manifest.Scenario}' here produced {what} '{actual ?? "(none)"}', but "
+                + $"its manifest expects '{expected ?? "(none)"}'. The tool did not reproduce the {what} the "
+                + "scenario describes, so it has nothing honest to compare the game against.");
         }
     }
 
