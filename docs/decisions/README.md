@@ -52,7 +52,8 @@ ADR-001-engine-and-language.md
 | [ADR-007](ADR-007-events-and-causal-trace.md) | Конверт события и хранение causal trace в состоянии | accepted |
 | [ADR-008](ADR-008-runtime-harness.md) | Runtime harness: свой инструмент и состав условий успеха прогона | accepted |
 | [ADR-009](ADR-009-decision-contracts-and-content-v2.md) | Контракты решения и формат контента 2 | accepted |
-| [ADR-010](ADR-010-full-typescript-web-stack.md) | Полный переход на TypeScript web stack с Electron-хостом | accepted |
+| [ADR-010](ADR-010-full-typescript-web-stack.md) | Полный переход на TypeScript web stack с Electron-хостом | accepted, область стоп-гейта сужена [ADR-011](ADR-011-electron-gate-without-steam.md) |
+| [ADR-011](ADR-011-electron-gate-without-steam.md) | Desktop-приложение без магазина; Task 4 проверяет Electron, а не Steam | accepted |
 
 `ADR-001` заменён `ADR-010`. Тело `ADR-001` и Godot-специфичный механизм `ADR-008` переписываются на этапе cutover, вместе с удалением кода, который они описывают ([`FULL_TYPESCRIPT_MIGRATION`](../production/FULL_TYPESCRIPT_MIGRATION.md), Task 19): до тех пор `ADR-001` читается как исторический контекст Gate 0, а действующим решением о движке и языке является `ADR-010`.
 

@@ -1,0 +1,35 @@
+# The workspace ADR-010 fixes. Only the members that already hold a real
+# artifact are listed: `packages/simulation`, `packages/content`,
+# `packages/presentation`, `packages/application` and `tools/scenario-runner`
+# join this list in the task that writes their first file (Tasks 6-12). That is
+# what TDD §20 asks for — "не нужно создавать пустые каталоги до появления их
+# первого артефакта". A member listed here with nothing in it would still be
+# typechecked, tested and linted by every gate, all of them green on nothing,
+# which reads as coverage of a package that does not exist yet.
+packages:
+  - apps/web
+  - apps/desktop
+  - tests/architecture
+  - tests/desktop
+  - tests/e2e
+
+# pnpm refuses to run a dependency's install script unless it is answered for
+# here. ADR-010 §123 asks for exactly that allowlist: npm widens the
+# supply-chain surface, and an install script is arbitrary code executing on
+# every machine that clones this repository.
+#
+# Every entry is a decision, including the denials — pnpm re-asks about an
+# unanswered package on every install, and a prompt that appears often enough
+# gets approved by whoever is in a hurry.
+allowBuilds:
+  # Native Go binary behind Vite's transform pipeline. Denied, esbuild installs
+  # without its binary and Vite cannot start at all.
+  esbuild: true
+  # Downloads the pinned Electron binary for the host platform. Denied, the
+  # package installs as an empty shell — `node_modules/electron/dist` never
+  # appears — and both `package:desktop` and `test:desktop` fail where they
+  # would spawn it.
+  electron: true
+  # Builds the Squirrel installer. This repository packages with `--dir` only;
+  # the installer and its signing are Task 17's.
+  electron-winstaller: false

@@ -86,24 +86,24 @@ Feature freeze для новой функциональности старого
 |---|---|---|---|---|---|---|---|
 | Task 1 — рубеж и ADR-010 | agent | 2026-08-16 | 2026-08-16 | `dotnet test OathAndCoin.sln -c Release`; `bash ./scripts/code-lines.sh simulation adapters tools tests game` | §1 этого файла; `docs/decisions/ADR-010-full-typescript-web-stack.md` | 511 тестов зелёные; 27 манифестов; code=13 814 raw=24 408 | принят: рубеж `12565862`, `ADR-010` accepted |
 | Task 2 — неизменяемый oracle corpus | agent | 2026-08-16 | 2026-08-16 | `dotnet run --project tools/OathAndCoin.MigrationOracle -c Release -- export --root . --output migration/oracle/v1`; `dotnet test tests/OathAndCoin.MigrationOracle.Tests/OathAndCoin.MigrationOracle.Tests.csproj -c Release`; `git diff --exit-code -- migration/oracle/v1` | `migration/oracle/v1/**` (58 файлов, manifest SHA-256 `b6af9b19…9f35`); §3 этого файла | 27/27 манифестов, 54 записи на двух seed; 20/20 тестов корпуса; повторный экспорт побайтно идентичен; четыре мутанта красят проверки (§3.5, §3.6) | принят после внешнего ревью codex; правки — коммит `94f4e24` |
-| Task 3 — pinned TypeScript workspace | | | | `corepack pnpm install --frozen-lockfile`; `corepack pnpm typecheck`; `corepack pnpm test`; `corepack pnpm test:e2e` | `pnpm-lock.yaml`, bootstrap-тесты | | |
-| Task 4 — packaged Electron + Steam gate (**stop gate**) | | | | `corepack pnpm package:desktop`; `corepack pnpm test:desktop` | `artifacts/electron-spike/**` | | Task 6 не начинается до зелёного; owner review 2026-08-31 |
-| Task 5 — архитектурные границы и dual-stack CI | | | | `corepack pnpm lint:deps`; `corepack pnpm test` | `.github/workflows/typescript.yml` | | |
-| Task 6 — canonical JSON, ID и контракты контента на Zod | | | | `corepack pnpm --filter @oath-and-coin/content test`; `corepack pnpm schema:check` | `schemas/generated/**` | | |
-| Task 7 — детерминированный RNG | | | | `corepack pnpm --filter @oath-and-coin/simulation test -- deterministic-rng` | `migration/oracle/v1/rng-vectors.json` | | |
-| Task 8 — состояние, команды, события, следы | | | | `corepack pnpm --filter @oath-and-coin/simulation test` | | | |
-| Task 9 — правило решения героя и движок (**stop gate**) | | | | `corepack pnpm --filter @oath-and-coin/simulation test`; benchmark | baseline p50/p95 JSON | | parity к 2026-09-20 либо 10 focused days на Tasks 7–10 |
-| Task 10 — исполнение сценариев и oracle parity | | | | `corepack pnpm test:scenario`; `... parity --oracle migration/oracle/v1` | отчёт parity | | 27 манифестов и все checkpoints |
-| Task 11 — presentation models | | | | `corepack pnpm --filter @oath-and-coin/presentation test` | | | |
-| Task 12 — application store и порты | | | | `corepack pnpm --filter @oath-and-coin/application test` | | | |
-| Task 13 — React contract-offer screen | | | | `corepack pnpm --filter @oath-and-coin/web test`; `... build` | | | |
-| Task 14 — PixiJS scene facade | | | | `corepack pnpm --filter @oath-and-coin/web test` | | | |
-| Task 15 — browser evidence вместо Godot harness | | | | `corepack pnpm test:e2e` | screenshot + JSONL + report на каждое состояние | | |
-| Task 16 — версионированные атомарные сохранения | | | | `corepack pnpm --filter @oath-and-coin/application test`; `corepack pnpm --filter @oath-and-coin/desktop test` | | | |
-| Task 17 — production Electron host | | | | `corepack pnpm package:desktop`; `corepack pnpm test:desktop` | packaged report, SHA-256, RSS | | пакет ≤ 300 МБ, RSS ≤ 500 МБ |
-| Task 18 — производительность, supply chain, релизные гейты | | | | `corepack pnpm verify`; `node scripts/audit-runtime-dependencies.mjs`; `dotnet test OathAndCoin.sln -c Release` | benchmark artifacts | | старый и новый гейты зелёные одновременно |
-| Task 19 — cutover и удаление Godot/.NET | | | | `rg --files \| rg "(\.cs$\|\.csproj$\|\.sln$\|\.tscn$\|\.uid$\|project\.godot$)"`; `corepack pnpm verify` | | | требует зелёных Tasks 2, 4, 10, 15, 17, 18 |
-| Task 20 — финальная проверка и закрытие решения | | | | `corepack pnpm install --frozen-lockfile`; `corepack pnpm verify`; `corepack pnpm build`; `corepack pnpm package:desktop`; `corepack pnpm test:desktop` | `artifacts/migration-final/**` | | заметка о завершении реализации в `ADR-010` |
+| Task 3 — pinned TypeScript workspace | agent | 2026-08-16 | 2026-08-17 | `corepack enable`; `pnpm install --frozen-lockfile`; `pnpm typecheck`; `pnpm test`; `pnpm test:e2e` | `pnpm-lock.yaml`; `tests/architecture/workspace.test.ts`; §5 этого файла | pnpm 11.22.0 с integrity-хешем, TypeScript 6.0.3, Node 24.12.0; 12 проверок workspace и 2 браузерных зелёные; 10 мутантов красят (§5.4) | принят |
+| Task 4 — packaged Electron gate (**stop gate**) | agent | 2026-08-16 | 2026-08-17 | `pnpm package:desktop`; `pnpm test:desktop` | `artifacts/electron-spike/gate-report.json`; §5.2 | 6/6 проверок гейта зелёные на packaged-сборке; 304,3 МиБ установлено и 331,3 МиБ RSS локально; 6 мутантов красят | сужен `ADR-011`: Steam изъят, порог размера снят, бюджет RSS сохранён |
+| Task 5 — архитектурные границы и dual-stack CI | agent | 2026-08-16 | 2026-08-17 | `pnpm lint:deps`; `pnpm test` | `.dependency-cruiser.cjs`; `.github/workflows/typescript.yml`; §5.3 | 21 модуль, 25 зависимостей, 0 нарушений; оба стека зелёные в одном пуше (531 тест .NET + 23 TypeScript); ветка-мутант красит новую стадию | принят |
+| Task 6 — canonical JSON, ID и контракты контента на Zod | | | | `pnpm --filter @oath-and-coin/content test`; `pnpm schema:check` | `schemas/generated/**` | | |
+| Task 7 — детерминированный RNG | | | | `pnpm --filter @oath-and-coin/simulation test -- deterministic-rng` | `migration/oracle/v1/rng-vectors.json` | | |
+| Task 8 — состояние, команды, события, следы | | | | `pnpm --filter @oath-and-coin/simulation test` | | | |
+| Task 9 — правило решения героя и движок (**stop gate**) | | | | `pnpm --filter @oath-and-coin/simulation test`; benchmark | baseline p50/p95 JSON | | parity к 2026-09-20 либо 10 focused days на Tasks 7–10 |
+| Task 10 — исполнение сценариев и oracle parity | | | | `pnpm test:scenario`; `... parity --oracle migration/oracle/v1` | отчёт parity | | 27 манифестов и все checkpoints |
+| Task 11 — presentation models | | | | `pnpm --filter @oath-and-coin/presentation test` | | | |
+| Task 12 — application store и порты | | | | `pnpm --filter @oath-and-coin/application test` | | | |
+| Task 13 — React contract-offer screen | | | | `pnpm --filter @oath-and-coin/web test`; `... build` | | | |
+| Task 14 — PixiJS scene facade | | | | `pnpm --filter @oath-and-coin/web test` | | | |
+| Task 15 — browser evidence вместо Godot harness | | | | `pnpm test:e2e` | screenshot + JSONL + report на каждое состояние | | |
+| Task 16 — версионированные атомарные сохранения | | | | `pnpm --filter @oath-and-coin/application test`; `pnpm --filter @oath-and-coin/desktop test` | | | |
+| Task 17 — production Electron host | | | | `pnpm package:desktop`; `pnpm test:desktop` | packaged report, SHA-256, RSS | | RSS ≤ 500 МБ; размер пакета снимается **без порога** (`ADR-011`); Steam-часть задачи не выполняется, пока не принято решение о релизе |
+| Task 18 — производительность, supply chain, релизные гейты | | | | `pnpm verify`; `node scripts/audit-runtime-dependencies.mjs`; `dotnet test OathAndCoin.sln -c Release` | benchmark artifacts | | старый и новый гейты зелёные одновременно |
+| Task 19 — cutover и удаление Godot/.NET | | | | `rg --files \| rg "(\.cs$\|\.csproj$\|\.sln$\|\.tscn$\|\.uid$\|project\.godot$)"`; `pnpm verify` | | | требует зелёных Tasks 2, 4, 10, 15, 17, 18 |
+| Task 20 — финальная проверка и закрытие решения | | | | `pnpm install --frozen-lockfile`; `pnpm verify`; `pnpm build`; `pnpm package:desktop`; `pnpm test:desktop` | `artifacts/migration-final/**` | | заметка о завершении реализации в `ADR-010` |
 
 ### 2.1. Ветки и точки внешнего ревью
 
@@ -296,6 +296,210 @@ Task 3 не начинается, пока PR #10 не смержен: кажд�
 
 ### 4.7. Календарь на входе в сегмент 2
 
+> Записано на выходе из сегмента 1 и здесь оставлено как есть. Что из этого сбылось, а что отменено решением владельца, — в §5.7. Коротко: Steam из миграции изъят (`ADR-011`), стоп-гейт Task 4 пройден 2026-08-17, то есть за две недели до даты обязательного ревью.
+
 - **Task 4 — стоп-гейт.** Task 6 не начинается, пока packaged Windows Electron не поднимет `steamworks.js` в main-процессе при `sandbox: true`, `contextIsolation: true`, `nodeIntegration: false`. Дата обязательного ревью владельца — **2026-08-31**.
 - **Steam App ID.** Спайк идёт на Spacewar `480`, но собственные достижения, схема статистики, квоты Cloud и конфигурация depot им не доказываются — это повторяется с реальным App ID в Task 17. Получение своего App ID — Steam Direct плюс модерация, то есть дни календаря. Если релиз планируется, процедуру запускать параллельно с Tasks 3–5, а не когда очередь дойдёт до Task 17.
 - **Feature freeze** до 2026-10-11.
+
+## 5. Доказательства сегмента 2 — Tasks 3–5
+
+### 5.1. Что стоит в дереве после Task 3
+
+| Факт | Значение | Команда |
+|---|---|---|
+| Пакетный менеджер | `pnpm@11.22.0+sha512.1ff870c4…dd621` (integrity проверяет corepack) | `node -e "console.log(require('./package.json').packageManager)"` |
+| Node | 24.12.0, он же нижняя граница `engines.node` | `cat .nvmrc` |
+| Компилятор | TypeScript 6.0.3 во всех членах workspace (`ADR-010`) | `pnpm test` → «TypeScript is the compiler ADR-010 pins» |
+| Члены workspace | 5: `apps/web`, `apps/desktop`, `tests/architecture`, `tests/desktop`, `tests/e2e` | `cat pnpm-workspace.yaml` |
+| Проверки Vitest | 15 зелёных: 12 про сам workspace и 3 про предикат схем URL в хосте | `pnpm test` |
+| Браузерные проверки | 2 зелёных на production-сборке в Chromium | `pnpm test:e2e` |
+| Typecheck | 0 ошибок, один процесс на все проекты | `pnpm typecheck` |
+
+**Пакеты `packages/simulation`, `packages/content`, `packages/presentation`, `packages/application` и `tools/scenario-runner` не созданы.** `ADR-010` §45 фиксирует дерево целиком, но `TDD` §20 запрещает создавать пустые каталоги до первого артефакта, и здесь второе весит больше: член workspace без файлов всё равно проходит install, typecheck, тесты и границы — все зелёные ни на чём, и это читается как покрытие несуществующего пакета. Каждый из них заводит та задача, которая пишет его первый файл (Tasks 6–12). Гейт от забывчивости есть: тест `every member is inside the dependency-boundary gate` требует, чтобы новый член попал в аргументы `lint:deps`, а `every member is referenced by the typecheck solution` — чтобы он попал в `tsconfig.json`.
+
+### 5.2. Гейт Task 4 — что доказано на packaged-сборке
+
+Шесть проверок, все на запущенном packaged-приложении, ни одна не читает настройки обратно из кода, который их выставил:
+
+| Проверка | Чем наблюдается |
+|---|---|
+| окно поднимается и показывает браузерную сборку | `#root` в `index.html` пуст; `app-root` в нём рисует React |
+| renderer работает в песочнице ОС | `app.getAppMetrics()` — процесс типа `Tab`, `sandboxed: true` |
+| страница не достаёт ни `require`, ни `process`, ни `ipcRenderer` | `page.evaluate` в самой странице |
+| CSP не даёт выполнить инлайн-скрипт | страница пытается вставить `<script>` и сообщает, выполнился ли он |
+| ОС получает только web-схемы | `shell.openExternal` подменён в main-процессе на время пробы, страница зовёт `window.open` с `file:` и с `https:` |
+| единственный разрешённый IPC-метод отвечает и проходит схему | `window.desktop.describeHost()` через `contextBridge`, Zod с обеих сторон |
+
+Числа прогона (`artifacts/electron-spike/gate-report.json`, пишется тестом до сверки с бюджетами):
+
+| Замер | Локально (Windows 11) | CI (`windows-latest`) |
+|---|---:|---:|
+| Установленный пакет | 319 031 508 байт (304,3 МиБ), 24 файла | 319 031 508 байт (304,3 МиБ), 24 файла |
+| RSS всех процессов | 347 439 104 байт (331,3 МиБ) | 270 209 024 байта (257,7 МиБ) |
+
+CI-числа сняты прогоном `31975374976`, джоба `packaged-desktop`. Размер совпал с локальным **побайтно** — это и есть подтверждение объяснения ниже: пока в пакет не приезжало ничего лишнего, две машины собирают одно и то же. RSS у машин разный и таким останется: это живое потребление под чужой конфигурацией GPU, а не свойство сборки.
+
+**Порог размера снят решением владельца (`ADR-011`), и вот почему это не поблажка.** 304 МиБ — пустое приложение: игрового контента нет, локали Chromium уже урезаны с 55 файлов до двух (минус 47 182 082 байта, `afterPack` печатает это в лог сборки). Остаток — бинарь Electron 43 (225,6 МиБ), лицензии Chromium (19,4 МиБ), компилятор шейдеров DirectX (24,4 МиБ), программный Vulkan (5,2 МиБ). Граница `ADR-010` в 300 МБ лежала ниже пола платформы. Бюджет RSS ≤ 500 МБ сохранён и проверяется тестом; замер укладывается с запасом.
+
+**Разница в 4,4 МиБ между первым локальным замером (319 026 679) и первым CI-замером (323 406 869) объяснена и устранена.** Она не была шумом машины: между прогонами `zod` переехал из `devDependencies` в `dependencies` — правка под правило `not-to-dev-dep`, — а electron-builder добавляет production-зависимости к своим шаблонам поверх `files: [dist/**]`. В `app.asar` приехали **612 файлов и 4 224 422 байта** библиотеки, которая уже была забандлена в `main.cjs` и `preload.cjs`. Найдено при проверке правок ревью: разбор заголовка asar показал `node_modules/zod/src/v3/types.ts` третьим по размеру файлом пакета. Закрыто строкой `'!node_modules/**'` в `electron-builder.yml`; пакет вернулся к 304,3 МиБ, гейт остался зелёным — то есть ничего из выброшенного приложению и не требовалось.
+
+### 5.3. Границы и dual-stack CI
+
+| Факт | Значение | Команда |
+|---|---|---|
+| Модулей под проверкой границ | 21 модуль, 25 зависимостей, 0 нарушений | `pnpm lint:deps` |
+| Правил в конфигурации | 10 | `.dependency-cruiser.cjs` |
+| Оба стека в одном пуше | `build` (531 тест .NET) и `typescript` — оба success | run `31975373863` и `31975373654` |
+| Гейт Task 4 на CI | джоба `packaged-desktop` на `windows-latest`, 6/6 | run `31975374976` |
+
+Из десяти правил четыре сегодня имеют под собой код (`no-circular`, `no-orphans`, две границы между `apps/web` и `apps/desktop`, `not-to-dev-dep`), а правила направления для `packages/*` написаны над пустотой: пакетов ещё нет, и покраснеть эти правила не могут. Это записано намеренно — граница должна существовать в день, когда ляжет первый файл, а не изобретаться тем, кто его пишет. Но пока они документация, которая умеет исполняться, а не проверка.
+
+Гейт Task 4 исполняется на CI ровно благодаря `ADR-011`: без SDK площадки ему не нужен ни клиент, ни учётная запись, ни App ID, поэтому вердикт воспроизводит кто угодно, а не тот, кто был залогинен.
+
+### 5.4. Мутация
+
+Двадцать четыре мутанта, каждый поставлен после коммита проверяемого состояния (`AGENTS.md` §8) и откачен `git checkout --`. Восемнадцать до внешнего ревью и шесть после, на правки по его находкам (§5.6).
+
+**Task 3 — десять.** Каждый краснит ровно ту проверку, ради которой написан:
+
+| Мутант | Что покраснело |
+|---|---|
+| `"vite": "8.2.1"` → `"^8.2.1"` | «every dependency of every member is pinned to an exact version» |
+| TypeScript 6.0.3 → 6.0.2 в одном члене | «a dependency has one version across the whole workspace» и «TypeScript is the compiler ADR-010 pins» |
+| `packages/simulation/package.json` вне списка workspace | «every package on disk is a declared member» |
+| `tests/e2e` убран из ссылок `tsconfig.json` | «every member is referenced by the typecheck solution» |
+| `apps/web` extends не базовый tsconfig | «every member extends the shared compiler options» |
+| `engines.pnpm` разошёлся с `packageManager` | pnpm отказывается запускаться вовсе; тест краснеет при прямом вызове vitest |
+| `.nvmrc` 24.12.0 → 24.11.0 | «the Node version in .nvmrc is the lower bound of the supported range» |
+| файл с ошибкой типа в `apps/web/src` | `pnpm typecheck` — exit 2 |
+| React монтируется не в `#root` | обе браузерные проверки |
+| страница сообщает `present` вместо `absent` | «no Node API is reachable from the page» |
+
+**Task 4 — четыре**, каждый требует пересборки пакета:
+
+| Мутант | Что покраснело |
+|---|---|
+| `sandbox: false` | «the renderer runs sandboxed» |
+| `contextIsolation: false` | «the page reaches the desktop API and nothing else» |
+| `'unsafe-inline'` в CSP (и в заголовке хоста, и в `<meta>`) | «the content security policy blocks an inline script» |
+| main отвечает `platform: 42` | вызов `describeHost` падает `ZodError` в preload |
+
+**Task 5 — три локальных плюс один на CI:**
+
+| Мутант | Что покраснело |
+|---|---|
+| `apps/web` импортирует `electron` | `no-unresolvable` |
+| `apps/web` импортирует `apps/desktop/src/contract` | `renderer-must-not-import-the-host` |
+| цикл `App.tsx ↔ cycle.ts` | `no-circular` |
+| та же граница, но пушем в ветке `migration/02-foundation-ci-mutant` | стадия «Dependency boundaries» джобы `checks`, run `31972969346` — failure; джоба `build` того же пуша зелёная |
+
+Последний — обязательный по `AGENTS.md` §8 мутант на новую CI-проверку: без него в pipeline попадает стадия, которая никогда не краснела. Ветка запушена без pull request и удалена после прогона.
+
+**Правки по ревью — шесть.** Три из них сначала воспроизвели дыру на неисправленном коде (столбец «до правки»), и это и есть доказательство, что проверка чего-то стоит:
+
+| Мутант | До правки | После правки |
+|---|---|---|
+| `import { readFileSync } from 'node:fs'` в `packages/simulation` | `0 violations` | `simulation-depends-on-nothing` |
+| импорт `apps/desktop/src/contract` из `packages/simulation` | — | `simulation-depends-on-nothing` |
+| падающий `tests/architecture/review-mutant.test.tsx` | `1 file / 12 tests passed`, файл не собран | `1 failed \| 12 passed`, файлов 2 |
+| `steamworks.js` в `optionalDependencies` | 12/12 зелёных | красит «pinned to an exact version» и «no storefront SDK» |
+| снятая проверка схемы в `setWindowOpenHandler` | — | красит пробу и отчёт: `openedExternally` содержит `file:///C:/Windows/System32/calc.exe` |
+| `'unsafe-inline'` в CSP, взгляд на отчёт | отчёт печатал бы `inlineScriptBlocked: true` константой | отчёт печатает `inlineScriptBlocked = false`, оба теста красные |
+
+### 5.5. Отклонения от плана и находки, оплаченные отладкой
+
+| Ожидалось | Сделано | Причина |
+|---|---|---|
+| Команды вида `corepack pnpm <script>` (так они записаны в §2 до этой правки) | `corepack enable` один раз, дальше `pnpm <script>` | Под `corepack pnpm` вложенный `pnpm` — из скрипта или из чужого инструмента — резолвится в known-good release corepack (11.9.0) вместо закреплённого (11.22.0) и отказывается работать. Ловушка сработала трижды: на `pnpm --recursive typecheck`, на webServer Playwright и внутри `electron-builder`, который сам зовёт `pnpm` для обхода node_modules. Сообщение при этом говорит про версии pnpm и ничего — про то, что виновата вложенность |
+| `pnpm --recursive typecheck` | `tsc --build tsconfig.json --force` по solution-файлу | Та же ловушка. Побочно вышло лучше: один процесс на все проекты, а список ссылок сверяется тестом со списком членов workspace |
+| Пакет собирается одной сборкой Vite с двумя входами | Две отдельные сборки: `vite.main.config.ts` и `vite.preload.config.ts` | Rollup выносит общий модуль (`contract.ts`) в отдельный чанк, а preload при `sandbox: true` не умеет `require` файла: его модульная система — маленький полифилл на `electron` и горстку встроенных. Окно поднимается без `window.desktop`, ошибки нет ни в странице, ни в main — preload просто упал на первой строке |
+| Зависимости хоста внешние, как в обычной SSR-сборке | `ssr: { noExternal: true }` | Vite по умолчанию выносит всё из `node_modules` наружу, а рядом с packaged-приложением их нет. Хост умирает на старте с диалогом «Cannot find module 'zod'» до появления окна, а гейт сообщает про 30-секундный таймаут ожидания окна — про причину ни слова |
+| Локали урезаются штатным `electronLanguages` | `afterPack`-хук `apps/desktop/build/after-pack.cjs` | На Windows `electronLanguages` — молчаливый no-op: пакет вышел 350 МБ со всеми 55 `.pak`. Настройка, которая читается как указание и ничего не делает, хуже отсутствующей |
+| CSP объявлен один раз | `<meta>` в `index.html` **и** заголовок ответа в main-процессе | `frame-ancestors` в `<meta>` браузер игнорирует и пишет об этом ошибкой в консоль — браузерная проверка «чистая консоль» её и поймала. Директива живёт только в заголовке, остальная политика — в обоих местах, потому что браузерная сборка обязана иметь ту же политику без Electron |
+| Границы проверяются по всему дереву | Из проверки исключены файлы конфигурации Vite | Резолвер dependency-cruiser не умеет пройти ESM-only `exports` Vite: `import { defineConfig } from 'vite'` приходит как неразрешимый, пока все импорты приложения рядом разрешаются. Держать их в области значило бы либо вечно красный гейт, либо `no-unresolvable`, пониженный до warning, — то есть правило, которое перестало значить |
+
+### 5.6. Внешнее ревью сегмента и закрытые им дыры
+
+Ревью прошло по PR #11 после того, как все гейты сегмента были зелёными, — и нашло шесть проблем, из которых **три оставляли гейт зелёным на сломанном коде**. Каждая воспроизведена до правки, каждая правка закрыта мутантом. Согласились со всеми шестью.
+
+| Дыра | Как вскрыта | Чем закрыта | Мутант после правки |
+|---|---|---|---|
+| Единственная авторитетная проверка границ пропускала `import { readFileSync } from 'node:fs'` в чистое ядро | ревьюер положил `packages/simulation/review-mutant.ts` с этим импортом и получил `0 violations` | правило `simulation-depends-on-nothing` перечисляет теперь **одно разрешённое** — импорт внутри самого пакета, — вместо списка запрещённых соседей | тот же импорт красит правило; отдельно красит импорт из соседнего пакета |
+| `vitest` не собирал `.test.tsx` вовсе | падающий `tests/architecture/review-mutant.test.tsx` — прогон сообщил `12 passed` и не заметил файла | `include` покрывает `*.test.{ts,tsx}`; React-тесты Task 13 иначе были бы невидимы при зелёном pipeline | тот же файл теперь красит прогон: `1 failed \| 12 passed` |
+| `shell.openExternal` получал любую схему из страницы — `file:`, `ms-msdt:`, что угодно с зарегистрированным обработчиком | чтением `setWindowOpenHandler` и ссылкой на security-руководство Electron: недоверенный URL здесь ведёт к выполнению произвольных команд | предикат `mayOpenExternally` разрешает только `http:`/`https:`; отдельный unit-тест по строкам и packaged-проба, подменяющая `shell.openExternal` в main-процессе | снятие проверки красит и пробу, и отчёт: в `openedExternally` появляется `file:///C:/Windows/System32/calc.exe` |
+| Отчёт гейта писал `inlineScriptBlocked: true` константой | чтением: при перезапуске worker'а артефакт, публикуемый CI через `always()`, утверждал бы обратное тому, что произошло | обе проверки безопасности вынесены в пробы, отчёт записывает **измеренное**, и утверждения делаются по записанным значениям | ослабленный CSP: отчёт печатает `inlineScriptBlocked = false`, тест красный |
+| Проверки пинов, единой версии и отсутствия storefront SDK читали две секции зависимостей из четырёх | чтением: `optionalDependencies` — типовой способ «деградировать без него», то есть ровно то, как приехал бы SDK площадки | общий перечислитель по `dependencies`, `devDependencies`, `optionalDependencies`, `peerDependencies` | `steamworks.js` в `optionalDependencies` красит две проверки; до правки — 12/12 зелёных |
+| Строка Task 17 в таблице гейтов требовала снятый порог «пакет ≤ 300 МБ» | сверкой таблицы с `ADR-011`, принятым в этой же правке | строка приведена к действующему решению: RSS ≤ 500 МБ, размер без порога, Steam-часть не выполняется | — |
+
+Обошлось без отклонённых замечаний: все шесть подтвердились по исходнику или воспроизведением.
+
+Что это говорит о самих гейтах сегмента: три из шести дыр — гейты, зелёные на сломанном коде, и ни одна не была видна в диффе. Это тот же вывод, что и в §3.6 сегмента 1, и он же — причина, по которой мутант обязателен на каждую новую проверку, а не на каждую вторую.
+
+### 5.7. Что изменилось в решениях за сегмент
+
+- **`ADR-011` принят** (`docs/decisions/ADR-011-electron-gate-without-steam.md`): игра делается как desktop-приложение прежде всего для владельца, поставки через магазин в области миграции нет. Из Task 4 изъят `steamworks.js` и App ID `480`, Steam-часть Task 17 не выполняется, `BQ-002` остаётся открытым. Цена названа в самой записи: проверка native module в packaged Electron переезжает на момент решения о релизе, и спайк тогда обязателен немедленно.
+- **Порог размера установленного пакета отменён** тем же решением по замеру §5.2. Бюджет RSS ≤ 500 МБ действует.
+- **`ADR-010` правлен точечно** в четырёх местах, где иначе читатель получил бы недействующее правило: раздел о стоп-гейте, обоснование отказа от `autoUpdater`, численные границы и список проверки.
+
+## 6. Хождённая земля: рубеж после сегмента 2
+
+`AGENTS.md` §9. Записка для следующего исполнителя. Что проверено и чем — в §5; здесь только то, что нужно знать до первой строчки Task 6.
+
+### 6.1. Где остановились
+
+| Факт | Значение |
+|---|---|
+| Ветка | `migration/02-foundation` |
+| HEAD на момент записки | `5a130cf` (правки по ревью); следом идёт коммит самой записки |
+| Base | `main` @ `c6462ab819d90b4ca56c75f6a3416fe101bdc18f` |
+| PR | [#11](https://github.com/anshushunov/oath-and-coin/pull/11), draft, открыт |
+| Дерево | чистое |
+| Тесты старого стека | `dotnet test OathAndCoin.sln -c Release` — 531 пройдено, 0 не пройдено (CI run `31972896800`) |
+| Тесты нового стека | 15 Vitest + 2 браузерных + 6 desktop = 23 пройдено (CI runs `31975373654`, `31975374976`) |
+| Внешнее ревью | проведено по PR #11, шесть находок, все приняты и закрыты (§5.6) |
+
+Коммиты сегмента: `06550e5` (workspace) → `ef7ccd1` (LF) → `f687261` (`ADR-011`) → `ebc3e95` (Electron-гейт) → `1e7096e` (границы и CI) → `5a130cf` (правки по ревью).
+
+### 6.2. Что блокирует Task 6
+
+То же правило, что и в сегменте 1: следующая ветка создаётся от обновлённого `main` после merge segment PR. Плюс своё: Task 6 заводит `packages/content`, а вместе с ним первый настоящий член workspace из `ADR-010` §45 — он обязан попасть сразу в три места, иначе окажется вне гейтов. Два из трёх покраснеют сами (`pnpm test`), третье — нет:
+
+1. `pnpm-workspace.yaml` — иначе pnpm его не устанавливает;
+2. `tsconfig.json` (ссылка) — тест `every member is referenced by the typecheck solution`;
+3. аргументы `lint:deps` в `package.json` — тест `every member is inside the dependency-boundary gate`;
+4. `vitest.config.ts` трогать не нужно: `include` покрывает `{apps,packages,tests,tools}/**/*.test.{ts,tsx}` шаблоном, а не списком.
+
+Отдельно про `packages/simulation`, который заведёт Task 7: правило границ разрешает ему импортировать **только самого себя** — ни соседний пакет, ни npm-зависимость, ни `node:*`. Это не строгость ради строгости, а починка после ревью (§5.6): прежняя формулировка пропускала `node:fs` в чистое ядро. Если Task 7 упрётся в это правило, правильный ход — не ослабить его, а спросить, почему детерминированным правилам понадобился внешний модуль.
+
+### 6.3. Опровергнуто замером
+
+1. **300 МБ на установленный пакет недостижимы.** Пустое Electron-приложение — 304,3 МиБ с уже урезанными локалями и без лишнего `node_modules`. Порог снят `ADR-011`, замер остался. Не возвращать число, не измерив заново.
+2. **`electronLanguages` на Windows ничего не делает.** Пакет вышел 350 МБ со всеми 55 `.pak`. Локали режет `afterPack`-хук.
+3. **`corepack pnpm <script>` ломает всё, что внутри зовёт `pnpm`.** Правильный вход — `corepack enable` один раз, дальше `pnpm`. Трижды за сегмент, в том числе внутри `electron-builder`.
+4. **`frame-ancestors` в `<meta>` игнорируется браузером.** Живёт только в заголовке ответа, который ставит main-процесс.
+5. **`files: [dist/**]` не означает «только dist».** electron-builder добавляет production-зависимости к своим шаблонам: `zod` уехал в пакет вторым экземпляром — 612 файлов поверх того, что уже забандлено. Нужна явная строка `'!node_modules/**'`, и она держится тем, что гейт запускает packaged-сборку: если что-то перестанет бандлиться, приложение не стартует.
+6. **Три гейта сегмента были зелёными на сломанном коде** — это нашло внешнее ревью (§5.6), а не прогоны. `node:fs` в чистом ядре, несобранный `.test.tsx` и отчёт с константой вместо замера. Вывод не «ревью полезно», а конкретнее: проверка, у которой нет мутанта именно на её обещание, скорее всего мерит не то.
+
+### 6.4. Прогнано и отвергнуто
+
+| Вариант | Почему отвергнут |
+|---|---|
+| `pnpm --recursive typecheck` как корневой скрипт | Вложенный pnpm под corepack. Заменено на `tsc --build` по solution-файлу — заодно один процесс вместо шести |
+| Одна сборка Vite с двумя входами для хоста | Общий чанк, который sandboxed preload не может `require`. Окно поднимается без `window.desktop` и без единой ошибки |
+| Внешние зависимости в сборке хоста (умолчание Vite SSR) | Рядом с packaged-приложением их нет: «Cannot find module 'zod'» до появления окна |
+| Читать `webPreferences` обратно через `getLastWebPreferences` | В типах Electron 43 метода нет, и он доказывал бы, что код говорит `sandbox: true`, а не что процесс в песочнице. Наблюдаем флаг ОС через `app.getAppMetrics()` и достижимость API из самой страницы |
+| Создать все пакеты `ADR-010` §45 сразу | Член workspace без файлов проходит все гейты зелёным и читается как покрытие. Заводит та задача, которая пишет первый файл (`TDD` §20) |
+| Урезать `dxcompiler.dll` и `vk_swiftshader.dll` ради 300 МБ | Купили бы проходимость гейта ценой программного рендера на машинах без GPU, и первый же арт-ассет всё равно вернул бы превышение. Владелец снял порог |
+| Перечислять в правиле границ, что симуляции запрещено | Список не знает про то, что придумают дальше: он называл соседние пакеты и пропускал `node:fs`. Правило перечисляет единственное разрешённое — импорт внутри самого пакета |
+| Записывать в отчёт гейта заранее известный результат проверки | Артефакт, публикуемый CI через `always()`, начинал противоречить вердикту ровно в тех прогонах, ради которых его читают. Обе пробы измеряются в том же прогоне, который пишет отчёт |
+
+### 6.5. Известные пределы того, что построено
+
+- **`packages/*` не существуют**, и правила направления для них в `.dependency-cruiser.cjs` покраснеть не могут. Пока это исполняемая документация, а не проверка (§5.3).
+- **Линтера и форматтера для TypeScript нет.** `TDD` §19.1 просит стадию formatting/lint, у .NET-пайплайна она есть (`dotnet format`), у нового — нет: Task 5 назвал только `lint:deps`, и вводить ESLint сверх заявленного объёма сегмент не стал. Долг адресный — либо отдельная задача, либо явное решение обойтись без него.
+- **Браузеры Playwright не в lockfile.** Их версия определяется пином `@playwright/test`, а байты приезжают командой `playwright install` — воспроизводимость здесь слабее, чем у остального дерева.
+- **Гейт Task 4 существует только под Windows.** Ни Linux, ни macOS сборки нет, и `ADR-010` их и не обещает.
+- **`apps/web` ничего не знает о `window.desktop`.** Renderer не типизирует desktop API и не вызывает его; связь проверяется только гейтом Task 4 изнутри страницы. Настоящий порт — Task 12.
+- **Схемы URL проверяются в одном месте, а окно открытия — в другом.** `mayOpenExternally` разрешает `http:`/`https:`, но за пределами `setWindowOpenHandler` есть ещё `will-navigate` (там навигация запрещена целиком) и будущие вызовы из main-процесса. Новый вызов `shell.openExternal` где угодно ещё обязан идти через тот же предикат, и механической проверки на это нет.
+- **Sourcemaps едут в пакет** — 757 КБ на два файла хоста. Осознанно: они дешевле любого разбора креша вслепую, но это байты в поставке, а не в отладочной сборке.

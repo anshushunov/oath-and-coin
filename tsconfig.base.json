@@ -1,0 +1,50 @@
+{
+  // Every workspace member extends this file, and the workspace test asserts
+  // that it does: a package that quietly relaxed `strict` would still be
+  // typechecked by the same gate and would still be green, which is the exact
+  // shape of a check that stopped checking.
+  //
+  // ADR-010 pins TypeScript 6.0.3 as the canonical compiler for the whole
+  // migration. TypeScript 7 is not used yet — on 2026-08-16 it has no stable
+  // programmatic API, so typescript-eslint and declaration generation do not
+  // work against it.
+  "compilerOptions": {
+    // Node 24 and a current Chromium both implement this fully; nothing here
+    // is downlevelled, so a target that lags only hides which syntax the
+    // runtime really has.
+    "target": "ES2023",
+    "lib": ["ES2023"],
+
+    // `preserve` leaves import/export syntax alone and lets the bundler (Vite)
+    // or the runtime (Node with "type": "module") decide. Combined with
+    // `verbatimModuleSyntax` it removes the whole class of "worked in tsc,
+    // broke at runtime" errors around type-only imports being elided.
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+
+    "strict": true,
+    // Not implied by `strict`, and each one closes a defect class the domain
+    // here actually has: integer indexing into arrays of heroes and reasons,
+    // optional fields in content that must not silently become `undefined`,
+    // and overrides that stop overriding when a base member is renamed.
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+
+    // The simulation is a pure library that a bundler and a test runner both
+    // consume; nothing in this repository runs `tsc` for its output. Emit is
+    // therefore off everywhere and `tsc` is used only as the typechecker.
+    "noEmit": true,
+
+    // Type-checking the shipped .d.ts of every dependency costs minutes and
+    // reports errors in code this repository cannot fix.
+    "skipLibCheck": true
+  }
+}

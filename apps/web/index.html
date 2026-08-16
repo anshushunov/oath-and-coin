@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- ADR-010 §80 makes CSP part of the mandatory security boundary of the
+         desktop host. It is declared here, in the document the renderer loads,
+         rather than only as an Electron response header: the browser build is
+         a first-class target and gets the same policy, and a policy that lives
+         in the host cannot be tested by a browser-only run.
+
+         `script-src 'self'` is what makes the boundary real — it is also why
+         `build.sourcemap` is a separate file rather than an inline data URL.
+
+         `frame-ancestors` is deliberately absent: Chromium ignores it when it
+         arrives in a meta element and says so as a console error, which the
+         end-to-end check reads as a failure. Refusing to be framed is a
+         response-header property, and the desktop host sets it as one. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'"
+    />
+
+    <title>Oath &amp; Coin</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

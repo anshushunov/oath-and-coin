@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // The main process is Node, the preload runs in a sandboxed context that
+    // Electron's own types describe. No DOM lib: the host must not be able to
+    // reach for `document` and discover at runtime that it has none.
+    "types": ["node"]
+  },
+  "include": ["src", "vite.shared.ts", "vite.main.config.ts", "vite.preload.config.ts"]
+}

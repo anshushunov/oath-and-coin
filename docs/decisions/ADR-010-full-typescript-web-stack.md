@@ -64,6 +64,8 @@ migration/oracle/v1   # неизменяемый корпус поведения
 
 ### Гейт Electron/Steam проходится до переписывания симуляции
 
+> **Сужено [`ADR-011`](ADR-011-electron-gate-without-steam.md) (2026-08-16).** Игра делается как desktop-приложение прежде всего для владельца; поставки через магазин в области миграции нет. Task 4 проверяет packaged Electron и границу безопасности renderer, `steamworks.js` и App ID `480` из него изъяты, Steam-часть Task 17 не выполняется. Всё остальное в этом разделе — обязательность гейта, порядок «до переписывания правил», условия провала по Electron — действует.
+
 Packaged Windows Electron + `steamworks.js` в main process проверяются **до** начала переноса правил (Task 4 плана миграции, Phase 0.5 решения о стеке). Гейт обязателен: Task 6 не начинается, пока он не зелёный. Календарная дата 2026-08-31 — точка обязательного ревью владельца, а не автоматический технический провал.
 
 Матрица доказательств из двух обязательных строк:
@@ -81,13 +83,13 @@ Spacewar **не** доказывает собственные достижени
 
 Steam overlay считается best-effort: если он требует ослабляющих process/security model флагов, overlay отключается, результат записывается как `unsupported` и в Definition of Done миграции не входит. Достижения, статистика и Cloud оцениваются независимо от overlay.
 
-Собственный Electron `autoUpdater` не используется: сборки доставляет Steam. Security advisory оценивается не позднее 7 дней после публикации, critical runtime fix собирается и выкладывается не позднее 14 дней.
+Собственный Electron `autoUpdater` не используется: сборки доставляет Steam. Сроки по advisory сохраняются, основание про Steam — нет: [`ADR-011`](ADR-011-electron-gate-without-steam.md) убрал магазин из области, и обновление локальной сборки это пересборка. Security advisory оценивается не позднее 7 дней после публикации, critical runtime fix собирается и выкладывается не позднее 14 дней.
 
 ### Область миграции — Windows 10/11 x64 и Chromium browser build
 
 Migration Definition of Done ограничен браузерной сборкой в pinned Chromium и Windows 10/11 x64 Electron package. Native macOS, native Linux и Steam Deck/Proton **не обещаются** этой записью: native module, подпись и Deck требуют отдельных pipelines. Их поддержка принимается отдельной записью после Windows cutover и снятых измерений.
 
-Численные границы, блокирующие cutover: установленный Windows-пакет ≤ 300 МБ; суммарный RSS корневого процесса Electron и всех его renderer/GPU/utility-потомков на normal contract-offer screen после прогрева ≤ 500 МБ.
+Численные границы, блокирующие cutover: ~~установленный Windows-пакет ≤ 300 МБ~~ — порог отменён [`ADR-011`](ADR-011-electron-gate-without-steam.md) по замеру Task 4 (304,2 МиБ на пустом приложении с урезанными локалями), размер продолжает сниматься без порога; суммарный RSS корневого процесса Electron и всех его renderer/GPU/utility-потомков на normal contract-offer screen после прогрева ≤ 500 МБ.
 
 ### Неизменяемый oracle corpus переживает удаление C#
 
@@ -118,7 +120,7 @@ Migration Definition of Done ограничен браузерной сборк�
 ## Последствия
 
 - **Полное переписывание несёт риск семантической регрессии.** Митигируется неизменяемым oracle corpus, differential parity по всем 27 manifests, сравнением полей причинного следа и запретом массового обновления снапшотов.
-- **Electron увеличивает размер дистрибутива и baseline-потребление памяти.** Компромисс принят численно: 300 МБ пакета и 500 МБ RSS блокируют cutover при превышении.
+- **Electron увеличивает размер дистрибутива и baseline-потребление памяти.** Компромисс принят численно: 300 МБ пакета и 500 МБ RSS блокируют cutover при превышении. Порог размера снят [`ADR-011`](ADR-011-electron-gate-without-steam.md): замер Task 4 показал 304,2 МиБ до первого байта игрового контента, то есть граница лежала ниже пола платформы. Действует бюджет RSS.
 - **Electron требует регулярных security/runtime обновлений**, а обновить runtime внутри уже поставленной игры он сам не может. Отсюда exact pin, 7 дней на оценку advisory и 14 на critical rebuild.
 - **npm увеличивает supply-chain surface.** Отсюда `--frozen-lockfile`, exact direct versions, ревью каждой новой runtime dependency и allowlist install/build scripts.
 - **TypeScript не даёт C#-уровень numeric discipline автоматически.** Домен остаётся целочисленным; там, где нужна семантика 64-битного переполнения, используется локальный `bigint`, который никогда не пересекает границу JSON/пакета.
@@ -137,8 +139,8 @@ Migration Definition of Done ограничен браузерной сборк�
 - `dependency-cruiser` доказывает направление зависимостей и отсутствие циклов;
 - симуляция не зависит от DOM, React, PixiJS, Electron, файловой системы, часов и глобальной случайности;
 - пять состояний экрана реализованы с семантическими assertions и достижимостью при 1280×800;
-- packaged Windows x64 build инициализирует Steam в main process и работает без Steam при сохранённом sandbox;
-- пакет ≤ 300 МБ, RSS ≤ 500 МБ по зафиксированной методике;
+- ~~packaged Windows x64 build инициализирует Steam в main process и работает без Steam при сохранённом sandbox~~ — изъято [`ADR-011`](ADR-011-electron-gate-without-steam.md); действующее требование: packaged Windows x64 build запускается при сохранённых `sandbox: true`, `contextIsolation: true`, `nodeIntegration: false` и CSP;
+- RSS ≤ 500 МБ по зафиксированной методике; размер установленного пакета снимается тем же прогоном и записывается без порога ([`ADR-011`](ADR-011-electron-gate-without-steam.md));
 - в production tree не остаётся `.cs`, `.csproj`, `.sln`, `.tscn`, `.uid`, `project.godot`, пинов Godot/.NET SDK и Godot-специфичного harness;
 - `migration/oracle/v1` остаётся в дереве и проходит проверку дайджестов **после** удаления старого кода.
 
@@ -149,6 +151,8 @@ Migration Definition of Done ограничен браузерной сборк�
 ## Связи
 
 `AGENTS.md` §2, §5, §6, §7, §11; `TDD` §2.3, §4.1, §7, §8, §11, §19, §21; `MVP_PLAN` §4.
+
+Сужено: [`ADR-011`](ADR-011-electron-gate-without-steam.md) — магазинная поставка изъята из области миграции, Task 4 остаётся стоп-гейтом по Electron.
 
 Supersedes: [`ADR-001`](ADR-001-engine-and-language.md) (движок и язык). Заменяет механизм, сохраняя намерение: [`ADR-008`](ADR-008-runtime-harness.md) (artifact-based evidence и именованные checkpoints остаются; Godot-специфичный запуск, capture surface и frame protocol — нет).
 

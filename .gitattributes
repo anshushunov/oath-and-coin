@@ -35,3 +35,31 @@ migration/oracle/**/*.md text eol=lf
 # by a developer on Windows through Git Bash and by the Linux CI runner, so the
 # checkout must not decide which of the two works.
 *.sh text eol=lf
+
+# The TypeScript workspace (ADR-010). A Windows clone with core.autocrlf=true —
+# the default this repository is developed under — checks these out with CRLF,
+# and two of them stop working rather than merely looking different:
+#
+#   .nvmrc feeds `actions/setup-node` with `node-version-file`, and the value
+#   it reads then ends in a carriage return, which is not a version;
+#   pnpm-lock.yaml is rewritten by pnpm with LF on every install, so a CRLF
+#   working copy is dirty from the moment it is created and
+#   `--frozen-lockfile` argues with a file nobody edited.
+#
+# The rest are listed with them because the reason is the same one the content
+# rules above give: what a file means must not depend on which machine cloned
+# it. This repository has already paid for that once — commit 1ed7036 had to
+# regenerate every canonical artifact after a single content file drifted to
+# CRLF.
+*.ts text eol=lf
+*.tsx text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
+package.json text eol=lf
+tsconfig*.json text eol=lf
+*.yml text eol=lf
+pnpm-lock.yaml text eol=lf
+pnpm-workspace.yaml text eol=lf
+apps/**/*.html text eol=lf
+.npmrc text eol=lf
+.nvmrc text eol=lf

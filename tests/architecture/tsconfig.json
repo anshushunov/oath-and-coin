@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // These tests read the repository from disk, so they are the one place
+    // outside the Electron host that legitimately needs Node's own types.
+    "types": ["node"]
+  },
+  "include": ["src", "*.test.ts"]
+}

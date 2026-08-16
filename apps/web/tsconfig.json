@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // The only place in the workspace where DOM types are legal. ADR-010: the
+    // simulation must not know about the DOM, React, PixiJS or Electron, and
+    // the cheapest way to keep that true is for those packages to have no DOM
+    // in `lib` at all — a stray `document` there is a type error, not a review
+    // comment.
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": []
+  },
+  "include": ["src", "vite.config.ts"]
+}
