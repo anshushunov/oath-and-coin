@@ -118,13 +118,29 @@ jobs:
       # stage above wrote nothing. A validator that quietly rewrote a corpus it
       # disagreed with would be green forever, which is exactly the failure
       # mode an immutable artifact exists to rule out.
+      #
+      # `git status --porcelain --untracked-files=all`, not
+      # `git diff --exit-code`. External review finding: plain `git diff` does
+      # not see untracked files — the very fact the corpus export procedure
+      # documents and works around by staging its first run — so a validator
+      # that wrote a *new* file into the corpus would have passed this check
+      # silently. Any output at all is a failure here, which covers a modified
+      # tracked byte and a created untracked file with one command.
+      #
+      # `always()`, so this runs even when validation failed: "the oracle went
+      # red" and "the oracle rewrote itself" are different diagnoses, and a
+      # step that only runs after a green validation can never report the
+      # second one.
       - name: Prove corpus validation changed no byte of it
+        if: always() && steps.oracle.outcome != 'skipped'
         shell: bash
         run: |
-          git diff --exit-code -- migration/oracle || {
+          changed=$(git status --porcelain=v1 --untracked-files=all -- migration/oracle)
+          if [ -n "$changed" ]; then
             echo "::error::Validating the oracle corpus modified it. Validation must be read-only." >&2
+            echo "$changed" >&2
             exit 1
-          }
+          fi
 
       # The corpus manifest is the digest a later job, a reviewer or a
       # TypeScript parity run compares against; published so it is readable

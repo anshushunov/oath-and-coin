@@ -41,8 +41,90 @@ internal static class JcsVectors
             + "by these vectors: RFC 8785 defers those to ECMAScript Number::toString, and an approximate "
             + "target would look authoritative and be wrong. Cover them in the TypeScript port against the "
             + "official RFC 8785 conformance vectors.",
+        ["rejected_inputs"] = new JsonArray(RejectedInputs().ToArray<JsonNode?>()),
         ["vectors"] = new JsonArray(Vectors().ToArray<JsonNode?>()),
     };
+
+    /// <summary>
+    /// Inputs a conforming RFC 8785 serializer must refuse rather than
+    /// canonicalize, recorded so the port inherits the requirement instead of
+    /// discovering it. Each is proved refused here, at export time — an entry
+    /// this build silently accepted would fail the export rather than ship as
+    /// a claim nobody checked.
+    /// </summary>
+    private static IEnumerable<JsonObject> RejectedInputs()
+    {
+        yield return Rejected(
+            "lone_high_surrogate",
+            "{\"s\":\"\\ud83d\"}",
+            "RFC 8785 §3.2.2 requires failing on invalid Unicode; a replacement character would canonicalize a string nobody supplied.");
+
+        yield return Rejected(
+            "lone_low_surrogate",
+            "{\"s\":\"\\ude00\"}",
+            "The same rule from the other half of the pair.");
+
+        yield return Rejected(
+            "integer_beyond_safe_range",
+            """{"n":9007199254740993}""",
+            "Outside the IEEE 754 safe range this reference implementation deliberately does not cover; see covered_number_domain.");
+    }
+
+    /// <summary>
+    /// Records one refused input, together with <em>which</em> layer refused
+    /// it.
+    /// </summary>
+    /// <remarks>
+    /// The input is stored as its literal JSON source text, not as a parsed
+    /// node, and that is not a convenience: a lone surrogate cannot be written
+    /// back out by <c>System.Text.Json</c> at all
+    /// ("Cannot read incomplete UTF-16 JSON text as string with missing low
+    /// surrogate"), so a corpus that tried to embed the value would fail to
+    /// serialize itself. The escape sequence in the source text is plain ASCII
+    /// and survives; the port reads <c>input_json</c> and parses it itself.
+    /// That refusal is also the answer for the current stack: it never reaches
+    /// canonicalization, because reading the string already fails.
+    /// </remarks>
+    private static JsonObject Rejected(string name, string inputJson, string why)
+    {
+        string rejectedBy;
+        string rejection;
+
+        try
+        {
+            JcsReference.Serialize(JsonNode.Parse(inputJson)!);
+
+            throw new InvalidDataException(
+                $"JCS vector '{name}' is recorded as rejected, but this build canonicalized it. Either the "
+                + "reference implementation stopped enforcing the rule or the vector is wrong; both are "
+                + "worse than a missing vector.");
+        }
+        catch (InvalidDataException exception) when (exception.Message.Contains(name, StringComparison.Ordinal))
+        {
+            throw;
+        }
+        catch (InvalidDataException exception)
+        {
+            rejectedBy = "jcs_reference";
+            rejection = exception.Message;
+        }
+        catch (InvalidOperationException exception)
+        {
+            // System.Text.Json refused to read the value at all, before any
+            // canonicalization rule applied.
+            rejectedBy = "system_text_json";
+            rejection = exception.Message;
+        }
+
+        return new JsonObject
+        {
+            ["name"] = name,
+            ["input_json"] = inputJson,
+            ["why"] = why,
+            ["rejected_by"] = rejectedBy,
+            ["rejection"] = rejection,
+        };
+    }
 
     private static IEnumerable<JsonObject> Vectors()
     {

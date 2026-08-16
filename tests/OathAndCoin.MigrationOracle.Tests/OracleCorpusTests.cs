@@ -46,15 +46,22 @@ public class OracleCorpusTests
     private const int ArtifactSchemaVersion = 1;
 
     /// <summary>
-    /// The seed every scenario in the corpus is frozen at — the same one
-    /// <c>ScenarioCoverageTests.EveryScenarioReplaysToItsCanonicalArtifact</c>
-    /// replays under, so a corpus entry whose checkpoint covers the whole
-    /// command list has to reproduce the committed
-    /// <c>scenarios/&lt;scenario&gt;.canonical.json</c> byte for byte. Freezing
-    /// the corpus at some other seed would have made it self-consistent and
-    /// unrelated to the repository's own checked-in evidence.
+    /// The seed <c>ScenarioCoverageTests.EveryScenarioReplaysToItsCanonicalArtifact</c>
+    /// replays under, so a corpus entry at this seed whose checkpoint covers
+    /// the whole command list has to reproduce the committed
+    /// <c>scenarios/&lt;scenario&gt;.canonical.json</c> byte for byte.
     /// </summary>
-    private const ulong CorpusSeed = 7UL;
+    private const ulong CanonicalSeed = 7UL;
+
+    /// <summary>The seed the live harness and the CI determinism replay use.</summary>
+    private const ulong HarnessSeed = 424242UL;
+
+    /// <summary>
+    /// Every seed the corpus is frozen at. Two, because one proves nothing
+    /// about whether the seed is used at all — see
+    /// <see cref="EveryEntry_CarriesTheSeedItWasRunUnder"/>.
+    /// </summary>
+    private static readonly ImmutableArray<ulong> Seeds = ImmutableArray.Create(CanonicalSeed, HarnessSeed);
 
     private static readonly string RepositoryRoot = Resolve("RepositoryRoot");
 
@@ -81,7 +88,13 @@ public class OracleCorpusTests
             "0123456789abcdef".Contains(character, StringComparison.Ordinal),
             $"source_commit must be lowercase hex, but holds '{character}'."));
 
-        Assert.Equal(CorpusSeed.ToString(CultureInfo.InvariantCulture), (string)manifest["seed"]!);
+        Assert.Equal(
+            Seeds.Select(seed => seed.ToString(CultureInfo.InvariantCulture)).ToImmutableArray(),
+            manifest["seeds"]!.AsArray().Select(seed => (string)seed!).ToImmutableArray());
+
+        Assert.Equal(
+            CanonicalSeed.ToString(CultureInfo.InvariantCulture),
+            (string)manifest["canonical_artifact_seed"]!);
     }
 
     /// <summary>
@@ -116,10 +129,21 @@ public class OracleCorpusTests
 
             foreach (var checkpoint in scenario["checkpoints"]!.AsArray())
             {
-                var entry = (string)checkpoint!["path"]!;
-                Assert.True(
-                    File.Exists(Path.Combine(OracleRoot, entry)),
-                    $"Corpus manifest points at '{entry}', which does not exist.");
+                // Every checkpoint carries one entry per seed, and the seeds
+                // are the same everywhere: a checkpoint quietly frozen at one
+                // seed while the rest carried two would leave a hole exactly
+                // where the seed guarantee lives.
+                Assert.Equal(
+                    Seeds.Select(seed => seed.ToString(CultureInfo.InvariantCulture)).ToImmutableArray(),
+                    checkpoint!["entries"]!.AsArray().Select(entry => (string)entry!["seed"]!).ToImmutableArray());
+
+                foreach (var entry in checkpoint["entries"]!.AsArray())
+                {
+                    var path = (string)entry!["path"]!;
+                    Assert.True(
+                        File.Exists(Path.Combine(OracleRoot, path)),
+                        $"Corpus manifest points at '{path}', which does not exist.");
+                }
             }
         }
     }
@@ -127,9 +151,9 @@ public class OracleCorpusTests
     [Fact]
     public void EveryEntry_CarriesEveryFieldTheCorpusPromises()
     {
-        foreach (var (scenario, checkpoint, entry) in Entries())
+        foreach (var (scenario, checkpoint, seed, entry) in Entries())
         {
-            var where = $"{scenario}/{checkpoint}";
+            var where = $"{scenario}/{checkpoint}/seed-{seed}";
 
             foreach (var field in new[]
                      {
@@ -145,6 +169,7 @@ public class OracleCorpusTests
             Assert.Equal(ArtifactSchemaVersion, (int)entry["artifact_schema_version"]!);
             Assert.Equal(scenario, (string)entry["scenario"]!);
             Assert.Equal(checkpoint, (string)entry["checkpoint"]!);
+            Assert.Equal(seed.ToString(CultureInfo.InvariantCulture), (string)entry["seed"]!);
 
             var inputs = entry["inputs"]!;
             Assert.NotNull(inputs["manifest"]);
@@ -243,9 +268,9 @@ public class OracleCorpusTests
     [Fact]
     public void EveryEntry_ReproducesTheCanonicalArtifactThisBuildProduces()
     {
-        foreach (var (scenario, checkpoint, entry) in Entries())
+        foreach (var (scenario, checkpoint, seed, entry) in Entries())
         {
-            var reproduced = Reproduce(scenario, checkpoint);
+            var reproduced = Reproduce(scenario, checkpoint, seed);
             if (reproduced.Outcome is null)
             {
                 Assert.Null(entry["canonical_sha256"]);
@@ -276,22 +301,128 @@ public class OracleCorpusTests
         }
     }
 
+    /// <summary>
+    /// The stored read model agrees with the factory field for field, not just
+    /// in its state, its counts and a digest it carries next to itself.
+    /// </summary>
+    /// <remarks>
+    /// External review finding, confirmed by a mutant. The envelope writes the
+    /// read model by hand (the factory's own JSON projection is private), and
+    /// swapping two fields in that projection — recording <c>Caution</c> under
+    /// <c>greed</c> — rewrote 25 corpus files and left every test green: the
+    /// factory computes <c>sha256</c> from the model, not from what the
+    /// envelope wrote, so the digest was blind to the copy beside it. A port
+    /// would have been compared against wrong data by a green gate.
+    /// <para>
+    /// The fix needs no production change. The envelope's stored
+    /// <c>read_model</c> minus its own <c>sha256</c> is exactly the object
+    /// <see cref="ContractOfferScreenModelFactory.ReadModelHash"/> hashes, so
+    /// canonicalizing it here and hashing the bytes has to reproduce that
+    /// digest. Any field spelled, ordered or valued differently changes the
+    /// bytes and breaks it.
+    /// </para>
+    /// </remarks>
     [Fact]
     public void EveryEntry_ReproducesTheReadModelThisBuildProduces()
     {
-        foreach (var (scenario, checkpoint, entry) in Entries())
+        foreach (var (scenario, checkpoint, seed, entry) in Entries())
         {
-            var model = Reproduce(scenario, checkpoint).Model;
-            var readModel = entry["read_model"]!;
+            var model = Reproduce(scenario, checkpoint, seed).Model;
+            var readModel = entry["read_model"]!.AsObject();
 
             Assert.Equal(model.State.ToString(), (string)readModel["state"]!);
             Assert.Equal(model.TitleKey, (string)readModel["title_key"]!);
             Assert.Equal(model.ErrorCode, (string?)readModel["error_code"]);
             Assert.Equal(model.Roster.Length, readModel["roster"]!.AsArray().Count);
             Assert.Equal(model.Responses.Length, readModel["responses"]!.AsArray().Count);
+
+            var expected = ContractOfferScreenModelFactory.ReadModelHash(model);
+            Assert.Equal(expected, (string)readModel["sha256"]!);
+
+            var hashed = JsonNode.Parse(readModel.ToJsonString())!.AsObject();
+            hashed.Remove("sha256");
+
             Assert.Equal(
-                ContractOfferScreenModelFactory.ReadModelHash(model), (string)readModel["sha256"]!);
+                expected,
+                Sha256Hex(CanonicalBytesOf(hashed.ToJsonString())));
         }
+    }
+
+    /// <summary>
+    /// The seed reached the simulation. Asserted against the seed recorded in
+    /// the run's own final state, which is the only place a run can report
+    /// what it was actually given.
+    /// </summary>
+    /// <remarks>
+    /// External review finding, confirmed by a mutant: with the corpus frozen
+    /// at a single seed, replacing <c>ScenarioRunner.Run</c>'s
+    /// <c>content.CreateInitialState(seed, …)</c> with a hard-coded <c>7UL</c>
+    /// left all 18 corpus tests green — a port that ignored the seed it was
+    /// handed would have matched the oracle exactly. The second seed and this
+    /// assertion close it inside the artifact that survives the C# tree.
+    /// </remarks>
+    [Fact]
+    public void EveryEntry_CarriesTheSeedItWasRunUnder()
+    {
+        var ran = 0;
+
+        foreach (var (scenario, checkpoint, seed, entry) in Entries())
+        {
+            if (entry["final_state"] is not { } finalState)
+            {
+                continue;
+            }
+
+            ran++;
+            Assert.Equal(
+                seed,
+                (ulong)(long)finalState["metadata"]!["campaign_seed"]!);
+
+            Assert.Equal(seed, ulong.Parse((string)entry["seed"]!, CultureInfo.InvariantCulture));
+            _ = scenario;
+            _ = checkpoint;
+        }
+
+        Assert.True(ran > 0, "No corpus entry carries a final state, so nothing proved the seed was used.");
+    }
+
+    /// <summary>
+    /// The two seeds actually produce different behaviour where a decision was
+    /// made. Without this, freezing a second seed would prove only that the
+    /// exporter wrote a second file.
+    /// </summary>
+    [Fact]
+    public void TheTwoSeeds_DisagreeWhereAMoodWasDrawn()
+    {
+        var byKey = Entries()
+            .Where(item => item.Entry["canonical_sha256"] is not null)
+            .GroupBy(item => (item.Scenario, item.Checkpoint));
+
+        var divergent = 0;
+
+        foreach (var group in byKey)
+        {
+            var hashes = group
+                .OrderBy(item => item.Seed)
+                .Select(item => (string)item.Entry["canonical_sha256"]!)
+                .ToImmutableArray();
+
+            Assert.Equal(Seeds.Length, hashes.Length);
+
+            if (hashes[0] != hashes[1])
+            {
+                divergent++;
+            }
+        }
+
+        // Not every scenario has to diverge — one that draws no mood at all
+        // (a run blocked by a principle, an empty roster) is legitimately seed
+        // independent — but if none did, the second seed would be recording
+        // the same run twice.
+        Assert.True(
+            divergent > 0,
+            "No scenario produced a different canonical artifact under the two seeds, so the second seed "
+            + "adds no evidence.");
     }
 
     /// <summary>
@@ -302,7 +433,7 @@ public class OracleCorpusTests
     [Fact]
     public void EveryEntry_StatesTheOutcomeAndScreenStateItsManifestDeclares()
     {
-        foreach (var (scenario, checkpoint, entry) in Entries())
+        foreach (var (scenario, checkpoint, seed, entry) in Entries())
         {
             var manifest = ScenarioManifest.Load(Path.Combine(ScenarioRoot, $"{scenario}.manifest.json"));
             var outcome = entry["outcome"]!;
@@ -316,7 +447,7 @@ public class OracleCorpusTests
             }
 
             Assert.Equal(
-                Reproduce(scenario, checkpoint).Model.State.ToString().ToLowerInvariant(),
+                Reproduce(scenario, checkpoint, seed).Model.State.ToString().ToLowerInvariant(),
                 (string)outcome["screen_state"]!);
         }
     }
@@ -335,11 +466,23 @@ public class OracleCorpusTests
     {
         var partial = 0;
 
-        foreach (var (scenario, checkpoint, entry) in Entries())
+        foreach (var (scenario, checkpoint, seed, entry) in Entries())
         {
             var committed = Path.Combine(ScenarioRoot, $"{scenario}.canonical.json");
             if (!File.Exists(committed))
             {
+                continue;
+            }
+
+            // The committed artifacts were replayed at one seed; an entry at
+            // any other seed is expected to differ and says so here, so a
+            // corpus that silently froze both seeds at the same value would be
+            // caught rather than quietly skipped.
+            if (seed != CanonicalSeed)
+            {
+                Assert.NotEqual(
+                    File.ReadAllText(committed),
+                    Encoding.UTF8.GetString(Convert.FromBase64String((string)entry["canonical_base64"]!)));
                 continue;
             }
 
@@ -365,9 +508,9 @@ public class OracleCorpusTests
     [Fact]
     public void DrawsPerStep_MatchTheOrdinalsThisBuildConsumes()
     {
-        foreach (var (scenario, checkpoint, entry) in Entries())
+        foreach (var (scenario, checkpoint, seed, entry) in Entries())
         {
-            var reproduced = Reproduce(scenario, checkpoint);
+            var reproduced = Reproduce(scenario, checkpoint, seed);
             var draws = entry["draws"]!;
 
             if (reproduced.Outcome is null)
@@ -594,7 +737,7 @@ public class OracleCorpusTests
     /// than called into because the game is a Godot process; nothing about the
     /// rules is restated.
     /// </summary>
-    private static Reproduction Reproduce(string scenario, string checkpointName)
+    private static Reproduction Reproduce(string scenario, string checkpointName, ulong seed)
     {
         var manifest = ScenarioManifest.Load(Path.Combine(ScenarioRoot, $"{scenario}.manifest.json"));
 
@@ -624,7 +767,7 @@ public class OracleCorpusTests
         var outcome = ScenarioRunner.Run(
             ContentSet.Load(contentRoot),
             CheckpointResolver.CommandsUpTo(commands, checkpoint),
-            CorpusSeed);
+            seed);
 
         return new Reproduction(outcome, ContractOfferScreenModelFactory.FromOutcome(outcome));
     }
@@ -664,16 +807,20 @@ public class OracleCorpusTests
         ReadJson(Path.Combine(OracleRoot, "manifest.json"))["scenarios"]!.AsArray()
             .Select(scenario => scenario!);
 
-    private static IEnumerable<(string Scenario, string Checkpoint, JsonObject Entry)> Entries()
+    private static IEnumerable<(string Scenario, string Checkpoint, ulong Seed, JsonObject Entry)> Entries()
     {
         foreach (var scenario in CorpusScenarios())
         {
             foreach (var checkpoint in scenario["checkpoints"]!.AsArray())
             {
-                yield return (
-                    (string)scenario["scenario"]!,
-                    (string)checkpoint!["checkpoint"]!,
-                    ReadJson(Path.Combine(OracleRoot, (string)checkpoint["path"]!)));
+                foreach (var entry in checkpoint!["entries"]!.AsArray())
+                {
+                    yield return (
+                        (string)scenario["scenario"]!,
+                        (string)checkpoint["checkpoint"]!,
+                        ulong.Parse((string)entry!["seed"]!, CultureInfo.InvariantCulture),
+                        ReadJson(Path.Combine(OracleRoot, (string)entry["path"]!)));
+                }
             }
         }
     }

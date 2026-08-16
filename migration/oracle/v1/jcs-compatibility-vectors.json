@@ -4,6 +4,29 @@
   "current_serializer": "OathAndCoin.Content.CanonicalJson over System.Text.Json Utf8JsonWriter",
   "determinism_artifact_version": 3,
   "out_of_scope": "Fractional numbers, exponent forms and integers beyond the IEEE 754 safe range are not covered by these vectors: RFC 8785 defers those to ECMAScript Number::toString, and an approximate target would look authoritative and be wrong. Cover them in the TypeScript port against the official RFC 8785 conformance vectors.",
+  "rejected_inputs": [
+    {
+      "input_json": "{\u0022s\u0022:\u0022\\ud83d\u0022}",
+      "name": "lone_high_surrogate",
+      "rejected_by": "system_text_json",
+      "rejection": "Cannot read incomplete UTF-16 JSON text as string with missing low surrogate.",
+      "why": "RFC 8785 \u00A73.2.2 requires failing on invalid Unicode; a replacement character would canonicalize a string nobody supplied."
+    },
+    {
+      "input_json": "{\u0022s\u0022:\u0022\\ude00\u0022}",
+      "name": "lone_low_surrogate",
+      "rejected_by": "system_text_json",
+      "rejection": "Cannot read invalid UTF-16 JSON text as string. Invalid surrogate value: \u00270xDE00\u0027.",
+      "why": "The same rule from the other half of the pair."
+    },
+    {
+      "input_json": "{\u0022n\u0022:9007199254740993}",
+      "name": "integer_beyond_safe_range",
+      "rejected_by": "jcs_reference",
+      "rejection": "JCS reference serialization refuses the number \u00279007199254740993\u0027: only integers within \u00B19007199254740991 are covered (see this type\u0027s remarks). Extend the implementation deliberately rather than writing a target this code cannot compute correctly.",
+      "why": "Outside the IEEE 754 safe range this reference implementation deliberately does not cover; see covered_number_domain."
+    }
+  ],
   "ruleset_version": "m1-decision/1",
   "target_serializer": "RFC 8785 JSON Canonicalization Scheme",
   "vectors": [

@@ -1,5 +1,6 @@
 {
   "artifact_schema_version": 1,
+  "canonical_artifact_seed": "7",
   "content_schema_version": 2,
   "determinism_artifact_version": 3,
   "files": [
@@ -9,9 +10,9 @@
       "sha256": "ceeb67a9dffdc6cac8eb897e169d7ba17e9c83e640cfc0ee53ff5c86a1a04225"
     },
     {
-      "bytes": 8747,
+      "bytes": 10066,
       "path": "jcs-compatibility-vectors.json",
-      "sha256": "029b11ffd4afc08c9607fab98aad8301a95662978f9616f6cd344ff236660a7a"
+      "sha256": "d1f47c82bf7f53d3bca6c8e33ee40b1555e211e6cba71a0ba6cabadfaf4816fe"
     },
     {
       "bytes": 483427,
@@ -19,138 +20,273 @@
       "sha256": "04bf83bc929c8b09971242e7515f8237b8387d57badb13fb39b855cf02c5e9fd"
     },
     {
+      "bytes": 41570,
+      "path": "scenarios/accept_by_comrade/final/seed-424242.json",
+      "sha256": "a992988c6f7d92c10978838fe58377b2b99cf2e88b65addf608e8ebd16ce0f16"
+    },
+    {
       "bytes": 41990,
-      "path": "scenarios/accept_by_comrade/final.json",
+      "path": "scenarios/accept_by_comrade/final/seed-7.json",
       "sha256": "6e29b4e6e7cb647c8a78ea90ecbcb474eb56b8d137699205466c00e24305e7e8"
     },
     {
+      "bytes": 20786,
+      "path": "scenarios/accept_by_payment/final/seed-424242.json",
+      "sha256": "7378c9ce6c1d8dd74a91909f18b068e5228e9de2f5773bb5e1a649b646bc4435"
+    },
+    {
       "bytes": 20764,
-      "path": "scenarios/accept_by_payment/final.json",
+      "path": "scenarios/accept_by_payment/final/seed-7.json",
       "sha256": "c0e3a76130fcc9872cbd3cbd8be0df737d82a114e9fc760f84449997df0ee295"
     },
     {
+      "bytes": 19782,
+      "path": "scenarios/accept_by_payment_alt/final/seed-424242.json",
+      "sha256": "b795b733fa033aef84a81f697a287b55dbafa97c6c250ae72bbb5282d97560f0"
+    },
+    {
       "bytes": 19756,
-      "path": "scenarios/accept_by_payment_alt/final.json",
+      "path": "scenarios/accept_by_payment_alt/final/seed-7.json",
       "sha256": "d4686048cefd22f80722ccc2cfa23a62cd171b20e408085ba0d813b32872358b"
     },
     {
+      "bytes": 20740,
+      "path": "scenarios/attraction_by_inclination/final/seed-424242.json",
+      "sha256": "cb75cc8efd5da7e0e53a80b3b20ed96fe90b5309ab153f893c669d33b14f1d55"
+    },
+    {
       "bytes": 20714,
-      "path": "scenarios/attraction_by_inclination/final.json",
+      "path": "scenarios/attraction_by_inclination/final/seed-7.json",
       "sha256": "ad91c852fe04fdb61c5f0f45b4468487266ca23c36928ef0fe6202686cca30d8"
     },
     {
+      "bytes": 20441,
+      "path": "scenarios/crew_filled/final/seed-424242.json",
+      "sha256": "9a9b3a7ba5510ebc9039e9c9bb50577a323dd1b9a3eec19d42b3851846b5ed34"
+    },
+    {
       "bytes": 20433,
-      "path": "scenarios/crew_filled/final.json",
+      "path": "scenarios/crew_filled/final/seed-7.json",
       "sha256": "0d371bc3d2b05fcf95ae5598b8a40bf821cc1212d84cd7a22cc219003280ead6"
     },
     {
+      "bytes": 20517,
+      "path": "scenarios/decline_by_comrade/final/seed-424242.json",
+      "sha256": "b726633fc3f5dc15d5a46b8d31f111fc15f954d3818e40daf7d05b655be88322"
+    },
+    {
       "bytes": 20514,
-      "path": "scenarios/decline_by_comrade/final.json",
+      "path": "scenarios/decline_by_comrade/final/seed-7.json",
       "sha256": "d3abc49538b8cea2138cde92aea46d0d7b16aef87e4e0b737eb824e86decac5a"
     },
     {
+      "bytes": 31263,
+      "path": "scenarios/decline_by_insult/final/seed-424242.json",
+      "sha256": "3f8b64b56f7472f50be0f26c0f097a08fc86687998375bb19296a0eeb7346353"
+    },
+    {
       "bytes": 31674,
-      "path": "scenarios/decline_by_insult/final.json",
+      "path": "scenarios/decline_by_insult/final/seed-7.json",
       "sha256": "506b4d9ee6490095e09453953227cf6b24751087da37163591d51378339615a9"
     },
     {
+      "bytes": 20191,
+      "path": "scenarios/decline_by_risk/final/seed-424242.json",
+      "sha256": "e04b30b2eef8d5900750f4987d00cf6e8b883a3516616bae238f1992385e8d8e"
+    },
+    {
       "bytes": 20169,
-      "path": "scenarios/decline_by_risk/final.json",
+      "path": "scenarios/decline_by_risk/final/seed-7.json",
       "sha256": "f2b4409f0b3a1184765c44ca742d9221e2730fddea68ead6a451199edaf8157e"
     },
     {
+      "bytes": 21160,
+      "path": "scenarios/duplicate_response_attempt/final/seed-424242.json",
+      "sha256": "3ed3eb30a6cdb04222e819d56a22f840668775833d39b2d4fff05f48eb6cdf73"
+    },
+    {
       "bytes": 21138,
-      "path": "scenarios/duplicate_response_attempt/final.json",
+      "path": "scenarios/duplicate_response_attempt/final/seed-7.json",
       "sha256": "af9448177705ef8d5bc83247778b8b92e69ab973ad272c633a16102d274e5183"
     },
     {
+      "bytes": 26300,
+      "path": "scenarios/gate0/decisions_complete/seed-424242.json",
+      "sha256": "654c002e9656b9a72b70855346433ef8deb9717ad4a12c980f1ef6a0547a3311"
+    },
+    {
       "bytes": 26279,
-      "path": "scenarios/gate0/decisions_complete.json",
+      "path": "scenarios/gate0/decisions_complete/seed-7.json",
       "sha256": "fc5818d76fe27120d96a03ae5cbd5312ebc42a5ca91e4119809b24c13d577bd6"
     },
     {
+      "bytes": 20231,
+      "path": "scenarios/grey_zone_flip/final/seed-424242.json",
+      "sha256": "9248fa18a8cb95562bb6e4e43394ab2e176b0ccc541667b3a9a4eeb3e72ae864"
+    },
+    {
       "bytes": 20210,
-      "path": "scenarios/grey_zone_flip/final.json",
+      "path": "scenarios/grey_zone_flip/final/seed-7.json",
       "sha256": "997079ecc64b023729de9126c03f74b5c423f1b30e58742538165f23147640e9"
     },
     {
+      "bytes": 25706,
+      "path": "scenarios/grey_zone_stable/final/seed-424242.json",
+      "sha256": "48b9926e5bea6faad96cd68bfdee1ffe0ff28df32082a5524f924d2bede3e153"
+    },
+    {
       "bytes": 25704,
-      "path": "scenarios/grey_zone_stable/final.json",
+      "path": "scenarios/grey_zone_stable/final/seed-7.json",
       "sha256": "dcf4c1384a99ccd6171c8b8635d6fbbcd186974526384dc2efe13ca6dc4af7a3"
     },
     {
+      "bytes": 20258,
+      "path": "scenarios/inclination_without_tag_match/final/seed-424242.json",
+      "sha256": "c29963082da0d614bb519e71cca7c9de49d3a5c0312f472205b123d78a3378a5"
+    },
+    {
       "bytes": 20232,
-      "path": "scenarios/inclination_without_tag_match/final.json",
+      "path": "scenarios/inclination_without_tag_match/final/seed-7.json",
       "sha256": "d459c15ed0b1aecaa60143e8d05bc46e44e021d7757d86cd3ae83e49b1663cdb"
     },
     {
+      "bytes": 27609,
+      "path": "scenarios/mixed_gate_then_decisions/final/seed-424242.json",
+      "sha256": "164bb23499b96c70e42e67f70a835707cab6c1e99cde405ff4176970f385e133"
+    },
+    {
       "bytes": 27582,
-      "path": "scenarios/mixed_gate_then_decisions/final.json",
+      "path": "scenarios/mixed_gate_then_decisions/final/seed-7.json",
       "sha256": "36ad7e24893d030d595845ab4f04c5bcae7c14ca1ba3b025708df5450fa3095a"
     },
     {
+      "bytes": 26699,
+      "path": "scenarios/order_ally_first/final/seed-424242.json",
+      "sha256": "8fce954fea6e3cffc2f974dfd78ec1b693f5e84955135e354cd57e6e127f795a"
+    },
+    {
       "bytes": 26678,
-      "path": "scenarios/order_ally_first/final.json",
+      "path": "scenarios/order_ally_first/final/seed-7.json",
       "sha256": "41e47645b3665fa5b11e186f49487b96273fc254ffc288c41e2b8615917e3d20"
     },
     {
+      "bytes": 26246,
+      "path": "scenarios/order_ally_second/final/seed-424242.json",
+      "sha256": "33438d22641c78817b37542bdb19feef36afd0dc9d4d083f9d5df0a7e3678d2c"
+    },
+    {
       "bytes": 26233,
-      "path": "scenarios/order_ally_second/final.json",
+      "path": "scenarios/order_ally_second/final/seed-7.json",
       "sha256": "3c134f487395423175096d7635ace91c4685ebc0191ad1cb8435f80349b9a6ef"
     },
     {
+      "bytes": 17640,
+      "path": "scenarios/refusal_by_principle/final/seed-424242.json",
+      "sha256": "852bdd184dc261919c9dcd4fce7755f5028fffbd3fda97d1264085f69a926d13"
+    },
+    {
       "bytes": 17614,
-      "path": "scenarios/refusal_by_principle/final.json",
+      "path": "scenarios/refusal_by_principle/final/seed-7.json",
       "sha256": "2c2444e9199ef49d070fd8fcf5f6c174bf808b2f663eca1eee418cd72459c841"
     },
     {
+      "bytes": 17697,
+      "path": "scenarios/refusal_by_principle_abandon_wounded/final/seed-424242.json",
+      "sha256": "2b98b61b8eb703b499dcd8b235aefbeee6eadd26f0cf398cede9ff66f5fb7259"
+    },
+    {
       "bytes": 17675,
-      "path": "scenarios/refusal_by_principle_abandon_wounded/final.json",
+      "path": "scenarios/refusal_by_principle_abandon_wounded/final/seed-7.json",
       "sha256": "8878b63675e545dbc253c35993fb35a0ec75bff974f98b199673c6276393542e"
     },
     {
+      "bytes": 17629,
+      "path": "scenarios/refusal_by_principle_deception/final/seed-424242.json",
+      "sha256": "70c781d65b69a8eac65a1aa4decc0ffc4c85b53e68051f4d4a03c495526be165"
+    },
+    {
       "bytes": 17603,
-      "path": "scenarios/refusal_by_principle_deception/final.json",
+      "path": "scenarios/refusal_by_principle_deception/final/seed-7.json",
       "sha256": "4034d779e163c01c7ea650538f10e2354a1156895a199cde32765db0b3576daf"
     },
     {
+      "bytes": 15409,
+      "path": "scenarios/repulsion_by_inclination/final/seed-424242.json",
+      "sha256": "dbec0c13c9f17f79a1a9eb6f09654d08e4230e422ba7b2722ada9c88584d8a14"
+    },
+    {
       "bytes": 15392,
-      "path": "scenarios/repulsion_by_inclination/final.json",
+      "path": "scenarios/repulsion_by_inclination/final/seed-7.json",
       "sha256": "d534531081c1eec61d3ae8b55064bfe2bac7c744c06481e9b39fb085eafc6b28"
     },
     {
+      "bytes": 3373,
+      "path": "scenarios/screen_empty/screen_empty/seed-424242.json",
+      "sha256": "0b24ad5951b87b791500c6e5fe733b1c5a0714662b111eafde2bd1f3a9959c02"
+    },
+    {
       "bytes": 3347,
-      "path": "scenarios/screen_empty/screen_empty.json",
+      "path": "scenarios/screen_empty/screen_empty/seed-7.json",
       "sha256": "f4d34f86aafdb29969e46fdf325076d66395dc607f0243e72b7c7de8c6422c41"
     },
     {
+      "bytes": 1775,
+      "path": "scenarios/screen_error/screen_error/seed-424242.json",
+      "sha256": "83459ac19bca464939613cc7b872feb02064d7cdee66af80c39d8d3ea1b6f1e9"
+    },
+    {
       "bytes": 1770,
-      "path": "scenarios/screen_error/screen_error.json",
+      "path": "scenarios/screen_error/screen_error/seed-7.json",
       "sha256": "fc51ac059fd2a8de71eca70dbf347016b6f3c626d74d8dd47f926e336644a2f2"
     },
     {
+      "bytes": 20297,
+      "path": "scenarios/screen_incomplete/screen_incomplete/seed-424242.json",
+      "sha256": "6027aad576db7df5dfe86de40d2f8b81b01cb3fb7a511187c30ada1ca683ba46"
+    },
+    {
       "bytes": 20270,
-      "path": "scenarios/screen_incomplete/screen_incomplete.json",
+      "path": "scenarios/screen_incomplete/screen_incomplete/seed-7.json",
       "sha256": "e8e794dbd2fe527393b33c74ebab109673622a26f24d592074b24938b5d25eee"
     },
     {
+      "bytes": 1605,
+      "path": "scenarios/screen_loading/screen_loading/seed-424242.json",
+      "sha256": "9b84f09ec61e3f22ffd7d0be595f622e5063468f7f0bb3a2e0405e2b2e9f6a34"
+    },
+    {
       "bytes": 1600,
-      "path": "scenarios/screen_loading/screen_loading.json",
+      "path": "scenarios/screen_loading/screen_loading/seed-7.json",
       "sha256": "1acc171e34f8383f4da45cad6602e92a960c1bd2dc9339f659d3e1e8eaf90716"
     },
     {
+      "bytes": 52007,
+      "path": "scenarios/screen_normal/screen_normal/seed-424242.json",
+      "sha256": "377e83572b6af2a012ccd3f1be00243fbf207de53935bd1ffd5e65a64907f527"
+    },
+    {
       "bytes": 52408,
-      "path": "scenarios/screen_normal/screen_normal.json",
+      "path": "scenarios/screen_normal/screen_normal/seed-7.json",
       "sha256": "e1b5d67c4aa67acfe35f6a811e20226cada58557b20171ce112c93d628e15019"
     },
     {
+      "bytes": 14223,
+      "path": "scenarios/two_principles_blocked/final/seed-424242.json",
+      "sha256": "3f52ef604880611ed1bf9a79cf7916b781e046ae9d9ded5b4950653cf57e0e83"
+    },
+    {
       "bytes": 14197,
-      "path": "scenarios/two_principles_blocked/final.json",
+      "path": "scenarios/two_principles_blocked/final/seed-7.json",
       "sha256": "2baeb9456f77bc64aeedea08377109ce37f6b8818320083f37ee50401ada2eba"
     },
     {
+      "bytes": 36509,
+      "path": "scenarios/zero_sum_tie/final/seed-424242.json",
+      "sha256": "1c2a741fa6fe09d07727178b7f510559fc63750c1f13ed2e485b11973eeaf69c"
+    },
+    {
       "bytes": 36308,
-      "path": "scenarios/zero_sum_tie/final.json",
+      "path": "scenarios/zero_sum_tie/final/seed-7.json",
       "sha256": "576fd0fe322b4639786f1fe6095639b187e9eca597c2bb220e7149c9c8b56099"
     }
   ],
@@ -165,7 +301,16 @@
         {
           "after_command_id": 5,
           "checkpoint": "final",
-          "path": "scenarios/accept_by_comrade/final.json"
+          "entries": [
+            {
+              "path": "scenarios/accept_by_comrade/final/seed-7.json",
+              "seed": "7"
+            },
+            {
+              "path": "scenarios/accept_by_comrade/final/seed-424242.json",
+              "seed": "424242"
+            }
+          ]
         }
       ],
       "expected_outcome": "success",
@@ -177,7 +322,16 @@
         {
           "after_command_id": 1,
           "checkpoint": "final",
-          "path": "scenarios/accept_by_payment/final.json"
+          "entries": [
+            {
+              "path": "scenarios/accept_by_payment/final/seed-7.json",
+              "seed": "7"
+            },
+            {
+              "path": "scenarios/accept_by_payment/final/seed-424242.json",
+              "seed": "424242"
+            }
+          ]
         }
       ],
       "expected_outcome": "success",
@@ -189,7 +343,16 @@
         {
           "after_command_id": 1,
           "checkpoint": "final",
-          "path": "scenarios/accept_by_payment_alt/final.json"
+          "entries": [
+            {
+              "path": "scenarios/accept_by_payment_alt/final/seed-7.json",
+              "seed": "7"
+            },
+            {
+              "path": "scenarios/accept_by_payment_alt/final/seed-424242.json",
+              "seed": "424242"
+            }
+          ]
         }
       ],
       "expected_outcome": "success",
@@ -201,7 +364,16 @@
         {
           "after_command_id": 1,
           "checkpoint": "final",
-          "path": "scenarios/attraction_by_inclination/final.json"
+          "entries": [
+            {
+              "path": "scenarios/attraction_by_inclination/final/seed-7.json",
+              "seed": "7"
+            },
+            {
+              "path": "scenarios/attraction_by_inclination/final/seed-424242.json",
+              "seed": "424242"
+            }
+          ]
         }
       ],
       "expected_outcome": "success",
@@ -213,7 +385,16 @@
         {
           "after_command_id": 2,
           "checkpoint": "final",
-          "path": "scenarios/crew_filled/final.json"
+          "entries": [
+            {
+              "path": "scenarios/crew_filled/final/seed-7.json",
+              "seed": "7"
+            },
+            {
+              "path": "scenarios/crew_filled/final/seed-424242.json",
+              "seed": "424242"
+            }
+          ]
         }
       ],
       "expected_outcome": "success",
@@ -225,7 +406,16 @@
         {
           "after_command_id": 2,
           "checkpoint": "final",
-          "path": "scenarios/decline_by_comrade/final.json"
+          "entries": [
+            {
+              "path": "scenarios/decline_by_comrade/final/seed-7.json",
+              "seed": "7"
+            },
+            {
+              "path": "scenarios/decline_by_comrade/final/seed-424242.json",
+              "seed": "424242"
+            }
+          ]
         }
       ],
       "expected_outcome": "success",
@@ -237,7 +427,16 @@
         {
           "after_command_id": 3,
           "checkpoint": "final",
-          "path": "scenarios/decline_by_insult/final.json"
+          "entries": [
+            {
+              "path": "scenarios/decline_by_insult/final/seed-7.json",
+              "seed": "7"
+            },
+            {
+              "path": "scenarios/decline_by_insult/final/seed-424242.json",
+              "seed": "424242"
+            }
+          ]
         }
       ],
       "expected_outcome": "success",
@@ -249,7 +448,16 @@
         {
           "after_command_id": 1,
           "checkpoint": "final",
-          "path": "scenarios/decline_by_risk/final.json"
+          "entries": [
+            {
+              "path": "scenarios/decline_by_risk/final/seed-7.json",
+              "seed": "7"
+            },
+            {
+              "path": "scenarios/decline_by_risk/final/seed-424242.json",
+              "seed": "424242"
+            }
+          ]
         }
       ],
       "expected_outcome": "success",
@@ -261,7 +469,16 @@
         {
           "after_command_id": 2,
           "checkpoint": "final",
-          "path": "scenarios/duplicate_response_attempt/final.json"
+          "entries": [
+            {
+              "path": "scenarios/duplicate_response_attempt/final/seed-7.json",
+              "seed": "7"
+            },
+            {
+              "path": "scenarios/duplicate_response_attempt/final/seed-424242.json",
+              "seed": "424242"
+            }
+          ]
         }
       ],
       "expected_outcome": "success",
@@ -273,7 +490,16 @@
         {
           "after_command_id": 2,
           "checkpoint": "decisions_complete",
-          "path": "scenarios/gate0/decisions_complete.json"
+          "entries": [
+            {
+              "path": "scenarios/gate0/decisions_complete/seed-7.json",
+              "seed": "7"
+            },
+            {
+              "path": "scenarios/gate0/decisions_complete/seed-424242.json",
+              "seed": "424242"
+            }
+          ]
         }
       ],
       "expected_outcome": "success",
@@ -285,7 +511,16 @@
         {
           "after_command_id": 1,
           "checkpoint": "final",
-          "path": "scenarios/grey_zone_flip/final.json"
+          "entries": [
+            {
+              "path": "scenarios/grey_zone_flip/final/seed-7.json",
+              "seed": "7"
+            },
+            {
+              "path": "scenarios/grey_zone_flip/final/seed-424242.json",
+              "seed": "424242"
+            }
+          ]
         }
       ],
       "expected_outcome": "success",
@@ -297,7 +532,16 @@
         {
           "after_command_id": 2,
           "checkpoint": "final",
-          "path": "scenarios/grey_zone_stable/final.json"
+          "entries": [
+            {
+              "path": "scenarios/grey_zone_stable/final/seed-7.json",
+              "seed": "7"
+            },
+            {
+              "path": "scenarios/grey_zone_stable/final/seed-424242.json",
+              "seed": "424242"
+            }
+          ]
         }
       ],
       "expected_outcome": "success",
@@ -309,7 +553,16 @@
         {
           "after_command_id": 1,
           "checkpoint": "final",
-          "path": "scenarios/inclination_without_tag_match/final.json"
+          "entries": [
+            {
+              "path": "scenarios/inclination_without_tag_match/final/seed-7.json",
+              "seed": "7"
+            },
+            {
+              "path": "scenarios/inclination_without_tag_match/final/seed-424242.json",
+              "seed": "424242"
+            }
+          ]
         }
       ],
       "expected_outcome": "success",
@@ -321,7 +574,16 @@
         {
           "after_command_id": 3,
           "checkpoint": "final",
-          "path": "scenarios/mixed_gate_then_decisions/final.json"
+          "entries": [
+            {
+              "path": "scenarios/mixed_gate_then_decisions/final/seed-7.json",
+              "seed": "7"
+            },
+            {
+              "path": "scenarios/mixed_gate_then_decisions/final/seed-424242.json",
+              "seed": "424242"
+            }
+          ]
         }
       ],
       "expected_outcome": "success",
@@ -333,7 +595,16 @@
         {
           "after_command_id": 2,
           "checkpoint": "final",
-          "path": "scenarios/order_ally_first/final.json"
+          "entries": [
+            {
+              "path": "scenarios/order_ally_first/final/seed-7.json",
+              "seed": "7"
+            },
+            {
+              "path": "scenarios/order_ally_first/final/seed-424242.json",
+              "seed": "424242"
+            }
+          ]
         }
       ],
       "expected_outcome": "success",
@@ -345,7 +616,16 @@
         {
           "after_command_id": 2,
           "checkpoint": "final",
-          "path": "scenarios/order_ally_second/final.json"
+          "entries": [
+            {
+              "path": "scenarios/order_ally_second/final/seed-7.json",
+              "seed": "7"
+            },
+            {
+              "path": "scenarios/order_ally_second/final/seed-424242.json",
+              "seed": "424242"
+            }
+          ]
         }
       ],
       "expected_outcome": "success",
@@ -357,7 +637,16 @@
         {
           "after_command_id": 1,
           "checkpoint": "final",
-          "path": "scenarios/refusal_by_principle/final.json"
+          "entries": [
+            {
+              "path": "scenarios/refusal_by_principle/final/seed-7.json",
+              "seed": "7"
+            },
+            {
+              "path": "scenarios/refusal_by_principle/final/seed-424242.json",
+              "seed": "424242"
+            }
+          ]
         }
       ],
       "expected_outcome": "success",
@@ -369,7 +658,16 @@
         {
           "after_command_id": 1,
           "checkpoint": "final",
-          "path": "scenarios/refusal_by_principle_abandon_wounded/final.json"
+          "entries": [
+            {
+              "path": "scenarios/refusal_by_principle_abandon_wounded/final/seed-7.json",
+              "seed": "7"
+            },
+            {
+              "path": "scenarios/refusal_by_principle_abandon_wounded/final/seed-424242.json",
+              "seed": "424242"
+            }
+          ]
         }
       ],
       "expected_outcome": "success",
@@ -381,7 +679,16 @@
         {
           "after_command_id": 1,
           "checkpoint": "final",
-          "path": "scenarios/refusal_by_principle_deception/final.json"
+          "entries": [
+            {
+              "path": "scenarios/refusal_by_principle_deception/final/seed-7.json",
+              "seed": "7"
+            },
+            {
+              "path": "scenarios/refusal_by_principle_deception/final/seed-424242.json",
+              "seed": "424242"
+            }
+          ]
         }
       ],
       "expected_outcome": "success",
@@ -393,7 +700,16 @@
         {
           "after_command_id": 1,
           "checkpoint": "final",
-          "path": "scenarios/repulsion_by_inclination/final.json"
+          "entries": [
+            {
+              "path": "scenarios/repulsion_by_inclination/final/seed-7.json",
+              "seed": "7"
+            },
+            {
+              "path": "scenarios/repulsion_by_inclination/final/seed-424242.json",
+              "seed": "424242"
+            }
+          ]
         }
       ],
       "expected_outcome": "success",
@@ -405,7 +721,16 @@
         {
           "after_command_id": 0,
           "checkpoint": "screen_empty",
-          "path": "scenarios/screen_empty/screen_empty.json"
+          "entries": [
+            {
+              "path": "scenarios/screen_empty/screen_empty/seed-7.json",
+              "seed": "7"
+            },
+            {
+              "path": "scenarios/screen_empty/screen_empty/seed-424242.json",
+              "seed": "424242"
+            }
+          ]
         }
       ],
       "expected_outcome": "success",
@@ -417,7 +742,16 @@
         {
           "after_command_id": 0,
           "checkpoint": "screen_error",
-          "path": "scenarios/screen_error/screen_error.json"
+          "entries": [
+            {
+              "path": "scenarios/screen_error/screen_error/seed-7.json",
+              "seed": "7"
+            },
+            {
+              "path": "scenarios/screen_error/screen_error/seed-424242.json",
+              "seed": "424242"
+            }
+          ]
         }
       ],
       "expected_outcome": "error",
@@ -429,7 +763,16 @@
         {
           "after_command_id": 1,
           "checkpoint": "screen_incomplete",
-          "path": "scenarios/screen_incomplete/screen_incomplete.json"
+          "entries": [
+            {
+              "path": "scenarios/screen_incomplete/screen_incomplete/seed-7.json",
+              "seed": "7"
+            },
+            {
+              "path": "scenarios/screen_incomplete/screen_incomplete/seed-424242.json",
+              "seed": "424242"
+            }
+          ]
         }
       ],
       "expected_outcome": "success",
@@ -441,7 +784,16 @@
         {
           "after_command_id": 0,
           "checkpoint": "screen_loading",
-          "path": "scenarios/screen_loading/screen_loading.json"
+          "entries": [
+            {
+              "path": "scenarios/screen_loading/screen_loading/seed-7.json",
+              "seed": "7"
+            },
+            {
+              "path": "scenarios/screen_loading/screen_loading/seed-424242.json",
+              "seed": "424242"
+            }
+          ]
         }
       ],
       "expected_outcome": "loading",
@@ -453,7 +805,16 @@
         {
           "after_command_id": 6,
           "checkpoint": "screen_normal",
-          "path": "scenarios/screen_normal/screen_normal.json"
+          "entries": [
+            {
+              "path": "scenarios/screen_normal/screen_normal/seed-7.json",
+              "seed": "7"
+            },
+            {
+              "path": "scenarios/screen_normal/screen_normal/seed-424242.json",
+              "seed": "424242"
+            }
+          ]
         }
       ],
       "expected_outcome": "success",
@@ -465,7 +826,16 @@
         {
           "after_command_id": 1,
           "checkpoint": "final",
-          "path": "scenarios/two_principles_blocked/final.json"
+          "entries": [
+            {
+              "path": "scenarios/two_principles_blocked/final/seed-7.json",
+              "seed": "7"
+            },
+            {
+              "path": "scenarios/two_principles_blocked/final/seed-424242.json",
+              "seed": "424242"
+            }
+          ]
         }
       ],
       "expected_outcome": "success",
@@ -477,7 +847,16 @@
         {
           "after_command_id": 7,
           "checkpoint": "final",
-          "path": "scenarios/zero_sum_tie/final.json"
+          "entries": [
+            {
+              "path": "scenarios/zero_sum_tie/final/seed-7.json",
+              "seed": "7"
+            },
+            {
+              "path": "scenarios/zero_sum_tie/final/seed-424242.json",
+              "seed": "424242"
+            }
+          ]
         }
       ],
       "expected_outcome": "success",
@@ -485,6 +864,9 @@
       "scenario": "zero_sum_tie"
     }
   ],
-  "seed": "7",
+  "seeds": [
+    "7",
+    "424242"
+  ],
   "source_commit": "12565862b1e88e0524f95def18c023571ec4269f"
 }

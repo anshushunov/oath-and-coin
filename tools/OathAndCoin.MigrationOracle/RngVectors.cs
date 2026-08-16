@@ -34,7 +34,8 @@ internal static class RngVectors
     /// </summary>
     private static readonly ulong[] Seeds =
     {
-        0UL, 1UL, OracleEnvelope.Seed, 424242UL, 0x9E3779B97F4A7C15UL, ulong.MaxValue - 1UL, ulong.MaxValue,
+        0UL, 1UL, OracleEnvelope.CanonicalSeed, OracleEnvelope.HarnessSeed, 0x9E3779B97F4A7C15UL,
+        ulong.MaxValue - 1UL, ulong.MaxValue,
     };
 
     /// <summary>

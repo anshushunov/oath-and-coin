@@ -50,20 +50,46 @@ internal static class OracleEnvelope
     internal const int ArtifactSchemaVersion = 1;
 
     /// <summary>
-    /// The seed the whole corpus is frozen at — the seed
+    /// The seed every entry whose checkpoint covers the whole command list
+    /// reproduces the committed <c>scenarios/&lt;scenario&gt;.canonical.json</c>
+    /// under — the one
     /// <c>ScenarioCoverageTests.EveryScenarioReplaysToItsCanonicalArtifact</c>
-    /// already replays every scenario under. Choosing it means an entry whose
-    /// checkpoint covers the whole command list reproduces the committed
-    /// <c>scenarios/&lt;scenario&gt;.canonical.json</c> byte for byte, so the
-    /// corpus meets the repository's own checked-in evidence instead of being
-    /// a second, self-consistent island.
+    /// already replays every scenario at. It makes the corpus meet the
+    /// repository's own checked-in evidence instead of being a second,
+    /// self-consistent island.
     /// </summary>
-    internal const ulong Seed = 7UL;
+    internal const ulong CanonicalSeed = 7UL;
 
-    /// <summary>What one checkpoint's export produced.</summary>
-    internal sealed record Entry(string Scenario, string Checkpoint, JsonObject Envelope);
+    /// <summary>
+    /// The seed the live harness actually runs under
+    /// (<c>OathAndCoin.Harness.CommandLine.DefaultSeed</c>) and the one the CI
+    /// determinism replay uses.
+    /// </summary>
+    internal const ulong HarnessSeed = 424242UL;
 
-    internal static Entry Build(string repositoryRoot, string sourceCommit, ScenarioManifest manifest, Checkpoint checkpoint)
+    /// <summary>
+    /// Every seed the corpus is frozen at.
+    /// </summary>
+    /// <remarks>
+    /// Two, not one, and the reason is a hole a single seed leaves open.
+    /// External review found it and a mutant confirmed it: replacing
+    /// <c>ScenarioRunner.Run</c>'s <c>content.CreateInitialState(seed, …)</c>
+    /// with a hard-coded <c>7UL</c> left every corpus test green, because
+    /// every entry had been recorded at 7 and the RNG vectors prove the
+    /// generator rather than its use. A port that ignored the seed it was
+    /// handed would have matched the oracle perfectly. Today that mutant is
+    /// caught by exactly one C# test — which is deleted at cutover, taking the
+    /// guarantee with it. Freezing the same scenarios at a second seed makes
+    /// the seed part of each entry's identity and closes it in the artifact
+    /// that survives.
+    /// </remarks>
+    internal static readonly ImmutableArray<ulong> Seeds = ImmutableArray.Create(CanonicalSeed, HarnessSeed);
+
+    /// <summary>What one checkpoint's export produced, at one seed.</summary>
+    internal sealed record Entry(string Scenario, string Checkpoint, ulong Seed, JsonObject Envelope);
+
+    internal static Entry Build(
+        string repositoryRoot, string sourceCommit, ScenarioManifest manifest, Checkpoint checkpoint, ulong seed)
     {
         var scenarioRoot = Path.Combine(repositoryRoot, "scenarios");
         var schemaRoot = Path.Combine(repositoryRoot, "schemas");
@@ -76,7 +102,7 @@ internal static class OracleEnvelope
         var replayed = CheckpointResolver.CommandsUpTo(allCommands, checkpoint);
         var contentRoot = ContentRootFor(repositoryRoot, manifest);
 
-        var run = Execute(manifest, schemaRoot, contentRoot.Absolute, replayed);
+        var run = Execute(manifest, schemaRoot, contentRoot.Absolute, replayed, seed);
 
         // The tool's own self-check, and the reason it is here rather than in
         // a test: a corpus generated from a run that had quietly stopped
@@ -96,7 +122,7 @@ internal static class OracleEnvelope
             ["source_commit"] = sourceCommit,
             ["scenario"] = manifest.Scenario,
             ["checkpoint"] = checkpoint.Name,
-            ["seed"] = Text(Seed),
+            ["seed"] = Text(seed),
             ["inputs"] = Inputs(manifest, checkpoint, contentRoot, replayed, run),
             ["outcome"] = new JsonObject
             {
@@ -123,7 +149,7 @@ internal static class OracleEnvelope
             envelope["canonical_base64"] = null;
             envelope["canonical_sha256"] = null;
 
-            return new Entry(manifest.Scenario, checkpoint.Name, envelope);
+            return new Entry(manifest.Scenario, checkpoint.Name, seed, envelope);
         }
 
         var canonical = DeterminismArtifact.ToCanonicalJson(run.Outcome);
@@ -136,11 +162,11 @@ internal static class OracleEnvelope
             .SelectMany(step => step!["events"]!.AsArray())
             .Select(Detach)
             .ToArray());
-        envelope["draws"] = Draws(run, replayed);
+        envelope["draws"] = Draws(run, replayed, seed);
         envelope["canonical_base64"] = Convert.ToBase64String(Encoding.UTF8.GetBytes(canonical));
         envelope["canonical_sha256"] = DeterminismArtifact.Hash(run.Outcome);
 
-        return new Entry(manifest.Scenario, checkpoint.Name, envelope);
+        return new Entry(manifest.Scenario, checkpoint.Name, seed, envelope);
     }
 
     /// <summary>
@@ -195,7 +221,8 @@ internal static class OracleEnvelope
         ScenarioManifest manifest,
         string schemaRoot,
         string contentRoot,
-        ImmutableArray<ScenarioCommand> replayed)
+        ImmutableArray<ScenarioCommand> replayed,
+        ulong seed)
     {
         if (manifest.ExpectedOutcome == ScenarioOutcomeKind.Loading)
         {
@@ -239,7 +266,7 @@ internal static class OracleEnvelope
                 null);
         }
 
-        var outcome = ScenarioRunner.Run(content, replayed, Seed);
+        var outcome = ScenarioRunner.Run(content, replayed, seed);
 
         return new Run(
             outcome, ContractOfferScreenModelFactory.FromOutcome(outcome), content, content.ContentVersion);
@@ -254,7 +281,7 @@ internal static class OracleEnvelope
     /// an ordinal), and that difference is exactly what a port has to
     /// reproduce, so it is recorded per command rather than summed away.
     /// </summary>
-    private static JsonObject Draws(Run run, ImmutableArray<ScenarioCommand> replayed)
+    private static JsonObject Draws(Run run, ImmutableArray<ScenarioCommand> replayed, ulong seed)
     {
         var outcome = run.Outcome!;
         var content = run.Content!;
@@ -264,7 +291,7 @@ internal static class OracleEnvelope
         {
             ordinals[prefix] = prefix == replayed.Length
                 ? outcome.FinalState.Metadata.NextDecisionOrdinal
-                : ScenarioRunner.Run(content, replayed.Take(prefix).ToImmutableArray(), Seed)
+                : ScenarioRunner.Run(content, replayed.Take(prefix).ToImmutableArray(), seed)
                     .FinalState.Metadata.NextDecisionOrdinal;
         }
 

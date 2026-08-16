@@ -36,11 +36,52 @@ internal static class JcsReference
     /// <summary>The largest magnitude an integer may have and still be exact as an IEEE 754 double.</summary>
     internal const long SafeInteger = 9007199254740991L;
 
+    /// <summary>
+    /// UTF-8 that throws instead of substituting.
+    /// </summary>
+    /// <remarks>
+    /// External review finding. The default encoder's replacement fallback
+    /// turns a lone surrogate into U+FFFD, so an input RFC 8785 requires a
+    /// serializer to <em>reject</em> would instead have produced plausible
+    /// target bytes for a different string — evidence that looks authoritative
+    /// and describes data nobody supplied. No vector reaches this today; the
+    /// point is that the next one must not be able to.
+    /// </remarks>
+    private static readonly UTF8Encoding StrictUtf8 = new(
+        encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+
     internal static byte[] Serialize(JsonNode? node)
     {
         var builder = new StringBuilder();
         Write(node, builder);
-        return Encoding.UTF8.GetBytes(builder.ToString());
+        var text = builder.ToString();
+
+        // Checked before encoding rather than relying on the encoder alone, so
+        // the message names the problem instead of surfacing as
+        // "Unable to translate Unicode character".
+        for (var index = 0; index < text.Length; index++)
+        {
+            if (!char.IsSurrogate(text[index]))
+            {
+                continue;
+            }
+
+            var paired = char.IsHighSurrogate(text[index])
+                && index + 1 < text.Length
+                && char.IsLowSurrogate(text[index + 1]);
+
+            if (!paired)
+            {
+                throw new InvalidDataException(
+                    $"JCS reference serialization refuses a lone surrogate at index {index}: RFC 8785 "
+                    + "requires failing on invalid Unicode rather than substituting a replacement "
+                    + "character.");
+            }
+
+            index++;
+        }
+
+        return StrictUtf8.GetBytes(text);
     }
 
     private static void Write(JsonNode? node, StringBuilder builder)

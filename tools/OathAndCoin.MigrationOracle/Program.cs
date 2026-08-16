@@ -52,6 +52,13 @@ public static class Program
     /// </remarks>
     private const string SourceCommit = "12565862b1e88e0524f95def18c023571ec4269f";
 
+    /// <summary>
+    /// What a corpus manifest names as its generator. Also the marker
+    /// <see cref="RequireCorpusTarget"/> refuses to overwrite a directory
+    /// without.
+    /// </summary>
+    private const string GeneratedBy = "tools/OathAndCoin.MigrationOracle";
+
     private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
 
     private static readonly JsonWriterOptions WriterOptions = new()
@@ -127,6 +134,25 @@ public static class Program
         return (Path.GetFullPath(root), Path.GetFullPath(output));
     }
 
+    /// <summary>
+    /// Exports into a staging directory beside <paramref name="output"/> and
+    /// replaces the target only once the whole export succeeded.
+    /// </summary>
+    /// <remarks>
+    /// External review finding (blocker). This used to delete a fixed list of
+    /// names directly inside <c>--output</c>, with a comment claiming that
+    /// deleting by name rather than wiping a directory made a typo harmless.
+    /// It did not: the list contains <c>scenarios</c>, and
+    /// <c>--output .</c> would therefore have deleted the repository's own
+    /// <c>scenarios/</c> tree — all 27 manifests, every command file and every
+    /// committed canonical artifact — before failing. Staging removes the
+    /// whole class: nothing under <paramref name="output"/> is touched until
+    /// there is a complete corpus to put there, and the target is refused
+    /// outright unless it is empty or already a corpus this tool wrote. It
+    /// also fixes the quieter half of the same finding — a stray file left in
+    /// the output directory used to survive an export and be digested into the
+    /// manifest, making the corpus depend on leftovers.
+    /// </remarks>
     private static int Export(string root, string output)
     {
         var scenarioRoot = Path.Combine(root, "scenarios");
@@ -135,7 +161,67 @@ public static class Program
             throw new InvalidDataException($"Scenario directory '{scenarioRoot}' does not exist.");
         }
 
-        Reset(output);
+        RequireCorpusTarget(output);
+
+        var staging = output + ".staging";
+        if (Directory.Exists(staging))
+        {
+            Directory.Delete(staging, recursive: true);
+        }
+
+        try
+        {
+            var written = Fill(root, staging);
+
+            if (Directory.Exists(output))
+            {
+                Directory.Delete(output, recursive: true);
+            }
+
+            Directory.Move(staging, output);
+            return written;
+        }
+        finally
+        {
+            if (Directory.Exists(staging))
+            {
+                Directory.Delete(staging, recursive: true);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Refuses any target that is neither empty nor a corpus this tool wrote.
+    /// The marker is the manifest's own <c>generated_by</c>, because a
+    /// directory that merely happens to contain a <c>manifest.json</c> is not
+    /// evidence of anything.
+    /// </summary>
+    private static void RequireCorpusTarget(string output)
+    {
+        if (!Directory.Exists(output) || Directory.GetFileSystemEntries(output).Length == 0)
+        {
+            return;
+        }
+
+        var manifestPath = Path.Combine(output, "manifest.json");
+        var generatedBy = File.Exists(manifestPath)
+            ? (string?)JsonNode.Parse(File.ReadAllText(manifestPath))?["generated_by"]
+            : null;
+
+        if (generatedBy == GeneratedBy)
+        {
+            return;
+        }
+
+        throw new InvalidDataException(
+            $"'{output}' is not empty and does not hold a corpus written by {GeneratedBy}: its "
+            + "manifest.json is missing or names a different generator. Refusing to replace it — point "
+            + "'--output' at the corpus directory, not at a tree that happens to be nearby.");
+    }
+
+    private static int Fill(string root, string output)
+    {
+        var scenarioRoot = Path.Combine(root, "scenarios");
 
         var manifests = Directory
             .GetFiles(scenarioRoot, "*.manifest.json")
@@ -159,16 +245,31 @@ public static class Program
 
             foreach (var checkpoint in manifest.Checkpoints)
             {
-                var entry = OracleEnvelope.Build(root, SourceCommit, manifest, checkpoint);
-                var relative = $"scenarios/{entry.Scenario}/{entry.Checkpoint}.json";
+                var entries = new JsonArray();
 
-                WriteJson(Path.Combine(output, ToNativePath(relative)), entry.Envelope);
+                // The seed is part of an entry's identity, not a constant of
+                // the corpus — see OracleEnvelope.Seeds for the mutant that
+                // made that necessary.
+                foreach (var seed in OracleEnvelope.Seeds)
+                {
+                    var entry = OracleEnvelope.Build(root, SourceCommit, manifest, checkpoint, seed);
+                    var relative =
+                        $"scenarios/{entry.Scenario}/{entry.Checkpoint}/seed-{Text(entry.Seed)}.json";
+
+                    WriteJson(Path.Combine(output, ToNativePath(relative)), entry.Envelope);
+
+                    entries.Add(new JsonObject
+                    {
+                        ["seed"] = Text(entry.Seed),
+                        ["path"] = relative,
+                    });
+                }
 
                 checkpoints.Add(new JsonObject
                 {
-                    ["checkpoint"] = entry.Checkpoint,
+                    ["checkpoint"] = checkpoint.Name,
                     ["after_command_id"] = checkpoint.AfterCommandId,
-                    ["path"] = relative,
+                    ["entries"] = entries,
                 });
             }
 
@@ -189,8 +290,11 @@ public static class Program
         {
             ["artifact_schema_version"] = OracleEnvelope.ArtifactSchemaVersion,
             ["source_commit"] = SourceCommit,
-            ["seed"] = OracleEnvelope.Seed.ToString(CultureInfo.InvariantCulture),
-            ["generated_by"] = "tools/OathAndCoin.MigrationOracle",
+            ["seeds"] = new JsonArray(OracleEnvelope.Seeds
+                .Select(seed => (JsonNode?)Text(seed))
+                .ToArray()),
+            ["canonical_artifact_seed"] = Text(OracleEnvelope.CanonicalSeed),
+            ["generated_by"] = GeneratedBy,
             ["ruleset_version"] = ScenarioRunner.RulesetVersion,
             ["determinism_artifact_version"] = DeterminismArtifact.ArtifactVersion,
             ["rng_algorithm"] = DeterministicRng.AlgorithmVersion,
@@ -204,29 +308,7 @@ public static class Program
         return Directory.GetFiles(output, "*", SearchOption.AllDirectories).Length;
     }
 
-    /// <summary>
-    /// Removes what a previous export left behind, by name rather than by
-    /// wiping the output directory: <c>--output</c> is a path an operator
-    /// typed, and a tool that recursively deletes whatever it is pointed at is
-    /// one typo away from deleting something else.
-    /// </summary>
-    private static void Reset(string output)
-    {
-        foreach (var file in new[] { "manifest.json", "rng-vectors.json", "jcs-compatibility-vectors.json", "README.md" })
-        {
-            var path = Path.Combine(output, file);
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-
-        var scenarios = Path.Combine(output, "scenarios");
-        if (Directory.Exists(scenarios))
-        {
-            Directory.Delete(scenarios, recursive: true);
-        }
-    }
+    private static string Text(ulong value) => value.ToString(CultureInfo.InvariantCulture);
 
     /// <summary>
     /// SHA-256 over the bytes of every file in the corpus except the manifest

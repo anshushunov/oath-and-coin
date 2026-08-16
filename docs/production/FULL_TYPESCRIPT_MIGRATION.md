@@ -124,7 +124,11 @@ Feature freeze для новой функциональности старого
 
 ### 3.1. Что экспортируется
 
-`tools/OathAndCoin.MigrationOracle` — read-only экспортёр. Он вызывает production-загрузчики, правила и фабрику представления (`ContentSchemas`, `ContentSet`, `ScenarioManifest`, `ScenarioCommands`, `CheckpointResolver`, `ScenarioRunner`, `DeterminismArtifact`, `ContractOfferScreenModelFactory`, `DeterministicRng`, `CanonicalJson`) и не содержит ни одной копии решающего правила. Ошибки загрузки — данные корпуса с машиночитаемым кодом из `ErrorCodes`, а не падение экспортёра.
+`tools/OathAndCoin.MigrationOracle` — read-only экспортёр. Он вызывает production-загрузчики, правила и фабрику представления (`ContentSchemas`, `ContentSet`, `ScenarioManifest`, `ScenarioCommands`, `CheckpointResolver`, `ScenarioRunner`, `DeterminismArtifact`, `ContractOfferScreenModelFactory`, `DeterministicRng`, `CanonicalJson`) и не содержит ни одной копии решающего правила.
+
+**Что покрыто по ошибкам, и что нет.** Из пяти стабильных кодов `ErrorCodes` корпус содержит один — `CONTENT_ROOT_NOT_FOUND`, единственный, который объявляет хоть один манифест дерева. `SCHEMA_INVALID` и `CONTENT_INVALID` экспортёр обрабатывает как данные, но на валидном контенте эти ветки недостижимы, поэтому записей нет. `SCENARIO_INVALID` и `CHECKPOINT_UNKNOWN` экспортёр не обрабатывает вовсе: испорченный manifest или commands прерывают экспорт. Утверждать, что «ошибки загрузчиков становятся данными корпуса», значит утверждать больше, чем сделано.
+
+Это осознанный предел, а не оплошность: задание Task 2 требовало покрыть **фактические** манифесты и checkpoints HEAD, а сценариев с этими четырьмя кодами в дереве нет — их добавление означало бы изобретение нового контента. Долг адресный: перенос порядка стадий загрузки и всех пяти кодов проверяется в Task 10 (parity сценариев и кодов ошибок), а не остаётся ничьим. Найдено внешним ревью сегмента.
 
 Состав `migration/oracle/v1`:
 

@@ -1,0 +1,683 @@
+{
+  "artifact_schema_version": 1,
+  "canonical_base64": "eyJhcnRpZmFjdF92ZXJzaW9uIjozLCJjb250ZW50X3ZlcnNpb24iOiI1ZDAzNzM0ZmQ5YzdhYmFhIiwiZmluYWxfc3RhdGUiOnsiYXBwbGllZF9jb21tYW5kX2lkcyI6WzEsMl0sImNvbnRyYWN0cyI6W3siYWNjZXB0ZWRfYnkiOltdLCJpZCI6ImNvcmU6Y2xlYW5zZV90aGVfY3J5cHQiLCJwYXltZW50Ijo3MCwicmVxdWlyZWRfY3JldyI6NCwicmVzcG9uZGVkX2J5IjpbMV0sInJpc2siOjgwLCJzdGF0dXMiOiJvZmZlcmVkIiwidGFncyI6WyJtZXRob2Q6cHVibGljX2NvbnRyYWN0IiwidGFyZ2V0OnVuZGVhZCJdfSx7ImFjY2VwdGVkX2J5IjpbXSwiaWQiOiJjb3JlOmNvbGxlY3RfdGhlX2RlYnQiLCJwYXltZW50IjozMCwicmVxdWlyZWRfY3JldyI6MiwicmVzcG9uZGVkX2J5IjpbXSwicmlzayI6MjAsInN0YXR1cyI6Im9mZmVyZWQiLCJ0YWdzIjpbIm1ldGhvZDphYmFuZG9uX3dvdW5kZWQiLCJtZXRob2Q6ZGVjZXB0aW9uIiwicGF0cm9uOnNsYXZlcnMiXX0seyJhY2NlcHRlZF9ieSI6W10sImlkIjoiY29yZTplc2NvcnRfdGhlX2NhcmF2YW4iLCJwYXltZW50Ijo0MCwicmVxdWlyZWRfY3JldyI6NCwicmVzcG9uZGVkX2J5IjpbMl0sInJpc2siOjUwLCJzdGF0dXMiOiJvZmZlcmVkIiwidGFncyI6WyJwYXRyb246bWVyY2hhbnRfZ3VpbGQiLCJ0YXJnZXQ6YmFuZGl0cyJdfSx7ImFjY2VwdGVkX2J5IjpbXSwiaWQiOiJjb3JlOnNpbGVuY2VfdGhlX2N1bHQiLCJwYXltZW50Ijo1NSwicmVxdWlyZWRfY3JldyI6MywicmVzcG9uZGVkX2J5IjpbXSwicmlzayI6NjUsInN0YXR1cyI6Im9mZmVyZWQiLCJ0YWdzIjpbInRhcmdldDpjdWx0IiwidGFyZ2V0OnRlbXBsZSJdfV0sImhlcm9lcyI6W3siY2F1dGlvbiI6MzAsImRlZmluaXRpb24iOiJjb3JlOmJyYW0iLCJkaXNwbGF5X25hbWVfa2V5IjoiaGVyby5jb3JlLmJyYW0ubmFtZSIsImdyZWVkIjo2MCwiaGVyb19pZCI6MCwicHJpZGUiOjQ1LCJyZWxhdGlvbnNoaXBzIjp7ImNvcmU6emFyYSI6LTh9LCJ0cmFpdHMiOlsiY29yZTp3aWxsX25vdF9zdHJpa2VfYV90ZW1wbGUiLCJjb3JlOmhhdGVzX3RoZV9jdWx0Il0sInRydXN0X2luX2d1aWxkIjo1MH0seyJjYXV0aW9uIjo0NSwiZGVmaW5pdGlvbiI6ImNvcmU6ZG9yYW4iLCJkaXNwbGF5X25hbWVfa2V5IjoiaGVyby5jb3JlLmRvcmFuLm5hbWUiLCJncmVlZCI6NTAsImhlcm9faWQiOjEsInByaWRlIjozNSwicmVsYXRpb25zaGlwcyI6eyJjb3JlOmJyYW0iOjEwfSwidHJhaXRzIjpbImNvcmU6d2lsbF9ub3Rfc2VydmVfc2xhdmVycyIsImNvcmU6aGF0ZXNfdGhlX2N1bHQiLCJjb3JlOmxveWFsX3RvX3RoZV9tZXJjaGFudF9ndWlsZCJdLCJ0cnVzdF9pbl9ndWlsZCI6NTV9LHsiY2F1dGlvbiI6NTUsImRlZmluaXRpb24iOiJjb3JlOmlsc2EiLCJkaXNwbGF5X25hbWVfa2V5IjoiaGVyby5jb3JlLmlsc2EubmFtZSIsImdyZWVkIjoyNSwiaGVyb19pZCI6MiwicHJpZGUiOjcwLCJyZWxhdGlvbnNoaXBzIjp7ImNvcmU6a2VzdHJlbCI6LTEyfSwidHJhaXRzIjpbImNvcmU6d2lsbF9ub3RfYWJhbmRvbl90aGVfd291bmRlZCIsImNvcmU6d2lsbF9ub3Rfc3RyaWtlX2FfdGVtcGxlIiwiY29yZTpsb3lhbF90b190aGVfbWVyY2hhbnRfZ3VpbGQiXSwidHJ1c3RfaW5fZ3VpbGQiOjY1fSx7ImNhdXRpb24iOjI1LCJkZWZpbml0aW9uIjoiY29yZTprZXN0cmVsIiwiZGlzcGxheV9uYW1lX2tleSI6Imhlcm8uY29yZS5rZXN0cmVsLm5hbWUiLCJncmVlZCI6NzUsImhlcm9faWQiOjMsInByaWRlIjoyMCwicmVsYXRpb25zaGlwcyI6e30sInRyYWl0cyI6WyJjb3JlOndpbGxfbm90X3NlcnZlX3NsYXZlcnMiLCJjb3JlOmh1bmdyeV9mb3JfcmVub3duIl0sInRydXN0X2luX2d1aWxkIjozMH0seyJjYXV0aW9uIjo4MCwiZGVmaW5pdGlvbiI6ImNvcmU6bWlyYSIsImRpc3BsYXlfbmFtZV9rZXkiOiJoZXJvLmNvcmUubWlyYS5uYW1lIiwiZ3JlZWQiOjQwLCJoZXJvX2lkIjo0LCJwcmlkZSI6NTAsInJlbGF0aW9uc2hpcHMiOnsiY29yZTppbHNhIjoxNH0sInRyYWl0cyI6WyJjb3JlOnJlZnVzZXNfZGVjZXB0aW9uIiwiY29yZTpmZWFyc191bmRlYXRoIiwiY29yZTpodW5ncnlfZm9yX3Jlbm93biJdLCJ0cnVzdF9pbl9ndWlsZCI6MjB9LHsiY2F1dGlvbiI6NzAsImRlZmluaXRpb24iOiJjb3JlOnphcmEiLCJkaXNwbGF5X25hbWVfa2V5IjoiaGVyby5jb3JlLnphcmEubmFtZSIsImdyZWVkIjozNSwiaGVyb19pZCI6NSwicHJpZGUiOjYwLCJyZWxhdGlvbnNoaXBzIjp7ImNvcmU6YnJhbSI6LTh9LCJ0cmFpdHMiOlsiY29yZTpyZWZ1c2VzX2RlY2VwdGlvbiIsImNvcmU6ZmVhcnNfdW5kZWF0aCJdLCJ0cnVzdF9pbl9ndWlsZCI6NDB9XSwiaGlzdG9yeSI6W3siY2F1c2FsX3RyYWNlX2lkIjowLCJjb250cmFjdF9pZCI6ImNvcmU6ZXNjb3J0X3RoZV9jYXJhdmFuIiwiZXZlbnRfaWQiOjAsImhlcm9faWQiOjIsImtpbmQiOiJoZXJvX2RlY2xpbmVkX2NvbnRyYWN0IiwibG9naWNhbF90aW1lIjowfSx7ImNhdXNhbF90cmFjZV9pZCI6MSwiY29udHJhY3RfaWQiOiJjb3JlOmNsZWFuc2VfdGhlX2NyeXB0IiwiZXZlbnRfaWQiOjEsImhlcm9faWQiOjEsImtpbmQiOiJoZXJvX2RlY2xpbmVkX2NvbnRyYWN0IiwibG9naWNhbF90aW1lIjowfV0sIm1ldGFkYXRhIjp7ImNhbXBhaWduX3NlZWQiOjQyNDI0MiwiY29udGVudF92ZXJzaW9uIjoiNWQwMzczNGZkOWM3YWJhYSIsImxvZ2ljYWxfdGltZSI6MCwibmV4dF9kZWNpc2lvbl9vcmRpbmFsIjoyLCJuZXh0X2V2ZW50X2lkIjoyLCJuZXh0X3RyYWNlX2lkIjoyLCJydWxlc2V0X3ZlcnNpb24iOiJtMS1kZWNpc2lvbi8xIiwic2F2ZV9zY2hlbWFfdmVyc2lvbiI6MSwic3RhdGVfdmVyc2lvbiI6Mn0sInRyYWNlcyI6W3siYmxvY2tlZF9ieSI6W10sIm5lZ2F0aXZlX2ZhY3RvcnMiOlt7Im1hZ25pdHVkZSI6MjcsInJlYXNvbl9jb2RlIjoiaGVyby5kZWNpc2lvbi5yaXNrX3Rvb19oaWdoIiwic291cmNlX2VudGl0eSI6ImNvcmU6ZXNjb3J0X3RoZV9jYXJhdmFuIn0seyJtYWduaXR1ZGUiOjcsInJlYXNvbl9jb2RlIjoiaGVyby5kZWNpc2lvbi5wYXltZW50X2luc3VsdGluZyIsInNvdXJjZV9lbnRpdHkiOiJjb3JlOmVzY29ydF90aGVfY2FyYXZhbiJ9XSwicG9zaXRpdmVfZmFjdG9ycyI6W3sibWFnbml0dWRlIjoxMCwicmVhc29uX2NvZGUiOiJoZXJvLmRlY2lzaW9uLnBheW1lbnRfYXR0cmFjdGl2ZSIsInNvdXJjZV9lbnRpdHkiOiJjb3JlOmVzY29ydF90aGVfY2FyYXZhbiJ9LHsibWFnbml0dWRlIjoxMCwicmVhc29uX2NvZGUiOiJoZXJvLmRlY2lzaW9uLnBlcnNvbmFsX2NvbnZpY3Rpb24iLCJzb3VyY2VfZW50aXR5IjoiY29yZTpsb3lhbF90b190aGVfbWVyY2hhbnRfZ3VpbGQifSx7Im1hZ25pdHVkZSI6NiwicmVhc29uX2NvZGUiOiJoZXJvLmRlY2lzaW9uLnRydXN0c190aGVfZ3VpbGQiLCJzb3VyY2VfZW50aXR5IjoiY29yZTppbHNhIn0seyJtYWduaXR1ZGUiOjUsInJlYXNvbl9jb2RlIjoiaGVyby5kZWNpc2lvbi51bnByZWRpY3RhYmxlX21vb2QiLCJzb3VyY2VfZW50aXR5IjoiY29yZTppbHNhIn1dLCJ0aWVfYnJlYWsiOm51bGwsInRyYWNlX2lkIjowfSx7ImJsb2NrZWRfYnkiOltdLCJuZWdhdGl2ZV9mYWN0b3JzIjpbeyJtYWduaXR1ZGUiOjM2LCJyZWFzb25fY29kZSI6Imhlcm8uZGVjaXNpb24ucmlza190b29faGlnaCIsInNvdXJjZV9lbnRpdHkiOiJjb3JlOmNsZWFuc2VfdGhlX2NyeXB0In0seyJtYWduaXR1ZGUiOjMsInJlYXNvbl9jb2RlIjoiaGVyby5kZWNpc2lvbi5wYXltZW50X2luc3VsdGluZyIsInNvdXJjZV9lbnRpdHkiOiJjb3JlOmNsZWFuc2VfdGhlX2NyeXB0In0seyJtYWduaXR1ZGUiOjUsInJlYXNvbl9jb2RlIjoiaGVyby5kZWNpc2lvbi51bnByZWRpY3RhYmxlX21vb2QiLCJzb3VyY2VfZW50aXR5IjoiY29yZTpkb3JhbiJ9XSwicG9zaXRpdmVfZmFjdG9ycyI6W3sibWFnbml0dWRlIjozNSwicmVhc29uX2NvZGUiOiJoZXJvLmRlY2lzaW9uLnBheW1lbnRfYXR0cmFjdGl2ZSIsInNvdXJjZV9lbnRpdHkiOiJjb3JlOmNsZWFuc2VfdGhlX2NyeXB0In0seyJtYWduaXR1ZGUiOjUsInJlYXNvbl9jb2RlIjoiaGVyby5kZWNpc2lvbi50cnVzdHNfdGhlX2d1aWxkIiwic291cmNlX2VudGl0eSI6ImNvcmU6ZG9yYW4ifV0sInRpZV9icmVhayI6bnVsbCwidHJhY2VfaWQiOjF9XSwidHJhaXRfcnVsZXMiOlt7ImlkIjoiY29yZTpmZWFyc191bmRlYXRoIiwiaXNfcHJpbmNpcGxlIjpmYWxzZSwidGFnIjoidGFyZ2V0OnVuZGVhZCIsIndlaWdodCI6LTE4fSx7ImlkIjoiY29yZTpoYXRlc190aGVfY3VsdCIsImlzX3ByaW5jaXBsZSI6ZmFsc2UsInRhZyI6InRhcmdldDpjdWx0Iiwid2VpZ2h0IjoxNH0seyJpZCI6ImNvcmU6aHVuZ3J5X2Zvcl9yZW5vd24iLCJpc19wcmluY2lwbGUiOmZhbHNlLCJ0YWciOiJtZXRob2Q6cHVibGljX2NvbnRyYWN0Iiwid2VpZ2h0Ijo4fSx7ImlkIjoiY29yZTpsb3lhbF90b190aGVfbWVyY2hhbnRfZ3VpbGQiLCJpc19wcmluY2lwbGUiOmZhbHNlLCJ0YWciOiJwYXRyb246bWVyY2hhbnRfZ3VpbGQiLCJ3ZWlnaHQiOjEwfSx7ImlkIjoiY29yZTpyZWZ1c2VzX2RlY2VwdGlvbiIsImlzX3ByaW5jaXBsZSI6dHJ1ZSwidGFnIjoibWV0aG9kOmRlY2VwdGlvbiIsIndlaWdodCI6MH0seyJpZCI6ImNvcmU6d2lsbF9ub3RfYWJhbmRvbl90aGVfd291bmRlZCIsImlzX3ByaW5jaXBsZSI6dHJ1ZSwidGFnIjoibWV0aG9kOmFiYW5kb25fd291bmRlZCIsIndlaWdodCI6MH0seyJpZCI6ImNvcmU6d2lsbF9ub3Rfc2VydmVfc2xhdmVycyIsImlzX3ByaW5jaXBsZSI6dHJ1ZSwidGFnIjoicGF0cm9uOnNsYXZlcnMiLCJ3ZWlnaHQiOjB9LHsiaWQiOiJjb3JlOndpbGxfbm90X3N0cmlrZV9hX3RlbXBsZSIsImlzX3ByaW5jaXBsZSI6dHJ1ZSwidGFnIjoidGFyZ2V0OnRlbXBsZSIsIndlaWdodCI6MH1dfSwicm5nX2FsZ29yaXRobSI6InNwbGl0bWl4NjQtY29tcG9zZWQvMSIsInJ1bGVzZXRfdmVyc2lvbiI6Im0xLWRlY2lzaW9uLzEiLCJzZWVkIjo0MjQyNDIsInN0ZXBzIjpbeyJhcHBsaWVkIjp0cnVlLCJjb21tYW5kIjp7ImNvbW1hbmRfaWQiOjEsImNvbnRyYWN0IjoiY29yZTplc2NvcnRfdGhlX2NhcmF2YW4iLCJleHBlY3RlZF9zdGF0ZV92ZXJzaW9uIjowLCJoZXJvX2luZGV4IjoyfSwiZGVjaXNpb24iOnsiY29uc2lkZXJlZF9hY3Rpb25zIjpbImFjdGlvbjphY2NlcHQiLCJhY3Rpb246ZGVjbGluZSJdLCJzZWxlY3RlZF9hY3Rpb24iOiJhY3Rpb246ZGVjbGluZSIsInNlbGVjdGVkX3Njb3JlIjotMywidHJhY2VfaWQiOjB9LCJldmVudHMiOlt7ImNhdXNhbF90cmFjZV9pZCI6MCwiY29udHJhY3RfaWQiOiJjb3JlOmVzY29ydF90aGVfY2FyYXZhbiIsImV2ZW50X2lkIjowLCJoZXJvX2lkIjoyLCJraW5kIjoiaGVyb19kZWNsaW5lZF9jb250cmFjdCIsImxvZ2ljYWxfdGltZSI6MH1dLCJoZXJvX2RlZmluaXRpb24iOiJjb3JlOmlsc2EiLCJyZWplY3Rpb25fY29kZSI6bnVsbH0seyJhcHBsaWVkIjp0cnVlLCJjb21tYW5kIjp7ImNvbW1hbmRfaWQiOjIsImNvbnRyYWN0IjoiY29yZTpjbGVhbnNlX3RoZV9jcnlwdCIsImV4cGVjdGVkX3N0YXRlX3ZlcnNpb24iOjEsImhlcm9faW5kZXgiOjF9LCJkZWNpc2lvbiI6eyJjb25zaWRlcmVkX2FjdGlvbnMiOlsiYWN0aW9uOmFjY2VwdCIsImFjdGlvbjpkZWNsaW5lIl0sInNlbGVjdGVkX2FjdGlvbiI6ImFjdGlvbjpkZWNsaW5lIiwic2VsZWN0ZWRfc2NvcmUiOi00LCJ0cmFjZV9pZCI6MX0sImV2ZW50cyI6W3siY2F1c2FsX3RyYWNlX2lkIjoxLCJjb250cmFjdF9pZCI6ImNvcmU6Y2xlYW5zZV90aGVfY3J5cHQiLCJldmVudF9pZCI6MSwiaGVyb19pZCI6MSwia2luZCI6Imhlcm9fZGVjbGluZWRfY29udHJhY3QiLCJsb2dpY2FsX3RpbWUiOjB9XSwiaGVyb19kZWZpbml0aW9uIjoiY29yZTpkb3JhbiIsInJlamVjdGlvbl9jb2RlIjpudWxsfV19",
+  "canonical_sha256": "e523160eb32f895f34463ff979e3bd3b5d0575cd0a17158066f0860f48d208c8",
+  "checkpoint": "final",
+  "draws": {
+    "next_decision_ordinal_final": "2",
+    "next_decision_ordinal_initial": "0",
+    "per_step": [
+      {
+        "command_id": 1,
+        "consumed": "1",
+        "ordinal_after": "1",
+        "ordinal_before": "0"
+      },
+      {
+        "command_id": 2,
+        "consumed": "1",
+        "ordinal_after": "2",
+        "ordinal_before": "1"
+      }
+    ],
+    "total_consumed": "2"
+  },
+  "events": [
+    {
+      "causal_trace_id": 0,
+      "contract_id": "core:escort_the_caravan",
+      "event_id": 0,
+      "hero_id": 2,
+      "kind": "hero_declined_contract",
+      "logical_time": 0
+    },
+    {
+      "causal_trace_id": 1,
+      "contract_id": "core:cleanse_the_crypt",
+      "event_id": 1,
+      "hero_id": 1,
+      "kind": "hero_declined_contract",
+      "logical_time": 0
+    }
+  ],
+  "final_state": {
+    "applied_command_ids": [
+      1,
+      2
+    ],
+    "contracts": [
+      {
+        "accepted_by": [],
+        "id": "core:cleanse_the_crypt",
+        "payment": 70,
+        "required_crew": 4,
+        "responded_by": [
+          1
+        ],
+        "risk": 80,
+        "status": "offered",
+        "tags": [
+          "method:public_contract",
+          "target:undead"
+        ]
+      },
+      {
+        "accepted_by": [],
+        "id": "core:collect_the_debt",
+        "payment": 30,
+        "required_crew": 2,
+        "responded_by": [],
+        "risk": 20,
+        "status": "offered",
+        "tags": [
+          "method:abandon_wounded",
+          "method:deception",
+          "patron:slavers"
+        ]
+      },
+      {
+        "accepted_by": [],
+        "id": "core:escort_the_caravan",
+        "payment": 40,
+        "required_crew": 4,
+        "responded_by": [
+          2
+        ],
+        "risk": 50,
+        "status": "offered",
+        "tags": [
+          "patron:merchant_guild",
+          "target:bandits"
+        ]
+      },
+      {
+        "accepted_by": [],
+        "id": "core:silence_the_cult",
+        "payment": 55,
+        "required_crew": 3,
+        "responded_by": [],
+        "risk": 65,
+        "status": "offered",
+        "tags": [
+          "target:cult",
+          "target:temple"
+        ]
+      }
+    ],
+    "heroes": [
+      {
+        "caution": 30,
+        "definition": "core:bram",
+        "display_name_key": "hero.core.bram.name",
+        "greed": 60,
+        "hero_id": 0,
+        "pride": 45,
+        "relationships": {
+          "core:zara": -8
+        },
+        "traits": [
+          "core:will_not_strike_a_temple",
+          "core:hates_the_cult"
+        ],
+        "trust_in_guild": 50
+      },
+      {
+        "caution": 45,
+        "definition": "core:doran",
+        "display_name_key": "hero.core.doran.name",
+        "greed": 50,
+        "hero_id": 1,
+        "pride": 35,
+        "relationships": {
+          "core:bram": 10
+        },
+        "traits": [
+          "core:will_not_serve_slavers",
+          "core:hates_the_cult",
+          "core:loyal_to_the_merchant_guild"
+        ],
+        "trust_in_guild": 55
+      },
+      {
+        "caution": 55,
+        "definition": "core:ilsa",
+        "display_name_key": "hero.core.ilsa.name",
+        "greed": 25,
+        "hero_id": 2,
+        "pride": 70,
+        "relationships": {
+          "core:kestrel": -12
+        },
+        "traits": [
+          "core:will_not_abandon_the_wounded",
+          "core:will_not_strike_a_temple",
+          "core:loyal_to_the_merchant_guild"
+        ],
+        "trust_in_guild": 65
+      },
+      {
+        "caution": 25,
+        "definition": "core:kestrel",
+        "display_name_key": "hero.core.kestrel.name",
+        "greed": 75,
+        "hero_id": 3,
+        "pride": 20,
+        "relationships": {},
+        "traits": [
+          "core:will_not_serve_slavers",
+          "core:hungry_for_renown"
+        ],
+        "trust_in_guild": 30
+      },
+      {
+        "caution": 80,
+        "definition": "core:mira",
+        "display_name_key": "hero.core.mira.name",
+        "greed": 40,
+        "hero_id": 4,
+        "pride": 50,
+        "relationships": {
+          "core:ilsa": 14
+        },
+        "traits": [
+          "core:refuses_deception",
+          "core:fears_undeath",
+          "core:hungry_for_renown"
+        ],
+        "trust_in_guild": 20
+      },
+      {
+        "caution": 70,
+        "definition": "core:zara",
+        "display_name_key": "hero.core.zara.name",
+        "greed": 35,
+        "hero_id": 5,
+        "pride": 60,
+        "relationships": {
+          "core:bram": -8
+        },
+        "traits": [
+          "core:refuses_deception",
+          "core:fears_undeath"
+        ],
+        "trust_in_guild": 40
+      }
+    ],
+    "history": [
+      {
+        "causal_trace_id": 0,
+        "contract_id": "core:escort_the_caravan",
+        "event_id": 0,
+        "hero_id": 2,
+        "kind": "hero_declined_contract",
+        "logical_time": 0
+      },
+      {
+        "causal_trace_id": 1,
+        "contract_id": "core:cleanse_the_crypt",
+        "event_id": 1,
+        "hero_id": 1,
+        "kind": "hero_declined_contract",
+        "logical_time": 0
+      }
+    ],
+    "metadata": {
+      "campaign_seed": 424242,
+      "content_version": "5d03734fd9c7abaa",
+      "logical_time": 0,
+      "next_decision_ordinal": 2,
+      "next_event_id": 2,
+      "next_trace_id": 2,
+      "ruleset_version": "m1-decision/1",
+      "save_schema_version": 1,
+      "state_version": 2
+    },
+    "traces": [
+      {
+        "blocked_by": [],
+        "negative_factors": [
+          {
+            "magnitude": 27,
+            "reason_code": "hero.decision.risk_too_high",
+            "source_entity": "core:escort_the_caravan"
+          },
+          {
+            "magnitude": 7,
+            "reason_code": "hero.decision.payment_insulting",
+            "source_entity": "core:escort_the_caravan"
+          }
+        ],
+        "positive_factors": [
+          {
+            "magnitude": 10,
+            "reason_code": "hero.decision.payment_attractive",
+            "source_entity": "core:escort_the_caravan"
+          },
+          {
+            "magnitude": 10,
+            "reason_code": "hero.decision.personal_conviction",
+            "source_entity": "core:loyal_to_the_merchant_guild"
+          },
+          {
+            "magnitude": 6,
+            "reason_code": "hero.decision.trusts_the_guild",
+            "source_entity": "core:ilsa"
+          },
+          {
+            "magnitude": 5,
+            "reason_code": "hero.decision.unpredictable_mood",
+            "source_entity": "core:ilsa"
+          }
+        ],
+        "tie_break": null,
+        "trace_id": 0
+      },
+      {
+        "blocked_by": [],
+        "negative_factors": [
+          {
+            "magnitude": 36,
+            "reason_code": "hero.decision.risk_too_high",
+            "source_entity": "core:cleanse_the_crypt"
+          },
+          {
+            "magnitude": 3,
+            "reason_code": "hero.decision.payment_insulting",
+            "source_entity": "core:cleanse_the_crypt"
+          },
+          {
+            "magnitude": 5,
+            "reason_code": "hero.decision.unpredictable_mood",
+            "source_entity": "core:doran"
+          }
+        ],
+        "positive_factors": [
+          {
+            "magnitude": 35,
+            "reason_code": "hero.decision.payment_attractive",
+            "source_entity": "core:cleanse_the_crypt"
+          },
+          {
+            "magnitude": 5,
+            "reason_code": "hero.decision.trusts_the_guild",
+            "source_entity": "core:doran"
+          }
+        ],
+        "tie_break": null,
+        "trace_id": 1
+      }
+    ],
+    "trait_rules": [
+      {
+        "id": "core:fears_undeath",
+        "is_principle": false,
+        "tag": "target:undead",
+        "weight": -18
+      },
+      {
+        "id": "core:hates_the_cult",
+        "is_principle": false,
+        "tag": "target:cult",
+        "weight": 14
+      },
+      {
+        "id": "core:hungry_for_renown",
+        "is_principle": false,
+        "tag": "method:public_contract",
+        "weight": 8
+      },
+      {
+        "id": "core:loyal_to_the_merchant_guild",
+        "is_principle": false,
+        "tag": "patron:merchant_guild",
+        "weight": 10
+      },
+      {
+        "id": "core:refuses_deception",
+        "is_principle": true,
+        "tag": "method:deception",
+        "weight": 0
+      },
+      {
+        "id": "core:will_not_abandon_the_wounded",
+        "is_principle": true,
+        "tag": "method:abandon_wounded",
+        "weight": 0
+      },
+      {
+        "id": "core:will_not_serve_slavers",
+        "is_principle": true,
+        "tag": "patron:slavers",
+        "weight": 0
+      },
+      {
+        "id": "core:will_not_strike_a_temple",
+        "is_principle": true,
+        "tag": "target:temple",
+        "weight": 0
+      }
+    ]
+  },
+  "inputs": {
+    "checkpoint_after_command_id": 2,
+    "commands": [
+      {
+        "command_id": 1,
+        "contract": "core:escort_the_caravan",
+        "expected_state_version": 0,
+        "hero_index": 2
+      },
+      {
+        "command_id": 2,
+        "contract": "core:cleanse_the_crypt",
+        "expected_state_version": 1,
+        "hero_index": 1
+      }
+    ],
+    "content_root": "content",
+    "content_root_exists": true,
+    "content_schema_version": 2,
+    "content_version": "5d03734fd9c7abaa",
+    "determinism_artifact_version": 3,
+    "manifest": {
+      "checkpoints": [
+        {
+          "after_command_id": 2,
+          "name": "final"
+        }
+      ],
+      "content_root": null,
+      "expected_error_code": null,
+      "expected_outcome": "success",
+      "expected_screen_state": null,
+      "fault": null,
+      "scenario": "grey_zone_stable",
+      "schema_version": 1
+    },
+    "manifest_schema_version": 1,
+    "rng_algorithm": "splitmix64-composed/1",
+    "ruleset_version": "m1-decision/1",
+    "save_schema_version": 1,
+    "schema_root": "schemas"
+  },
+  "outcome": {
+    "error_code": null,
+    "kind": "success",
+    "screen_state": "incomplete"
+  },
+  "read_model": {
+    "contract": {
+      "accepted_count": 0,
+      "definition": "core:escort_the_caravan",
+      "display_name_key": "contract.core.escort_the_caravan.name",
+      "payment": 40,
+      "required_crew": 4,
+      "risk": "Moderate",
+      "tag_keys": [
+        "tag.patron.merchant_guild",
+        "tag.target.bandits"
+      ]
+    },
+    "error_code": null,
+    "responses": [
+      {
+        "action": "action:decline",
+        "blocked_by_display_name_key": null,
+        "blocked_by_entity": null,
+        "hero_definition": "core:ilsa",
+        "hero_display_name_key": "hero.core.ilsa.name",
+        "reasons": [
+          {
+            "direction": "Supported",
+            "reason_code": "hero.decision.risk_too_high",
+            "source_display_name_key": null,
+            "source_entity": "core:escort_the_caravan",
+            "strength": "Moderate"
+          },
+          {
+            "direction": "Supported",
+            "reason_code": "hero.decision.payment_insulting",
+            "source_display_name_key": null,
+            "source_entity": "core:escort_the_caravan",
+            "strength": "Low"
+          },
+          {
+            "direction": "Opposed",
+            "reason_code": "hero.decision.payment_attractive",
+            "source_display_name_key": null,
+            "source_entity": "core:escort_the_caravan",
+            "strength": "Low"
+          }
+        ],
+        "tie_break_code": null,
+        "wavered": false
+      }
+    ],
+    "roster": [
+      {
+        "caution": "Low",
+        "definition": "core:bram",
+        "display_name_key": "hero.core.bram.name",
+        "greed": "Moderate",
+        "inclination_keys": [
+          "trait.core.hates_the_cult.name"
+        ],
+        "pride": "Moderate",
+        "principle_keys": [
+          "trait.core.will_not_strike_a_temple.name"
+        ]
+      },
+      {
+        "caution": "Moderate",
+        "definition": "core:doran",
+        "display_name_key": "hero.core.doran.name",
+        "greed": "Moderate",
+        "inclination_keys": [
+          "trait.core.hates_the_cult.name",
+          "trait.core.loyal_to_the_merchant_guild.name"
+        ],
+        "pride": "Moderate",
+        "principle_keys": [
+          "trait.core.will_not_serve_slavers.name"
+        ]
+      },
+      {
+        "caution": "Moderate",
+        "definition": "core:ilsa",
+        "display_name_key": "hero.core.ilsa.name",
+        "greed": "Low",
+        "inclination_keys": [
+          "trait.core.loyal_to_the_merchant_guild.name"
+        ],
+        "pride": "High",
+        "principle_keys": [
+          "trait.core.will_not_abandon_the_wounded.name",
+          "trait.core.will_not_strike_a_temple.name"
+        ]
+      },
+      {
+        "caution": "Low",
+        "definition": "core:kestrel",
+        "display_name_key": "hero.core.kestrel.name",
+        "greed": "High",
+        "inclination_keys": [
+          "trait.core.hungry_for_renown.name"
+        ],
+        "pride": "Low",
+        "principle_keys": [
+          "trait.core.will_not_serve_slavers.name"
+        ]
+      },
+      {
+        "caution": "High",
+        "definition": "core:mira",
+        "display_name_key": "hero.core.mira.name",
+        "greed": "Moderate",
+        "inclination_keys": [
+          "trait.core.fears_undeath.name",
+          "trait.core.hungry_for_renown.name"
+        ],
+        "pride": "Moderate",
+        "principle_keys": [
+          "trait.core.refuses_deception.name"
+        ]
+      },
+      {
+        "caution": "High",
+        "definition": "core:zara",
+        "display_name_key": "hero.core.zara.name",
+        "greed": "Moderate",
+        "inclination_keys": [
+          "trait.core.fears_undeath.name"
+        ],
+        "pride": "Moderate",
+        "principle_keys": [
+          "trait.core.refuses_deception.name"
+        ]
+      }
+    ],
+    "sha256": "3727dd7ba537ee0476ba1635b937a9bad3ad0d1c73f14c8723528206b6045ad4",
+    "state": "Incomplete",
+    "title_key": "screen.contract_offer.title"
+  },
+  "scenario": "grey_zone_stable",
+  "seed": "424242",
+  "source_commit": "12565862b1e88e0524f95def18c023571ec4269f",
+  "steps": [
+    {
+      "applied": true,
+      "command": {
+        "command_id": 1,
+        "contract": "core:escort_the_caravan",
+        "expected_state_version": 0,
+        "hero_index": 2
+      },
+      "decision": {
+        "considered_actions": [
+          "action:accept",
+          "action:decline"
+        ],
+        "selected_action": "action:decline",
+        "selected_score": -3,
+        "trace_id": 0
+      },
+      "events": [
+        {
+          "causal_trace_id": 0,
+          "contract_id": "core:escort_the_caravan",
+          "event_id": 0,
+          "hero_id": 2,
+          "kind": "hero_declined_contract",
+          "logical_time": 0
+        }
+      ],
+      "hero_definition": "core:ilsa",
+      "rejection_code": null
+    },
+    {
+      "applied": true,
+      "command": {
+        "command_id": 2,
+        "contract": "core:cleanse_the_crypt",
+        "expected_state_version": 1,
+        "hero_index": 1
+      },
+      "decision": {
+        "considered_actions": [
+          "action:accept",
+          "action:decline"
+        ],
+        "selected_action": "action:decline",
+        "selected_score": -4,
+        "trace_id": 1
+      },
+      "events": [
+        {
+          "causal_trace_id": 1,
+          "contract_id": "core:cleanse_the_crypt",
+          "event_id": 1,
+          "hero_id": 1,
+          "kind": "hero_declined_contract",
+          "logical_time": 0
+        }
+      ],
+      "hero_definition": "core:doran",
+      "rejection_code": null
+    }
+  ],
+  "traces": [
+    {
+      "blocked_by": [],
+      "negative_factors": [
+        {
+          "magnitude": 27,
+          "reason_code": "hero.decision.risk_too_high",
+          "source_entity": "core:escort_the_caravan"
+        },
+        {
+          "magnitude": 7,
+          "reason_code": "hero.decision.payment_insulting",
+          "source_entity": "core:escort_the_caravan"
+        }
+      ],
+      "positive_factors": [
+        {
+          "magnitude": 10,
+          "reason_code": "hero.decision.payment_attractive",
+          "source_entity": "core:escort_the_caravan"
+        },
+        {
+          "magnitude": 10,
+          "reason_code": "hero.decision.personal_conviction",
+          "source_entity": "core:loyal_to_the_merchant_guild"
+        },
+        {
+          "magnitude": 6,
+          "reason_code": "hero.decision.trusts_the_guild",
+          "source_entity": "core:ilsa"
+        },
+        {
+          "magnitude": 5,
+          "reason_code": "hero.decision.unpredictable_mood",
+          "source_entity": "core:ilsa"
+        }
+      ],
+      "tie_break": null,
+      "trace_id": 0
+    },
+    {
+      "blocked_by": [],
+      "negative_factors": [
+        {
+          "magnitude": 36,
+          "reason_code": "hero.decision.risk_too_high",
+          "source_entity": "core:cleanse_the_crypt"
+        },
+        {
+          "magnitude": 3,
+          "reason_code": "hero.decision.payment_insulting",
+          "source_entity": "core:cleanse_the_crypt"
+        },
+        {
+          "magnitude": 5,
+          "reason_code": "hero.decision.unpredictable_mood",
+          "source_entity": "core:doran"
+        }
+      ],
+      "positive_factors": [
+        {
+          "magnitude": 35,
+          "reason_code": "hero.decision.payment_attractive",
+          "source_entity": "core:cleanse_the_crypt"
+        },
+        {
+          "magnitude": 5,
+          "reason_code": "hero.decision.trusts_the_guild",
+          "source_entity": "core:doran"
+        }
+      ],
+      "tie_break": null,
+      "trace_id": 1
+    }
+  ]
+}

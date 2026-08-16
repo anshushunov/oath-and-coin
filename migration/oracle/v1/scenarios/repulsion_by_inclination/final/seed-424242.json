@@ -1,0 +1,419 @@
+{
+  "artifact_schema_version": 1,
+  "canonical_base64": "eyJhcnRpZmFjdF92ZXJzaW9uIjozLCJjb250ZW50X3ZlcnNpb24iOiI4YTBhYjkyNGE1MTM1NDUzIiwiZmluYWxfc3RhdGUiOnsiYXBwbGllZF9jb21tYW5kX2lkcyI6WzFdLCJjb250cmFjdHMiOlt7ImFjY2VwdGVkX2J5IjpbXSwiaWQiOiJmaXh0dXJlOmNyZXdfam9iIiwicGF5bWVudCI6NTAsInJlcXVpcmVkX2NyZXciOjIsInJlc3BvbmRlZF9ieSI6W10sInJpc2siOjAsInN0YXR1cyI6Im9mZmVyZWQiLCJ0YWdzIjpbXX0seyJhY2NlcHRlZF9ieSI6W10sImlkIjoiZml4dHVyZTpkb3VibGVfdHJvdWJsZV9jb250cmFjdCIsInBheW1lbnQiOjEwLCJyZXF1aXJlZF9jcmV3IjoxLCJyZXNwb25kZWRfYnkiOltdLCJyaXNrIjoxMCwic3RhdHVzIjoib2ZmZXJlZCIsInRhZ3MiOlsidGVzdDphbHBoYSIsInRlc3Q6YmV0YSJdfSx7ImFjY2VwdGVkX2J5IjpbXSwiaWQiOiJmaXh0dXJlOmdhbW1hX2pvYiIsInBheW1lbnQiOjAsInJlcXVpcmVkX2NyZXciOjEsInJlc3BvbmRlZF9ieSI6WzBdLCJyaXNrIjowLCJzdGF0dXMiOiJvZmZlcmVkIiwidGFncyI6WyJ0ZXN0OmdhbW1hIl19LHsiYWNjZXB0ZWRfYnkiOltdLCJpZCI6ImZpeHR1cmU6am9iX2FscGhhIiwicGF5bWVudCI6NTAsInJlcXVpcmVkX2NyZXciOjIsInJlc3BvbmRlZF9ieSI6W10sInJpc2siOjAsInN0YXR1cyI6Im9mZmVyZWQiLCJ0YWdzIjpbXX1dLCJoZXJvZXMiOlt7ImNhdXRpb24iOjAsImRlZmluaXRpb24iOiJmaXh0dXJlOmF2ZXJzZV9oZXJvIiwiZGlzcGxheV9uYW1lX2tleSI6Imhlcm8uZml4dHVyZS5hdmVyc2VfaGVyby5uYW1lIiwiZ3JlZWQiOjAsImhlcm9faWQiOjAsInByaWRlIjowLCJyZWxhdGlvbnNoaXBzIjp7fSwidHJhaXRzIjpbImZpeHR1cmU6dGVzdF9hdmVyc2lvbiJdLCJ0cnVzdF9pbl9ndWlsZCI6ODB9LHsiY2F1dGlvbiI6MCwiZGVmaW5pdGlvbiI6ImZpeHR1cmU6Y3Jld19sZWFkZXIiLCJkaXNwbGF5X25hbWVfa2V5IjoiaGVyby5maXh0dXJlLmNyZXdfbGVhZGVyLm5hbWUiLCJncmVlZCI6MTAwLCJoZXJvX2lkIjoxLCJwcmlkZSI6MCwicmVsYXRpb25zaGlwcyI6e30sInRyYWl0cyI6W10sInRydXN0X2luX2d1aWxkIjoxMDB9LHsiY2F1dGlvbiI6MCwiZGVmaW5pdGlvbiI6ImZpeHR1cmU6Y3Jld19yZWNydWl0IiwiZGlzcGxheV9uYW1lX2tleSI6Imhlcm8uZml4dHVyZS5jcmV3X3JlY3J1aXQubmFtZSIsImdyZWVkIjoxMDAsImhlcm9faWQiOjIsInByaWRlIjowLCJyZWxhdGlvbnNoaXBzIjp7fSwidHJhaXRzIjpbXSwidHJ1c3RfaW5fZ3VpbGQiOjEwMH0seyJjYXV0aW9uIjowLCJkZWZpbml0aW9uIjoiZml4dHVyZTpjcmV3X3NrZXB0aWMiLCJkaXNwbGF5X25hbWVfa2V5IjoiaGVyby5maXh0dXJlLmNyZXdfc2tlcHRpYy5uYW1lIiwiZ3JlZWQiOjAsImhlcm9faWQiOjMsInByaWRlIjowLCJyZWxhdGlvbnNoaXBzIjp7ImZpeHR1cmU6Y3Jld19sZWFkZXIiOi0yMH0sInRyYWl0cyI6W10sInRydXN0X2luX2d1aWxkIjoxMDB9LHsiY2F1dGlvbiI6NTAsImRlZmluaXRpb24iOiJmaXh0dXJlOmRvdWJsZV9wcmluY2lwbGVfaGVybyIsImRpc3BsYXlfbmFtZV9rZXkiOiJoZXJvLmZpeHR1cmUuZG91YmxlX3ByaW5jaXBsZV9oZXJvLm5hbWUiLCJncmVlZCI6NTAsImhlcm9faWQiOjQsInByaWRlIjo1MCwicmVsYXRpb25zaGlwcyI6e30sInRyYWl0cyI6WyJmaXh0dXJlOnByaW5jaXBsZV9hbHBoYSIsImZpeHR1cmU6cHJpbmNpcGxlX2JldGEiXSwidHJ1c3RfaW5fZ3VpbGQiOjUwfV0sImhpc3RvcnkiOlt7ImNhdXNhbF90cmFjZV9pZCI6MCwiY29udHJhY3RfaWQiOiJmaXh0dXJlOmdhbW1hX2pvYiIsImV2ZW50X2lkIjowLCJoZXJvX2lkIjowLCJraW5kIjoiaGVyb19kZWNsaW5lZF9jb250cmFjdCIsImxvZ2ljYWxfdGltZSI6MH1dLCJtZXRhZGF0YSI6eyJjYW1wYWlnbl9zZWVkIjo0MjQyNDIsImNvbnRlbnRfdmVyc2lvbiI6IjhhMGFiOTI0YTUxMzU0NTMiLCJsb2dpY2FsX3RpbWUiOjAsIm5leHRfZGVjaXNpb25fb3JkaW5hbCI6MSwibmV4dF9ldmVudF9pZCI6MSwibmV4dF90cmFjZV9pZCI6MSwicnVsZXNldF92ZXJzaW9uIjoibTEtZGVjaXNpb24vMSIsInNhdmVfc2NoZW1hX3ZlcnNpb24iOjEsInN0YXRlX3ZlcnNpb24iOjF9LCJ0cmFjZXMiOlt7ImJsb2NrZWRfYnkiOltdLCJuZWdhdGl2ZV9mYWN0b3JzIjpbeyJtYWduaXR1ZGUiOjE0LCJyZWFzb25fY29kZSI6Imhlcm8uZGVjaXNpb24ucGVyc29uYWxfYXZlcnNpb24iLCJzb3VyY2VfZW50aXR5IjoiZml4dHVyZTp0ZXN0X2F2ZXJzaW9uIn1dLCJwb3NpdGl2ZV9mYWN0b3JzIjpbeyJtYWduaXR1ZGUiOjgsInJlYXNvbl9jb2RlIjoiaGVyby5kZWNpc2lvbi50cnVzdHNfdGhlX2d1aWxkIiwic291cmNlX2VudGl0eSI6ImZpeHR1cmU6YXZlcnNlX2hlcm8ifSx7Im1hZ25pdHVkZSI6NSwicmVhc29uX2NvZGUiOiJoZXJvLmRlY2lzaW9uLnVucHJlZGljdGFibGVfbW9vZCIsInNvdXJjZV9lbnRpdHkiOiJmaXh0dXJlOmF2ZXJzZV9oZXJvIn1dLCJ0aWVfYnJlYWsiOm51bGwsInRyYWNlX2lkIjowfV0sInRyYWl0X3J1bGVzIjpbeyJpZCI6ImZpeHR1cmU6cHJpbmNpcGxlX2FscGhhIiwiaXNfcHJpbmNpcGxlIjp0cnVlLCJ0YWciOiJ0ZXN0OmFscGhhIiwid2VpZ2h0IjowfSx7ImlkIjoiZml4dHVyZTpwcmluY2lwbGVfYmV0YSIsImlzX3ByaW5jaXBsZSI6dHJ1ZSwidGFnIjoidGVzdDpiZXRhIiwid2VpZ2h0IjowfSx7ImlkIjoiZml4dHVyZTp0ZXN0X2F2ZXJzaW9uIiwiaXNfcHJpbmNpcGxlIjpmYWxzZSwidGFnIjoidGVzdDpnYW1tYSIsIndlaWdodCI6LTE0fV19LCJybmdfYWxnb3JpdGhtIjoic3BsaXRtaXg2NC1jb21wb3NlZC8xIiwicnVsZXNldF92ZXJzaW9uIjoibTEtZGVjaXNpb24vMSIsInNlZWQiOjQyNDI0Miwic3RlcHMiOlt7ImFwcGxpZWQiOnRydWUsImNvbW1hbmQiOnsiY29tbWFuZF9pZCI6MSwiY29udHJhY3QiOiJmaXh0dXJlOmdhbW1hX2pvYiIsImV4cGVjdGVkX3N0YXRlX3ZlcnNpb24iOjAsImhlcm9faW5kZXgiOjB9LCJkZWNpc2lvbiI6eyJjb25zaWRlcmVkX2FjdGlvbnMiOlsiYWN0aW9uOmFjY2VwdCIsImFjdGlvbjpkZWNsaW5lIl0sInNlbGVjdGVkX2FjdGlvbiI6ImFjdGlvbjpkZWNsaW5lIiwic2VsZWN0ZWRfc2NvcmUiOi0xLCJ0cmFjZV9pZCI6MH0sImV2ZW50cyI6W3siY2F1c2FsX3RyYWNlX2lkIjowLCJjb250cmFjdF9pZCI6ImZpeHR1cmU6Z2FtbWFfam9iIiwiZXZlbnRfaWQiOjAsImhlcm9faWQiOjAsImtpbmQiOiJoZXJvX2RlY2xpbmVkX2NvbnRyYWN0IiwibG9naWNhbF90aW1lIjowfV0sImhlcm9fZGVmaW5pdGlvbiI6ImZpeHR1cmU6YXZlcnNlX2hlcm8iLCJyZWplY3Rpb25fY29kZSI6bnVsbH1dfQ==",
+  "canonical_sha256": "47251da8d238e13c5c67fa5f8d08e51985ab4eaffff913f893f8440a4f4586b1",
+  "checkpoint": "final",
+  "draws": {
+    "next_decision_ordinal_final": "1",
+    "next_decision_ordinal_initial": "0",
+    "per_step": [
+      {
+        "command_id": 1,
+        "consumed": "1",
+        "ordinal_after": "1",
+        "ordinal_before": "0"
+      }
+    ],
+    "total_consumed": "1"
+  },
+  "events": [
+    {
+      "causal_trace_id": 0,
+      "contract_id": "fixture:gamma_job",
+      "event_id": 0,
+      "hero_id": 0,
+      "kind": "hero_declined_contract",
+      "logical_time": 0
+    }
+  ],
+  "final_state": {
+    "applied_command_ids": [
+      1
+    ],
+    "contracts": [
+      {
+        "accepted_by": [],
+        "id": "fixture:crew_job",
+        "payment": 50,
+        "required_crew": 2,
+        "responded_by": [],
+        "risk": 0,
+        "status": "offered",
+        "tags": []
+      },
+      {
+        "accepted_by": [],
+        "id": "fixture:double_trouble_contract",
+        "payment": 10,
+        "required_crew": 1,
+        "responded_by": [],
+        "risk": 10,
+        "status": "offered",
+        "tags": [
+          "test:alpha",
+          "test:beta"
+        ]
+      },
+      {
+        "accepted_by": [],
+        "id": "fixture:gamma_job",
+        "payment": 0,
+        "required_crew": 1,
+        "responded_by": [
+          0
+        ],
+        "risk": 0,
+        "status": "offered",
+        "tags": [
+          "test:gamma"
+        ]
+      },
+      {
+        "accepted_by": [],
+        "id": "fixture:job_alpha",
+        "payment": 50,
+        "required_crew": 2,
+        "responded_by": [],
+        "risk": 0,
+        "status": "offered",
+        "tags": []
+      }
+    ],
+    "heroes": [
+      {
+        "caution": 0,
+        "definition": "fixture:averse_hero",
+        "display_name_key": "hero.fixture.averse_hero.name",
+        "greed": 0,
+        "hero_id": 0,
+        "pride": 0,
+        "relationships": {},
+        "traits": [
+          "fixture:test_aversion"
+        ],
+        "trust_in_guild": 80
+      },
+      {
+        "caution": 0,
+        "definition": "fixture:crew_leader",
+        "display_name_key": "hero.fixture.crew_leader.name",
+        "greed": 100,
+        "hero_id": 1,
+        "pride": 0,
+        "relationships": {},
+        "traits": [],
+        "trust_in_guild": 100
+      },
+      {
+        "caution": 0,
+        "definition": "fixture:crew_recruit",
+        "display_name_key": "hero.fixture.crew_recruit.name",
+        "greed": 100,
+        "hero_id": 2,
+        "pride": 0,
+        "relationships": {},
+        "traits": [],
+        "trust_in_guild": 100
+      },
+      {
+        "caution": 0,
+        "definition": "fixture:crew_skeptic",
+        "display_name_key": "hero.fixture.crew_skeptic.name",
+        "greed": 0,
+        "hero_id": 3,
+        "pride": 0,
+        "relationships": {
+          "fixture:crew_leader": -20
+        },
+        "traits": [],
+        "trust_in_guild": 100
+      },
+      {
+        "caution": 50,
+        "definition": "fixture:double_principle_hero",
+        "display_name_key": "hero.fixture.double_principle_hero.name",
+        "greed": 50,
+        "hero_id": 4,
+        "pride": 50,
+        "relationships": {},
+        "traits": [
+          "fixture:principle_alpha",
+          "fixture:principle_beta"
+        ],
+        "trust_in_guild": 50
+      }
+    ],
+    "history": [
+      {
+        "causal_trace_id": 0,
+        "contract_id": "fixture:gamma_job",
+        "event_id": 0,
+        "hero_id": 0,
+        "kind": "hero_declined_contract",
+        "logical_time": 0
+      }
+    ],
+    "metadata": {
+      "campaign_seed": 424242,
+      "content_version": "8a0ab924a5135453",
+      "logical_time": 0,
+      "next_decision_ordinal": 1,
+      "next_event_id": 1,
+      "next_trace_id": 1,
+      "ruleset_version": "m1-decision/1",
+      "save_schema_version": 1,
+      "state_version": 1
+    },
+    "traces": [
+      {
+        "blocked_by": [],
+        "negative_factors": [
+          {
+            "magnitude": 14,
+            "reason_code": "hero.decision.personal_aversion",
+            "source_entity": "fixture:test_aversion"
+          }
+        ],
+        "positive_factors": [
+          {
+            "magnitude": 8,
+            "reason_code": "hero.decision.trusts_the_guild",
+            "source_entity": "fixture:averse_hero"
+          },
+          {
+            "magnitude": 5,
+            "reason_code": "hero.decision.unpredictable_mood",
+            "source_entity": "fixture:averse_hero"
+          }
+        ],
+        "tie_break": null,
+        "trace_id": 0
+      }
+    ],
+    "trait_rules": [
+      {
+        "id": "fixture:principle_alpha",
+        "is_principle": true,
+        "tag": "test:alpha",
+        "weight": 0
+      },
+      {
+        "id": "fixture:principle_beta",
+        "is_principle": true,
+        "tag": "test:beta",
+        "weight": 0
+      },
+      {
+        "id": "fixture:test_aversion",
+        "is_principle": false,
+        "tag": "test:gamma",
+        "weight": -14
+      }
+    ]
+  },
+  "inputs": {
+    "checkpoint_after_command_id": 1,
+    "commands": [
+      {
+        "command_id": 1,
+        "contract": "fixture:gamma_job",
+        "expected_state_version": 0,
+        "hero_index": 0
+      }
+    ],
+    "content_root": "scenarios/fixtures/decision_core",
+    "content_root_exists": true,
+    "content_schema_version": 2,
+    "content_version": "8a0ab924a5135453",
+    "determinism_artifact_version": 3,
+    "manifest": {
+      "checkpoints": [
+        {
+          "after_command_id": 1,
+          "name": "final"
+        }
+      ],
+      "content_root": "scenarios/fixtures/decision_core",
+      "expected_error_code": null,
+      "expected_outcome": "success",
+      "expected_screen_state": null,
+      "fault": null,
+      "scenario": "repulsion_by_inclination",
+      "schema_version": 1
+    },
+    "manifest_schema_version": 1,
+    "rng_algorithm": "splitmix64-composed/1",
+    "ruleset_version": "m1-decision/1",
+    "save_schema_version": 1,
+    "schema_root": "schemas"
+  },
+  "outcome": {
+    "error_code": null,
+    "kind": "success",
+    "screen_state": "incomplete"
+  },
+  "read_model": {
+    "contract": {
+      "accepted_count": 0,
+      "definition": "fixture:gamma_job",
+      "display_name_key": "contract.fixture.gamma_job.name",
+      "payment": 0,
+      "required_crew": 1,
+      "risk": "Negligible",
+      "tag_keys": [
+        "tag.test.gamma"
+      ]
+    },
+    "error_code": null,
+    "responses": [
+      {
+        "action": "action:decline",
+        "blocked_by_display_name_key": null,
+        "blocked_by_entity": null,
+        "hero_definition": "fixture:averse_hero",
+        "hero_display_name_key": "hero.fixture.averse_hero.name",
+        "reasons": [
+          {
+            "direction": "Supported",
+            "reason_code": "hero.decision.personal_aversion",
+            "source_display_name_key": "trait.fixture.test_aversion.name",
+            "source_entity": "fixture:test_aversion",
+            "strength": "Low"
+          },
+          {
+            "direction": "Opposed",
+            "reason_code": "hero.decision.trusts_the_guild",
+            "source_display_name_key": null,
+            "source_entity": "fixture:averse_hero",
+            "strength": "Low"
+          },
+          {
+            "direction": "Opposed",
+            "reason_code": "hero.decision.unpredictable_mood",
+            "source_display_name_key": null,
+            "source_entity": "fixture:averse_hero",
+            "strength": "Low"
+          }
+        ],
+        "tie_break_code": null,
+        "wavered": false
+      }
+    ],
+    "roster": [
+      {
+        "caution": "Negligible",
+        "definition": "fixture:averse_hero",
+        "display_name_key": "hero.fixture.averse_hero.name",
+        "greed": "Negligible",
+        "inclination_keys": [
+          "trait.fixture.test_aversion.name"
+        ],
+        "pride": "Negligible",
+        "principle_keys": []
+      },
+      {
+        "caution": "Negligible",
+        "definition": "fixture:crew_leader",
+        "display_name_key": "hero.fixture.crew_leader.name",
+        "greed": "Extreme",
+        "inclination_keys": [],
+        "pride": "Negligible",
+        "principle_keys": []
+      },
+      {
+        "caution": "Negligible",
+        "definition": "fixture:crew_recruit",
+        "display_name_key": "hero.fixture.crew_recruit.name",
+        "greed": "Extreme",
+        "inclination_keys": [],
+        "pride": "Negligible",
+        "principle_keys": []
+      },
+      {
+        "caution": "Negligible",
+        "definition": "fixture:crew_skeptic",
+        "display_name_key": "hero.fixture.crew_skeptic.name",
+        "greed": "Negligible",
+        "inclination_keys": [],
+        "pride": "Negligible",
+        "principle_keys": []
+      },
+      {
+        "caution": "Moderate",
+        "definition": "fixture:double_principle_hero",
+        "display_name_key": "hero.fixture.double_principle_hero.name",
+        "greed": "Moderate",
+        "inclination_keys": [],
+        "pride": "Moderate",
+        "principle_keys": [
+          "trait.fixture.principle_alpha.name",
+          "trait.fixture.principle_beta.name"
+        ]
+      }
+    ],
+    "sha256": "853b1743dac083ef90e5fb143e2ff2b6140daa2a646348d83a7744dd52b59e86",
+    "state": "Incomplete",
+    "title_key": "screen.contract_offer.title"
+  },
+  "scenario": "repulsion_by_inclination",
+  "seed": "424242",
+  "source_commit": "12565862b1e88e0524f95def18c023571ec4269f",
+  "steps": [
+    {
+      "applied": true,
+      "command": {
+        "command_id": 1,
+        "contract": "fixture:gamma_job",
+        "expected_state_version": 0,
+        "hero_index": 0
+      },
+      "decision": {
+        "considered_actions": [
+          "action:accept",
+          "action:decline"
+        ],
+        "selected_action": "action:decline",
+        "selected_score": -1,
+        "trace_id": 0
+      },
+      "events": [
+        {
+          "causal_trace_id": 0,
+          "contract_id": "fixture:gamma_job",
+          "event_id": 0,
+          "hero_id": 0,
+          "kind": "hero_declined_contract",
+          "logical_time": 0
+        }
+      ],
+      "hero_definition": "fixture:averse_hero",
+      "rejection_code": null
+    }
+  ],
+  "traces": [
+    {
+      "blocked_by": [],
+      "negative_factors": [
+        {
+          "magnitude": 14,
+          "reason_code": "hero.decision.personal_aversion",
+          "source_entity": "fixture:test_aversion"
+        }
+      ],
+      "positive_factors": [
+        {
+          "magnitude": 8,
+          "reason_code": "hero.decision.trusts_the_guild",
+          "source_entity": "fixture:averse_hero"
+        },
+        {
+          "magnitude": 5,
+          "reason_code": "hero.decision.unpredictable_mood",
+          "source_entity": "fixture:averse_hero"
+        }
+      ],
+      "tie_break": null,
+      "trace_id": 0
+    }
+  ]
+}
