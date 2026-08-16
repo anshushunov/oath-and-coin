@@ -39,6 +39,10 @@ public class TerminalEventTests
             ["frame_width"] = 1280,
             ["frame_height"] = 720,
             ["frame_distinct_colors"] = 12,
+            ["layout_content_width"] = 1180,
+            ["layout_content_height"] = 900,
+            ["layout_reachable_width"] = 1280,
+            ["layout_reachable_height"] = 900,
         };
 
         return json.ToJsonString();
@@ -66,7 +70,11 @@ public class TerminalEventTests
         FrameSha256: "frame-sha256",
         FrameWidth: 1280,
         FrameHeight: 720,
-        FrameDistinctColors: 12);
+        FrameDistinctColors: 12,
+        LayoutContentWidth: 1180,
+        LayoutContentHeight: 900,
+        LayoutReachableWidth: 1280,
+        LayoutReachableHeight: 900);
 
     [Fact]
     public void Parse_ParsesAValidEventAmongEngineNoise()

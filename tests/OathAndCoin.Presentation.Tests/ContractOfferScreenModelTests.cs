@@ -99,6 +99,7 @@ public class ContractOfferScreenModelTests
             .Concat(ActionKeys.AllKeys)
             .Concat(WaveredKeys.AllKeys)
             .Concat(ReasonDirectionKeys.AllKeys)
+            .Concat(FieldKeys.AllKeys)
             .Concat(ErrorKeys.AllKeys)
             .Concat(ScreenStateKeys.AllKeys);
 

@@ -64,6 +64,31 @@ namespace OathAndCoin.GameProtocol;
 /// <param name="FrameWidth">The captured frame's width in pixels.</param>
 /// <param name="FrameHeight">The captured frame's height in pixels.</param>
 /// <param name="FrameDistinctColors">Distinct colors observed in the captured frame.</param>
+/// <param name="LayoutContentWidth">
+/// How wide the screen's whole content actually is, in pixels, at its natural
+/// size — measured from the control tree after it was laid out, never
+/// clipped to the window. See <paramref name="LayoutReachableHeight"/> for
+/// what this pair is for.
+/// </param>
+/// <param name="LayoutContentHeight">The same measurement, vertically.</param>
+/// <param name="LayoutReachableWidth">
+/// How much of that content a person at this window could actually get to:
+/// the window's own width plus however far the content can be scrolled
+/// sideways. Equal to the window width exactly when nothing scrolls.
+/// </param>
+/// <param name="LayoutReachableHeight">
+/// The same, vertically — and the half that matters today. External review
+/// finding (blocker): the roster ran off the bottom of a 1280x720 frame at
+/// the fourth of six heroes, with no scrolling and nothing anywhere that
+/// could notice. Neither hash can: <c>rendered_ui_hash</c> walks every
+/// <c>Label</c> in the tree and compares the texts, knowing nothing about
+/// where — or whether — any of them landed on screen, and it should not be
+/// taught to (a layout change would then have to move a hash that is about
+/// the model reaching the controls). So the game reports what it measured and
+/// the tool decides, exactly as it already does for
+/// <paramref name="FrameDistinctColors"/>: content wider or taller than what
+/// is reachable is a screen with something on it nobody can read.
+/// </param>
 public sealed record TerminalEvent(
     int SchemaVersion,
     string Event,
@@ -80,7 +105,11 @@ public sealed record TerminalEvent(
     string FrameSha256,
     int FrameWidth,
     int FrameHeight,
-    int FrameDistinctColors)
+    int FrameDistinctColors,
+    int LayoutContentWidth,
+    int LayoutContentHeight,
+    int LayoutReachableWidth,
+    int LayoutReachableHeight)
 {
     /// <summary>
     /// The wire format version this build understands. Mirrors
@@ -88,7 +117,15 @@ public sealed record TerminalEvent(
     /// a line declaring any other version is refused rather than read under
     /// the wrong version's assumptions.
     /// </summary>
-    public const int SupportedSchemaVersion = 1;
+    /// <remarks>
+    /// Raised to 2 by the four <c>layout_*</c> fields. A bump, not a
+    /// tolerated absence: an older game build's line carries no layout at
+    /// all, and a tool that quietly read it as "nothing overflowed" would
+    /// turn a version skew into a green run — the same argument
+    /// <see cref="Parse"/> already makes for refusing an unknown version
+    /// outright.
+    /// </remarks>
+    public const int SupportedSchemaVersion = 2;
 
     /// <summary>
     /// The bound every size and depth ceiling below is set to. A terminal
@@ -201,7 +238,11 @@ public sealed record TerminalEvent(
                 parsed.FrameSha256,
                 parsed.FrameWidth,
                 parsed.FrameHeight,
-                parsed.FrameDistinctColors));
+                parsed.FrameDistinctColors,
+                parsed.LayoutContentWidth,
+                parsed.LayoutContentHeight,
+                parsed.LayoutReachableWidth,
+                parsed.LayoutReachableHeight));
         }
 
         return new TerminalParseResult(events.ToImmutable(), errors.ToImmutable());
@@ -235,6 +276,10 @@ public sealed record TerminalEvent(
             FrameWidth = FrameWidth,
             FrameHeight = FrameHeight,
             FrameDistinctColors = FrameDistinctColors,
+            LayoutContentWidth = LayoutContentWidth,
+            LayoutContentHeight = LayoutContentHeight,
+            LayoutReachableWidth = LayoutReachableWidth,
+            LayoutReachableHeight = LayoutReachableHeight,
         },
         Options);
 
@@ -283,6 +328,14 @@ public sealed record TerminalEvent(
         public required int FrameHeight { get; init; }
 
         public required int FrameDistinctColors { get; init; }
+
+        public required int LayoutContentWidth { get; init; }
+
+        public required int LayoutContentHeight { get; init; }
+
+        public required int LayoutReachableWidth { get; init; }
+
+        public required int LayoutReachableHeight { get; init; }
     }
 }
 

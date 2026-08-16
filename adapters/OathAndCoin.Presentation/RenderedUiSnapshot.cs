@@ -100,21 +100,47 @@ public sealed record RenderedUiSnapshot(ImmutableArray<string> Texts)
         if (model.Contract is { } contract)
         {
             texts.Add(Resolve(catalogue, contract.DisplayNameKey));
+            texts.Add(Resolve(catalogue, FieldKeys.ContractPayment));
             texts.Add(contract.Payment.ToString(CultureInfo.InvariantCulture));
+            texts.Add(Resolve(catalogue, FieldKeys.ContractRisk));
             texts.Add(Resolve(catalogue, QualitativeScale.KeyFor(contract.Risk)));
-            texts.AddRange(contract.TagKeys.Select(key => Resolve(catalogue, key)));
+            texts.Add(Resolve(catalogue, FieldKeys.ContractRequiredCrew));
             texts.Add(contract.RequiredCrew.ToString(CultureInfo.InvariantCulture));
+            texts.Add(Resolve(catalogue, FieldKeys.ContractAcceptedCount));
             texts.Add(contract.AcceptedCount.ToString(CultureInfo.InvariantCulture));
+
+            // A caption for a list nobody has is a heading over nothing, so
+            // an empty list produces neither. A branch on whether a model
+            // field is empty, like the two null checks further down — never
+            // on what is in it.
+            if (!contract.TagKeys.IsEmpty)
+            {
+                texts.Add(Resolve(catalogue, FieldKeys.ContractTags));
+                texts.AddRange(contract.TagKeys.Select(key => Resolve(catalogue, key)));
+            }
         }
 
         foreach (var hero in model.Roster)
         {
             texts.Add(Resolve(catalogue, hero.DisplayNameKey));
+            texts.Add(Resolve(catalogue, FieldKeys.HeroGreed));
             texts.Add(Resolve(catalogue, QualitativeScale.KeyFor(hero.Greed)));
+            texts.Add(Resolve(catalogue, FieldKeys.HeroCaution));
             texts.Add(Resolve(catalogue, QualitativeScale.KeyFor(hero.Caution)));
+            texts.Add(Resolve(catalogue, FieldKeys.HeroPride));
             texts.Add(Resolve(catalogue, QualitativeScale.KeyFor(hero.Pride)));
-            texts.AddRange(hero.PrincipleKeys.Select(key => Resolve(catalogue, key)));
-            texts.AddRange(hero.InclinationKeys.Select(key => Resolve(catalogue, key)));
+
+            if (!hero.PrincipleKeys.IsEmpty)
+            {
+                texts.Add(Resolve(catalogue, FieldKeys.HeroPrinciples));
+                texts.AddRange(hero.PrincipleKeys.Select(key => Resolve(catalogue, key)));
+            }
+
+            if (!hero.InclinationKeys.IsEmpty)
+            {
+                texts.Add(Resolve(catalogue, FieldKeys.HeroInclinations));
+                texts.AddRange(hero.InclinationKeys.Select(key => Resolve(catalogue, key)));
+            }
         }
 
         foreach (var response in model.Responses)
@@ -132,11 +158,13 @@ public sealed record RenderedUiSnapshot(ImmutableArray<string> Texts)
                 }
 
                 texts.Add(Resolve(catalogue, ReasonDirectionKeys.For(reason.Direction)));
+                texts.Add(Resolve(catalogue, FieldKeys.ReasonStrength));
                 texts.Add(Resolve(catalogue, QualitativeScale.KeyFor(reason.Strength)));
             }
 
             if (response.BlockedByDisplayNameKey is not null)
             {
+                texts.Add(Resolve(catalogue, FieldKeys.ResponseBlockedBy));
                 texts.Add(Resolve(catalogue, response.BlockedByDisplayNameKey));
             }
 

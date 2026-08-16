@@ -306,6 +306,21 @@ public static class SmokeVerdict
                 + $"the terminal event reports {terminalEvent.FrameWidth}x{terminalEvent.FrameHeight}.");
         }
 
+        // The one condition that says anything about whether the screen can
+        // be read rather than merely built. Both hashes compare texts and
+        // know nothing about where those texts landed, so a roster running
+        // off the bottom of the window with no way to scroll to it left
+        // every other condition green (external review finding). The game
+        // measures (ContractOfferScreen.Measure), this decides.
+        if (terminalEvent.LayoutContentWidth > terminalEvent.LayoutReachableWidth
+            || terminalEvent.LayoutContentHeight > terminalEvent.LayoutReachableHeight)
+        {
+            reasons.Add(
+                $"The screen's content is {terminalEvent.LayoutContentWidth}x{terminalEvent.LayoutContentHeight}, "
+                + $"but only {terminalEvent.LayoutReachableWidth}x{terminalEvent.LayoutReachableHeight} of it can "
+                + "be reached at this window size: part of the screen is off the edge with no way to scroll to it.");
+        }
+
         // The one condition that says anything about the pixels. A window
         // that rendered nothing — a compositor failure, a hidden root, a
         // stretch policy pushing the content off-screen — still writes a

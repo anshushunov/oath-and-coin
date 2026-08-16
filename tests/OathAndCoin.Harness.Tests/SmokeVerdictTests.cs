@@ -391,6 +391,43 @@ public class SmokeVerdictTests
         Assert.Contains(verdict.Reasons, reason => reason.Contains("640", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// External review finding (blocker): the roster ran past the bottom of
+    /// the window at the fourth of six heroes, with no scrolling, and every
+    /// existing condition stayed green — both hashes compare the texts the
+    /// model produced and know nothing about where any of them landed, and a
+    /// frame full of text is neither blank nor the wrong size. This is the
+    /// condition that fails on it.
+    /// </summary>
+    [Fact]
+    public void Verdict_RejectsContentThatCannotBeReached()
+    {
+        // Taller than what the window plus its scrolling can show — the exact
+        // shape of "six heroes, four of them visible, no scroll bar".
+        var observation = CleanRun(
+            eventOverride: CleanEvent() with { LayoutContentHeight = 1180, LayoutReachableHeight = FrameHeight });
+
+        var verdict = SmokeVerdict.Evaluate(observation);
+
+        Assert.False(verdict.Passed);
+        Assert.Contains(verdict.Reasons, reason => reason.Contains("can be reached", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// The other half of the same condition, and the reason it is stated as
+    /// two numbers rather than as "does it fit in the window": content taller
+    /// than the window is perfectly fine when it can be scrolled to, which is
+    /// what this screen actually does at six heroes.
+    /// </summary>
+    [Fact]
+    public void Verdict_AcceptsContentTallerThanTheWindowWhenItScrolls()
+    {
+        var observation = CleanRun(
+            eventOverride: CleanEvent() with { LayoutContentHeight = 1180, LayoutReachableHeight = 1180 });
+
+        Assert.True(SmokeVerdict.Evaluate(observation).Passed);
+    }
+
     [Fact]
     public void Verdict_RejectsSingleColourFrame()
     {
@@ -476,7 +513,15 @@ public class SmokeVerdictTests
         FrameSha256: FrameSha256,
         FrameWidth: FrameWidth,
         FrameHeight: FrameHeight,
-        FrameDistinctColors: 12);
+        FrameDistinctColors: 12,
+
+        // Content that fits inside the window with nothing to scroll: the
+        // shape a clean run reports, and the baseline
+        // Verdict_RejectsContentThatCannotBeReached moves away from.
+        LayoutContentWidth: 1180,
+        LayoutContentHeight: 640,
+        LayoutReachableWidth: FrameWidth,
+        LayoutReachableHeight: FrameHeight);
 
     private static FrameInspection CleanFrame() => new(
         HasValidPngHeader: true,

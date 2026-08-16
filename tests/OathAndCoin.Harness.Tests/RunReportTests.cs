@@ -293,7 +293,7 @@ public class RunReportTests
     private static RunObservation SampleObservation()
     {
         var terminalEvent = new TerminalEvent(
-            SchemaVersion: 1,
+            SchemaVersion: TerminalEvent.SupportedSchemaVersion,
             Event: "terminal",
             OutcomeKind: "success",
             Scenario: "gate0",
@@ -308,7 +308,11 @@ public class RunReportTests
             FrameSha256: "eeee",
             FrameWidth: 1280,
             FrameHeight: 720,
-            FrameDistinctColors: 42);
+            FrameDistinctColors: 42,
+            LayoutContentWidth: 1180,
+            LayoutContentHeight: 900,
+            LayoutReachableWidth: 1280,
+            LayoutReachableHeight: 900);
 
         return new RunObservation(
             Scenario: "gate0",

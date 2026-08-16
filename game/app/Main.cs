@@ -117,7 +117,22 @@ public partial class Main : Control
             {
                 CaptureProtocol.Run(
                     surface,
-                    result => BuildTerminalLine(arguments, outcomeKind, loaded, readModelHash, renderedUiHash, result));
+                    result => BuildTerminalLine(
+                        arguments,
+                        outcomeKind,
+                        loaded,
+                        readModelHash,
+                        renderedUiHash,
+
+                        // Measured here and not beside the two hashes above:
+                        // in _Ready the tree has not been laid out yet, so
+                        // every size would read zero. By the time
+                        // CaptureProtocol asks for a line it has waited for a
+                        // drawn frame, which is the first moment the numbers
+                        // mean anything. Marshaled onto the engine thread,
+                        // like every other engine call from this worker.
+                        surface.OnEngineThread(() => screen.Measure(GetViewport().GetVisibleRect().Size)),
+                        result));
             }
             catch (Exception exception)
             {
@@ -329,6 +344,7 @@ public partial class Main : Control
         LoadResult loaded,
         string readModelHash,
         string renderedUiHash,
+        ScreenLayoutMeasurement layout,
         CaptureResult capture)
     {
         // An invariant, not a case: CaptureProtocol.Run builds a line only for
@@ -361,6 +377,14 @@ public partial class Main : Control
             FrameSha256: capture.FrameSha256,
             FrameWidth: capture.FrameWidth,
             FrameHeight: capture.FrameHeight,
-            FrameDistinctColors: capture.FrameDistinctColors).ToLine();
+            FrameDistinctColors: capture.FrameDistinctColors,
+
+            // What the screen measured about itself once it was laid out.
+            // The verdict compares the two pairs; this side only reports
+            // them (see ScreenLayoutMeasurement's own remarks).
+            LayoutContentWidth: layout.ContentWidth,
+            LayoutContentHeight: layout.ContentHeight,
+            LayoutReachableWidth: layout.ReachableWidth,
+            LayoutReachableHeight: layout.ReachableHeight).ToLine();
     }
 }

@@ -97,6 +97,20 @@ public sealed class GodotCaptureSurface : ICaptureSurface
 
     public void Quit(int code) => RunOnMainThread(() => _tree.Quit(code));
 
+    /// <summary>
+    /// Runs <paramref name="function"/> on the engine's own thread and hands
+    /// back what it returned — the marshaling this class already does for
+    /// every step of <see cref="ICaptureSurface"/>, made available to the one
+    /// caller outside those steps that also has to touch the engine from the
+    /// capture worker: the terminal line's own screen measurement, which is
+    /// only meaningful once the tree has been laid out and drawn (see
+    /// <c>ContractOfferScreen.Measure</c>). Exposed rather than duplicated in
+    /// <c>Main</c>: a second hand-written copy of <see cref="RunOnMainThread{T}(Func{T})"/>
+    /// is exactly where this file's own overload-resolution bug lived, and
+    /// once was enough.
+    /// </summary>
+    public T OnEngineThread<T>(Func<T> function) => RunOnMainThread(function);
+
     private CaptureResult CaptureOnMainThread()
     {
         var image = _viewport.GetTexture().GetImage();
