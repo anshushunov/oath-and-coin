@@ -1,0 +1,24 @@
+{
+  "name": "oath-and-coin",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Oath & Coin — TypeScript workspace (ADR-010 full migration, Task 3)",
+  "packageManager": "pnpm@11.22.0+sha512.1ff870c4c6133dfd88fb2afc46dd13d47f09c9794b438c6fdb47ca98caf3bc16381ee0be93a091b8e3824cf01f889f46d7d9e20910fb0be1ab0fb5baa80dd621",
+  "engines": {
+    "node": ">=24.12.0 <25.0.0",
+    "pnpm": "11.22.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --build tsconfig.json --force",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "build": "pnpm --filter @oath-and-coin/web build"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "@types/node": "26.2.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.10"
+  }
+}

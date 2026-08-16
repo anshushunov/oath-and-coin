@@ -1,0 +1,11 @@
+{
+  "name": "@oath-and-coin/architecture-tests",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Checks about the shape of the workspace itself — pins, gate coverage, dependency direction",
+  "devDependencies": {
+    "typescript": "6.0.3",
+    "yaml": "2.9.0"
+  }
+}

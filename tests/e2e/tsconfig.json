@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Playwright's assertions run in Node and drive a browser over a protocol;
+    // the specs themselves never execute in the page, so no DOM lib here. The
+    // one place page code appears is inside `page.evaluate`, where Playwright
+    // types the callback against its own DOM declarations.
+    "types": ["node"]
+  },
+  "include": ["**/*.spec.ts"]
+}

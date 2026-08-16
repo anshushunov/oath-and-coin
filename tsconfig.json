@@ -1,0 +1,22 @@
+{
+  // The solution file: `tsc --build` from here typechecks every workspace
+  // member in one process. It exists instead of the obvious
+  // `pnpm --recursive typecheck` because that shape is broken under the
+  // command this repository documents. `corepack pnpm typecheck` runs the
+  // script with corepack's own pnpm on PATH, the nested `pnpm` resolves to
+  // corepack's known-good release (11.9.0) rather than to the pinned
+  // packageManager (11.22.0), and pnpm refuses to run:
+  // ERR "This project is configured to use 11.22.0 of pnpm. Your current pnpm
+  // is v11.9.0". Nothing about the message points at nesting, and the same
+  // command works when typed directly.
+  //
+  // Every member is listed here and the workspace test asserts that the list
+  // and pnpm-workspace.yaml hold the same members — a package added without a
+  // reference would be installed, tested and never typechecked.
+  "files": [],
+  "references": [
+    { "path": "apps/web" },
+    { "path": "tests/architecture" },
+    { "path": "tests/e2e" }
+  ]
+}

@@ -13,3 +13,15 @@ game/.godot/
 # work is fresh, so it lives locally instead.
 docs/superpowers/
 .superpowers/
+
+# TypeScript workspace (ADR-010). The lockfile is committed and the installed
+# tree is not: pnpm-lock.yaml is the authority on every transitive version, and
+# `--frozen-lockfile` is what makes a clone reproduce the same graph.
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Playwright downloads its browsers outside the repository, but a locally
+# invoked run without the config's outputDir still drops these two here.
+playwright-report/
+test-results/
