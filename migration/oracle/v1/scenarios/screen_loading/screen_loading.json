@@ -1,0 +1,62 @@
+{
+  "artifact_schema_version": 1,
+  "canonical_base64": null,
+  "canonical_sha256": null,
+  "checkpoint": "screen_loading",
+  "draws": {
+    "next_decision_ordinal_final": "0",
+    "next_decision_ordinal_initial": "0",
+    "per_step": [],
+    "total_consumed": "0"
+  },
+  "events": [],
+  "final_state": null,
+  "inputs": {
+    "checkpoint_after_command_id": 0,
+    "commands": [],
+    "content_root": "content",
+    "content_root_exists": true,
+    "content_schema_version": 2,
+    "content_version": null,
+    "determinism_artifact_version": 3,
+    "manifest": {
+      "checkpoints": [
+        {
+          "after_command_id": 0,
+          "name": "screen_loading"
+        }
+      ],
+      "content_root": null,
+      "expected_error_code": null,
+      "expected_outcome": "loading",
+      "expected_screen_state": "loading",
+      "fault": null,
+      "scenario": "screen_loading",
+      "schema_version": 1
+    },
+    "manifest_schema_version": 1,
+    "rng_algorithm": "splitmix64-composed/1",
+    "ruleset_version": "m1-decision/1",
+    "save_schema_version": 1,
+    "schema_root": "schemas"
+  },
+  "outcome": {
+    "error_code": null,
+    "kind": "loading",
+    "screen_state": "loading"
+  },
+  "read_model": {
+    "contract": null,
+    "error_code": null,
+    "responses": [],
+    "roster": [],
+    "sha256": "7eee29609a31bb76e30a0cc5e77598c86693435ba26c316f2a0420e8cfb94b4f",
+    "state": "Loading",
+    "title_key": "screen.contract_offer.title"
+  },
+  "scenario": "screen_loading",
+  "seed": "7",
+  "source_commit": "12565862b1e88e0524f95def18c023571ec4269f",
+  "steps": [],
+  "traces": []
+}

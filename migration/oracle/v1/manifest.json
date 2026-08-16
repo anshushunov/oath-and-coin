@@ -1,0 +1,490 @@
+{
+  "artifact_schema_version": 1,
+  "content_schema_version": 2,
+  "determinism_artifact_version": 3,
+  "files": [
+    {
+      "bytes": 2447,
+      "path": "README.md",
+      "sha256": "ceeb67a9dffdc6cac8eb897e169d7ba17e9c83e640cfc0ee53ff5c86a1a04225"
+    },
+    {
+      "bytes": 8747,
+      "path": "jcs-compatibility-vectors.json",
+      "sha256": "029b11ffd4afc08c9607fab98aad8301a95662978f9616f6cd344ff236660a7a"
+    },
+    {
+      "bytes": 483427,
+      "path": "rng-vectors.json",
+      "sha256": "04bf83bc929c8b09971242e7515f8237b8387d57badb13fb39b855cf02c5e9fd"
+    },
+    {
+      "bytes": 41990,
+      "path": "scenarios/accept_by_comrade/final.json",
+      "sha256": "6e29b4e6e7cb647c8a78ea90ecbcb474eb56b8d137699205466c00e24305e7e8"
+    },
+    {
+      "bytes": 20764,
+      "path": "scenarios/accept_by_payment/final.json",
+      "sha256": "c0e3a76130fcc9872cbd3cbd8be0df737d82a114e9fc760f84449997df0ee295"
+    },
+    {
+      "bytes": 19756,
+      "path": "scenarios/accept_by_payment_alt/final.json",
+      "sha256": "d4686048cefd22f80722ccc2cfa23a62cd171b20e408085ba0d813b32872358b"
+    },
+    {
+      "bytes": 20714,
+      "path": "scenarios/attraction_by_inclination/final.json",
+      "sha256": "ad91c852fe04fdb61c5f0f45b4468487266ca23c36928ef0fe6202686cca30d8"
+    },
+    {
+      "bytes": 20433,
+      "path": "scenarios/crew_filled/final.json",
+      "sha256": "0d371bc3d2b05fcf95ae5598b8a40bf821cc1212d84cd7a22cc219003280ead6"
+    },
+    {
+      "bytes": 20514,
+      "path": "scenarios/decline_by_comrade/final.json",
+      "sha256": "d3abc49538b8cea2138cde92aea46d0d7b16aef87e4e0b737eb824e86decac5a"
+    },
+    {
+      "bytes": 31674,
+      "path": "scenarios/decline_by_insult/final.json",
+      "sha256": "506b4d9ee6490095e09453953227cf6b24751087da37163591d51378339615a9"
+    },
+    {
+      "bytes": 20169,
+      "path": "scenarios/decline_by_risk/final.json",
+      "sha256": "f2b4409f0b3a1184765c44ca742d9221e2730fddea68ead6a451199edaf8157e"
+    },
+    {
+      "bytes": 21138,
+      "path": "scenarios/duplicate_response_attempt/final.json",
+      "sha256": "af9448177705ef8d5bc83247778b8b92e69ab973ad272c633a16102d274e5183"
+    },
+    {
+      "bytes": 26279,
+      "path": "scenarios/gate0/decisions_complete.json",
+      "sha256": "fc5818d76fe27120d96a03ae5cbd5312ebc42a5ca91e4119809b24c13d577bd6"
+    },
+    {
+      "bytes": 20210,
+      "path": "scenarios/grey_zone_flip/final.json",
+      "sha256": "997079ecc64b023729de9126c03f74b5c423f1b30e58742538165f23147640e9"
+    },
+    {
+      "bytes": 25704,
+      "path": "scenarios/grey_zone_stable/final.json",
+      "sha256": "dcf4c1384a99ccd6171c8b8635d6fbbcd186974526384dc2efe13ca6dc4af7a3"
+    },
+    {
+      "bytes": 20232,
+      "path": "scenarios/inclination_without_tag_match/final.json",
+      "sha256": "d459c15ed0b1aecaa60143e8d05bc46e44e021d7757d86cd3ae83e49b1663cdb"
+    },
+    {
+      "bytes": 27582,
+      "path": "scenarios/mixed_gate_then_decisions/final.json",
+      "sha256": "36ad7e24893d030d595845ab4f04c5bcae7c14ca1ba3b025708df5450fa3095a"
+    },
+    {
+      "bytes": 26678,
+      "path": "scenarios/order_ally_first/final.json",
+      "sha256": "41e47645b3665fa5b11e186f49487b96273fc254ffc288c41e2b8615917e3d20"
+    },
+    {
+      "bytes": 26233,
+      "path": "scenarios/order_ally_second/final.json",
+      "sha256": "3c134f487395423175096d7635ace91c4685ebc0191ad1cb8435f80349b9a6ef"
+    },
+    {
+      "bytes": 17614,
+      "path": "scenarios/refusal_by_principle/final.json",
+      "sha256": "2c2444e9199ef49d070fd8fcf5f6c174bf808b2f663eca1eee418cd72459c841"
+    },
+    {
+      "bytes": 17675,
+      "path": "scenarios/refusal_by_principle_abandon_wounded/final.json",
+      "sha256": "8878b63675e545dbc253c35993fb35a0ec75bff974f98b199673c6276393542e"
+    },
+    {
+      "bytes": 17603,
+      "path": "scenarios/refusal_by_principle_deception/final.json",
+      "sha256": "4034d779e163c01c7ea650538f10e2354a1156895a199cde32765db0b3576daf"
+    },
+    {
+      "bytes": 15392,
+      "path": "scenarios/repulsion_by_inclination/final.json",
+      "sha256": "d534531081c1eec61d3ae8b55064bfe2bac7c744c06481e9b39fb085eafc6b28"
+    },
+    {
+      "bytes": 3347,
+      "path": "scenarios/screen_empty/screen_empty.json",
+      "sha256": "f4d34f86aafdb29969e46fdf325076d66395dc607f0243e72b7c7de8c6422c41"
+    },
+    {
+      "bytes": 1770,
+      "path": "scenarios/screen_error/screen_error.json",
+      "sha256": "fc51ac059fd2a8de71eca70dbf347016b6f3c626d74d8dd47f926e336644a2f2"
+    },
+    {
+      "bytes": 20270,
+      "path": "scenarios/screen_incomplete/screen_incomplete.json",
+      "sha256": "e8e794dbd2fe527393b33c74ebab109673622a26f24d592074b24938b5d25eee"
+    },
+    {
+      "bytes": 1600,
+      "path": "scenarios/screen_loading/screen_loading.json",
+      "sha256": "1acc171e34f8383f4da45cad6602e92a960c1bd2dc9339f659d3e1e8eaf90716"
+    },
+    {
+      "bytes": 52408,
+      "path": "scenarios/screen_normal/screen_normal.json",
+      "sha256": "e1b5d67c4aa67acfe35f6a811e20226cada58557b20171ce112c93d628e15019"
+    },
+    {
+      "bytes": 14197,
+      "path": "scenarios/two_principles_blocked/final.json",
+      "sha256": "2baeb9456f77bc64aeedea08377109ce37f6b8818320083f37ee50401ada2eba"
+    },
+    {
+      "bytes": 36308,
+      "path": "scenarios/zero_sum_tie/final.json",
+      "sha256": "576fd0fe322b4639786f1fe6095639b187e9eca597c2bb220e7149c9c8b56099"
+    }
+  ],
+  "generated_by": "tools/OathAndCoin.MigrationOracle",
+  "manifest_schema_version": 1,
+  "rng_algorithm": "splitmix64-composed/1",
+  "ruleset_version": "m1-decision/1",
+  "scenario_count": 27,
+  "scenarios": [
+    {
+      "checkpoints": [
+        {
+          "after_command_id": 5,
+          "checkpoint": "final",
+          "path": "scenarios/accept_by_comrade/final.json"
+        }
+      ],
+      "expected_outcome": "success",
+      "expected_screen_state": null,
+      "scenario": "accept_by_comrade"
+    },
+    {
+      "checkpoints": [
+        {
+          "after_command_id": 1,
+          "checkpoint": "final",
+          "path": "scenarios/accept_by_payment/final.json"
+        }
+      ],
+      "expected_outcome": "success",
+      "expected_screen_state": null,
+      "scenario": "accept_by_payment"
+    },
+    {
+      "checkpoints": [
+        {
+          "after_command_id": 1,
+          "checkpoint": "final",
+          "path": "scenarios/accept_by_payment_alt/final.json"
+        }
+      ],
+      "expected_outcome": "success",
+      "expected_screen_state": null,
+      "scenario": "accept_by_payment_alt"
+    },
+    {
+      "checkpoints": [
+        {
+          "after_command_id": 1,
+          "checkpoint": "final",
+          "path": "scenarios/attraction_by_inclination/final.json"
+        }
+      ],
+      "expected_outcome": "success",
+      "expected_screen_state": null,
+      "scenario": "attraction_by_inclination"
+    },
+    {
+      "checkpoints": [
+        {
+          "after_command_id": 2,
+          "checkpoint": "final",
+          "path": "scenarios/crew_filled/final.json"
+        }
+      ],
+      "expected_outcome": "success",
+      "expected_screen_state": null,
+      "scenario": "crew_filled"
+    },
+    {
+      "checkpoints": [
+        {
+          "after_command_id": 2,
+          "checkpoint": "final",
+          "path": "scenarios/decline_by_comrade/final.json"
+        }
+      ],
+      "expected_outcome": "success",
+      "expected_screen_state": null,
+      "scenario": "decline_by_comrade"
+    },
+    {
+      "checkpoints": [
+        {
+          "after_command_id": 3,
+          "checkpoint": "final",
+          "path": "scenarios/decline_by_insult/final.json"
+        }
+      ],
+      "expected_outcome": "success",
+      "expected_screen_state": null,
+      "scenario": "decline_by_insult"
+    },
+    {
+      "checkpoints": [
+        {
+          "after_command_id": 1,
+          "checkpoint": "final",
+          "path": "scenarios/decline_by_risk/final.json"
+        }
+      ],
+      "expected_outcome": "success",
+      "expected_screen_state": null,
+      "scenario": "decline_by_risk"
+    },
+    {
+      "checkpoints": [
+        {
+          "after_command_id": 2,
+          "checkpoint": "final",
+          "path": "scenarios/duplicate_response_attempt/final.json"
+        }
+      ],
+      "expected_outcome": "success",
+      "expected_screen_state": null,
+      "scenario": "duplicate_response_attempt"
+    },
+    {
+      "checkpoints": [
+        {
+          "after_command_id": 2,
+          "checkpoint": "decisions_complete",
+          "path": "scenarios/gate0/decisions_complete.json"
+        }
+      ],
+      "expected_outcome": "success",
+      "expected_screen_state": "incomplete",
+      "scenario": "gate0"
+    },
+    {
+      "checkpoints": [
+        {
+          "after_command_id": 1,
+          "checkpoint": "final",
+          "path": "scenarios/grey_zone_flip/final.json"
+        }
+      ],
+      "expected_outcome": "success",
+      "expected_screen_state": null,
+      "scenario": "grey_zone_flip"
+    },
+    {
+      "checkpoints": [
+        {
+          "after_command_id": 2,
+          "checkpoint": "final",
+          "path": "scenarios/grey_zone_stable/final.json"
+        }
+      ],
+      "expected_outcome": "success",
+      "expected_screen_state": null,
+      "scenario": "grey_zone_stable"
+    },
+    {
+      "checkpoints": [
+        {
+          "after_command_id": 1,
+          "checkpoint": "final",
+          "path": "scenarios/inclination_without_tag_match/final.json"
+        }
+      ],
+      "expected_outcome": "success",
+      "expected_screen_state": null,
+      "scenario": "inclination_without_tag_match"
+    },
+    {
+      "checkpoints": [
+        {
+          "after_command_id": 3,
+          "checkpoint": "final",
+          "path": "scenarios/mixed_gate_then_decisions/final.json"
+        }
+      ],
+      "expected_outcome": "success",
+      "expected_screen_state": null,
+      "scenario": "mixed_gate_then_decisions"
+    },
+    {
+      "checkpoints": [
+        {
+          "after_command_id": 2,
+          "checkpoint": "final",
+          "path": "scenarios/order_ally_first/final.json"
+        }
+      ],
+      "expected_outcome": "success",
+      "expected_screen_state": null,
+      "scenario": "order_ally_first"
+    },
+    {
+      "checkpoints": [
+        {
+          "after_command_id": 2,
+          "checkpoint": "final",
+          "path": "scenarios/order_ally_second/final.json"
+        }
+      ],
+      "expected_outcome": "success",
+      "expected_screen_state": null,
+      "scenario": "order_ally_second"
+    },
+    {
+      "checkpoints": [
+        {
+          "after_command_id": 1,
+          "checkpoint": "final",
+          "path": "scenarios/refusal_by_principle/final.json"
+        }
+      ],
+      "expected_outcome": "success",
+      "expected_screen_state": null,
+      "scenario": "refusal_by_principle"
+    },
+    {
+      "checkpoints": [
+        {
+          "after_command_id": 1,
+          "checkpoint": "final",
+          "path": "scenarios/refusal_by_principle_abandon_wounded/final.json"
+        }
+      ],
+      "expected_outcome": "success",
+      "expected_screen_state": null,
+      "scenario": "refusal_by_principle_abandon_wounded"
+    },
+    {
+      "checkpoints": [
+        {
+          "after_command_id": 1,
+          "checkpoint": "final",
+          "path": "scenarios/refusal_by_principle_deception/final.json"
+        }
+      ],
+      "expected_outcome": "success",
+      "expected_screen_state": null,
+      "scenario": "refusal_by_principle_deception"
+    },
+    {
+      "checkpoints": [
+        {
+          "after_command_id": 1,
+          "checkpoint": "final",
+          "path": "scenarios/repulsion_by_inclination/final.json"
+        }
+      ],
+      "expected_outcome": "success",
+      "expected_screen_state": null,
+      "scenario": "repulsion_by_inclination"
+    },
+    {
+      "checkpoints": [
+        {
+          "after_command_id": 0,
+          "checkpoint": "screen_empty",
+          "path": "scenarios/screen_empty/screen_empty.json"
+        }
+      ],
+      "expected_outcome": "success",
+      "expected_screen_state": "empty",
+      "scenario": "screen_empty"
+    },
+    {
+      "checkpoints": [
+        {
+          "after_command_id": 0,
+          "checkpoint": "screen_error",
+          "path": "scenarios/screen_error/screen_error.json"
+        }
+      ],
+      "expected_outcome": "error",
+      "expected_screen_state": "error",
+      "scenario": "screen_error"
+    },
+    {
+      "checkpoints": [
+        {
+          "after_command_id": 1,
+          "checkpoint": "screen_incomplete",
+          "path": "scenarios/screen_incomplete/screen_incomplete.json"
+        }
+      ],
+      "expected_outcome": "success",
+      "expected_screen_state": "incomplete",
+      "scenario": "screen_incomplete"
+    },
+    {
+      "checkpoints": [
+        {
+          "after_command_id": 0,
+          "checkpoint": "screen_loading",
+          "path": "scenarios/screen_loading/screen_loading.json"
+        }
+      ],
+      "expected_outcome": "loading",
+      "expected_screen_state": "loading",
+      "scenario": "screen_loading"
+    },
+    {
+      "checkpoints": [
+        {
+          "after_command_id": 6,
+          "checkpoint": "screen_normal",
+          "path": "scenarios/screen_normal/screen_normal.json"
+        }
+      ],
+      "expected_outcome": "success",
+      "expected_screen_state": "normal",
+      "scenario": "screen_normal"
+    },
+    {
+      "checkpoints": [
+        {
+          "after_command_id": 1,
+          "checkpoint": "final",
+          "path": "scenarios/two_principles_blocked/final.json"
+        }
+      ],
+      "expected_outcome": "success",
+      "expected_screen_state": null,
+      "scenario": "two_principles_blocked"
+    },
+    {
+      "checkpoints": [
+        {
+          "after_command_id": 7,
+          "checkpoint": "final",
+          "path": "scenarios/zero_sum_tie/final.json"
+        }
+      ],
+      "expected_outcome": "success",
+      "expected_screen_state": null,
+      "scenario": "zero_sum_tie"
+    }
+  ],
+  "seed": "7",
+  "source_commit": "12565862b1e88e0524f95def18c023571ec4269f"
+}

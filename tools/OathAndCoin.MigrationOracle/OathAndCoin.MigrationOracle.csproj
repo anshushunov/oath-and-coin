@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>OathAndCoin.MigrationOracle</RootNamespace>
+    <AssemblyName>OathAndCoin.MigrationOracle</AssemblyName>
+  </PropertyGroup>
+
+  <!--
+    The production loaders, rules and presentation factory, and nothing else.
+    This tool reads; it never restates a rule. Presentation is referenced
+    because the corpus has to carry the read model the screen is built from,
+    and that model has exactly one sanctioned builder.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\adapters\OathAndCoin.Content\OathAndCoin.Content.csproj" />
+    <ProjectReference Include="..\..\adapters\OathAndCoin.Presentation\OathAndCoin.Presentation.csproj" />
+  </ItemGroup>
+
+</Project>

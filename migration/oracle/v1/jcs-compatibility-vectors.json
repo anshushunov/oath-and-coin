@@ -1,0 +1,218 @@
+{
+  "artifact_schema_version": 1,
+  "covered_number_domain": "integers within \u00B19007199254740991 (every number a canonical determinism artifact holds)",
+  "current_serializer": "OathAndCoin.Content.CanonicalJson over System.Text.Json Utf8JsonWriter",
+  "determinism_artifact_version": 3,
+  "out_of_scope": "Fractional numbers, exponent forms and integers beyond the IEEE 754 safe range are not covered by these vectors: RFC 8785 defers those to ECMAScript Number::toString, and an approximate target would look authoritative and be wrong. Cover them in the TypeScript port against the official RFC 8785 conformance vectors.",
+  "ruleset_version": "m1-decision/1",
+  "target_serializer": "RFC 8785 JSON Canonicalization Scheme",
+  "vectors": [
+    {
+      "current": {
+        "canonical_base64": "eyIiOjQsIkEiOjIsImEiOjMsImFhIjo1LCJiIjoxfQ==",
+        "sha256": "f3ae5ff8acac5d568b792abe24a7245fd14956e339eeb105cff98017c1de75df"
+      },
+      "difference": null,
+      "input": {
+        "": 4,
+        "A": 2,
+        "a": 3,
+        "aa": 5,
+        "b": 1
+      },
+      "name": "object_key_ordering",
+      "note": "Both rules sort object keys by UTF-16 code units and leave array order alone.",
+      "rfc8785": {
+        "canonical_base64": "eyIiOjQsIkEiOjIsImEiOjMsImFhIjo1LCJiIjoxfQ==",
+        "sha256": "f3ae5ff8acac5d568b792abe24a7245fd14956e339eeb105cff98017c1de75df"
+      },
+      "same_artifact_version": true
+    },
+    {
+      "current": {
+        "canonical_base64": "eyJsaXN0IjpbeyJhIjoyLCJiIjoxfV0sIm91dGVyIjp7ImEiOnsiayI6W119LCJ6IjpbMywyLDFdfX0=",
+        "sha256": "a19def17c8a29ec025d70d85f4f6b0c9ff69825de3fecd72d49489fe4822e488"
+      },
+      "difference": null,
+      "input": {
+        "list": [
+          {
+            "a": 2,
+            "b": 1
+          }
+        ],
+        "outer": {
+          "a": {
+            "k": []
+          },
+          "z": [
+            3,
+            2,
+            1
+          ]
+        }
+      },
+      "name": "nested_structure",
+      "note": "Nesting changes nothing: sorting is per object, array order is content.",
+      "rfc8785": {
+        "canonical_base64": "eyJsaXN0IjpbeyJhIjoyLCJiIjoxfV0sIm91dGVyIjp7ImEiOnsiayI6W119LCJ6IjpbMywyLDFdfX0=",
+        "sha256": "a19def17c8a29ec025d70d85f4f6b0c9ff69825de3fecd72d49489fe4822e488"
+      },
+      "same_artifact_version": true
+    },
+    {
+      "current": {
+        "canonical_base64": "eyJmIjpmYWxzZSwibiI6bnVsbCwibmVnIjotNDIsInQiOnRydWUsInplcm8iOjB9",
+        "sha256": "56af251940c190196593764fad377ed903305c8c264467940b6c2fc858cf9443"
+      },
+      "difference": null,
+      "input": {
+        "f": false,
+        "n": null,
+        "neg": -42,
+        "t": true,
+        "zero": 0
+      },
+      "name": "scalars",
+      "note": "Literals and small integers are written identically by both rules.",
+      "rfc8785": {
+        "canonical_base64": "eyJmIjpmYWxzZSwibiI6bnVsbCwibmVnIjotNDIsInQiOnRydWUsInplcm8iOjB9",
+        "sha256": "56af251940c190196593764fad377ed903305c8c264467940b6c2fc858cf9443"
+      },
+      "same_artifact_version": true
+    },
+    {
+      "current": {
+        "canonical_base64": "eyJtYXgiOjkwMDcxOTkyNTQ3NDA5OTEsIm1pbiI6LTkwMDcxOTkyNTQ3NDA5OTF9",
+        "sha256": "63546eb60913dcb1cdd5118f7bf4885beed344af930c8a9d5f38fad243fd4819"
+      },
+      "difference": null,
+      "input": {
+        "max": 9007199254740991,
+        "min": -9007199254740991
+      },
+      "name": "safe_integer_bounds",
+      "note": "The widest integers a JSON reader can carry without losing bits.",
+      "rfc8785": {
+        "canonical_base64": "eyJtYXgiOjkwMDcxOTkyNTQ3NDA5OTEsIm1pbiI6LTkwMDcxOTkyNTQ3NDA5OTF9",
+        "sha256": "63546eb60913dcb1cdd5118f7bf4885beed344af930c8a9d5f38fad243fd4819"
+      },
+      "same_artifact_version": true
+    },
+    {
+      "current": {
+        "canonical_base64": "eyJhcnRpZmFjdF92ZXJzaW9uIjozLCJmaW5hbF9zdGF0ZSI6eyJtZXRhZGF0YSI6eyJjYW1wYWlnbl9zZWVkIjo3LCJsb2dpY2FsX3RpbWUiOjJ9fSwic3RlcHMiOlt7ImFwcGxpZWQiOnRydWUsInJlamVjdGlvbl9jb2RlIjpudWxsfV19",
+        "sha256": "e067a7804f61d9862c4194d0a16e0fec2deb9b282bd13b5b06e698117a194c54"
+      },
+      "difference": null,
+      "input": {
+        "artifact_version": 3,
+        "final_state": {
+          "metadata": {
+            "campaign_seed": 7,
+            "logical_time": 2
+          }
+        },
+        "steps": [
+          {
+            "applied": true,
+            "rejection_code": null
+          }
+        ]
+      },
+      "name": "artifact_shaped_fragment",
+      "note": "A fragment shaped like the canonical determinism artifact the corpus actually carries.",
+      "rfc8785": {
+        "canonical_base64": "eyJhcnRpZmFjdF92ZXJzaW9uIjozLCJmaW5hbF9zdGF0ZSI6eyJtZXRhZGF0YSI6eyJjYW1wYWlnbl9zZWVkIjo3LCJsb2dpY2FsX3RpbWUiOjJ9fSwic3RlcHMiOlt7ImFwcGxpZWQiOnRydWUsInJlamVjdGlvbl9jb2RlIjpudWxsfV19",
+        "sha256": "e067a7804f61d9862c4194d0a16e0fec2deb9b282bd13b5b06e698117a194c54"
+      },
+      "same_artifact_version": true
+    },
+    {
+      "current": {
+        "canonical_base64": "eyJrZXkiOiJcdTA0M0NcdTA0MzVcdTA0NDJcdTA0M0FcdTA0MzAiLCJydSI6Ilx1MDQxRVx1MDQzRlx1MDQzQlx1MDQzMFx1MDQ0Mlx1MDQzMCJ9",
+        "sha256": "00c012740a3815899ec75025eaccb208fc9b41a846cdc60df768a882c2566119"
+      },
+      "difference": "The current writer escapes every non-ASCII character to \\uXXXX; RFC 8785 emits it literally as UTF-8.",
+      "input": {
+        "key": "\u043C\u0435\u0442\u043A\u0430",
+        "ru": "\u041E\u043F\u043B\u0430\u0442\u0430"
+      },
+      "name": "non_ascii_text",
+      "note": "The current writer escapes every non-ASCII character to \\uXXXX; RFC 8785 emits it literally as UTF-8.",
+      "rfc8785": {
+        "canonical_base64": "eyJrZXkiOiLQvNC10YLQutCwIiwicnUiOiLQntC/0LvQsNGC0LAifQ==",
+        "sha256": "396d7d8f6c0cce514599e56ea325d379efc18c19dc131e378e2ed371d9ee327a"
+      },
+      "same_artifact_version": false
+    },
+    {
+      "current": {
+        "canonical_base64": "eyJzIjoiYVx1MDAzQ2JcdTAwM0VjXHUwMDI2ZFx1MDAyN2VcdTAwMkJmIn0=",
+        "sha256": "2501ace81e326672eb11331201438c7efa707fb6891a9f841dcc0b2fc7be2599"
+      },
+      "difference": "The current writer\u0027s default encoder escapes HTML-sensitive ASCII; RFC 8785 does not.",
+      "input": {
+        "s": "a\u003Cb\u003Ec\u0026d\u0027e\u002Bf"
+      },
+      "name": "html_sensitive_text",
+      "note": "The current writer\u0027s default encoder escapes HTML-sensitive ASCII; RFC 8785 does not.",
+      "rfc8785": {
+        "canonical_base64": "eyJzIjoiYTxiPmMmZCdlK2YifQ==",
+        "sha256": "565ff73e71beeada20626486e81525f50203aa38570216b946204f48fb4b9949"
+      },
+      "same_artifact_version": false
+    },
+    {
+      "current": {
+        "canonical_base64": "eyJ6IjotMH0=",
+        "sha256": "18b0d93fefaa7a59b9806fb40d5b430e5ccc88c1e50b370977256e2aa56d3f2c"
+      },
+      "difference": "RFC 8785 folds -0 to 0 (ECMAScript Number::toString); the current writer keeps the authored token.",
+      "input": {
+        "z": -0
+      },
+      "name": "negative_zero",
+      "note": "RFC 8785 folds -0 to 0 (ECMAScript Number::toString); the current writer keeps the authored token.",
+      "rfc8785": {
+        "canonical_base64": "eyJ6IjowfQ==",
+        "sha256": "e313adcae40818c4a48a6f5a32c7ab937365ffb0962282a5bf1a629f8d456b63"
+      },
+      "same_artifact_version": false
+    },
+    {
+      "current": {
+        "canonical_base64": "eyJzIjoiXHUwMDAwXGJcdFxuXGZcclx1MDAxRiJ9",
+        "sha256": "9cc94eef528fddad599053ba31600b7207c4910eaf4784c0d8e555517f6e96b5"
+      },
+      "difference": "RFC 8785 uses the five short escapes where they exist and \\u00xx otherwise.",
+      "input": {
+        "s": "\u0000\b\t\n\f\r\u001F"
+      },
+      "name": "control_characters",
+      "note": "RFC 8785 uses the five short escapes where they exist and \\u00xx otherwise.",
+      "rfc8785": {
+        "canonical_base64": "eyJzIjoiXHUwMDAwXGJcdFxuXGZcclx1MDAxZiJ9",
+        "sha256": "6392456cd704f0e9cf19ac4ed9a97d291065a6db21b104d76779cfbe955a233e"
+      },
+      "same_artifact_version": false
+    },
+    {
+      "current": {
+        "canonical_base64": "eyJzIjoiXHVEODNEXHVERTAwIn0=",
+        "sha256": "fc2e9f8d7a26e22b8941d156dd0b4c394d6ce96b9337ed1fa0002e82f2869754"
+      },
+      "difference": "A surrogate pair: RFC 8785 emits the code point as UTF-8, the current writer escapes both units.",
+      "input": {
+        "s": "\uD83D\uDE00"
+      },
+      "name": "astral_plane_text",
+      "note": "A surrogate pair: RFC 8785 emits the code point as UTF-8, the current writer escapes both units.",
+      "rfc8785": {
+        "canonical_base64": "eyJzIjoi8J\u002BYgCJ9",
+        "sha256": "f9949e1006d1ca22bc0b60ea94f09779f11a8f0a29bae250fc7ab313d879f5e7"
+      },
+      "same_artifact_version": false
+    }
+  ]
+}

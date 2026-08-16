@@ -1,0 +1,92 @@
+{
+  "artifact_schema_version": 1,
+  "canonical_base64": "eyJhcnRpZmFjdF92ZXJzaW9uIjozLCJjb250ZW50X3ZlcnNpb24iOiI5MTRiOTM1ZGYyYjQ4NzIwIiwiZmluYWxfc3RhdGUiOnsiYXBwbGllZF9jb21tYW5kX2lkcyI6W10sImNvbnRyYWN0cyI6W10sImhlcm9lcyI6W3siY2F1dGlvbiI6NTAsImRlZmluaXRpb24iOiJjb3JlOnJvc3Rlcl9vbmx5X2hlcm8iLCJkaXNwbGF5X25hbWVfa2V5IjoiaGVyby5jb3JlLnJvc3Rlcl9vbmx5X2hlcm8ubmFtZSIsImdyZWVkIjo1MCwiaGVyb19pZCI6MCwicHJpZGUiOjUwLCJyZWxhdGlvbnNoaXBzIjp7fSwidHJhaXRzIjpbXSwidHJ1c3RfaW5fZ3VpbGQiOjUwfV0sImhpc3RvcnkiOltdLCJtZXRhZGF0YSI6eyJjYW1wYWlnbl9zZWVkIjo3LCJjb250ZW50X3ZlcnNpb24iOiI5MTRiOTM1ZGYyYjQ4NzIwIiwibG9naWNhbF90aW1lIjowLCJuZXh0X2RlY2lzaW9uX29yZGluYWwiOjAsIm5leHRfZXZlbnRfaWQiOjAsIm5leHRfdHJhY2VfaWQiOjAsInJ1bGVzZXRfdmVyc2lvbiI6Im0xLWRlY2lzaW9uLzEiLCJzYXZlX3NjaGVtYV92ZXJzaW9uIjoxLCJzdGF0ZV92ZXJzaW9uIjowfSwidHJhY2VzIjpbXSwidHJhaXRfcnVsZXMiOltdfSwicm5nX2FsZ29yaXRobSI6InNwbGl0bWl4NjQtY29tcG9zZWQvMSIsInJ1bGVzZXRfdmVyc2lvbiI6Im0xLWRlY2lzaW9uLzEiLCJzZWVkIjo3LCJzdGVwcyI6W119",
+  "canonical_sha256": "af68cf099ae03c134614cac3bcce1d605db1e86c5af1000e4347a77f80f421d7",
+  "checkpoint": "screen_empty",
+  "draws": {
+    "next_decision_ordinal_final": "0",
+    "next_decision_ordinal_initial": "0",
+    "per_step": [],
+    "total_consumed": "0"
+  },
+  "events": [],
+  "final_state": {
+    "applied_command_ids": [],
+    "contracts": [],
+    "heroes": [
+      {
+        "caution": 50,
+        "definition": "core:roster_only_hero",
+        "display_name_key": "hero.core.roster_only_hero.name",
+        "greed": 50,
+        "hero_id": 0,
+        "pride": 50,
+        "relationships": {},
+        "traits": [],
+        "trust_in_guild": 50
+      }
+    ],
+    "history": [],
+    "metadata": {
+      "campaign_seed": 7,
+      "content_version": "914b935df2b48720",
+      "logical_time": 0,
+      "next_decision_ordinal": 0,
+      "next_event_id": 0,
+      "next_trace_id": 0,
+      "ruleset_version": "m1-decision/1",
+      "save_schema_version": 1,
+      "state_version": 0
+    },
+    "traces": [],
+    "trait_rules": []
+  },
+  "inputs": {
+    "checkpoint_after_command_id": 0,
+    "commands": [],
+    "content_root": "scenarios/fixtures/screen_empty",
+    "content_root_exists": true,
+    "content_schema_version": 2,
+    "content_version": "914b935df2b48720",
+    "determinism_artifact_version": 3,
+    "manifest": {
+      "checkpoints": [
+        {
+          "after_command_id": 0,
+          "name": "screen_empty"
+        }
+      ],
+      "content_root": "scenarios/fixtures/screen_empty",
+      "expected_error_code": null,
+      "expected_outcome": "success",
+      "expected_screen_state": "empty",
+      "fault": null,
+      "scenario": "screen_empty",
+      "schema_version": 1
+    },
+    "manifest_schema_version": 1,
+    "rng_algorithm": "splitmix64-composed/1",
+    "ruleset_version": "m1-decision/1",
+    "save_schema_version": 1,
+    "schema_root": "schemas"
+  },
+  "outcome": {
+    "error_code": null,
+    "kind": "success",
+    "screen_state": "empty"
+  },
+  "read_model": {
+    "contract": null,
+    "error_code": null,
+    "responses": [],
+    "roster": [],
+    "sha256": "879c5c5e15ca24dc48355d5f899518fd1e8400b3c48a49db6f55900bfe690ee3",
+    "state": "Empty",
+    "title_key": "screen.contract_offer.title"
+  },
+  "scenario": "screen_empty",
+  "seed": "7",
+  "source_commit": "12565862b1e88e0524f95def18c023571ec4269f",
+  "steps": [],
+  "traces": []
+}
