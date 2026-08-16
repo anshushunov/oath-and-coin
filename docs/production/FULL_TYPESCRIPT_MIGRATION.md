@@ -41,7 +41,7 @@
 | Файлов `*.manifest.json` | 27 | `ls scenarios/*.manifest.json \| wc -l` |
 | Именованных checkpoints | 27 (ровно один на манифест) | `for f in scenarios/*.manifest.json; do jq -c '[.checkpoints[].name]' "$f"; done` |
 
-Манифестов без именованного checkpoint в дереве нет, поэтому запись корпуса называется именем checkpoint, а запасная запись `final.json` не создаётся ни для одного сценария.
+Манифестов без именованного checkpoint в дереве нет, поэтому запись корпуса адресуется именем checkpoint (`scenarios/<scenario>/<checkpoint>/seed-<seed>.json`), а запасная запись `final` не создаётся ни для одного сценария по отсутствию имени.
 
 ### 1.4. Объём C#
 
@@ -85,7 +85,7 @@ Feature freeze для новой функциональности старого
 | Gate | Владелец | Начато | Завершено | Команда | Артефакт | Результат | Решение |
 |---|---|---|---|---|---|---|---|
 | Task 1 — рубеж и ADR-010 | agent | 2026-08-16 | 2026-08-16 | `dotnet test OathAndCoin.sln -c Release`; `bash ./scripts/code-lines.sh simulation adapters tools tests game` | §1 этого файла; `docs/decisions/ADR-010-full-typescript-web-stack.md` | 511 тестов зелёные; 27 манифестов; code=13 814 raw=24 408 | принят: рубеж `12565862`, `ADR-010` accepted |
-| Task 2 — неизменяемый oracle corpus | agent | 2026-08-16 | 2026-08-16 | `dotnet run --project tools/OathAndCoin.MigrationOracle -c Release -- export --root . --output migration/oracle/v1`; `dotnet test tests/OathAndCoin.MigrationOracle.Tests/OathAndCoin.MigrationOracle.Tests.csproj -c Release`; `git diff --exit-code -- migration/oracle/v1` | `migration/oracle/v1/**` (31 файл, manifest SHA-256 `32107b7c…d29c`); §3 этого файла | 27/27 манифестов и checkpoints; 18/18 тестов корпуса; повторный экспорт побайтно идентичен; мутация `HeroDecision = 3 → 9` красит 4 теста | принят, ожидает внешнего ревью segment PR |
+| Task 2 — неизменяемый oracle corpus | agent | 2026-08-16 | 2026-08-16 | `dotnet run --project tools/OathAndCoin.MigrationOracle -c Release -- export --root . --output migration/oracle/v1`; `dotnet test tests/OathAndCoin.MigrationOracle.Tests/OathAndCoin.MigrationOracle.Tests.csproj -c Release`; `git diff --exit-code -- migration/oracle/v1` | `migration/oracle/v1/**` (58 файлов, manifest SHA-256 `0d52f525…4b73`); §3 этого файла | 27/27 манифестов, 54 записи на двух seed; 20/20 тестов корпуса; повторный экспорт побайтно идентичен; четыре мутанта красят проверки (§3.5, §3.6) | принят после внешнего ревью codex; правки — коммит `94f4e24` |
 | Task 3 — pinned TypeScript workspace | | | | `corepack pnpm install --frozen-lockfile`; `corepack pnpm typecheck`; `corepack pnpm test`; `corepack pnpm test:e2e` | `pnpm-lock.yaml`, bootstrap-тесты | | |
 | Task 4 — packaged Electron + Steam gate (**stop gate**) | | | | `corepack pnpm package:desktop`; `corepack pnpm test:desktop` | `artifacts/electron-spike/**` | | Task 6 не начинается до зелёного; owner review 2026-08-31 |
 | Task 5 — архитектурные границы и dual-stack CI | | | | `corepack pnpm lint:deps`; `corepack pnpm test` | `.github/workflows/typescript.yml` | | |
@@ -140,7 +140,12 @@ Feature freeze для новой функциональности старого
 | `scenarios/<scenario>/<checkpoint>.json` | входы, исход и код ошибки, финальное состояние, шаги, события, следы, presentation read model, канонические байты и SHA-256 |
 | `README.md` | правило неизменности корпуса |
 
-Seed корпуса — **7**. Это тот же seed, под которым `ScenarioCoverageTests.EveryScenarioReplaysToItsCanonicalArtifact` воспроизводит каждый сценарий, поэтому запись, checkpoint которой покрывает весь список команд, обязана побайтно совпасть с закоммиченным `scenarios/<scenario>.canonical.json`. Корпус на другом seed был бы внутренне согласованным и не связанным с уже проверенным свидетельством репозитория.
+Корпус заморожен на **двух** seed — 7 и 424242, — и seed входит в идентичность записи (`scenarios/<scenario>/<checkpoint>/seed-<seed>.json`).
+
+- **7** — тот же seed, под которым `ScenarioCoverageTests.EveryScenarioReplaysToItsCanonicalArtifact` воспроизводит каждый сценарий, поэтому запись на нём, checkpoint которой покрывает весь список команд, обязана побайтно совпасть с закоммиченным `scenarios/<scenario>.canonical.json`. Корпус на одном лишь чужом seed был бы внутренне согласованным и не связанным с уже проверенным свидетельством репозитория.
+- **424242** — seed, под которым реально гоняется живой harness (`CommandLine.DefaultSeed`) и CI-проверка детерминизма.
+
+Второй seed добавлен по итогам внешнего ревью, и не для симметрии. Мутант `content.CreateInitialState(seed, …)` → `content.CreateInitialState(7UL, …)` на корпусе из одного seed оставлял **все 18** тестов зелёными: порт, полностью игнорирующий переданный seed, совпал бы с оракулом идеально. Ловил этот мутант ровно один тест в `OathAndCoin.Content.Tests` — то есть в наборе, который удаляется на Task 19 вместе с гарантией. Теперь мутант красит 2 теста оракула, а `EveryEntry_CarriesTheSeedItWasRunUnder` сверяет seed записи с `final_state.metadata.campaign_seed` — местом, где прогон единственно может сообщить, что ему на самом деле дали.
 
 `screen_incomplete` — единственный сценарий, где checkpoint намеренно останавливается после первой из шести команд; тест утверждает расхождение с полным canonical-артефактом, чтобы checkpoint, молча начавший покрывать всё, был замечен.
 
@@ -148,11 +153,11 @@ Seed корпуса — **7**. Это тот же seed, под которым `S
 
 | Факт | Значение | Команда |
 |---|---|---|
-| Файлов в корпусе | 31 (27 записей сценариев + `manifest.json` + `rng-vectors.json` + `jcs-compatibility-vectors.json` + `README.md`) | `fd . migration/oracle/v1 --type f \| wc -l` |
-| Сценариев / checkpoints | 27 / 27 | `jq '{scenarios:(.scenarios\|length), checkpoints:([.scenarios[].checkpoints[]]\|length)}' migration/oracle/v1/manifest.json` |
-| Файлов под дайджестом | 30 (все, кроме самого `manifest.json`) | `jq '.files\|length' migration/oracle/v1/manifest.json` |
-| Суммарный объём файлов под дайджестом | 1 082 875 байт | `jq '[.files[].bytes]\|add' migration/oracle/v1/manifest.json` |
-| SHA-256 корневого `manifest.json` | `32107b7c39b0c9c06633c9afb698ce52ff1516d8d18349f954f73ddca272d29c` | `sha256sum migration/oracle/v1/manifest.json` |
+| Файлов в корпусе | 58 (54 записи + `manifest.json` + `rng-vectors.json` + `jcs-compatibility-vectors.json` + `README.md`) | `fd . migration/oracle/v1 --type f \| wc -l` |
+| Сценариев / checkpoints / записей | 27 / 27 / 54 (два seed на checkpoint) | `jq '{scenarios:(.scenarios\|length), entries:([.scenarios[].checkpoints[].entries[]]\|length)}' migration/oracle/v1/manifest.json` |
+| Файлов под дайджестом | 57 (все, кроме самого `manifest.json`) | `jq '.files\|length' migration/oracle/v1/manifest.json` |
+| Суммарный объём файлов под дайджестом | 1 671 857 байт | `jq '[.files[].bytes]\|add' migration/oracle/v1/manifest.json` |
+| SHA-256 корневого `manifest.json` | `0d52f5255cd7ef270ba0c78c91a1e8b63779aece394af20f7c789055fffa4b73` | `sha256sum migration/oracle/v1/manifest.json` |
 | Строк RNG-векторов | 306 raw + 1764 int32, 7 потоков | `jq '{raw:(.raw_draws\|length), int32:(.int32_draws\|length), streams:(.streams\|length)}' migration/oracle/v1/rng-vectors.json` |
 
 ### 3.3. Расхождение текущей канонизации с RFC 8785
@@ -205,7 +210,25 @@ git diff --exit-code -- migration/oracle/v1
 
 Мутация подтверждает то, что структурных проверок доказать не может: корпус, проверяемый только дайджестами, остался бы зелёным при любом изменении правил — файлы на диске не тронуты, и каждый хеш от них по-прежнему сходится. Красным его делают проверки воспроизведения, которые заново прогоняют production-загрузчики, правила и фабрику представления.
 
-### 3.6. Отклонения от плана
+### 3.6. Внешнее ревью сегмента и закрытые им дыры
+
+Ревью провёл codex (`gpt-5.6-sol`, режим `review` скилла `peer`) по коду сегмента и выборке корпуса. Из девяти находок семь подтверждены по исходнику, одна принята частично, у одной принята констатация при отклонённом лечении. Три подтверждались мутантами — и все три показывали, что проверка была слепа.
+
+| Дыра | Как вскрыта | Чем закрыта | Мутант после правки |
+|---|---|---|---|
+| `--output .` снёс бы `scenarios/` — все 27 манифестов, команды и канонические артефакты | чтением `Reset`: его список имён коллидирует с корнем репозитория, при том что комментарий рядом обещал обратное | экспорт идёт в staging-каталог и подменяет цель только целиком; цель отвергается, если не пуста и не несёт `manifest.json` с нашим `generated_by` | `export --root . --output .` отказывает, `scenarios/` цел (27 манифестов), staging не остаётся |
+| Один seed не доказывал, что seed вообще применяется | мутант `CreateInitialState(seed, …)` → `7UL`: **18 из 18 зелёные** | второй seed 424242, seed в пути и идентичности записи, `EveryEntry_CarriesTheSeedItWasRunUnder`, `TheTwoSeeds_DisagreeWhereAMoodWasDrawn` | тот же мутант красит 2 теста |
+| `read_model` — ручная копия приватной проекции фабрики, сверялись только состояние, размеры и хеш рядом | мутант «`greed` ← `hero.Caution`» в экспортёре: корпус переписан (25 файлов), **18 из 18 зелёные** | тест канонизирует сохранённый `read_model` без его же `sha256` и требует совпадения с `ReadModelHash` — это ровно те байты, которые хеширует фабрика | тот же мутант красит `EveryEntry_ReproducesTheReadModelThisBuildProduces` |
+| CI-шаг «валидация ничего не переписала» не видел untracked-файлов и ни разу не краснел | `git diff` слеп к untracked — факт, задокументированный в §3.4 и тут же нарушенный в CI | `git status --porcelain=v1 --untracked-files=all -- migration/oracle`, падение на любом выводе, `if: always()` | лишний файл в корпусе: прежняя команда — exit 0 и пусто, новая — `?? migration/oracle/v1/stray.json` |
+| `JcsReference` подменял одиночный суррогат на U+FFFD вместо отказа | чтением: дефолтный fallback `Encoding.UTF8` | строгий UTF-8 и явная проверка пар; отвергнутые входы записаны в `jcs-compatibility-vectors.json` как `rejected_inputs` вместе с тем, **какой слой** отказал | экспорт падает, если объявленный отвергнутым вход вдруг сериализовался |
+| `ADR-010` утверждал, что harness «размером с половину симуляции» | сверкой по одному правилу: harness 1082, simulation 1045 — harness *больше* | формулировка исправлена, приведена одна команда на оба числа | — |
+| Документ утверждал, что ошибки загрузчиков становятся данными корпуса | чтением: испорченный manifest/commands прерывает экспорт | §3.1 теперь называет, какой один код из пяти покрыт и почему, и адресует долг в Task 10 | — |
+
+Отклонено: предложение вынести `Main.LoadModel` в production application-компонент. Констатация верна — ни экспортёр, ни тест не наблюдают `game/app/Main.cs`, и смена порядка стадий там ничего не покрасит, — но лечение означает рефакторинг Godot-хоста, который целиком удаляется на Task 19, ради оракула, описывающего поведение, а не структуру. Долг адресован в §3.1 и в Task 10.
+
+Отброшено как шум: утверждение, что `--output .` удалил бы корневой `README.md` — такого файла в репозитории нет. Опасность при этом оказалась выше названной: удалялся бы `scenarios/`.
+
+### 3.7. Отклонения от плана
 
 | План | Сделано | Причина |
 |---|---|---|

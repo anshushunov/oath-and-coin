@@ -23,8 +23,8 @@ deleted (`ADR-010`).
 
 | File | What it freezes |
 |---|---|
-| `manifest.json` | Artifact schema version, source commit, seed, per-file SHA-256, every scenario and checkpoint |
-| `scenarios/<scenario>/<checkpoint>.json` | Inputs, outcome, final state, steps, events, traces, draws consumed, presentation read model, canonical bytes and hash |
+| `manifest.json` | Artifact schema version, source commit, seeds, per-file SHA-256, every scenario, checkpoint and entry |
+| `scenarios/<scenario>/<checkpoint>/seed-<seed>.json` | Inputs, outcome, final state, steps, events, traces, draws consumed, presentation read model, canonical bytes and hash |
 | `rng-vectors.json` | Every RNG stream, boundary seeds, ordinals around zero and both ends of the range, and the cases from the simulation's own golden fixture |
 | `jcs-compatibility-vectors.json` | Where this build's canonical JSON and RFC 8785 agree, and where they do not |
 
@@ -42,6 +42,12 @@ deleted (`ADR-010`).
 - An entry with `outcome.kind` other than `success` has no
   `final_state` and no canonical bytes, and says so with explicit
   `null`s rather than by omitting the keys.
+- The seed is part of an entry's identity, not a constant of the
+  corpus: every checkpoint is frozen at each seed in `manifest.json`'s
+  `seeds`. Only entries at `canonical_artifact_seed` reproduce the
+  repository's committed `scenarios/<scenario>.canonical.json`; a port
+  that ignored the seed it was handed would match one of the two and
+  fail the other.
 
 Validated by `tests/OathAndCoin.MigrationOracle.Tests`, which re-derives
 every fact here from the production loaders, rules and presentation
