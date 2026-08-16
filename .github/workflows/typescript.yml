@@ -1,0 +1,153 @@
+# The TypeScript half of the dual-stack pipeline (ADR-010, Task 5).
+#
+# It runs beside `dotnet.yml`, not instead of it: until cutover (Task 19) both
+# stacks are live, and the migration's whole safety argument is that the old
+# gates stay green while the new ones come up. Two workflows rather than two
+# jobs in one file, because they have nothing in common — different toolchain,
+# different runner needs, and a reader looking at a red X should not have to
+# work out which stack it belongs to.
+#
+# Order is cheapest-first, so a type error is reported in a minute instead of
+# waiting behind a browser download.
+name: typescript
+
+on:
+  # Every branch, matching dotnet.yml and for the same reason: the mutant runs
+  # that prove a check can go red are pushed branches with no pull request.
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Everything that does not need Windows. The browser build is a first-class
+  # target (ADR-010), so its evidence is produced on Linux like the rest.
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Read from the file rather than repeated here. The workspace test
+          # asserts .nvmrc agrees with the engines range, so the version this
+          # runner uses is the one the repository declares — in one place.
+          node-version-file: .nvmrc
+
+      # `corepack enable` puts the pnpm from package.json's `packageManager` on
+      # PATH, hash-verified. Deliberately not `corepack pnpm <script>`: under
+      # that form a pnpm spawned by a script — or by a tool like
+      # electron-builder — resolves to corepack's own known-good release
+      # instead of the pinned version and refuses to run.
+      - name: Enable the pinned package manager
+        run: corepack enable
+
+      # --frozen-lockfile, so a lockfile that disagrees with the manifests
+      # fails here rather than being silently updated into whatever the
+      # registry serves today (ADR-010 §123).
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      # ADR-010 §63 makes this the single authoritative check on dependency
+      # direction and cycles.
+      - name: Dependency boundaries
+        run: pnpm lint:deps
+
+      - name: Test
+        run: pnpm test
+
+      # Playwright's browsers are not in the lockfile — they are binaries the
+      # tool downloads — so the version installed here is the one pinned by
+      # @playwright/test, and only the browser this suite actually uses.
+      - name: Install the browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Browser evidence
+        id: e2e
+        run: pnpm test:e2e
+
+      - name: Upload browser evidence
+        if: always() && steps.e2e.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-e2e-evidence
+          path: artifacts/
+          if-no-files-found: error
+
+  # The Task 4 gate, on the only OS it means anything on. Its own job because
+  # a Windows runner is several times slower to provision than the Linux one
+  # above, and nothing in `checks` should wait behind it.
+  #
+  # ADR-011 is what makes this runnable in CI at all: with the storefront SDK
+  # out of scope the gate needs no Steam client, no account and no App ID, so
+  # its verdict is reproducible by anyone rather than by whoever was logged in.
+  packaged-desktop:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Enable the pinned package manager
+        run: corepack enable
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Package the desktop host
+        run: pnpm package:desktop
+
+      - name: Desktop gate
+        id: gate
+        run: pnpm test:desktop
+
+      # The gate's numbers — installed size, RSS per process, what the page
+      # could reach — live in this file and nowhere else (AGENTS.md §11: a
+      # number is published by the run that produced it, never retyped).
+      - name: Summarise the gate
+        if: always() && steps.gate.outcome != 'skipped'
+        shell: bash
+        run: |
+          report=artifacts/electron-spike/gate-report.json
+          if [ ! -f "$report" ]; then
+            echo "::warning::The gate produced no report."
+            exit 0
+          fi
+          jq -r '
+            "### packaged desktop gate",
+            "",
+            "- installed: \(.packagedBytes) bytes in \(.packagedFiles) files",
+            "- rss: \(.rssBytes) bytes",
+            "- processes: \([.processes[] | "\(.type)/sandboxed=\(.sandboxed)/\(.workingSetBytes)"] | join(" "))",
+            "- page reached: \(.pageExposure.desktopApiKeys | join(",")) (ipcRenderer=\(.pageExposure.ipcRendererReachable) require=\(.pageExposure.requireReachable))",
+            ""
+          ' "$report" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the gate evidence
+        if: always() && steps.gate.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-gate-evidence
+          # The packaged application itself is 300 MB and is not published;
+          # the report and any failure traces are.
+          path: |
+            artifacts/electron-spike/gate-report.json
+            artifacts/desktop-report/
+            artifacts/desktop-results/
+          if-no-files-found: error

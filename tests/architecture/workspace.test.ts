@@ -137,6 +137,27 @@ describe('gate coverage', () => {
     expect([...referenced].sort()).toEqual([...declaredMemberDirectories].sort());
   });
 
+  it('every member is inside the dependency-boundary gate', () => {
+    // `depcruise` walks the directories named on its command line and nothing
+    // else. `packages/**` cannot be on that list until it exists — the tool
+    // exits with "Can't open 'packages' for reading" — so the list is
+    // maintained by hand, and this is what stops a member from being added
+    // beside the gate instead of inside it.
+    const command = rootManifest.scripts?.['lint:deps'] ?? '';
+    const roots = command
+      .split(/\s+/)
+      .filter((token) => /^[a-z][a-z0-9-]*$/.test(token))
+      // The command's own words, not paths.
+      .filter((token) => token !== 'depcruise');
+
+    for (const member of members) {
+      const covered = roots.some(
+        (root) => member.directory === root || member.directory.startsWith(`${root}/`)
+      );
+      expect(covered, `${member.directory} is not covered by lint:deps (${command})`).toBe(true);
+    }
+  });
+
   it('every member extends the shared compiler options', () => {
     for (const member of members) {
       const tsconfig = JSON.parse(
