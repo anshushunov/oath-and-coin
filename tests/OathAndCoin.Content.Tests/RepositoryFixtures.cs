@@ -42,7 +42,7 @@ internal static class RepositoryFixtures
     /// as "repository-relative", and nothing here is ever faulted or
     /// substituted, unlike <see cref="ContentRoot"/> itself.
     /// </summary>
-    private static string RepositoryRoot =>
+    public static string RepositoryRoot =>
         Path.GetDirectoryName(ScenarioRoot)
         ?? throw new InvalidOperationException(
             $"Could not determine the repository root from scenario root '{ScenarioRoot}'.");
