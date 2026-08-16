@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "contrast": "payment_raised",
+  "content_root": "content",
+  "seed": 1,
+  "hero": "core:kestrel",
+  "contract": "core:escort_the_caravan",
+  "vary": { "input": "contract.payment", "from": 0, "to": 100 },
+  "expect": "decline_to_accept"
+}

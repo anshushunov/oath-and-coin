@@ -1,0 +1,5 @@
+{
+  "commands": [
+    { "command_id": 1, "hero_index": 4, "contract": "fixture:double_trouble_contract", "expected_state_version": 0 }
+  ]
+}

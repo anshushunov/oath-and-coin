@@ -13,6 +13,16 @@ public enum ScenarioOutcomeKind
 {
     Success,
     Error,
+
+    /// <summary>
+    /// The game's pre-content "loading" screen (spec: the fifth
+    /// <c>OathAndCoin.Presentation.ScreenState</c>). A scenario declaring this
+    /// outcome is never actually run — no content is read, no command is
+    /// applied — because that screen exists precisely for the moment before a
+    /// <c>ScenarioOutcome</c> could exist at all (see the remarks on
+    /// <c>OathAndCoin.Presentation.ScreenState.Loading</c>).
+    /// </summary>
+    Loading,
 }
 
 /// <summary>
@@ -42,14 +52,56 @@ public sealed record Checkpoint(string Name, long AfterCommandId);
 /// Y" is a fact read from a file instead of one an executor has to invent per
 /// scenario.
 /// </summary>
+/// <param name="ContentRoot">
+/// A repository-relative directory to read content from instead of the
+/// production <c>content/</c> tree, or <c>null</c> to use that tree
+/// unchanged. Unlike <paramref name="Fault"/> — which simulates a broken
+/// content root for an <see cref="ScenarioOutcomeKind.Error"/> scenario —
+/// this points at a real, loadable content set; it exists for a fixture that
+/// has to be authored differently on purpose (e.g. heroes with no contracts,
+/// for <c>OathAndCoin.Presentation.ScreenState.Empty</c>), not one that has
+/// to be missing. Defaulted rather than required so every manifest predating
+/// this field keeps parsing unchanged. Mutually exclusive with
+/// <paramref name="Fault"/>: both naming the content root a run reads from
+/// would leave one of them silently overruled by the other, and an error
+/// scenario whose fault is overruled would quietly stop reproducing the
+/// failure its own name promises.
+/// </param>
+/// <param name="ExpectedScreenState">
+/// The lowercase <c>OathAndCoin.Presentation.ScreenState</c> a run against
+/// this manifest's checkpoint should show — <c>"loading"</c>,
+/// <c>"empty"</c>, <c>"error"</c>, <c>"incomplete"</c> or <c>"normal"</c> —
+/// or <c>null</c> to state nothing. Deliberately not the
+/// <c>OathAndCoin.Presentation.ScreenState</c> enum itself: this assembly
+/// sits below <c>OathAndCoin.Presentation</c> (which already depends on
+/// <c>OathAndCoin.Content</c>), so the reverse reference would be circular.
+/// Coarser than that: <paramref name="ExpectedOutcome"/> only ever says
+/// <c>success</c>/<c>error</c>/<c>loading</c>, which cannot tell
+/// <c>Incomplete</c> from <c>Normal</c> — a run whose balance shifted enough
+/// to answer a different one of those two would keep passing under
+/// <paramref name="ExpectedOutcome"/> alone while silently checking a
+/// different screen than its own checkpoint name claims.
+/// </param>
 public sealed record ScenarioManifest(
     int SchemaVersion,
     string Scenario,
     ScenarioOutcomeKind ExpectedOutcome,
     FaultInjection? Fault,
     string? ExpectedErrorCode,
-    ImmutableArray<Checkpoint> Checkpoints)
+    ImmutableArray<Checkpoint> Checkpoints,
+    string? ContentRoot = null,
+    string? ExpectedScreenState = null)
 {
+    /// <summary>
+    /// Every value <see cref="ExpectedScreenState"/> may hold — the same five
+    /// lowercase spellings <c>OathAndCoin.Presentation.ScreenStateKeys</c>
+    /// builds a catalogue key from, restated here rather than referenced
+    /// (see the remarks on <see cref="ExpectedScreenState"/> for why this
+    /// assembly cannot depend on that one).
+    /// </summary>
+    public static readonly ImmutableArray<string> KnownScreenStates = ImmutableArray.Create(
+        "loading", "empty", "error", "incomplete", "normal");
+
     /// <summary>
     /// The manifest format this build reads. Mirrors
     /// <see cref="ContentSet.SupportedContentSchemaVersion"/>: a manifest
@@ -115,11 +167,35 @@ public sealed record ScenarioManifest(
                 + "expected_error_code — a caller checking the outcome would have nothing to compare against.");
         }
 
-        if (expectedOutcome == ScenarioOutcomeKind.Success && fault is not null)
+        if (expectedOutcome != ScenarioOutcomeKind.Error && fault is not null)
         {
             throw new InvalidDataException(
-                $"Scenario manifest '{displayPath}' declares a fault but expected_outcome 'success' — "
-                + "a scenario that breaks the game cannot also claim it runs cleanly.");
+                $"Scenario manifest '{displayPath}' declares a fault but expected_outcome "
+                + $"'{file.ExpectedOutcome}' — only an 'error' scenario breaks the game on purpose.");
+        }
+
+        if (expectedOutcome == ScenarioOutcomeKind.Loading && file.ContentRoot is not null)
+        {
+            throw new InvalidDataException(
+                $"Scenario manifest '{displayPath}' declares a content_root but expected_outcome 'loading' — "
+                + "a loading screen is shown before any content is read, so there is nothing here to point "
+                + "a content root at.");
+        }
+
+        if (fault is not null && file.ContentRoot is not null)
+        {
+            throw new InvalidDataException(
+                $"Scenario manifest '{displayPath}' declares both a fault and a content_root — ambiguous "
+                + "which one decides the content root a run reads from. An error scenario combining both "
+                + "would have its fault silently overruled and would stop reproducing the failure its own "
+                + "name promises; state exactly one.");
+        }
+
+        if (file.ExpectedScreenState is not null && !KnownScreenStates.Contains(file.ExpectedScreenState))
+        {
+            throw new InvalidDataException(
+                $"Scenario manifest '{displayPath}' declares expected_screen_state "
+                + $"'{file.ExpectedScreenState}'; expected one of: {string.Join(", ", KnownScreenStates)}.");
         }
 
         var checkpoints = ImmutableArray.CreateBuilder<Checkpoint>();
@@ -142,7 +218,9 @@ public sealed record ScenarioManifest(
             expectedOutcome,
             fault,
             file.ExpectedErrorCode,
-            checkpoints.ToImmutable());
+            checkpoints.ToImmutable(),
+            file.ContentRoot,
+            file.ExpectedScreenState);
     }
 
     /// <summary>
@@ -162,8 +240,10 @@ public sealed record ScenarioManifest(
     {
         "success" => ScenarioOutcomeKind.Success,
         "error" => ScenarioOutcomeKind.Error,
+        "loading" => ScenarioOutcomeKind.Loading,
         _ => throw new InvalidDataException(
-            $"Scenario manifest '{displayPath}' has expected_outcome '{value}'; expected 'success' or 'error'."),
+            $"Scenario manifest '{displayPath}' has expected_outcome '{value}'; expected 'success', 'error' "
+            + "or 'loading'."),
     };
 
     private sealed record ManifestFile
@@ -177,6 +257,10 @@ public sealed record ScenarioManifest(
         public FaultInjectionFile? Fault { get; init; }
 
         public string? ExpectedErrorCode { get; init; }
+
+        public string? ContentRoot { get; init; }
+
+        public string? ExpectedScreenState { get; init; }
 
         public required IReadOnlyList<CheckpointFile> Checkpoints { get; init; }
     }

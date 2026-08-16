@@ -1,0 +1,11 @@
+{
+  "commands": [
+    { "command_id": 1, "hero_index": 0, "contract": "fixture:plain_alpha", "expected_state_version": 0 },
+    { "command_id": 2, "hero_index": 0, "contract": "fixture:plain_beta", "expected_state_version": 1 },
+    { "command_id": 3, "hero_index": 0, "contract": "fixture:plain_gamma", "expected_state_version": 2 },
+    { "command_id": 4, "hero_index": 1, "contract": "fixture:plain_alpha", "expected_state_version": 3 },
+    { "command_id": 5, "hero_index": 1, "contract": "fixture:plain_beta", "expected_state_version": 4 },
+    { "command_id": 6, "hero_index": 1, "contract": "fixture:plain_gamma", "expected_state_version": 5 },
+    { "command_id": 7, "hero_index": 2, "contract": "fixture:plain_alpha", "expected_state_version": 6 }
+  ]
+}

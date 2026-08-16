@@ -49,7 +49,7 @@ public static class Program
                 ScenarioCommands.Load(parsed.CommandsPath),
                 parsed.Seed);
 
-            var artifact = DeterminismArtifact.Serialize(outcome);
+            var artifact = DeterminismArtifact.ToCanonicalJson(outcome);
             var report = SpikeReport.Render(outcome);
 
             if (parsed.ArtifactPath is not null)

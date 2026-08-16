@@ -1,0 +1,11 @@
+{
+  "schema_version": 2,
+  "id": "fixture:averse_hero",
+  "display_name_key": "hero.fixture.averse_hero.name",
+  "greed": 0,
+  "caution": 0,
+  "pride": 0,
+  "trust_in_guild": 80,
+  "traits": ["fixture:test_aversion"],
+  "relationships": []
+}

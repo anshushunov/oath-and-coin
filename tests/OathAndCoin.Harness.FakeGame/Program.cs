@@ -213,7 +213,7 @@ public static class Program
     {
         var json = new JsonObject
         {
-            ["schema_version"] = 1,
+            ["schema_version"] = 2,
             ["event"] = "terminal",
             ["outcome_kind"] = "success",
             ["scenario"] = "fake-game",
@@ -224,10 +224,15 @@ public static class Program
             ["canonical_hash"] = "fake-canonical-hash",
             ["read_model_hash"] = "fake-read-model-hash",
             ["rendered_ui_hash"] = "fake-rendered-ui-hash",
+            ["screen_state"] = "normal",
             ["frame_sha256"] = "fake-frame-sha256",
             ["frame_width"] = 1280,
             ["frame_height"] = 720,
             ["frame_distinct_colors"] = 4,
+            ["layout_content_width"] = 1180,
+            ["layout_content_height"] = 640,
+            ["layout_reachable_width"] = 1280,
+            ["layout_reachable_height"] = 720,
         };
 
         return json.ToJsonString();

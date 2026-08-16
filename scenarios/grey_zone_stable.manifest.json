@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "scenario": "grey_zone_stable",
+  "expected_outcome": "success",
+  "checkpoints": [{ "name": "final", "after_command_id": 2 }]
+}

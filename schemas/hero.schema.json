@@ -11,12 +11,15 @@
     "display_name_key",
     "greed",
     "caution",
-    "trust_in_guild"
+    "pride",
+    "trust_in_guild",
+    "traits",
+    "relationships"
   ],
   "properties": {
     "schema_version": {
       "type": "integer",
-      "const": 1,
+      "const": 2,
       "description": "Version of this content format (TDD 11.1). Pinned by const so a file authored for a later format is refused by tooling, not read under today's assumptions; ContentSet.SupportedContentSchemaVersion states the same number and SchemaAgreementTests keeps the two equal."
     },
     "id": {
@@ -39,10 +42,47 @@
       "minimum": 0,
       "maximum": 100
     },
+    "pride": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
     "trust_in_guild": {
       "type": "integer",
       "minimum": 0,
       "maximum": 100
+    },
+    "traits": {
+      "type": "array",
+      "maxItems": 4,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$"
+      },
+      "description": "Ids of traits.schema.json entries this hero carries. Whether each id resolves to a defined trait is checked at load time, not here (Task 2)."
+    },
+    "relationships": {
+      "type": "array",
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["hero", "weight"],
+        "properties": {
+          "hero": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$",
+            "description": "Id of the other hero this relationship is about."
+          },
+          "weight": {
+            "type": "integer",
+            "minimum": -20,
+            "maximum": 20
+          }
+        }
+      },
+      "description": "One-directional opinions this hero holds about other heroes."
     }
   }
 }

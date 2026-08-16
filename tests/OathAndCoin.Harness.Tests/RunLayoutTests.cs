@@ -92,7 +92,7 @@ public class RunLayoutTests : IDisposable
         var moment = new DateTimeOffset(2026, 8, 14, 10, 15, 30, TimeSpan.Zero);
 
         var first = RunLayout.CreateRunId(moment, new[] { "--scenario", "gate0" });
-        var second = RunLayout.CreateRunId(moment, new[] { "--scenario", "content_error" });
+        var second = RunLayout.CreateRunId(moment, new[] { "--scenario", "screen_error" });
 
         Assert.StartsWith("20260814T101530Z-", first, StringComparison.Ordinal);
         Assert.NotEqual(first, second);

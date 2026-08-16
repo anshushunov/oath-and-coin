@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "scenario": "screen_empty",
+  "expected_outcome": "success",
+  "content_root": "scenarios/fixtures/screen_empty",
+  "expected_screen_state": "empty",
+  "checkpoints": [{ "name": "screen_empty", "after_command_id": 0 }]
+}

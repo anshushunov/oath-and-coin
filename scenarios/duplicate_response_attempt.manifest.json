@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "scenario": "duplicate_response_attempt",
+  "expected_outcome": "success",
+  "checkpoints": [{ "name": "final", "after_command_id": 2 }]
+}

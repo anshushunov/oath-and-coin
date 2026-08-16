@@ -9,7 +9,7 @@ namespace OathAndCoin.Content;
 /// every value untouched. Shared by every hash in this codebase that needs
 /// "the same data always serializes to the same bytes" — currently
 /// <see cref="Scenarios.DeterminismArtifact"/> (the Gate 0 replay evidence
-/// CI compares) and <c>OathAndCoin.Presentation.SpikeScreenModelFactory</c>
+/// CI compares) and <c>OathAndCoin.Presentation.ContractOfferScreenModelFactory</c>
 /// (the read-model hash a tool process and the running game compare).
 /// </summary>
 /// <remarks>

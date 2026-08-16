@@ -1,0 +1,7 @@
+{
+  "commands": [
+    { "command_id": 1, "hero_index": 1, "contract": "core:collect_the_debt", "expected_state_version": 0 },
+    { "command_id": 2, "hero_index": 0, "contract": "core:escort_the_caravan", "expected_state_version": 1 },
+    { "command_id": 3, "hero_index": 3, "contract": "core:escort_the_caravan", "expected_state_version": 2 }
+  ]
+}

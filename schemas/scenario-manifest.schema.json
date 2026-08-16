@@ -19,8 +19,13 @@
     },
     "expected_outcome": {
       "type": "string",
-      "enum": ["success", "error"],
-      "description": "Whether the scenario is expected to complete normally or to fail with a specific error. Stated as data, not inferred from whether a fault block is present."
+      "enum": ["success", "error", "loading"],
+      "description": "Whether the scenario is expected to complete normally, to fail with a specific error, or to represent the game's pre-content 'loading' screen (no content is ever read for this last one). Stated as data, not inferred from whether a fault block is present."
+    },
+    "content_root": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A repository-relative directory to read content from instead of the production content/ tree — for a fixture scenario that needs a deliberately different content set (e.g. heroes with no contracts) rather than a broken one."
     },
     "fault": {
       "type": "object",
@@ -42,6 +47,11 @@
       "type": "string",
       "minLength": 1,
       "description": "The error code a caller running this scenario to failure should observe. Required when expected_outcome is error."
+    },
+    "expected_screen_state": {
+      "type": "string",
+      "enum": ["loading", "empty", "error", "incomplete", "normal"],
+      "description": "The lowercase ContractOfferScreenModel.ScreenState a run against this manifest's checkpoint should show. Coarser than expected_outcome alone: outcome success covers both incomplete and normal, so this is what actually pins a checkpoint to the screen state its own name promises."
     },
     "checkpoints": {
       "type": "array",

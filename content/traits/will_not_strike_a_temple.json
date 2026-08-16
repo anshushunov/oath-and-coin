@@ -1,0 +1,7 @@
+{
+  "schema_version": 2,
+  "id": "core:will_not_strike_a_temple",
+  "display_name_key": "trait.core.will_not_strike_a_temple.name",
+  "kind": "principle",
+  "tag": "target:temple"
+}

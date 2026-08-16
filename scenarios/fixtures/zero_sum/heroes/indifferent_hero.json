@@ -1,0 +1,11 @@
+{
+  "schema_version": 2,
+  "id": "fixture:indifferent_hero",
+  "display_name_key": "hero.fixture.indifferent_hero.name",
+  "greed": 0,
+  "caution": 0,
+  "pride": 0,
+  "trust_in_guild": 0,
+  "traits": [],
+  "relationships": []
+}

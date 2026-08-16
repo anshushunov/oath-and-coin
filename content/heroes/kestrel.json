@@ -1,0 +1,11 @@
+{
+  "schema_version": 2,
+  "id": "core:kestrel",
+  "display_name_key": "hero.core.kestrel.name",
+  "greed": 75,
+  "caution": 25,
+  "pride": 20,
+  "trust_in_guild": 30,
+  "traits": ["core:will_not_serve_slavers", "core:hungry_for_renown"],
+  "relationships": []
+}

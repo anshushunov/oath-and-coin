@@ -51,9 +51,22 @@ public static class SmokeRun
     /// <summary>
     /// The locale every run states. Carried in argv rather than inherited
     /// from the machine (see <c>GameArguments.Locale</c>), because it decides
-    /// what the frame says.
+    /// what the frame says — and it decides it on both sides: this value
+    /// names the catalogue this tool loads (<see cref="LocaleFile"/>) and,
+    /// travelling in argv, the one the game loads
+    /// (<c>Main.ResolveLocaleFile</c>). It used to say <c>en</c> while both
+    /// sides read <c>ru.json</c> regardless, so the report named a locale no
+    /// part of the run had used.
     /// </summary>
-    private const string Locale = "en";
+    private const string Locale = "ru";
+
+    /// <summary>
+    /// The catalogue <paramref name="locale"/> names, under the repository's
+    /// own <c>content/locale/</c> tree — the same derivation
+    /// <c>Main.ResolveLocaleFile</c> makes from the same value in argv.
+    /// </summary>
+    private static string LocaleFile(string repositoryRoot, string locale) =>
+        Path.Combine(repositoryRoot, "content", "locale", $"{locale}.json");
 
     public static int Execute(ParsedArguments arguments, IProcessRunner runner, TextWriter output, TextWriter error)
     {
@@ -268,7 +281,8 @@ public static class SmokeRun
 
             // The published path, not the staging one: the report and every
             // verdict reason point a reader at where the frame finally lives.
-            layout.Published(RunLayout.FrameFileName));
+            layout.Published(RunLayout.FrameFileName),
+            inputs.Manifest.ExpectedScreenState);
     }
 
     /// <summary>
@@ -312,7 +326,7 @@ public static class SmokeRun
             var manifest = ScenarioManifest.Load(Path.Combine(scenarioRoot, $"{arguments.Scenario}.manifest.json"));
 
             // A scenario that fails before any command runs has no command
-            // file at all — see scenarios/content_error.manifest.json, whose
+            // file at all — see scenarios/screen_error.manifest.json, whose
             // only checkpoint sits after command id 0. Resolve still refuses a
             // checkpoint that names a command id, so a command file that has
             // genuinely gone missing is caught there rather than assumed away.
@@ -345,29 +359,41 @@ public static class SmokeRun
         /// </summary>
         /// <remarks>
         /// The fault is applied from its own description, never from the
-        /// scenario's name: a tool that recognised <c>content_error</c> by
+        /// scenario's name: a tool that recognised <c>screen_error</c> by
         /// name would agree with a manifest it had not actually reproduced,
         /// which is the one thing this comparison exists to rule out. The
-        /// reproduced error code is checked against the manifest's for the
-        /// same reason.
+        /// reproduced error code and screen state are checked against the
+        /// manifest's for the same reason — see <see cref="RequireReproduced"/>.
         /// </remarks>
         public static Expectation Build(string repositoryRoot, string runId, ScenarioInputs inputs, ulong seed)
         {
-            var contentRoot = ApplyFault(
-                inputs.Manifest.Fault,
-                Path.Combine(repositoryRoot, "content"),
-                Path.Combine(repositoryRoot, "artifacts", "faults", runId));
+            var manifest = inputs.Manifest;
 
-            SpikeScreenModel model;
+            // For a loading manifest this root is never actually consulted by
+            // anyone — no content is read at all (see Main.LoadModel's
+            // reordering) — but --content still needs an existing value to
+            // carry, and the repository's own tree is that value.
+            var contentRoot = manifest.ContentRoot is { } overrideRoot
+                ? Path.GetFullPath(Path.Combine(repositoryRoot, overrideRoot))
+                : ApplyFault(
+                    manifest.Fault,
+                    Path.Combine(repositoryRoot, "content"),
+                    Path.Combine(repositoryRoot, "artifacts", "faults", runId));
+
+            ContractOfferScreenModel model;
             string? canonicalHash = null;
 
-            if (!Directory.Exists(contentRoot))
+            if (manifest.ExpectedOutcome == ScenarioOutcomeKind.Loading)
+            {
+                model = ContractOfferScreenModelFactory.Loading;
+            }
+            else if (!Directory.Exists(contentRoot))
             {
                 // The game's own first loading stage, reproduced (see
                 // Main.LoadModel). The detail differs and does not have to
                 // match: neither hash includes it.
-                model = SpikeScreenModelFactory.FromError(
-                    "CONTENT_ROOT_NOT_FOUND", $"Content root '{contentRoot}' does not exist.");
+                model = ContractOfferScreenModelFactory.FromOutcome(
+                    (ErrorCodes.ContentRootNotFound, $"Content root '{contentRoot}' does not exist."));
             }
             else
             {
@@ -376,24 +402,25 @@ public static class SmokeRun
                     CheckpointResolver.CommandsUpTo(inputs.Commands, inputs.Checkpoint),
                     seed);
 
-                model = SpikeScreenModelFactory.FromOutcome(outcome);
+                model = ContractOfferScreenModelFactory.FromOutcome(outcome);
                 canonicalHash = DeterminismArtifact.Hash(outcome);
             }
 
-            if (!string.Equals(model.ErrorCode, inputs.Manifest.ExpectedErrorCode, StringComparison.Ordinal))
+            RequireReproduced(manifest, "error code", model.ErrorCode, manifest.ExpectedErrorCode);
+
+            if (manifest.ExpectedScreenState is not null)
             {
-                throw new InvalidOperationException(
-                    $"Reproducing scenario '{inputs.Manifest.Scenario}' here produced error code "
-                    + $"'{model.ErrorCode ?? "(none)"}', but its manifest expects "
-                    + $"'{inputs.Manifest.ExpectedErrorCode ?? "(none)"}'. The tool did not reproduce the fault "
-                    + "the scenario describes, so it has nothing honest to compare the game against.");
+                RequireReproduced(
+                    manifest, "screen state", model.State.ToString().ToLowerInvariant(), manifest.ExpectedScreenState);
             }
+
+            var catalogue = LocaleCatalogue.Load(LocaleFile(repositoryRoot, Locale));
 
             return new Expectation(
                 contentRoot,
                 canonicalHash,
-                SpikeScreenModelFactory.ReadModelHash(model),
-                RenderedUiSnapshot.Hash(RenderedUiSnapshot.Expected(model)));
+                ContractOfferScreenModelFactory.ReadModelHash(model),
+                RenderedUiSnapshot.Hash(RenderedUiSnapshot.Expected(model, catalogue)));
         }
 
         /// <summary>
@@ -412,6 +439,29 @@ public static class SmokeRun
                 $"Scenario fault kind '{fault.Kind}' has no reproduction here. Add one — a tool that skips the "
                 + "fault it was told to reproduce compares the game against the wrong screen."),
         };
+
+        /// <summary>
+        /// The tool's self-check: a manifest naming an expected error code or
+        /// screen state is asserting a fact about its own checkpoint, and the
+        /// tool reproducing that checkpoint here — independently of the game
+        /// — has to actually land on it, or there is nothing honest left to
+        /// compare the game's own report against (see SmokeVerdict's matching
+        /// runtime checks). One helper for both, because the two failures
+        /// differ only in which value is quoted.
+        /// </summary>
+        private static void RequireReproduced(
+            ScenarioManifest manifest, string what, string? actual, string? expected)
+        {
+            if (string.Equals(actual, expected, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            throw new InvalidOperationException(
+                $"Reproducing scenario '{manifest.Scenario}' here produced {what} '{actual ?? "(none)"}', but "
+                + $"its manifest expects '{expected ?? "(none)"}'. The tool did not reproduce the {what} the "
+                + "scenario describes, so it has nothing honest to compare the game against.");
+        }
     }
 
     /// <summary>

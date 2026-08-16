@@ -37,7 +37,7 @@ namespace OathAndCoin.Harness;
 /// never reaches a hashed state.
 /// </param>
 /// <param name="ExpectedReadModelHash">
-/// <c>OathAndCoin.Presentation.SpikeScreenModelFactory.ReadModelHash</c> the
+/// <c>OathAndCoin.Presentation.ContractOfferScreenModelFactory.ReadModelHash</c> the
 /// tool computed for the screen this run should show.
 /// </param>
 /// <param name="ExpectedRenderedUiHash">
@@ -59,6 +59,14 @@ namespace OathAndCoin.Harness;
 /// </param>
 /// <param name="Frame">What <see cref="FrameFile.Inspect"/> found when it looked at the screenshot on disk.</param>
 /// <param name="FramePath">Where that screenshot was expected to be written, for reporting only.</param>
+/// <param name="ExpectedScreenState">
+/// <see cref="ScenarioManifest.ExpectedScreenState"/>, or <c>null</c> when
+/// the manifest states none — coarser than <paramref name="ExpectedOutcome"/>
+/// alone can express (that field cannot tell <c>incomplete</c> from
+/// <c>normal</c>), so a manifest that states this is checked against exactly
+/// the screen its own checkpoint name promises, not merely an outcome of the
+/// same broad kind.
+/// </param>
 public sealed record RunObservation(
     string Scenario,
     string Checkpoint,
@@ -75,7 +83,8 @@ public sealed record RunObservation(
     bool TimedOut,
     ImmutableArray<string> DiagnosticLines,
     FrameInspection Frame,
-    string FramePath);
+    string FramePath,
+    string? ExpectedScreenState = null);
 
 /// <summary>
 /// Whether a <c>run-smoke</c> invocation proved what it set out to prove,
@@ -255,6 +264,14 @@ public static class SmokeVerdict
                 + $"'{observation.ExpectedErrorCode}'.");
         }
 
+        if (observation.ExpectedScreenState is not null
+            && !string.Equals(terminalEvent.ScreenState, observation.ExpectedScreenState, StringComparison.Ordinal))
+        {
+            reasons.Add(
+                $"Terminal event reports screen_state '{terminalEvent.ScreenState}', expected "
+                + $"'{observation.ExpectedScreenState}'.");
+        }
+
         if (!string.Equals(terminalEvent.CanonicalHash, observation.ExpectedCanonicalHash, StringComparison.Ordinal))
         {
             reasons.Add(
@@ -289,6 +306,21 @@ public static class SmokeVerdict
                 + $"the terminal event reports {terminalEvent.FrameWidth}x{terminalEvent.FrameHeight}.");
         }
 
+        // The one condition that says anything about whether the screen can
+        // be read rather than merely built. Both hashes compare texts and
+        // know nothing about where those texts landed, so a roster running
+        // off the bottom of the window with no way to scroll to it left
+        // every other condition green (external review finding). The game
+        // measures (ContractOfferScreen.Measure), this decides.
+        if (terminalEvent.LayoutContentWidth > terminalEvent.LayoutReachableWidth
+            || terminalEvent.LayoutContentHeight > terminalEvent.LayoutReachableHeight)
+        {
+            reasons.Add(
+                $"The screen's content is {terminalEvent.LayoutContentWidth}x{terminalEvent.LayoutContentHeight}, "
+                + $"but only {terminalEvent.LayoutReachableWidth}x{terminalEvent.LayoutReachableHeight} of it can "
+                + "be reached at this window size: part of the screen is off the edge with no way to scroll to it.");
+        }
+
         // The one condition that says anything about the pixels. A window
         // that rendered nothing — a compositor failure, a hidden root, a
         // stretch policy pushing the content off-screen — still writes a
@@ -313,6 +345,7 @@ public static class SmokeVerdict
     {
         ScenarioOutcomeKind.Success => "success",
         ScenarioOutcomeKind.Error => "error",
+        ScenarioOutcomeKind.Loading => "loading",
         _ => throw new ArgumentOutOfRangeException(nameof(outcome), outcome, "Unknown scenario outcome kind."),
     };
 }

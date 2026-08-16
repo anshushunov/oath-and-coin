@@ -1,0 +1,8 @@
+{
+  "schema_version": 2,
+  "id": "fixture:test_aversion",
+  "display_name_key": "trait.fixture.test_aversion.name",
+  "kind": "inclination",
+  "tag": "test:gamma",
+  "weight": -14
+}

@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "scenario": "accept_by_comrade",
+  "expected_outcome": "success",
+  "checkpoints": [{ "name": "final", "after_command_id": 5 }]
+}

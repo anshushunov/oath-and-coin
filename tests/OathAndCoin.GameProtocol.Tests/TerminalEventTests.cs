@@ -18,7 +18,8 @@ public class TerminalEventTests
         string? errorCode = null,
         string? contentVersion = "content-abc123",
         string? canonicalHash = "canonical-abc123",
-        string checkpoint = "decisions_complete")
+        string checkpoint = "decisions_complete",
+        string screenState = "normal")
     {
         var json = new JsonObject
         {
@@ -33,10 +34,15 @@ public class TerminalEventTests
             ["canonical_hash"] = canonicalHash,
             ["read_model_hash"] = "read-model-hash",
             ["rendered_ui_hash"] = "rendered-ui-hash",
+            ["screen_state"] = screenState,
             ["frame_sha256"] = "frame-sha256",
             ["frame_width"] = 1280,
             ["frame_height"] = 720,
             ["frame_distinct_colors"] = 12,
+            ["layout_content_width"] = 1180,
+            ["layout_content_height"] = 900,
+            ["layout_reachable_width"] = 1280,
+            ["layout_reachable_height"] = 900,
         };
 
         return json.ToJsonString();
@@ -47,7 +53,8 @@ public class TerminalEventTests
         string? errorCode = null,
         string? contentVersion = "content-abc123",
         string? canonicalHash = "canonical-abc123",
-        string checkpoint = "decisions_complete") => new(
+        string checkpoint = "decisions_complete",
+        string screenState = "normal") => new(
         SchemaVersion: TerminalEvent.SupportedSchemaVersion,
         Event: "terminal",
         OutcomeKind: outcomeKind,
@@ -59,10 +66,15 @@ public class TerminalEventTests
         CanonicalHash: canonicalHash,
         ReadModelHash: "read-model-hash",
         RenderedUiHash: "rendered-ui-hash",
+        ScreenState: screenState,
         FrameSha256: "frame-sha256",
         FrameWidth: 1280,
         FrameHeight: 720,
-        FrameDistinctColors: 12);
+        FrameDistinctColors: 12,
+        LayoutContentWidth: 1180,
+        LayoutContentHeight: 900,
+        LayoutReachableWidth: 1280,
+        LayoutReachableHeight: 900);
 
     [Fact]
     public void Parse_ParsesAValidEventAmongEngineNoise()

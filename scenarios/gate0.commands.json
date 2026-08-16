@@ -2,7 +2,7 @@
   "commands": [
     {
       "command_id": 1,
-      "hero_index": 1,
+      "hero_index": 5,
       "contract": "core:escort_the_caravan",
       "expected_state_version": 0
     },

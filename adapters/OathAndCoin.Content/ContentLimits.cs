@@ -28,4 +28,13 @@ public static class ContentLimits
     /// thousands of levels deep.
     /// </summary>
     public const int MaxJsonDepth = 32;
+
+    /// <summary>Most traits a single hero file may list.</summary>
+    public const int MaxTraitsPerHero = 4;
+
+    /// <summary>Most relationships a single hero file may list.</summary>
+    public const int MaxRelationshipsPerHero = 5;
+
+    /// <summary>Most tags a single contract file may list.</summary>
+    public const int MaxTagsPerContract = 6;
 }

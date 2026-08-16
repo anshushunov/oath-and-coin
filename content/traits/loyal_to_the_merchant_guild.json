@@ -1,0 +1,8 @@
+{
+  "schema_version": 2,
+  "id": "core:loyal_to_the_merchant_guild",
+  "display_name_key": "trait.core.loyal_to_the_merchant_guild.name",
+  "kind": "inclination",
+  "tag": "patron:merchant_guild",
+  "weight": 10
+}

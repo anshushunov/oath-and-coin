@@ -1,8 +1,11 @@
+using System.Collections.Immutable;
 using System.Globalization;
 using System.Text.Json;
 using OathAndCoin.Content.Scenarios;
 using OathAndCoin.Simulation.Decisions;
+using OathAndCoin.Simulation.Events;
 using OathAndCoin.Simulation.Ids;
+using OathAndCoin.Simulation.State;
 
 namespace OathAndCoin.Content.Tests;
 
@@ -16,7 +19,7 @@ namespace OathAndCoin.Content.Tests;
 /// human-readable report is produced alongside it (see <see cref="SpikeReport"/>)
 /// and is deliberately not what determinism is checked on: a report is written
 /// for people, so it will be reworded, and comparing runs on it would make
-/// every rewording look like a determinism failure (spec §8.6).
+/// every rewording look like a determinism failure (AGENTS.md §11).
 /// </remarks>
 public class ReplayDeterminismTests
 {
@@ -29,8 +32,8 @@ public class ReplayDeterminismTests
     public void SameSeed_ProducesIdenticalCanonicalArtifact()
     {
         Assert.Equal(
-            DeterminismArtifact.Serialize(RunScenario(Seed)),
-            DeterminismArtifact.Serialize(RunScenario(Seed)));
+            DeterminismArtifact.ToCanonicalJson(RunScenario(Seed)),
+            DeterminismArtifact.ToCanonicalJson(RunScenario(Seed)));
     }
 
     [Fact]
@@ -59,7 +62,7 @@ public class ReplayDeterminismTests
         Assert.NotEqual(
             firstRun.Steps[0].Decision!.SelectedScore,
             secondRun.Steps[0].Decision!.SelectedScore);
-        Assert.NotEqual(DeterminismArtifact.Serialize(firstRun), DeterminismArtifact.Serialize(secondRun));
+        Assert.NotEqual(DeterminismArtifact.ToCanonicalJson(firstRun), DeterminismArtifact.ToCanonicalJson(secondRun));
         Assert.NotEqual(DeterminismArtifact.Hash(firstRun), DeterminismArtifact.Hash(secondRun));
     }
 
@@ -102,7 +105,7 @@ public class ReplayDeterminismTests
     ///
     /// What actually distinguishes the two explanations is what a player would
     /// read off them: which way each factor pulled, how hard, and which factor
-    /// decided the answer. Zara refuses because the risk (40) outweighs
+    /// decided the answer. Zara refuses because the risk (35) outweighs
     /// everything she was offered; Bram accepts because the payment (24) leads.
     /// </remarks>
     [Fact]
@@ -129,7 +132,7 @@ public class ReplayDeterminismTests
     {
         var outcome = RunScenario(Seed);
 
-        var artifact = DeterminismArtifact.Serialize(outcome);
+        var artifact = DeterminismArtifact.ToCanonicalJson(outcome);
 
         Assert.Contains("\"state_version\"", artifact, StringComparison.Ordinal);
         Assert.Contains("\"hero_declined_contract\"", artifact, StringComparison.Ordinal);
@@ -147,6 +150,59 @@ public class ReplayDeterminismTests
         Assert.Contains(ReasonCodes.PaymentAttractive, artifact, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Artifact_DeclaresItsShapeVersionAndTheMilestoneOneRuleset()
+    {
+        var outcome = RepositoryFixtures.RunScenario("gate0", seed: 7);
+
+        var json = DeterminismArtifact.ToCanonicalJson(outcome);
+
+        Assert.Contains("\"artifact_version\":3", json, StringComparison.Ordinal);
+        Assert.Contains("\"ruleset_version\":\"m1-decision/1\"", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Artifact_RendersBlockedByAsObjectsWithSourceEntity()
+    {
+        var trace = new CausalTrace
+        {
+            TraceId = 1,
+            PositiveFactors = ImmutableArray<TraceFactor>.Empty,
+            NegativeFactors = ImmutableArray<TraceFactor>.Empty,
+            BlockedBy = ImmutableArray.Create(
+                new TraceBlock(ReasonCodes.PrincipleForbids, ContentId.Parse("core:will_not_strike_a_temple"))),
+        };
+
+        var json = DeterminismArtifact.RenderTrace(trace);
+
+        Assert.Contains("\"source_entity\":\"core:will_not_strike_a_temple\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"reason_code\":\"hero.decision.principle_forbids\"", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Artifact_OmitsSelectedScoreEntirelyWhenBlocked()
+    {
+        var json = DeterminismArtifact.RenderDecision(Fixtures.BlockedDecision());
+
+        Assert.DoesNotContain("selected_score", json, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The other half of the invariant <see cref="Artifact_OmitsSelectedScoreEntirelyWhenBlocked"/>
+    /// checks: omitting <c>selected_score</c> is only correct when the
+    /// decision was blocked. A mutant that stopped writing the key at all —
+    /// not just for blocked decisions — would pass every test in this file
+    /// that only ever exercises blocked or scenario-driven decisions unless
+    /// something asserts presence directly on an ordinary one.
+    /// </summary>
+    [Fact]
+    public void Artifact_IncludesSelectedScoreForAnOrdinaryDecision()
+    {
+        var json = DeterminismArtifact.RenderDecision(Fixtures.ScoredDecision());
+
+        Assert.Contains("\"selected_score\":12", json, StringComparison.Ordinal);
+    }
+
     /// <summary>
     /// The host machine's locale is a forbidden input (TDD §7.3), and
     /// serialization is where it would leak in first: one number formatted
@@ -156,7 +212,7 @@ public class ReplayDeterminismTests
     [Fact]
     public void CanonicalArtifact_IsCultureInvariant()
     {
-        var invariant = DeterminismArtifact.Serialize(RunScenario(Seed));
+        var invariant = DeterminismArtifact.ToCanonicalJson(RunScenario(Seed));
 
         // A culture whose number formatting cannot be mistaken for the
         // invariant one. Picking a real locale (de-DE and its decimal comma)
@@ -172,7 +228,7 @@ public class ReplayDeterminismTests
         try
         {
             CultureInfo.CurrentCulture = hostile;
-            Assert.Equal(invariant, DeterminismArtifact.Serialize(RunScenario(Seed)));
+            Assert.Equal(invariant, DeterminismArtifact.ToCanonicalJson(RunScenario(Seed)));
         }
         finally
         {
@@ -191,7 +247,7 @@ public class ReplayDeterminismTests
     [Fact]
     public void CanonicalArtifact_WritesObjectKeysInOrdinalOrder()
     {
-        using var document = JsonDocument.Parse(DeterminismArtifact.Serialize(RunScenario(Seed)));
+        using var document = JsonDocument.Parse(DeterminismArtifact.ToCanonicalJson(RunScenario(Seed)));
 
         AssertKeysAreOrdered(document.RootElement, "$");
     }
@@ -223,6 +279,249 @@ public class ReplayDeterminismTests
         }
     }
 
+    /// <summary>
+    /// A test that only checks a key's presence would stay green even if
+    /// Task 9 had projected the field under a constant value — the failure
+    /// mode this task exists to catch is two runs that differ only in one of
+    /// Task 3's fields hashing identically. Each of the six tests below
+    /// builds two minimal, hand-assembled states that differ in exactly one
+    /// projected field and requires the canonical artifacts to disagree.
+    /// Built directly rather than through a scenario run: no scenario needs
+    /// to exist that reaches these particular field values, and a
+    /// hand-assembled <see cref="GameState"/> makes "exactly one field
+    /// differs" a property of the test's own two inputs rather than an
+    /// inference about what a scenario happened to produce.
+    /// </summary>
+    [Fact]
+    public void Artifact_DistinguishesHeroesThatDifferOnlyInPride()
+    {
+        var lowPride = MinimalOutcome(MinimalHero(pride: 1), MinimalContract());
+        var highPride = MinimalOutcome(MinimalHero(pride: 2), MinimalContract());
+
+        Assert.NotEqual(
+            DeterminismArtifact.ToCanonicalJson(lowPride),
+            DeterminismArtifact.ToCanonicalJson(highPride));
+    }
+
+    [Fact]
+    public void Artifact_DistinguishesHeroesThatDifferOnlyInTraits()
+    {
+        var withoutTrait = MinimalOutcome(MinimalHero(), MinimalContract());
+        var withTrait = MinimalOutcome(
+            MinimalHero(traits: ImmutableArray.Create(ContentId.Parse("core:some_trait"))),
+            MinimalContract());
+
+        Assert.NotEqual(
+            DeterminismArtifact.ToCanonicalJson(withoutTrait),
+            DeterminismArtifact.ToCanonicalJson(withTrait));
+    }
+
+    [Fact]
+    public void Artifact_DistinguishesHeroesThatDifferOnlyInRelationships()
+    {
+        var withoutRelationship = MinimalOutcome(MinimalHero(), MinimalContract());
+        var withRelationship = MinimalOutcome(
+            MinimalHero(relationships: ImmutableSortedDictionary.CreateRange(new[]
+            {
+                KeyValuePair.Create(ContentId.Parse("core:hero_1"), 5),
+            })),
+            MinimalContract());
+
+        Assert.NotEqual(
+            DeterminismArtifact.ToCanonicalJson(withoutRelationship),
+            DeterminismArtifact.ToCanonicalJson(withRelationship));
+    }
+
+    [Fact]
+    public void Artifact_DistinguishesContractsThatDifferOnlyInTags()
+    {
+        var withoutTag = MinimalOutcome(MinimalHero(), MinimalContract());
+        var withTag = MinimalOutcome(
+            MinimalHero(),
+            MinimalContract(tags: ImmutableSortedSet.Create(ContentId.Parse("target:bandits"))));
+
+        Assert.NotEqual(
+            DeterminismArtifact.ToCanonicalJson(withoutTag),
+            DeterminismArtifact.ToCanonicalJson(withTag));
+    }
+
+    [Fact]
+    public void Artifact_DistinguishesContractsThatDifferOnlyInRequiredCrew()
+    {
+        var requiresOne = MinimalOutcome(MinimalHero(), MinimalContract(requiredCrew: 1));
+        var requiresTwo = MinimalOutcome(MinimalHero(), MinimalContract(requiredCrew: 2));
+
+        Assert.NotEqual(
+            DeterminismArtifact.ToCanonicalJson(requiresOne),
+            DeterminismArtifact.ToCanonicalJson(requiresTwo));
+    }
+
+    /// <summary>
+    /// The regression this task exists to close (found in Task 8's review):
+    /// <see cref="ContractState.AcceptedBy"/> went unprojected, so two runs
+    /// that recruited different crews for the same contract hashed
+    /// identically. <see cref="ContractState.RespondedBy"/> is pinned to the
+    /// same non-empty set on both sides so only <c>accepted_by</c> moves.
+    /// </summary>
+    [Fact]
+    public void Artifact_DistinguishesContractsThatDifferOnlyInAcceptedBy()
+    {
+        var notYetAccepted = MinimalOutcome(MinimalHero(), MinimalContract());
+        var accepted = MinimalOutcome(
+            MinimalHero(),
+            MinimalContract(acceptedBy: ImmutableSortedSet.Create(new HeroId(0))));
+
+        Assert.NotEqual(
+            DeterminismArtifact.ToCanonicalJson(notYetAccepted),
+            DeterminismArtifact.ToCanonicalJson(accepted));
+    }
+
+    /// <summary>
+    /// Review finding (branch-level): six mutators covered six fields and left
+    /// roughly fifteen others — every scalar on a hero, the whole metadata
+    /// block, the contract's own money and status — with nothing asserting
+    /// they reach the artifact at all. These four close the ones a decision
+    /// actually turns on.
+    /// </summary>
+    [Theory]
+    [InlineData("greed")]
+    [InlineData("caution")]
+    [InlineData("trust_in_guild")]
+    [InlineData("display_name_key")]
+    public void Artifact_DistinguishesHeroesThatDifferOnlyIn(string field)
+    {
+        var baseline = MinimalOutcome(MinimalHero(), MinimalContract());
+        var mutated = MinimalOutcome(MutateHero(MinimalHero(), field), MinimalContract());
+
+        Assert.NotEqual(
+            DeterminismArtifact.ToCanonicalJson(baseline),
+            DeterminismArtifact.ToCanonicalJson(mutated));
+    }
+
+    [Theory]
+    [InlineData("payment")]
+    [InlineData("risk")]
+    [InlineData("status")]
+    [InlineData("responded_by")]
+    public void Artifact_DistinguishesContractsThatDifferOnlyIn(string field)
+    {
+        var baseline = MinimalOutcome(MinimalHero(), MinimalContract());
+        var mutated = MinimalOutcome(MinimalHero(), MutateContract(MinimalContract(), field));
+
+        Assert.NotEqual(
+            DeterminismArtifact.ToCanonicalJson(baseline),
+            DeterminismArtifact.ToCanonicalJson(mutated));
+    }
+
+    /// <summary>
+    /// The rulebook every decision is weighed against
+    /// (<see cref="GameState.TraitRules"/>) was projected by nothing at all,
+    /// so two states differing only in what a trait means hashed identically
+    /// — a state no replay could reconstruct from its own artifact. Each of
+    /// the three fields a rule carries is varied on its own, so projecting
+    /// only the id would not satisfy this.
+    /// </summary>
+    [Theory]
+    [InlineData("tag")]
+    [InlineData("is_principle")]
+    [InlineData("weight")]
+    public void Artifact_DistinguishesTraitRulesThatDifferOnlyIn(string field)
+    {
+        var traitId = ContentId.Parse("core:some_trait");
+        var baseline = new HeldTrait(traitId, ContentId.Parse("target:bandits"), IsPrinciple: false, Weight: 5);
+        var mutated = field switch
+        {
+            "tag" => baseline with { Tag = ContentId.Parse("target:cult") },
+            "is_principle" => baseline with { IsPrinciple = true, Weight = 0 },
+            "weight" => baseline with { Weight = 6 },
+            _ => throw new ArgumentOutOfRangeException(nameof(field), field, "Unknown trait rule field."),
+        };
+
+        Assert.NotEqual(
+            DeterminismArtifact.ToCanonicalJson(MinimalOutcome(MinimalHero(), MinimalContract(), baseline)),
+            DeterminismArtifact.ToCanonicalJson(MinimalOutcome(MinimalHero(), MinimalContract(), mutated)));
+    }
+
+    private static HeroState MutateHero(HeroState hero, string field) => field switch
+    {
+        "greed" => hero with { Greed = hero.Greed + 1 },
+        "caution" => hero with { Caution = hero.Caution + 1 },
+        "trust_in_guild" => hero with { TrustInGuild = hero.TrustInGuild + 1 },
+        "display_name_key" => hero with { DisplayNameKey = "hero.test.other.name" },
+        _ => throw new ArgumentOutOfRangeException(nameof(field), field, "Unknown hero field."),
+    };
+
+    private static ContractState MutateContract(ContractState contract, string field) => field switch
+    {
+        "payment" => contract with { Payment = contract.Payment + 1 },
+        "risk" => contract with { Risk = contract.Risk + 1 },
+        "status" => contract with { Status = ContractStatus.Crewed },
+        "responded_by" => contract with { RespondedBy = ImmutableSortedSet<HeroId>.Empty },
+        _ => throw new ArgumentOutOfRangeException(nameof(field), field, "Unknown contract field."),
+    };
+
+    private static ScenarioOutcome MinimalOutcome(HeroState hero, ContractState contract, HeldTrait? traitRule = null)
+    {
+        var state = new GameState
+        {
+            Metadata = new GameMetadata
+            {
+                SaveSchemaVersion = 1,
+                RulesetVersion = "test-ruleset",
+                ContentVersion = "test-content",
+                CampaignSeed = 1,
+                StateVersion = 0,
+                LogicalTime = 0,
+                NextEventId = 0,
+                NextTraceId = 0,
+                NextDecisionOrdinal = 0,
+            },
+            Heroes = ImmutableSortedDictionary.CreateRange(new[] { KeyValuePair.Create(hero.Id, hero) }),
+            Contracts = ImmutableSortedDictionary.CreateRange(new[] { KeyValuePair.Create(contract.Id, contract) }),
+            Traces = ImmutableSortedDictionary<long, CausalTrace>.Empty,
+            History = ImmutableArray<DomainEvent>.Empty,
+            TraitRules = traitRule is null
+                ? ImmutableSortedDictionary<ContentId, HeldTrait>.Empty
+                : ImmutableSortedDictionary<ContentId, HeldTrait>.Empty.Add(traitRule.Id, traitRule),
+        };
+
+        return new ScenarioOutcome(state, ImmutableArray<StepOutcome>.Empty);
+    }
+
+    private static HeroState MinimalHero(
+        int pride = 1,
+        ImmutableArray<ContentId>? traits = null,
+        ImmutableSortedDictionary<ContentId, int>? relationships = null) => new()
+        {
+            Id = new HeroId(0),
+            Definition = ContentId.Parse("core:hero_0"),
+            DisplayNameKey = "hero.test.minimal.name",
+            Greed = 0,
+            Caution = 0,
+            Pride = pride,
+            TrustInGuild = 0,
+            Traits = traits ?? ImmutableArray<ContentId>.Empty,
+            Relationships = relationships ?? ImmutableSortedDictionary<ContentId, int>.Empty,
+        };
+
+    // RespondedBy is pinned to the same one-hero set across every call
+    // (including the AcceptedBy-only fixture above) so that varying
+    // AcceptedBy alone is what the accepted-by test actually exercises.
+    private static ContractState MinimalContract(
+        int requiredCrew = 1,
+        ImmutableSortedSet<ContentId>? tags = null,
+        ImmutableSortedSet<HeroId>? acceptedBy = null) => new()
+        {
+            Id = ContentId.Parse("core:contract_0"),
+            Payment = 0,
+            Risk = 0,
+            RequiredCrew = requiredCrew,
+            Tags = tags ?? ImmutableSortedSet<ContentId>.Empty,
+            Status = ContractStatus.Offered,
+            RespondedBy = ImmutableSortedSet.Create(new HeroId(0)),
+            AcceptedBy = acceptedBy ?? ImmutableSortedSet<HeroId>.Empty,
+        };
+
     // Loaded once: the seed search below runs the scenario repeatedly, and
     // re-reading the same files each time would measure the filesystem rather
     // than the simulation. Reusing one ContentSet across runs is also a small
@@ -242,9 +541,23 @@ public class ReplayDeterminismTests
             .ToHashSet();
 
     /// <summary>The factor that weighed most, and which way it pulled.</summary>
+    /// <remarks>
+    /// Every tie is broken explicitly. <see cref="SignedFactorsOf"/> returns a
+    /// hash set, and .NET randomizes string hashing per process, so two
+    /// factors of equal magnitude used to be ordered by whatever the set
+    /// happened to enumerate first — a flaky test with no code change behind
+    /// it, and one that would flake exactly on the grey-zone traces this file
+    /// searches seeds for. Magnitude, then reason code, then direction is a
+    /// total order over a set's elements, so the answer is the same on every
+    /// run whatever order the set is walked in.
+    /// </remarks>
     private static (string Direction, string ReasonCode) DecisiveFactorOf(CausalTrace trace)
     {
-        var strongest = SignedFactorsOf(trace).OrderByDescending(factor => factor.Magnitude).First();
+        var strongest = SignedFactorsOf(trace)
+            .OrderByDescending(factor => factor.Magnitude)
+            .ThenBy(factor => factor.ReasonCode, StringComparer.Ordinal)
+            .ThenBy(factor => factor.Direction, StringComparer.Ordinal)
+            .First();
         return (strongest.Direction, strongest.ReasonCode);
     }
 

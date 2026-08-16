@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using OathAndCoin.Simulation.Ids;
 
 namespace OathAndCoin.Simulation.Decisions;
@@ -28,4 +29,16 @@ public static class Actions
 {
     public static readonly ContentId Accept = ContentId.Parse("action:accept");
     public static readonly ContentId Decline = ContentId.Parse("action:decline");
+
+    /// <summary>
+    /// Both actions above, in declaration order — the same service
+    /// <see cref="ReasonCodes.All"/> performs for its own vocabulary, and for
+    /// the same reason: <c>OathAndCoin.Presentation.ActionKeys</c> needs every
+    /// action this engine can select in order to check that the locale
+    /// catalogue names each one, and a list written out a second time there
+    /// drifts from this one the day a third action is added.
+    /// <c>ActionsTests.All_ListsEveryPublicAction</c> holds this list to the
+    /// class's own fields by reflection, so it cannot fall behind them either.
+    /// </summary>
+    public static readonly ImmutableArray<ContentId> All = ImmutableArray.Create(Accept, Decline);
 }

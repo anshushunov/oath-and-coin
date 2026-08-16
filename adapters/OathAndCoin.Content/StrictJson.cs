@@ -102,6 +102,32 @@ internal static class StrictJson
     }
 
     /// <summary>
+    /// Reads one file as a <see cref="JsonDocument"/> under the same size and
+    /// depth ceilings as <see cref="ReadFile{T}"/>. Unlike <see cref="ParseNode"/>,
+    /// this keeps every property a JSON object declares, including a repeated
+    /// key: <see cref="JsonNode"/>'s own parser collapses a duplicate key to
+    /// its last value silently, which is exactly the mistake a reader that
+    /// promises to reject duplicates must not paper over. Callers that need to
+    /// detect a duplicate key walk <see cref="JsonElement.EnumerateObject"/>
+    /// themselves.
+    /// </summary>
+    public static JsonDocument ParseDocument(string displayPath, string fullPath)
+    {
+        var bytes = ReadBounded(displayPath, fullPath);
+
+        try
+        {
+            return JsonDocument.Parse(bytes, DocumentOptions);
+        }
+        catch (JsonException exception)
+        {
+            throw new InvalidDataException(
+                $"File '{displayPath}' is not valid at JSON path '{exception.Path ?? "$"}': {exception.Message}",
+                exception);
+        }
+    }
+
+    /// <summary>
     /// Reads a file's bytes, refusing anything over
     /// <see cref="ContentLimits.MaxFileSizeBytes"/> before allocating for it.
     /// </summary>

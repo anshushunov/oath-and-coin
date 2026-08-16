@@ -1,6 +1,8 @@
+using System.Collections.Immutable;
 using OathAndCoin.Simulation.Commands;
 using OathAndCoin.Simulation.Decisions;
 using OathAndCoin.Simulation.Events;
+using OathAndCoin.Simulation.Ids;
 using OathAndCoin.Simulation.State;
 
 namespace OathAndCoin.Simulation;
@@ -80,12 +82,65 @@ public sealed class SimulationEngine
             return CommandResult.Rejected(state, RejectionCodes.AlreadyResponded);
         }
 
-        var decision = ContractDecisionRule.Decide(
-            hero,
-            contract,
-            state.Metadata.CampaignSeed,
-            state.Metadata.NextDecisionOrdinal,
-            state.Metadata.NextTraceId);
+        // The hero's traits, resolved through the campaign's own trait
+        // rulebook (GameState.TraitRules — filled once, at content-load
+        // time, on the other side of the boundary this engine cannot cross;
+        // see the remarks there). Sorted by id, not merely copied in
+        // HeroState.Traits' authored order, because the rule asserts that
+        // ordering rather than re-sorting it itself.
+        var traitIds = ImmutableSortedSet.CreateRange(hero.Traits);
+        var traitsBuilder = ImmutableArray.CreateBuilder<HeldTrait>(traitIds.Count);
+        foreach (var traitId in traitIds)
+        {
+            // A bare indexer here would surface a missing id as a bare
+            // KeyNotFoundException with no clue which id, which hero, or
+            // where the rulebook is even filled — unlike the equally
+            // "should never happen" case ContractDecisionRule.Decide guards
+            // ten lines into its own bonds walk (a hero in AcceptedBy with
+            // no Crew entry), which names the entity and explains the
+            // contract. This mirrors that shape: a hero naming a trait id
+            // absent from TraitRules is a content-loading bug (the id
+            // should have failed ContentSet.Load's own reference check
+            // before ever reaching a HeroState), not a hero with no
+            // opinion — so it fails loudly, with enough to find the cause.
+            if (!state.TraitRules.TryGetValue(traitId, out var trait))
+            {
+                throw new InvalidOperationException(
+                    $"Hero '{hero.Definition}' carries trait id '{traitId}', but "
+                    + "GameState.TraitRules has no entry for it. TraitRules is filled once, "
+                    + "by ContentSet.CreateInitialState from every trait the loaded content "
+                    + "defines — a hero referencing an id absent from that table is a "
+                    + "content-loading bug, not a hero with no opinion.");
+            }
+
+            traitsBuilder.Add(trait);
+        }
+
+        // Comrades already committed to this same offer — exactly
+        // contract.AcceptedBy, resolved to the content id the rule matches
+        // relationships against. Built from what already lives in GameState,
+        // no content lookup required, so every hero this decision's own
+        // bonds walk (ContractDecisionRule.Decide, via AcceptedBy) finds an
+        // entry here — an accepted hero missing from Crew is exactly the
+        // context-assembly bug that rule guards against.
+        var crewBuilder = ImmutableSortedDictionary.CreateBuilder<HeroId, ContentId>();
+        foreach (var acceptedHeroId in contract.AcceptedBy)
+        {
+            crewBuilder.Add(acceptedHeroId, state.Heroes[acceptedHeroId].Definition);
+        }
+
+        var context = new DecisionContext
+        {
+            Hero = hero,
+            Contract = contract,
+            Traits = traitsBuilder.ToImmutable(),
+            Crew = crewBuilder.ToImmutable(),
+            CampaignSeed = state.Metadata.CampaignSeed,
+            DecisionOrdinal = state.Metadata.NextDecisionOrdinal,
+            TraceId = state.Metadata.NextTraceId,
+        };
+
+        var decision = ContractDecisionRule.Decide(context);
 
         var accepted = decision.Result.SelectedAction == Actions.Accept;
 
@@ -94,9 +149,16 @@ public sealed class SimulationEngine
         // no to it (see ContractStatus). Without that, the first refusal would
         // remove the offer from everyone else and a campaign could never show
         // two heroes disagreeing about the same job.
+        //
+        // Crewed means what its own doc comment says: every seat filled, not
+        // merely one hero among several saying yes — so the transition reads
+        // AcceptedBy.Count against RequiredCrew, not the single accepted
+        // flag from this one response.
+        var acceptedBy = accepted ? contract.AcceptedBy.Add(command.HeroId) : contract.AcceptedBy;
         var respondedContract = contract with
         {
-            Status = accepted ? ContractStatus.Accepted : contract.Status,
+            Status = acceptedBy.Count >= contract.RequiredCrew ? ContractStatus.Crewed : contract.Status,
+            AcceptedBy = acceptedBy,
             RespondedBy = contract.RespondedBy.Add(command.HeroId),
         };
 

@@ -46,8 +46,13 @@ public static class ScenarioRunner
     /// One half of the reproducibility tuple (TDD §7.1) — the other halves are
     /// the content version and the seed. It is a constant here rather than a
     /// parameter because a run cannot choose which rules the binary contains.
+    /// Bumped from <c>gate0-spike/1</c> to <c>m1-decision/1</c> alongside
+    /// <see cref="DeterminismArtifact.ArtifactVersion"/>: the gate0 spike's
+    /// rules (no principles, no bonds, no crew) are not the rules this build
+    /// runs any more, and a run under the old rules must not compare equal to
+    /// one under these just because both happened to reach the same score.
     /// </summary>
-    public const string RulesetVersion = "gate0-spike/1";
+    public const string RulesetVersion = "m1-decision/1";
 
     public static ScenarioOutcome Run(ContentSet content, IReadOnlyList<ScenarioCommand> commands, ulong seed)
     {

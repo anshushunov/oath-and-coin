@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oath-and-coin.invalid/schemas/locale.schema.json",
+  "title": "Locale catalogue",
+  "description": "A flat 'key -> text' catalogue for one locale. LocaleCatalogue enforces the same rules at load time (duplicate keys and empty values are rejected there, because JsonSchema alone cannot express 'no two properties share this name' any more than a plain JSON object can represent it after parsing).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "locale", "entries"],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 2,
+      "description": "Version of this file format. Pinned by const so a file authored for a later format is refused by tooling, not read under today's assumptions; LocaleCatalogue.SupportedSchemaVersion states the same number."
+    },
+    "locale": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The locale this catalogue's entries are written in, e.g. 'ru'."
+    },
+    "entries": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Localization key to player-facing text. Every key content refers to must appear here (ShippedContentTests)."
+    }
+  }
+}

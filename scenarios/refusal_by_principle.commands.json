@@ -1,0 +1,5 @@
+{
+  "commands": [
+    { "command_id": 1, "hero_index": 1, "contract": "core:collect_the_debt", "expected_state_version": 0 }
+  ]
+}

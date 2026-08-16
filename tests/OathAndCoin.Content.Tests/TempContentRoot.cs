@@ -24,6 +24,7 @@ internal sealed class TempContentRoot : IDisposable
 
         Directory.CreateDirectory(Path.Combine(root, "heroes"));
         Directory.CreateDirectory(Path.Combine(root, "contracts"));
+        Directory.CreateDirectory(Path.Combine(root, "traits"));
         return new TempContentRoot(root);
     }
 
@@ -48,11 +49,13 @@ internal sealed class TempContentRoot : IDisposable
         return copy;
     }
 
-    public void WriteHero(string fileName, string json) => Write("heroes", fileName, json);
+    public void WriteHero(string name, string json) => Write("heroes", name, json);
 
-    public void WriteContract(string fileName, string json) => Write("contracts", fileName, json);
+    public void WriteContract(string name, string json) => Write("contracts", name, json);
 
-    public string ReadHero(string fileName) => File.ReadAllText(Path.Combine(Root, "heroes", fileName));
+    public void WriteTrait(string name, string json) => Write("traits", name, json);
+
+    public string ReadHero(string name) => File.ReadAllText(Path.Combine(Root, "heroes", FileNameFor(name)));
 
     public void Dispose()
     {
@@ -69,10 +72,30 @@ internal sealed class TempContentRoot : IDisposable
         }
     }
 
-    private void Write(string subdirectory, string fileName, string json)
+    private void Write(string subdirectory, string name, string json)
     {
         var directory = Path.Combine(Root, subdirectory);
         Directory.CreateDirectory(directory);
-        File.WriteAllText(Path.Combine(directory, fileName), json);
+        File.WriteAllText(Path.Combine(directory, FileNameFor(name)), json);
+    }
+
+    /// <summary>
+    /// Every method here takes a bare content id, not a filename: the
+    /// extension is added here, once. A caller passing <c>"bram.json"</c>
+    /// out of habit from before this type existed would silently get
+    /// <c>bram.json.json</c> instead of a build error — the two contracts
+    /// share a signature, so nothing else would catch the mistake.
+    /// </summary>
+    private static string FileNameFor(string name)
+    {
+        if (name.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException(
+                $"'{name}' already ends with '.json'; pass the bare content id, "
+                + "the extension is added for you.",
+                nameof(name));
+        }
+
+        return name + ".json";
     }
 }

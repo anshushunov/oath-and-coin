@@ -1,0 +1,8 @@
+{
+  "schema_version": 2,
+  "id": "core:fears_undeath",
+  "display_name_key": "trait.core.fears_undeath.name",
+  "kind": "inclination",
+  "tag": "target:undead",
+  "weight": -18
+}

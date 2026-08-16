@@ -27,9 +27,12 @@ public class SmokeVerdictTests
     private const int FrameHeight = 720;
     private const string FramePath = @"C:\repo\artifacts\smoke\run\frame.png";
 
-    private const string ErrorScenario = "content_error";
-    private const string ErrorCheckpoint = "load_failed";
+    private const string ErrorScenario = "screen_error";
+    private const string ErrorCheckpoint = "screen_error";
     private const string ErrorCode = "CONTENT_ROOT_NOT_FOUND";
+
+    private const string LoadingScenario = "screen_loading";
+    private const string LoadingCheckpoint = "screen_loading";
 
     [Fact]
     public void Verdict_AcceptsCleanSuccessRun()
@@ -44,6 +47,84 @@ public class SmokeVerdictTests
     public void Verdict_AcceptsCleanErrorRun()
     {
         var verdict = SmokeVerdict.Evaluate(CleanRun(errorOutcome: true));
+
+        Assert.True(verdict.Passed);
+        Assert.Empty(verdict.Reasons);
+    }
+
+    /// <summary>
+    /// <see cref="ScenarioOutcomeKind.Loading"/> is the outcome
+    /// <c>OathAndCoin.Content.Scenarios.ScenarioManifest</c> reserves for the
+    /// fifth <c>ContractOfferScreenModel.ScreenState</c> — the one the model
+    /// factory never builds, shown before any content is read at all. This
+    /// pins <see cref="SmokeVerdict.Evaluate"/>'s outcome-kind comparison
+    /// (<c>"loading"</c> on both sides) the same way the success and error
+    /// cases above already do.
+    /// </summary>
+    [Fact]
+    public void Verdict_AcceptsCleanLoadingRun()
+    {
+        var verdict = SmokeVerdict.Evaluate(CleanRun(loadingOutcome: true));
+
+        Assert.True(verdict.Passed);
+        Assert.Empty(verdict.Reasons);
+    }
+
+    [Fact]
+    public void Verdict_RejectsSuccessWhenManifestExpectsLoading()
+    {
+        var observation = CleanRun(
+            loadingOutcome: true,
+            eventOverride: CleanEvent(loadingOutcome: true) with { OutcomeKind = "success" });
+
+        var verdict = SmokeVerdict.Evaluate(observation);
+
+        Assert.False(verdict.Passed);
+        Assert.Contains(verdict.Reasons, reason => reason.Contains("outcome", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Review finding (Important 2): <c>outcome_kind</c> alone cannot tell
+    /// <c>Incomplete</c> from <c>Normal</c> — both report <c>"success"</c> —
+    /// so a manifest that names an <c>expected_screen_state</c> has to be
+    /// checked against that finer field, not just the coarse one every
+    /// scenario already carries.
+    /// </summary>
+    [Fact]
+    public void Verdict_AcceptsMatchingScreenState()
+    {
+        var verdict = SmokeVerdict.Evaluate(CleanRun(expectedScreenState: "normal"));
+
+        Assert.True(verdict.Passed);
+        Assert.Empty(verdict.Reasons);
+    }
+
+    [Fact]
+    public void Verdict_RejectsMismatchedScreenState()
+    {
+        var observation = CleanRun(
+            expectedScreenState: "normal",
+            eventOverride: CleanEvent() with { ScreenState = "incomplete" });
+
+        var verdict = SmokeVerdict.Evaluate(observation);
+
+        Assert.False(verdict.Passed);
+        Assert.Contains(verdict.Reasons, reason => reason.Contains("screen_state", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// A manifest that states nothing about <c>expected_screen_state</c>
+    /// (every manifest predating Task 12's review) must not suddenly fail a
+    /// run whose actual screen state happens to differ from this fixture's
+    /// own default ("normal") — the check only applies when a manifest
+    /// actually opts into it.
+    /// </summary>
+    [Fact]
+    public void Verdict_SkipsScreenStateCheckWhenManifestStatesNone()
+    {
+        var observation = CleanRun(eventOverride: CleanEvent() with { ScreenState = "incomplete" });
+
+        var verdict = SmokeVerdict.Evaluate(observation);
 
         Assert.True(verdict.Passed);
         Assert.Empty(verdict.Reasons);
@@ -310,6 +391,43 @@ public class SmokeVerdictTests
         Assert.Contains(verdict.Reasons, reason => reason.Contains("640", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// External review finding (blocker): the roster ran past the bottom of
+    /// the window at the fourth of six heroes, with no scrolling, and every
+    /// existing condition stayed green — both hashes compare the texts the
+    /// model produced and know nothing about where any of them landed, and a
+    /// frame full of text is neither blank nor the wrong size. This is the
+    /// condition that fails on it.
+    /// </summary>
+    [Fact]
+    public void Verdict_RejectsContentThatCannotBeReached()
+    {
+        // Taller than what the window plus its scrolling can show — the exact
+        // shape of "six heroes, four of them visible, no scroll bar".
+        var observation = CleanRun(
+            eventOverride: CleanEvent() with { LayoutContentHeight = 1180, LayoutReachableHeight = FrameHeight });
+
+        var verdict = SmokeVerdict.Evaluate(observation);
+
+        Assert.False(verdict.Passed);
+        Assert.Contains(verdict.Reasons, reason => reason.Contains("can be reached", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// The other half of the same condition, and the reason it is stated as
+    /// two numbers rather than as "does it fit in the window": content taller
+    /// than the window is perfectly fine when it can be scrolled to, which is
+    /// what this screen actually does at six heroes.
+    /// </summary>
+    [Fact]
+    public void Verdict_AcceptsContentTallerThanTheWindowWhenItScrolls()
+    {
+        var observation = CleanRun(
+            eventOverride: CleanEvent() with { LayoutContentHeight = 1180, LayoutReachableHeight = 1180 });
+
+        Assert.True(SmokeVerdict.Evaluate(observation).Passed);
+    }
+
     [Fact]
     public void Verdict_RejectsSingleColourFrame()
     {
@@ -379,22 +497,31 @@ public class SmokeVerdictTests
         Assert.Contains(verdict.Reasons, reason => reason.Contains("not written by this run", StringComparison.OrdinalIgnoreCase));
     }
 
-    private static TerminalEvent CleanEvent(bool errorOutcome = false) => new(
+    private static TerminalEvent CleanEvent(bool errorOutcome = false, bool loadingOutcome = false, string? screenState = null) => new(
         SchemaVersion: TerminalEvent.SupportedSchemaVersion,
         Event: "terminal",
-        OutcomeKind: errorOutcome ? "error" : "success",
-        Scenario: errorOutcome ? ErrorScenario : Scenario,
+        OutcomeKind: loadingOutcome ? "loading" : errorOutcome ? "error" : "success",
+        Scenario: loadingOutcome ? LoadingScenario : errorOutcome ? ErrorScenario : Scenario,
         Seed: Seed,
-        Checkpoint: errorOutcome ? ErrorCheckpoint : Checkpoint,
+        Checkpoint: loadingOutcome ? LoadingCheckpoint : errorOutcome ? ErrorCheckpoint : Checkpoint,
         ErrorCode: errorOutcome ? ErrorCode : null,
-        ContentVersion: errorOutcome ? null : "content-abc123",
-        CanonicalHash: errorOutcome ? null : CanonicalHash,
+        ContentVersion: (errorOutcome || loadingOutcome) ? null : "content-abc123",
+        CanonicalHash: (errorOutcome || loadingOutcome) ? null : CanonicalHash,
         ReadModelHash: ReadModelHash,
         RenderedUiHash: RenderedUiHash,
+        ScreenState: screenState ?? (loadingOutcome ? "loading" : errorOutcome ? "error" : "normal"),
         FrameSha256: FrameSha256,
         FrameWidth: FrameWidth,
         FrameHeight: FrameHeight,
-        FrameDistinctColors: 12);
+        FrameDistinctColors: 12,
+
+        // Content that fits inside the window with nothing to scroll: the
+        // shape a clean run reports, and the baseline
+        // Verdict_RejectsContentThatCannotBeReached moves away from.
+        LayoutContentWidth: 1180,
+        LayoutContentHeight: 640,
+        LayoutReachableWidth: FrameWidth,
+        LayoutReachableHeight: FrameHeight);
 
     private static FrameInspection CleanFrame() => new(
         HasValidPngHeader: true,
@@ -409,26 +536,32 @@ public class SmokeVerdictTests
     /// </summary>
     private static RunObservation CleanRun(
         bool errorOutcome = false,
+        bool loadingOutcome = false,
         TerminalEvent? eventOverride = null,
         ImmutableArray<TerminalEvent>? eventsOverride = null,
         ImmutableArray<string>? parseErrorsOverride = null,
         int exitCode = 0,
         bool timedOut = false,
         ImmutableArray<string>? diagnosticLines = null,
-        FrameInspection? frameOverride = null)
+        FrameInspection? frameOverride = null,
+        string? expectedScreenState = null)
     {
-        var terminalEvent = eventOverride ?? CleanEvent(errorOutcome);
+        var terminalEvent = eventOverride ?? CleanEvent(errorOutcome, loadingOutcome);
         var events = eventsOverride ?? ImmutableArray.Create(terminalEvent);
 
+        var expectedOutcome = loadingOutcome
+            ? ScenarioOutcomeKind.Loading
+            : errorOutcome ? ScenarioOutcomeKind.Error : ScenarioOutcomeKind.Success;
+
         return new RunObservation(
-            Scenario: errorOutcome ? ErrorScenario : Scenario,
-            Checkpoint: errorOutcome ? ErrorCheckpoint : Checkpoint,
+            Scenario: loadingOutcome ? LoadingScenario : errorOutcome ? ErrorScenario : Scenario,
+            Checkpoint: loadingOutcome ? LoadingCheckpoint : errorOutcome ? ErrorCheckpoint : Checkpoint,
             Seed: Seed,
             RequestedWidth: FrameWidth,
             RequestedHeight: FrameHeight,
-            ExpectedOutcome: errorOutcome ? ScenarioOutcomeKind.Error : ScenarioOutcomeKind.Success,
+            ExpectedOutcome: expectedOutcome,
             ExpectedErrorCode: errorOutcome ? ErrorCode : null,
-            ExpectedCanonicalHash: errorOutcome ? null : CanonicalHash,
+            ExpectedCanonicalHash: (errorOutcome || loadingOutcome) ? null : CanonicalHash,
             ExpectedReadModelHash: ReadModelHash,
             ExpectedRenderedUiHash: RenderedUiHash,
             Terminal: new TerminalParseResult(events, parseErrorsOverride ?? ImmutableArray<string>.Empty),
@@ -436,6 +569,7 @@ public class SmokeVerdictTests
             TimedOut: timedOut,
             DiagnosticLines: diagnosticLines ?? ImmutableArray<string>.Empty,
             Frame: frameOverride ?? CleanFrame(),
-            FramePath: FramePath);
+            FramePath: FramePath,
+            ExpectedScreenState: expectedScreenState);
     }
 }

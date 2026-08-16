@@ -133,7 +133,8 @@ public sealed record GameState
     /// and provides none.
     /// </summary>
     /// <remarks>
-    /// The one property here without <c>required</c>, and deliberately so.
+    /// One of the two properties here without <c>required</c> — the other is
+    /// <see cref="TraitRules"/> — and deliberately so.
     /// Every other member of this record was part of the contract package
     /// before any state existed to construct; this one arrived afterwards,
     /// with a default that is both correct and the only sensible reading of
@@ -148,6 +149,31 @@ public sealed record GameState
     /// pairing is the sanctioned shape and a bare <c>with</c> alone is not.
     /// </remarks>
     public ImmutableSortedSet<long> AppliedCommandIds { get; init; } = ImmutableSortedSet<long>.Empty;
+
+    /// <summary>
+    /// The rulebook's own trait dictionary — <c>ContentId → HeldTrait</c> —
+    /// filled once by the content loader's initial-state builder
+    /// (<c>ContentSet.CreateInitialState</c>) and carried in state from then
+    /// on, never re-derived. The engine needs a hero's traits resolved into
+    /// <see cref="HeldTrait"/> (kind, tag, weight) to build a
+    /// <see cref="DecisionContext"/>, but it cannot reference the content
+    /// assembly that defines <c>TraitDefinition</c> (ADR-002) — so the
+    /// resolution happens exactly once, at content-load time, on the other
+    /// side of that boundary, and only the result (a plain
+    /// <see cref="HeldTrait"/> per id) crosses into state.
+    /// </summary>
+    /// <remarks>
+    /// The other property here without <c>required</c>, for the same reason as
+    /// <see cref="AppliedCommandIds"/>: it arrived after every existing
+    /// construction site in this repository had already been written, and its
+    /// absence has a single correct reading — "no trait carries any rule at
+    /// all" — which is exactly what an empty dictionary means to a hero whose
+    /// own <see cref="HeroState.Traits"/> is also empty. Forcing every
+    /// pre-existing fixture to restate an empty dictionary would have been
+    /// churn hiding the one place this value actually matters.
+    /// </remarks>
+    public ImmutableSortedDictionary<ContentId, HeldTrait> TraitRules { get; init; } =
+        ImmutableSortedDictionary<ContentId, HeldTrait>.Empty;
 
     /// <summary>
     /// Explanations for past decisions, addressable by the
@@ -388,6 +414,7 @@ public sealed record GameState
                 && StructuralEquality.EntriesEqual(Contracts, other.Contracts)
                 && StructuralEquality.EntriesEqual(Traces, other.Traces)
                 && StructuralEquality.MembersEqual(AppliedCommandIds, other.AppliedCommandIds)
+                && StructuralEquality.EntriesEqual(TraitRules, other.TraitRules)
                 && StructuralEquality.ElementsEqual(History, other.History)));
 
     public override int GetHashCode() => HashCode.Combine(
@@ -396,5 +423,6 @@ public sealed record GameState
         StructuralEquality.EntriesHash(Contracts),
         StructuralEquality.EntriesHash(Traces),
         StructuralEquality.MembersHash(AppliedCommandIds),
+        StructuralEquality.EntriesHash(TraitRules),
         StructuralEquality.ElementsHash(History));
 }
