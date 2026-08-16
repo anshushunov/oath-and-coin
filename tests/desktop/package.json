@@ -1,0 +1,11 @@
+{
+  "name": "@oath-and-coin/desktop-tests",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The Task 4 gate — drives the packaged Electron application and records its evidence",
+  "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "typescript": "6.0.3"
+  }
+}

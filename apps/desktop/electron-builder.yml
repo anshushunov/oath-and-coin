@@ -1,0 +1,43 @@
+# Packaging for the Task 4 gate (ADR-010, narrowed by ADR-011).
+#
+# `--dir` is what the gate runs: an unpacked application directory, which is
+# the installed footprint the 300 MB budget talks about. An NSIS installer is
+# a wrapper around exactly these bytes and belongs to Task 17, together with
+# signing — building one here would add minutes and a code-signing question to
+# a gate that exists to answer "does the packaged host start at all".
+appId: com.oathandcoin.desktop
+productName: Oath and Coin
+
+directories:
+  output: ../../artifacts/electron-spike
+
+# Only the built output. No node_modules: both entries are bundled by Vite, so
+# anything else in here would be shipped weight nobody asked for.
+files:
+  - dist/**
+
+# The renderer is carried as a resource rather than compiled into the host,
+# which is the whole point of ADR-010's split: the file loaded in the packaged
+# app is byte-identical to the one Playwright drives in a plain browser.
+extraResources:
+  - from: ../web/dist
+    to: web
+
+win:
+  target:
+    - dir
+
+# Chromium ships every locale it knows — 55 files, 47 MB — and this game has
+# one language plus English. `content/locale` holds `ru.json` and nothing else,
+# so the rest are locales no string in this repository can select.
+#
+# Done with a hook rather than with electron-builder's own `electronLanguages`,
+# which was tried first and is silently a no-op on Windows: the packaged
+# directory came out at 350 MB with all 55 .pak files still in it. A setting
+# that reads as an instruction and does nothing is worse than none, so it is
+# gone and the removal is something the hook prints and the gate measures.
+afterPack: build/after-pack.cjs
+
+# The gate measures size, so nothing may quietly inflate it.
+compression: normal
+asar: true

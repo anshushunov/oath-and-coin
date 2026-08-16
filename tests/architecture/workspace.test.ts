@@ -208,6 +208,28 @@ describe('dependency pins', () => {
     expect(disagreements).toEqual([]);
   });
 
+  it('no storefront SDK is a dependency of anything', () => {
+    // ADR-011: storefront delivery is outside the migration's scope, and its
+    // verification asks for exactly this — "в дереве нет ни одной зависимости
+    // от `steamworks.js` или другого SDK площадки". Stated as a test because
+    // the way such a dependency arrives is somebody adding it to make one
+    // feature work, not somebody deciding to release on a storefront.
+    const storefrontish = /steam|galaxy-sdk|epic|eos-sdk|itch/i;
+    const found: string[] = [];
+
+    for (const member of [{ directory: '.', manifest: rootManifest }, ...members]) {
+      for (const field of ['dependencies', 'devDependencies'] as const) {
+        for (const dependency of Object.keys(member.manifest[field] ?? {})) {
+          if (storefrontish.test(dependency)) {
+            found.push(`${member.directory}: ${dependency}`);
+          }
+        }
+      }
+    }
+
+    expect(found, 'a storefront SDK needs a decision, not an install').toEqual([]);
+  });
+
   it('TypeScript is the compiler ADR-010 pins for the migration', () => {
     // ADR-010: "TypeScript 6.0.3 остаётся каноническим компилятором на всё
     // время миграции. TypeScript 7 не используется". Moving off it is a

@@ -57,6 +57,7 @@ migration/oracle/**/*.md text eol=lf
 *.cjs text eol=lf
 package.json text eol=lf
 tsconfig*.json text eol=lf
+*.yml text eol=lf
 pnpm-lock.yaml text eol=lf
 pnpm-workspace.yaml text eol=lf
 apps/**/*.html text eol=lf

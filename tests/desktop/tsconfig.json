@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // The gate reads the packaged directory from disk and writes its report
+    // there, so Node's types are part of the job here.
+    "types": ["node"],
+    // DOM as well, and only here among the test packages: the callbacks passed
+    // to `page.evaluate` are compiled in this project but execute inside the
+    // packaged renderer, where `window` and `document` are exactly what they
+    // are allowed to touch.
+    "lib": ["ES2023", "DOM", "DOM.Iterable"]
+  },
+  "include": ["**/*.spec.ts"]
+}

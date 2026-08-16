@@ -1,0 +1,18 @@
+{
+  "name": "@oath-and-coin/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Electron host — window, security boundary and the typed desktop API; no game rules (ADR-010, ADR-011)",
+  "main": "dist/main.cjs",
+  "scripts": {
+    "build": "vite build --config vite.main.config.ts && vite build --config vite.preload.config.ts",
+    "package": "electron-builder --win --dir --config electron-builder.yml"
+  },
+  "devDependencies": {
+    "electron": "43.4.0",
+    "electron-builder": "26.15.3",
+    "typescript": "6.0.3",
+    "vite": "8.2.1",
+    "zod": "4.4.3"
+  }
+}

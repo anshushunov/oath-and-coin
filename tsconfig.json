@@ -16,7 +16,9 @@
   "files": [],
   "references": [
     { "path": "apps/web" },
+    { "path": "apps/desktop" },
     { "path": "tests/architecture" },
+    { "path": "tests/desktop" },
     { "path": "tests/e2e" }
   ]
 }

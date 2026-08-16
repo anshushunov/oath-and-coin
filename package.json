@@ -13,7 +13,9 @@
     "typecheck": "tsc --build tsconfig.json --force",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "build": "pnpm --filter @oath-and-coin/web build"
+    "test:desktop": "playwright test --config playwright.desktop.config.ts",
+    "build": "node scripts/build-workspace.mjs",
+    "package:desktop": "node scripts/package-desktop.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",

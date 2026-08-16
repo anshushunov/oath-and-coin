@@ -89,7 +89,7 @@ Steam overlay считается best-effort: если он требует ос�
 
 Migration Definition of Done ограничен браузерной сборкой в pinned Chromium и Windows 10/11 x64 Electron package. Native macOS, native Linux и Steam Deck/Proton **не обещаются** этой записью: native module, подпись и Deck требуют отдельных pipelines. Их поддержка принимается отдельной записью после Windows cutover и снятых измерений.
 
-Численные границы, блокирующие cutover: установленный Windows-пакет ≤ 300 МБ; суммарный RSS корневого процесса Electron и всех его renderer/GPU/utility-потомков на normal contract-offer screen после прогрева ≤ 500 МБ.
+Численные границы, блокирующие cutover: ~~установленный Windows-пакет ≤ 300 МБ~~ — порог отменён [`ADR-011`](ADR-011-electron-gate-without-steam.md) по замеру Task 4 (304,2 МиБ на пустом приложении с урезанными локалями), размер продолжает сниматься без порога; суммарный RSS корневого процесса Electron и всех его renderer/GPU/utility-потомков на normal contract-offer screen после прогрева ≤ 500 МБ.
 
 ### Неизменяемый oracle corpus переживает удаление C#
 
@@ -120,7 +120,7 @@ Migration Definition of Done ограничен браузерной сборк�
 ## Последствия
 
 - **Полное переписывание несёт риск семантической регрессии.** Митигируется неизменяемым oracle corpus, differential parity по всем 27 manifests, сравнением полей причинного следа и запретом массового обновления снапшотов.
-- **Electron увеличивает размер дистрибутива и baseline-потребление памяти.** Компромисс принят численно: 300 МБ пакета и 500 МБ RSS блокируют cutover при превышении.
+- **Electron увеличивает размер дистрибутива и baseline-потребление памяти.** Компромисс принят численно: 300 МБ пакета и 500 МБ RSS блокируют cutover при превышении. Порог размера снят [`ADR-011`](ADR-011-electron-gate-without-steam.md): замер Task 4 показал 304,2 МиБ до первого байта игрового контента, то есть граница лежала ниже пола платформы. Действует бюджет RSS.
 - **Electron требует регулярных security/runtime обновлений**, а обновить runtime внутри уже поставленной игры он сам не может. Отсюда exact pin, 7 дней на оценку advisory и 14 на critical rebuild.
 - **npm увеличивает supply-chain surface.** Отсюда `--frozen-lockfile`, exact direct versions, ревью каждой новой runtime dependency и allowlist install/build scripts.
 - **TypeScript не даёт C#-уровень numeric discipline автоматически.** Домен остаётся целочисленным; там, где нужна семантика 64-битного переполнения, используется локальный `bigint`, который никогда не пересекает границу JSON/пакета.
@@ -140,7 +140,7 @@ Migration Definition of Done ограничен браузерной сборк�
 - симуляция не зависит от DOM, React, PixiJS, Electron, файловой системы, часов и глобальной случайности;
 - пять состояний экрана реализованы с семантическими assertions и достижимостью при 1280×800;
 - ~~packaged Windows x64 build инициализирует Steam в main process и работает без Steam при сохранённом sandbox~~ — изъято [`ADR-011`](ADR-011-electron-gate-without-steam.md); действующее требование: packaged Windows x64 build запускается при сохранённых `sandbox: true`, `contextIsolation: true`, `nodeIntegration: false` и CSP;
-- пакет ≤ 300 МБ, RSS ≤ 500 МБ по зафиксированной методике;
+- RSS ≤ 500 МБ по зафиксированной методике; размер установленного пакета снимается тем же прогоном и записывается без порога ([`ADR-011`](ADR-011-electron-gate-without-steam.md));
 - в production tree не остаётся `.cs`, `.csproj`, `.sln`, `.tscn`, `.uid`, `project.godot`, пинов Godot/.NET SDK и Godot-специфичного harness;
 - `migration/oracle/v1` остаётся в дереве и проходит проверку дайджестов **после** удаления старого кода.
 
