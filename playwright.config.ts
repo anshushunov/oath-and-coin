@@ -40,7 +40,8 @@ export default defineConfig({
     // "Process from config.webServer was not able to start", whose cause is
     // four lines of pnpm version text and nothing about Playwright. Same trap
     // as the one the root tsconfig documents.
-    command: 'node node_modules/vite/bin/vite.js build && node node_modules/vite/bin/vite.js preview',
+    command:
+      'node node_modules/vite/bin/vite.js build && node node_modules/vite/bin/vite.js preview',
     cwd: 'apps/web',
     url: previewUrl,
     // Never adopt whatever is already listening on that port: a stale server

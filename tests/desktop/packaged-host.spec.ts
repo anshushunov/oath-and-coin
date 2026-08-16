@@ -214,10 +214,9 @@ test.describe('packaged desktop host', () => {
     // Behaviour, not a header string. Over file:// there is no response header
     // to read at all, and a policy can be present and permissive — what
     // matters is whether the page can execute script it did not ship with.
-    expect(
-      await probeInlineScript(app),
-      'an inline script must not run under the policy'
-    ).toBe(true);
+    expect(await probeInlineScript(app), 'an inline script must not run under the policy').toBe(
+      true
+    );
   });
 
   test('only web URLs are handed to the operating system', async () => {

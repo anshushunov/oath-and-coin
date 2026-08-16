@@ -1,0 +1,29 @@
+# Generated, installed or frozen. Nothing here is written by hand, and
+# reformatting any of it would either be pointless or actively wrong.
+node_modules/
+dist/
+artifacts/
+pnpm-lock.yaml
+
+# The C# side keeps its own formatter (`dotnet format`) until cutover removes
+# it. Two formatters over one tree is how a repository gets a reformat war.
+**/*.cs
+**/*.csproj
+**/*.sln
+global.json
+tests/OathAndCoin.*/
+.github/workflows/dotnet.yml
+
+# The oracle corpus is byte-frozen: every file in it is covered by a SHA-256 in
+# its own manifest, so a formatter touching a single space would invalidate the
+# evidence the migration is measured against.
+migration/oracle/
+
+# Content and scenarios feed ContentDigest, which is a hash over their bytes.
+content/
+scenarios/
+schemas/
+
+# Prose. Prettier reflows Markdown in ways that make review diffs about
+# wrapping rather than about what changed.
+**/*.md
