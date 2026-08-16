@@ -85,7 +85,7 @@ Feature freeze для новой функциональности старого
 | Gate | Владелец | Начато | Завершено | Команда | Артефакт | Результат | Решение |
 |---|---|---|---|---|---|---|---|
 | Task 1 — рубеж и ADR-010 | agent | 2026-08-16 | 2026-08-16 | `dotnet test OathAndCoin.sln -c Release`; `bash ./scripts/code-lines.sh simulation adapters tools tests game` | §1 этого файла; `docs/decisions/ADR-010-full-typescript-web-stack.md` | 511 тестов зелёные; 27 манифестов; code=13 814 raw=24 408 | принят: рубеж `12565862`, `ADR-010` accepted |
-| Task 2 — неизменяемый oracle corpus | agent | 2026-08-16 | 2026-08-16 | `dotnet run --project tools/OathAndCoin.MigrationOracle -c Release -- export --root . --output migration/oracle/v1`; `dotnet test tests/OathAndCoin.MigrationOracle.Tests/OathAndCoin.MigrationOracle.Tests.csproj -c Release`; `git diff --exit-code -- migration/oracle/v1` | `migration/oracle/v1/**` (58 файлов, manifest SHA-256 `0d52f525…4b73`); §3 этого файла | 27/27 манифестов, 54 записи на двух seed; 20/20 тестов корпуса; повторный экспорт побайтно идентичен; четыре мутанта красят проверки (§3.5, §3.6) | принят после внешнего ревью codex; правки — коммит `94f4e24` |
+| Task 2 — неизменяемый oracle corpus | agent | 2026-08-16 | 2026-08-16 | `dotnet run --project tools/OathAndCoin.MigrationOracle -c Release -- export --root . --output migration/oracle/v1`; `dotnet test tests/OathAndCoin.MigrationOracle.Tests/OathAndCoin.MigrationOracle.Tests.csproj -c Release`; `git diff --exit-code -- migration/oracle/v1` | `migration/oracle/v1/**` (58 файлов, manifest SHA-256 `b6af9b19…9f35`); §3 этого файла | 27/27 манифестов, 54 записи на двух seed; 20/20 тестов корпуса; повторный экспорт побайтно идентичен; четыре мутанта красят проверки (§3.5, §3.6) | принят после внешнего ревью codex; правки — коммит `94f4e24` |
 | Task 3 — pinned TypeScript workspace | | | | `corepack pnpm install --frozen-lockfile`; `corepack pnpm typecheck`; `corepack pnpm test`; `corepack pnpm test:e2e` | `pnpm-lock.yaml`, bootstrap-тесты | | |
 | Task 4 — packaged Electron + Steam gate (**stop gate**) | | | | `corepack pnpm package:desktop`; `corepack pnpm test:desktop` | `artifacts/electron-spike/**` | | Task 6 не начинается до зелёного; owner review 2026-08-31 |
 | Task 5 — архитектурные границы и dual-stack CI | | | | `corepack pnpm lint:deps`; `corepack pnpm test` | `.github/workflows/typescript.yml` | | |
@@ -156,8 +156,8 @@ Feature freeze для новой функциональности старого
 | Файлов в корпусе | 58 (54 записи + `manifest.json` + `rng-vectors.json` + `jcs-compatibility-vectors.json` + `README.md`) | `fd . migration/oracle/v1 --type f \| wc -l` |
 | Сценариев / checkpoints / записей | 27 / 27 / 54 (два seed на checkpoint) | `jq '{scenarios:(.scenarios\|length), entries:([.scenarios[].checkpoints[].entries[]]\|length)}' migration/oracle/v1/manifest.json` |
 | Файлов под дайджестом | 57 (все, кроме самого `manifest.json`) | `jq '.files\|length' migration/oracle/v1/manifest.json` |
-| Суммарный объём файлов под дайджестом | 1 671 857 байт | `jq '[.files[].bytes]\|add' migration/oracle/v1/manifest.json` |
-| SHA-256 корневого `manifest.json` | `0d52f5255cd7ef270ba0c78c91a1e8b63779aece394af20f7c789055fffa4b73` | `sha256sum migration/oracle/v1/manifest.json` |
+| Суммарный объём файлов под дайджестом | 1 672 238 байт | `jq '[.files[].bytes]\|add' migration/oracle/v1/manifest.json` |
+| SHA-256 корневого `manifest.json` | `b6af9b19c5f2eb89fdacac9737450bb6d6cf9bc335407aff372919de67809f35` | `sha256sum migration/oracle/v1/manifest.json` |
 | Строк RNG-векторов | 306 raw + 1764 int32, 7 потоков | `jq '{raw:(.raw_draws\|length), int32:(.int32_draws\|length), streams:(.streams\|length)}' migration/oracle/v1/rng-vectors.json` |
 
 ### 3.3. Расхождение текущей канонизации с RFC 8785
