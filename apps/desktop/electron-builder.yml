@@ -11,10 +11,19 @@ productName: Oath and Coin
 directories:
   output: ../../artifacts/electron-spike
 
-# Only the built output. No node_modules: both entries are bundled by Vite, so
-# anything else in here would be shipped weight nobody asked for.
+# Only the built output. Both entries are bundled by Vite, so nothing else is
+# needed at runtime — but listing `dist/**` alone is not enough to say that:
+# electron-builder adds production `dependencies` to its own default patterns,
+# and after `zod` moved from devDependencies to dependencies the package
+# silently grew by 612 files and 4 224 422 bytes of a library that was already
+# inside `main.cjs`. The exclusion is what makes the intent enforceable.
+#
+# If something ever stops being bundled, this turns into a startup failure
+# rather than a silent fallback — and the packaged gate is what catches it, the
+# same way it caught "Cannot find module 'zod'" when Vite externalised it.
 files:
   - dist/**
+  - '!node_modules/**'
 
 # The renderer is carried as a resource rather than compiled into the host,
 # which is the whole point of ADR-010's split: the file loaded in the packaged
