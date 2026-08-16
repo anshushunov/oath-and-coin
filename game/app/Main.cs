@@ -31,6 +31,19 @@ public partial class Main : Control
 
     public override void _Ready()
     {
+        // This node is the scene root and has no anchors of its own in
+        // Main.tscn, so it sits at its minimum size — zero — until told
+        // otherwise. That cost nothing while the screen was a bare stack of
+        // labels: a Control does not clip its children, so labels drew past
+        // their parent's rect and off the window, which is precisely the
+        // unreadable frame the external review found. The screen now puts its
+        // content in a ScrollContainer, which does clip, so a zero-sized
+        // parent means a blank frame instead — observed on the first live run
+        // after that change (one distinct colour). Filling the window is what
+        // gives the screen a size to fit its content into and to scroll
+        // against.
+        SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+
         GameArguments arguments;
         try
         {
