@@ -40,6 +40,7 @@
     "hero.decision.stands_with_comrade": "Верность соратнику",
     "hero.decision.will_not_work_with": "Откажется работать с ним",
     "hero.decision.principle_forbids": "Принцип запрещает",
+    "hero.decision.no_reason_to_refuse": "Не нашлось причин отказаться",
     "qualitative.negligible": "Незначительно",
     "qualitative.low": "Слабо",
     "qualitative.moderate": "Умеренно",
@@ -88,6 +89,12 @@
     "trait.fixture.test_aversion.name": "Испытательная неприязнь",
     "tag.test.alpha": "Проба «альфа»",
     "tag.test.beta": "Проба «бета»",
-    "tag.test.gamma": "Проба «гамма»"
+    "tag.test.gamma": "Проба «гамма»",
+    "hero.fixture.eager_one.name": "Первый охотник до денег",
+    "hero.fixture.eager_two.name": "Второй охотник до денег",
+    "hero.fixture.indifferent_hero.name": "Безразличный",
+    "contract.fixture.plain_alpha.name": "Простой подряд «альфа»",
+    "contract.fixture.plain_beta.name": "Простой подряд «бета»",
+    "contract.fixture.plain_gamma.name": "Простой подряд «гамма»"
   }
 }

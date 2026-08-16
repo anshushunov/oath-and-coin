@@ -288,6 +288,33 @@ public class ContractOfferScreenModelTests
         Assert.NotNull(line.BlockedByDisplayNameKey);
     }
 
+    /// <summary>
+    /// External review finding: the one answer with no reasons at all — a sum
+    /// of exactly zero, both factor lists empty, nothing blocked — is also the
+    /// one that most needs a line saying what decided it. The rule states a
+    /// tie-break code for it (<c>ContractDecisionRuleTests.Decide_NamesTheRuleThatSettlesAnExactlyZeroScore</c>);
+    /// this is the half that carries it onto the screen instead of dropping it
+    /// on the way.
+    /// </summary>
+    [Fact]
+    public void FromOutcome_NamesTheRuleThatSettledAZeroScore()
+    {
+        var line = Factory.FromOutcome(Outcomes.ZeroScoreTie()).Responses.Single();
+
+        Assert.Empty(line.Reasons);
+        Assert.Null(line.BlockedByEntity);
+        Assert.Equal(ReasonCodes.NoReasonToRefuse, line.TieBreakCode);
+    }
+
+    /// <summary>
+    /// A blocked line never draws a score, so it never ties either: the
+    /// tie-break field stays empty there rather than repeating the block in
+    /// different words.
+    /// </summary>
+    [Fact]
+    public void FromOutcome_LeavesTheTieBreakEmptyOnABlockedLine() =>
+        Assert.Null(Factory.FromOutcome(Outcomes.PrincipleBlocked()).Responses.Single().TieBreakCode);
+
     [Fact]
     public void FromOutcome_MarksWaveredWhenMoodFlippedTheAnswer()
     {
@@ -506,7 +533,7 @@ public class ContractOfferScreenModelTests
         Assert.Equal(Factory.ReadModelHash(RichModel()), Factory.ReadModelHash(RichModel()));
 
         Assert.Equal(
-            "0b7fa0219d61e06338a17b6c4425e6101918594cea34072008190beb5f9a833a",
+            "1775b371cd6617b8b1c2ad53010749bb7a7456ea4503cba8a9379c1b73c5c61d",
             Factory.ReadModelHash(RichModel()));
     }
 
@@ -573,6 +600,7 @@ public class ContractOfferScreenModelTests
             { "response-blocked-by-entity", normal, WithResponse(normal, acceptResponse with { BlockedByEntity = "core:something" }) },
             { "response-blocked-by-display-name-key", normal, WithResponse(normal, acceptResponse with { BlockedByDisplayNameKey = "trait.extra" }) },
             { "response-wavered", normal, WithResponse(normal, acceptResponse with { Wavered = !acceptResponse.Wavered }) },
+            { "response-tie-break-code", normal, WithResponse(normal, acceptResponse with { TieBreakCode = ReasonCodes.NoReasonToRefuse }) },
             { "reason-code", normal, WithResponse(normal, acceptResponse with { Reasons = acceptResponse.Reasons.SetItem(0, reason with { ReasonCode = "other" }) }) },
             { "reason-source-entity", normal, WithResponse(normal, acceptResponse with { Reasons = acceptResponse.Reasons.SetItem(0, reason with { SourceEntity = "core:other" }) }) },
             { "reason-strength", normal, WithResponse(normal, acceptResponse with { Reasons = acceptResponse.Reasons.SetItem(0, reason with { Strength = QualitativeGrade.Extreme }) }) },
@@ -784,11 +812,18 @@ public class ContractOfferScreenModelTests
                         SourceDisplayNameKey: "trait.core.fears_undeath.name", ReasonDirection.Opposed)),
                 BlockedByEntity: null,
                 BlockedByDisplayNameKey: null,
+
+                // A decision that was not a dead heat, so no tie-break — the
+                // other half of that field is covered by
+                // FromOutcome_NamesTheRuleThatSettledAZeroScore, on a fixture
+                // that actually ties.
+                TieBreakCode: null,
                 false),
             new ResponseLine(
                 "core:zara", "hero.core.zara.name", "action:decline", ImmutableArray<ReasonLine>.Empty,
                 BlockedByEntity: "core:will_not_strike_a_temple",
                 BlockedByDisplayNameKey: "trait.core.will_not_strike_a_temple.name",
+                TieBreakCode: null,
                 Wavered: false)),
         ErrorCode = null,
         ErrorDetail = null,
@@ -1042,6 +1077,31 @@ public class ContractOfferScreenModelTests
             };
 
             return Single(Hero(0, "mira"), decision);
+        }
+
+        /// <summary>
+        /// The empty sum: nothing weighed either way, so the trace carries no
+        /// factors at all and the decision rule's own tie-break is the only
+        /// thing that explains the answer.
+        /// </summary>
+        public static ScenarioOutcome ZeroScoreTie()
+        {
+            var decision = new DecisionResult
+            {
+                SelectedAction = Actions.Accept,
+                ConsideredActions = ImmutableArray.Create(Actions.Accept, Actions.Decline),
+                SelectedScore = 0,
+                Trace = new CausalTrace
+                {
+                    TraceId = 0,
+                    PositiveFactors = ImmutableArray<TraceFactor>.Empty,
+                    NegativeFactors = ImmutableArray<TraceFactor>.Empty,
+                    BlockedBy = ImmutableArray<TraceBlock>.Empty,
+                    TieBreak = ReasonCodes.NoReasonToRefuse,
+                },
+            };
+
+            return Single(Hero(0, "ilsa"), decision);
         }
 
         public static ScenarioOutcome PrincipleBlocked()

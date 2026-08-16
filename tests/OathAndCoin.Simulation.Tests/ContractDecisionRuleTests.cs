@@ -194,6 +194,54 @@ public class ContractDecisionRuleTests
     }
 
     /// <summary>
+    /// External review finding: a hero with nothing pulling either way — zero
+    /// scales, no trust, no matching trait, no bond — and a mood of exactly
+    /// zero produced a score of 0, which <c>score &gt;= 0</c> resolved into an
+    /// acceptance with both factor lists empty, no block and an empty
+    /// <see cref="CausalTrace.TieBreak"/>: a significant autonomous decision
+    /// with not one reason attached to it.
+    /// </summary>
+    /// <remarks>
+    /// The seed and ordinal are searched for rather than pinned to a literal:
+    /// the point is a mood that draws exactly zero, and a hard-coded pair
+    /// would silently stop testing that the day the RNG or the mood range
+    /// moves — leaving a green test on a non-zero mood and no coverage of the
+    /// tie at all. Asserted first is the emptiness the finding is about
+    /// (nothing in the trace), then the two things that make it explicable.
+    /// </remarks>
+    [Fact]
+    public void Decide_NamesTheRuleThatSettlesAnExactlyZeroScore()
+    {
+        var ordinal = (ulong)Enumerable.Range(0, 64)
+            .First(candidate => ContractDecisionRule.DrawMood(1, (ulong)candidate).Value == 0);
+
+        var decision = ContractDecisionRule.Decide(
+            Context(greed: 0, caution: 0, pride: 0, trust: 0, payment: 100, risk: 100, ordinal: ordinal));
+
+        Assert.Empty(decision.Result.Trace.PositiveFactors);
+        Assert.Empty(decision.Result.Trace.NegativeFactors);
+        Assert.Empty(decision.Result.Trace.BlockedBy);
+        Assert.Equal(0, decision.Result.SelectedScore);
+
+        Assert.Equal(Actions.Accept, decision.Result.SelectedAction);
+        Assert.Equal(ReasonCodes.NoReasonToRefuse, decision.Result.Trace.TieBreak);
+    }
+
+    /// <summary>
+    /// The other half: a tie-break is recorded for a dead heat and for nothing
+    /// else, so a screen showing one is always showing a real tie rather than
+    /// a decoration on every ordinary decision.
+    /// </summary>
+    [Fact]
+    public void Decide_LeavesTheTieBreakEmptyWhenTheScoreIsNotZero()
+    {
+        var decision = ContractDecisionRule.Decide(Context(greed: 100, caution: 0, pride: 0, payment: 100, risk: 0));
+
+        Assert.NotEqual(0, decision.Result.SelectedScore);
+        Assert.Null(decision.Result.Trace.TieBreak);
+    }
+
+    /// <summary>
     /// Mood (Task 7) is added to the trace like any other factor: present
     /// exactly when its value is non-zero, and living in whichever list its
     /// sign says. <see cref="ContractDecisionRule.DrawMood"/> is asked

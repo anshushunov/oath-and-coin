@@ -168,6 +168,14 @@ public sealed record RenderedUiSnapshot(ImmutableArray<string> Texts)
                 texts.Add(Resolve(catalogue, response.BlockedByDisplayNameKey));
             }
 
+            // The rule that settled a dead heat, when there was one — a
+            // localization key like a reason code, on its own line for the
+            // reason ResponseLine.TieBreakCode gives.
+            if (response.TieBreakCode is not null)
+            {
+                texts.Add(Resolve(catalogue, response.TieBreakCode));
+            }
+
             texts.Add(Resolve(catalogue, WaveredKeys.For(response.Wavered)));
         }
 

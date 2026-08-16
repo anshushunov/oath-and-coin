@@ -284,9 +284,21 @@ public static class ContractDecisionRule
 
         var score = paymentPull - riskAversion - insult + inclinationSum + guildTrust + bondSum + mood.Value;
 
+        // Exactly zero is a tie, not an acceptance with a very small margin:
+        // nothing weighed either way, so taking the contract and refusing it
+        // scored the same. The rule still resolves it toward accepting — a
+        // hero with no reason to refuse goes along with the guild — but it
+        // now says so, with a stable code the screen shows. Review finding:
+        // `score >= 0` used to settle this silently while TieBreak stayed
+        // null, so a hero with zero scales, no trust, no matching trait, no
+        // bond and a mood of zero accepted with both factor lists empty and
+        // no block: an autonomous decision with not one reason to it, and an
+        // optimistic default read as character.
+        var tieBreak = score == 0 ? ReasonCodes.NoReasonToRefuse : null;
+
         var result = new DecisionResult
         {
-            SelectedAction = score >= 0 ? Actions.Accept : Actions.Decline,
+            SelectedAction = score < 0 ? Actions.Decline : Actions.Accept,
             ConsideredActions = Considered,
             SelectedScore = score,
             Trace = new CausalTrace
@@ -295,6 +307,7 @@ public static class ContractDecisionRule
                 PositiveFactors = positive.ToImmutable(),
                 NegativeFactors = negative.ToImmutable(),
                 BlockedBy = ImmutableArray<TraceBlock>.Empty,
+                TieBreak = tieBreak,
             },
         };
 

@@ -455,6 +455,45 @@ public class ScenarioCoverageTests
         Assert.True(bareSum >= 0, "The bare sum, without mood, should already have been an accept.");
     }
 
+    /// <summary>
+    /// The empty sum, end to end: a hero with zero scales, no trust, no
+    /// traits and no relationships, answering at the one ordinal where seed 7
+    /// draws a mood of exactly zero (the seventh decision, ordinal 6). Every
+    /// term of the score is absent — not zero-valued, absent, since a
+    /// zero-magnitude factor never enters the trace — so the sum is 0, the
+    /// two actions tie, and the only thing that can explain the answer is the
+    /// tie-break rule itself.
+    /// </summary>
+    /// <remarks>
+    /// External review finding: this decision used to be an acceptance with
+    /// two empty factor lists, no block and an empty <c>TieBreak</c> — an
+    /// autonomous choice with no reason of any kind, and a hidden optimistic
+    /// default reading as character. The six filler answers before it exist
+    /// only to reach that ordinal; they are asserted to have happened, so the
+    /// scenario cannot quietly stop reaching it (a rejected filler would move
+    /// the indifferent hero onto a different mood and make this test pass or
+    /// fail for a reason it does not name).
+    /// </remarks>
+    [Fact]
+    public void ZeroSumTie_AcceptsOnAStatedTieBreakRatherThanASilentDefault()
+    {
+        var outcome = RepositoryFixtures.RunScenario("zero_sum_tie", seed: 7);
+
+        Assert.Equal(7, outcome.Steps.Length);
+        Assert.All(outcome.Steps, step => Assert.True(step.Applied, $"Step {step.Command.CommandId} was rejected."));
+
+        var decision = LastDecision(outcome);
+        Assert.Equal(ContentId.Parse("fixture:indifferent_hero"), outcome.Steps[^1].HeroDefinition);
+
+        Assert.Empty(decision.Trace.PositiveFactors);
+        Assert.Empty(decision.Trace.NegativeFactors);
+        Assert.Empty(decision.Trace.BlockedBy);
+        Assert.Equal(0, decision.SelectedScore);
+
+        Assert.Equal(Actions.Accept, decision.SelectedAction);
+        Assert.Equal(ReasonCodes.NoReasonToRefuse, decision.Trace.TieBreak);
+    }
+
     // ---- order and repeated answers ---------------------------------------
 
     /// <summary>

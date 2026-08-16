@@ -185,6 +185,19 @@ public sealed record HeroCard(
 /// "will not do this at all" (a red line, weighed against nothing) — a
 /// principle named without saying which one only gets half of that told.
 /// </param>
+/// <param name="TieBreakCode">
+/// The stable code of the rule that settled a dead heat between the two
+/// actions (<see cref="OathAndCoin.Simulation.Decisions.CausalTrace.TieBreak"/>
+/// — itself a localization key, like a reason code), or <c>null</c> when the
+/// decision was not a tie. Today there is exactly one such rule and one way
+/// to reach it: a sum of motives of exactly zero
+/// (<see cref="OathAndCoin.Simulation.Decisions.ReasonCodes.NoReasonToRefuse"/>).
+/// Shown on its own line rather than folded into <paramref name="Reasons"/>:
+/// a tie-break has no magnitude to rank and did not pull in any direction —
+/// it is what decided when nothing pulled at all. External review finding:
+/// without this the one decision that has no reasons whatsoever also had
+/// nothing on screen to say why it went the way it did.
+/// </param>
 /// <param name="Wavered">
 /// <c>true</c> when this hero's mood flipped the answer the rest of the
 /// factors alone would have given — never set for a blocked line, which
@@ -200,6 +213,7 @@ public sealed record ResponseLine(
     ImmutableArray<ReasonLine> Reasons,
     string? BlockedByEntity,
     string? BlockedByDisplayNameKey,
+    string? TieBreakCode,
     bool Wavered);
 
 /// <summary>

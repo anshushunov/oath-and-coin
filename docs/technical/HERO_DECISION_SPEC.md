@@ -183,8 +183,14 @@ Deliverable `MVP_PLAN` §5.6 в части ядра решения. Докуме
 
 ```text
 final  = payment_pull − risk_aversion − insult + inclinations + trust + bonds + mood
-action = final >= 0 ? action:accept : action:decline
+action = final <  0 ? action:decline
+       : final >  0 ? action:accept
+       :              action:accept  + Trace.TieBreak = no_reason_to_refuse
 ```
+
+**Ровно ноль — это ничья, а не согласие с малым запасом.** Мотивы не перевесили ни в одну сторону, поэтому взяться и отказаться стоят одинаково. Правило разрешает ничью в пользу согласия — герою, у которого нет причин отказаться, незачем спорить с гильдией, — но обязано **сказать об этом**: в `Trace.TieBreak` записывается код `hero.decision.no_reason_to_refuse`, и он же виден игроку отдельной строкой ответа (`ResponseLine.TieBreakCode`, §4.2).
+
+Это ровно тот случай, ради которого поле `TieBreak` заведено: код, разрешивший равенство оценок двух действий. До этого `final >= 0` разрешал ничью молча, и герой с нулевыми шкалами, нулевым доверием, без совпавших черт и связей при настроении ноль принимал контракт с **пустыми** обоими списками факторов, без блокировки и без единого объяснения — значимое автономное решение без причин, где скрытый оптимистичный умолчальный выбор выдавался за характер. Что правило выбирает, не изменилось; изменилось то, что теперь оно это заявляет.
 
 **Настроение прибавляется всегда**, а не только внутри серой зоны, и причина — расход ординалов. При условном броске изменение оплаты могло бы изменить сам факт броска, а значит сдвинуть настроение всех последующих героев; тогда контрастная пара (§7.3) перестала бы измерять то, ради чего существует: ответ второго героя изменился бы не потому, что изменилась оплата, а потому, что первому достался другой ординал. Постоянный бросок делает расход ординалов на обычном пути не зависящим от значений контракта.
 
@@ -220,9 +226,11 @@ wavered = (score_before_mood >= 0) != (final >= 0)
 
 `CausalTrace.BlockedBy` состоит из `TraceBlock(ReasonCode, SourceEntity)`. Величины у записи нет намеренно: у ворот нет силы, они не «очень большой минус». Источник обязателен, потому что экран обязан назвать **какой именно** принцип сработал; без него экрану пришлось бы догадываться по герою — то есть изобретать причину, что `TDD` §8 запрещает прямо.
 
-**Коды причин** (`ReasonCodes`) — закрытый словарь движка, точечные строки, а не `ContentId` (`ADR-005`): код причины никогда не авторится в контенте и не адресуется из контента, ему нечего резолвить. Десять кодов, все с префиксом `hero.decision.`:
+**Коды причин** (`ReasonCodes`) — закрытый словарь движка, точечные строки, а не `ContentId` (`ADR-005`): код причины никогда не авторится в контенте и не адресуется из контента, ему нечего резолвить. Одиннадцать кодов, все с префиксом `hero.decision.`:
 
-`payment_attractive`, `risk_too_high`, `trusts_the_guild`, `unpredictable_mood`, `payment_insulting`, `personal_conviction`, `personal_aversion`, `stands_with_comrade`, `will_not_work_with`, `principle_forbids`.
+`payment_attractive`, `risk_too_high`, `trusts_the_guild`, `unpredictable_mood`, `payment_insulting`, `personal_conviction`, `personal_aversion`, `stands_with_comrade`, `will_not_work_with`, `principle_forbids`, `no_reason_to_refuse`.
+
+Последние два — не `TraceFactor.ReasonCode`: `principle_forbids` живёт в `TraceBlock`, `no_reason_to_refuse` — в `Trace.TieBreak` (§2.4). Величины у них нет по одной и той же причине: ни красная линия, ни разрешение ничьей не являются мотивом, который с чем-то соизмеряется.
 
 Название черты в объяснении берётся **не** из кода причины, а из `SourceEntity`: код говорит, чем мотив является, источник — чей он. Иначе каждая новая черта требовала бы нового кода причины, то есть правки движка.
 
@@ -252,6 +260,7 @@ wavered = (score_before_mood >= 0) != (final >= 0)
 
   **Почему не «три крупнейших по модулю».** Прежняя формулировка предписывала именно это, и она неверна: на полностью допустимых данных герой соглашается со счётом +3, а тремя крупнейшими по модулю оказываются риск (−30), обида (−29) и неприязнь (−28) — экран показывал под словом «принял» три довода против и ни одного за, пока согласие несли пять меньших мотивов (оплата 20, три убеждения по 20, доверие 10). Объяснение обязано объяснять **принятое** решение; поэтому большинство мест принадлежит выигравшей стороне, а один встречный довод остаётся намеренно — «взялся, хотя рискованно» и есть та фраза, ради которой экран существует.
 - **Отказ по принципу** — отдельное поле строки ответа (`BlockedByEntity` + ключ имени), а не «очень сильная причина». Разница между «дорого рискует» и «не станет этого делать» — это разница между торгом и характером, и она должна быть видна до того, как игрок начнёт торговаться. Список причин у заблокированной строки пуст ровно потому, что ранжировать нечего.
+- **Разрешение ничьей** — отдельная строка ответа (`ResponseLine.TieBreakCode`), а не причина среди причин: у неё нет величины и она не тянула ни в какую сторону — она решила, когда не тянуло ничто. Пусто у всех, кроме точной ничьей (§2.4); у заблокированной строки пусто всегда, потому что счёта не было.
 - **«Колебался»** — отдельная пометка, выведенная по §2.4. Не конкурирует с причинами за верхние строки.
 
 Имя источника причины не показывается там, где источником всегда является сам контракт или сам отвечающий герой: они уже названы на экране, и повторить их значило бы повторить, а не объяснить.
@@ -323,7 +332,7 @@ Read model — `ContractOfferScreenModel` в сборке `OathAndCoin.Presentat
 
 `tests/OathAndCoin.Simulation.Tests/DecisionPropertyTests.cs` — перебор сгенерированных входов: `RaisingPaymentNeverTurnsAcceptanceIntoRefusal`, `RaisingRiskNeverTurnsRefusalIntoAcceptance`, `PrincipleHoldsAtEveryPaymentAndRisk`, `ConsideredActionsAlwaysWeighBothAcceptAndDecline`, `DecisiveSumOfMotivesKeepsTheSameActionAcrossEveryMood`, `BoundarySumOfMotivesLetsMoodFlipTheAction`, `IrrelevantFieldsDoNotChangeTheDecision`, `SameInputsProduceTheSameDecision`.
 
-`ContractDecisionRuleTests.cs` — арифметика и порядок: `Decide_BlocksWhenPrincipleTagMatchesContract`, `Decide_ReportsEveryViolatedPrincipleInContentIdOrder`, `Decide_DividesEachTermSeparately_NotTheCombinedSum`, `Decide_OmitsZeroMagnitudeFactors`, `Decide_SumOfFactorsEqualsSelectedScore`, `Decide_BondsCountOnlyHeroesWhoAlreadyAccepted`.
+`ContractDecisionRuleTests.cs` — арифметика и порядок: `Decide_BlocksWhenPrincipleTagMatchesContract`, `Decide_ReportsEveryViolatedPrincipleInContentIdOrder`, `Decide_DividesEachTermSeparately_NotTheCombinedSum`, `Decide_OmitsZeroMagnitudeFactors`, `Decide_SumOfFactorsEqualsSelectedScore`, `Decide_BondsCountOnlyHeroesWhoAlreadyAccepted`, `Decide_NamesTheRuleThatSettlesAnExactlyZeroScore`, `Decide_LeavesTheTieBreakEmptyWhenTheScoreIsNotZero`.
 
 `CausalTraceTests.cs` — форма следа: `SelectedScore_IsNullExactlyWhenBlocked`, `DecisionResult_RejectsScoreTogetherWithBlock`, `DecisionResult_RejectsMissingScoreWithoutBlock`, `BlockedBy_NamesTheEntityThatBlocked`.
 
@@ -337,7 +346,7 @@ Read model — `ContractOfferScreenModel` в сборке `OathAndCoin.Presentat
 
 ### 7.3. Сценарии и контрасты
 
-`ScenarioCoverageTests.cs` — не менее двадцати сценариев в формате манифеста, каждый с каноническим артефактом и replay (`AtLeastTwentyScenariosAreShipped`, `EveryScenarioReplaysToItsCanonicalArtifact`), плюс именованные утверждения по каждому мотиву.
+`ScenarioCoverageTests.cs` — не менее двадцати сценариев в формате манифеста, каждый с каноническим артефактом и replay (`AtLeastTwentyScenariosAreShipped`, `EveryScenarioReplaysToItsCanonicalArtifact`), плюс именованные утверждения по каждому мотиву — включая `ZeroSumTie_AcceptsOnAStatedTieBreakRatherThanASilentDefault` на сценарии `zero_sum_tie`, где герой с нулевыми шкалами отвечает на том ординале, где seed 7 даёт настроение ровно ноль: пустая сумма, пустой след и заявленная ничья (§2.4).
 
 Критерий выхода «изменение одного понятного условия предсказуемо меняет решение» переведён в автоматическую проверку **отдельным типом файла** в `scenarios/contrasts/`, а не полем существующего манифеста: манифест описывает прогон, а контраст описывает два прогона и различие между ними.
 

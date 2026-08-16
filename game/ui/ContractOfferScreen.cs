@@ -358,6 +358,16 @@ public sealed partial class ContractOfferScreen : VBoxContainer
             block.AddChild(blocked);
         }
 
+        // The rule that settled a dead heat, when there was one. Same shape of
+        // branch as the two above — on a model field being null, never on
+        // what is in it. See ResponseLine.TieBreakCode: the one decision with
+        // no reasons at all is exactly the one that most needs a line saying
+        // what decided it.
+        if (response.TieBreakCode is not null)
+        {
+            block.AddChild(BuildLabel(textSource.Resolve(response.TieBreakCode)));
+        }
+
         block.AddChild(BuildLabel(textSource.Resolve(WaveredKeys.For(response.Wavered))));
 
         return block;

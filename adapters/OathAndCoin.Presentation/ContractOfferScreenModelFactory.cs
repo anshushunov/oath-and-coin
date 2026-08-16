@@ -369,7 +369,12 @@ public static class ContractOfferScreenModelFactory
             var block = decision.Trace.BlockedBy[0];
             return new ResponseLine(
                 hero.Value, heroDisplayNameKey, decision.SelectedAction.Value, ImmutableArray<ReasonLine>.Empty,
-                block.SourceEntity.Value, TraitDisplayNameKey(block.SourceEntity), Wavered: false);
+                block.SourceEntity.Value, TraitDisplayNameKey(block.SourceEntity),
+
+                // A gate closes the decision before any score exists, so
+                // there is no dead heat for a tie-break to settle either.
+                TieBreakCode: null,
+                Wavered: false);
         }
 
         return new ResponseLine(
@@ -379,6 +384,13 @@ public static class ContractOfferScreenModelFactory
             RankReasons(decision.Trace, decision.SelectedAction, heroDisplayNameKeys),
             BlockedByEntity: null,
             BlockedByDisplayNameKey: null,
+
+            // Carried through as the rule stated it, never re-derived here
+            // from SelectedScore: which ties exist and how they are settled
+            // is the decision rule's business, and a second implementation of
+            // it in this layer is exactly the invented explanation TDD §8
+            // forbids.
+            decision.Trace.TieBreak,
             Wavered: ComputeWavered(decision));
     }
 
@@ -582,6 +594,7 @@ public static class ContractOfferScreenModelFactory
         ["reasons"] = new JsonArray(response.Reasons.Select(DescribeReason).ToArray<JsonNode?>()),
         ["blocked_by_entity"] = response.BlockedByEntity,
         ["blocked_by_display_name_key"] = response.BlockedByDisplayNameKey,
+        ["tie_break_code"] = response.TieBreakCode,
         ["wavered"] = response.Wavered,
     };
 

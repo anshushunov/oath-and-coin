@@ -46,6 +46,26 @@ public static class ReasonCodes
     public const string PrincipleForbids = "hero.decision.principle_forbids";
 
     /// <summary>
+    /// Nothing weighed either way: the motives summed to exactly zero, so
+    /// accepting and refusing scored the same and the hero went along with
+    /// the guild. A <see cref="CausalTrace.TieBreak"/> code, not a
+    /// <see cref="TraceFactor.ReasonCode"/> — it has no magnitude, because it
+    /// is not a motive at all but the rule that settled a dead heat between
+    /// two equally-scored actions.
+    /// </summary>
+    /// <remarks>
+    /// External review finding: <c>score &gt;= 0</c> quietly resolved that
+    /// heat toward acceptance while <see cref="CausalTrace.TieBreak"/> stayed
+    /// null, so a hero with zero scales, no trust, no matching trait, no bond
+    /// and a mood of exactly zero accepted a contract with both factor lists
+    /// empty and no block — a significant autonomous decision with not one
+    /// reason attached to it, and an optimistic default passed off as
+    /// character. The rule is unchanged in what it chooses; what changed is
+    /// that it now says so, in a code the player is shown.
+    /// </remarks>
+    public const string NoReasonToRefuse = "hero.decision.no_reason_to_refuse";
+
+    /// <summary>
     /// Every code above, in declaration order. A screen that needs to check
     /// every reason code against a localization catalogue (e.g. Task 11's
     /// read model) would otherwise have to enumerate them by hand, and a
@@ -62,5 +82,6 @@ public static class ReasonCodes
         PersonalAversion,
         StandsWithComrade,
         WillNotWorkWith,
-        PrincipleForbids);
+        PrincipleForbids,
+        NoReasonToRefuse);
 }
