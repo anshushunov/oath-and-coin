@@ -78,12 +78,17 @@ module.exports = {
       name: 'simulation-depends-on-nothing',
       severity: 'error',
       comment:
-        'ADR-010: the simulation must not know about the DOM, React, PixiJS, Electron, the filesystem, the clock or global randomness. It is a pure library, so it imports from nowhere in this workspace and from no runtime package.',
+        'ADR-010: the simulation must not know about the DOM, React, PixiJS, Electron, the filesystem, the clock or global randomness. It is a pure library, so it imports nothing outside itself — not another workspace package, not an npm package, not a Node built-in.',
       from: { path: '^packages/simulation/' },
-      to: {
-        path: '^(packages/(content|presentation|application)|apps|tools)/',
-        pathNot: '^packages/simulation/'
-      }
+      // Everything whose resolved path is not inside the package. Written as
+      // one negation rather than as a list of forbidden layers, because the
+      // list version was the whole defect external review found: it named the
+      // sibling packages and said "no runtime package" in its comment, so
+      // `import { readFileSync } from "node:fs"` inside the pure core passed
+      // the only authoritative boundary check with `0 violations`. A rule that
+      // enumerates what is banned is a rule that misses whatever is invented
+      // next; this one enumerates the single thing that is allowed.
+      to: { pathNot: '^packages/simulation/' }
     },
     {
       name: 'content-depends-only-on-simulation',

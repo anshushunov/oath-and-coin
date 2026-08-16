@@ -21,6 +21,12 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# electron-builder runs a package manager of its own while packaging and leaves
+# a content-addressable store behind in the project directory — 21 MB and 443
+# files on the first run here. It is a cache, not an input: the real store lives
+# under the user profile (`pnpm store path`).
+.pnpm-store/
+
 # Playwright downloads its browsers outside the repository, but a locally
 # invoked run without the config's outputDir still drops these two here.
 playwright-report/

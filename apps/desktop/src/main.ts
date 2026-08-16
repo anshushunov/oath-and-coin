@@ -7,6 +7,7 @@ import {
   DESCRIBE_HOST_CHANNEL,
   describeHostRequest,
   describeHostResponse,
+  mayOpenExternally,
   type HostDescription
 } from './contract';
 
@@ -130,8 +131,15 @@ function createWindow(): BrowserWindow {
   });
   window.webContents.setWindowOpenHandler(({ url }) => {
     // Opened in the user's browser rather than in a second, less constrained
-    // Electron window.
-    void shell.openExternal(url);
+    // Electron window — but only if it is a web URL. Handing an arbitrary
+    // scheme to the OS is the hole external review found here: `file:` and
+    // registered custom schemes go to whatever program claims them, and
+    // Electron's security guidance names that as a path to arbitrary command
+    // execution. Anything else is dropped, deliberately without a fallback:
+    // there is no safer program to open an unknown scheme with.
+    if (mayOpenExternally(url)) {
+      void shell.openExternal(url);
+    }
     return { action: 'deny' };
   });
 

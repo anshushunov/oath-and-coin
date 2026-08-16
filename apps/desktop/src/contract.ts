@@ -30,3 +30,40 @@ export const describeHostResponse = z.object({
 });
 
 export type HostDescription = z.infer<typeof describeHostResponse>;
+
+/**
+ * The only URL schemes the host will hand to the operating system.
+ *
+ * `shell.openExternal` asks the OS to open a URL with whatever is registered
+ * for its scheme, and Electron's own security guidance is explicit that doing
+ * that with untrusted input can end in arbitrary command execution
+ * (electronjs.org/docs/latest/tutorial/security, item 15). "Untrusted" is not
+ * hypothetical here: the argument arrives from a page, through
+ * `setWindowOpenHandler`, and the page is the one surface of this application
+ * an attacker would aim at.
+ *
+ * Found by external review of segment 2, where the handler forwarded every
+ * scheme — `file:`, `ms-msdt:`, anything with a registered handler — without
+ * looking at it.
+ */
+const OPENABLE_SCHEMES: ReadonlySet<string> = new Set(['http:', 'https:']);
+
+/**
+ * Whether the host may ask the operating system to open this URL.
+ *
+ * A pure predicate rather than an inline check inside the handler, so it can
+ * be tested against the strings that matter without packaging an application
+ * first.
+ */
+export function mayOpenExternally(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    // Not a URL at all. `shell.openExternal` would still pass it to the shell,
+    // which is precisely the case worth refusing.
+    return false;
+  }
+
+  return OPENABLE_SCHEMES.has(parsed.protocol);
+}

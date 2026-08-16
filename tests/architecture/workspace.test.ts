@@ -23,8 +23,38 @@ interface PackageManifest {
   readonly scripts?: Readonly<Record<string, string>>;
   readonly dependencies?: Readonly<Record<string, string>>;
   readonly devDependencies?: Readonly<Record<string, string>>;
+  readonly optionalDependencies?: Readonly<Record<string, string>>;
+  readonly peerDependencies?: Readonly<Record<string, string>>;
   readonly engines?: Readonly<Record<string, string>>;
   readonly packageManager?: string;
+}
+
+/**
+ * Every section a dependency can be declared in — all four, not the two that
+ * happen to be in use today.
+ *
+ * External review found the pin, single-version and storefront checks reading
+ * only `dependencies` and `devDependencies`. An SDK or a native runtime added
+ * as an `optionalDependency` — which is the ordinary way to ship something
+ * that "degrades when absent", exactly how a storefront SDK would arrive —
+ * walked past all three of them and left the suite green.
+ */
+const DEPENDENCY_SECTIONS = [
+  'dependencies',
+  'devDependencies',
+  'optionalDependencies',
+  'peerDependencies'
+] as const;
+
+/** Every declared dependency of a manifest, whichever section it sits in. */
+function* declaredDependencies(
+  manifest: PackageManifest
+): Generator<{ section: string; name: string; range: string }> {
+  for (const section of DEPENDENCY_SECTIONS) {
+    for (const [name, range] of Object.entries(manifest[section] ?? {})) {
+      yield { section, name, range };
+    }
+  }
 }
 
 interface Member {
@@ -187,16 +217,14 @@ describe('dependency pins', () => {
     const loose: string[] = [];
 
     for (const member of [{ directory: '.', manifest: rootManifest }, ...members]) {
-      for (const field of ['dependencies', 'devDependencies'] as const) {
-        for (const [dependency, range] of Object.entries(member.manifest[field] ?? {})) {
-          // Workspace-internal links are versionless by construction; pinning
-          // them would mean bumping a number in two files on every change.
-          if (range.startsWith('workspace:')) {
-            continue;
-          }
-          if (!exactVersion.test(range)) {
-            loose.push(`${member.directory}: ${dependency}@${range}`);
-          }
+      for (const { section, name, range } of declaredDependencies(member.manifest)) {
+        // Workspace-internal links are versionless by construction; pinning
+        // them would mean bumping a number in two files on every change.
+        if (range.startsWith('workspace:')) {
+          continue;
+        }
+        if (!exactVersion.test(range)) {
+          loose.push(`${member.directory} (${section}): ${name}@${range}`);
         }
       }
     }
@@ -208,15 +236,13 @@ describe('dependency pins', () => {
     const versions = new Map<string, Map<string, string[]>>();
 
     for (const member of [{ directory: '.', manifest: rootManifest }, ...members]) {
-      for (const field of ['dependencies', 'devDependencies'] as const) {
-        for (const [dependency, range] of Object.entries(member.manifest[field] ?? {})) {
-          if (range.startsWith('workspace:')) {
-            continue;
-          }
-          const byVersion = versions.get(dependency) ?? new Map<string, string[]>();
-          byVersion.set(range, [...(byVersion.get(range) ?? []), member.directory]);
-          versions.set(dependency, byVersion);
+      for (const { name, range } of declaredDependencies(member.manifest)) {
+        if (range.startsWith('workspace:')) {
+          continue;
         }
+        const byVersion = versions.get(name) ?? new Map<string, string[]>();
+        byVersion.set(range, [...(byVersion.get(range) ?? []), member.directory]);
+        versions.set(name, byVersion);
       }
     }
 
@@ -239,11 +265,9 @@ describe('dependency pins', () => {
     const found: string[] = [];
 
     for (const member of [{ directory: '.', manifest: rootManifest }, ...members]) {
-      for (const field of ['dependencies', 'devDependencies'] as const) {
-        for (const dependency of Object.keys(member.manifest[field] ?? {})) {
-          if (storefrontish.test(dependency)) {
-            found.push(`${member.directory}: ${dependency}`);
-          }
+      for (const { section, name } of declaredDependencies(member.manifest)) {
+        if (storefrontish.test(name)) {
+          found.push(`${member.directory} (${section}): ${name}`);
         }
       }
     }

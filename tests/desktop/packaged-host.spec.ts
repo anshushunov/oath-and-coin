@@ -35,6 +35,7 @@ interface GateEvidence {
   pageExposure: PageExposure;
   hostDescription: unknown;
   inlineScriptBlocked: boolean;
+  openedExternally: string[];
 }
 
 interface PageExposure {
@@ -42,6 +43,71 @@ interface PageExposure {
   ipcRendererReachable: boolean;
   requireReachable: boolean;
   processReachable: boolean;
+}
+
+/**
+ * Runs the inline-script probe inside the packaged page and reports what
+ * happened.
+ *
+ * A function rather than an inline block because the report has to record the
+ * value this probe actually produced. External review found the report writing
+ * `inlineScriptBlocked: true` as a constant: if the CSP test failed and
+ * Playwright restarted the worker, `gate-report.json` — published by CI with
+ * `always()` — would still claim the policy held on a build where the inline
+ * script ran. A failure artifact that contradicts the verdict is worse than no
+ * artifact.
+ */
+async function probeInlineScript(app: ElectronApplication): Promise<boolean> {
+  const page = await app.firstWindow();
+
+  const inlineScriptRan = await page.evaluate(() => {
+    const element = document.createElement('script');
+    element.textContent = 'window.__inlineScriptRan = true;';
+    document.head.append(element);
+    return (window as unknown as Record<string, unknown>).__inlineScriptRan === true;
+  });
+
+  return !inlineScriptRan;
+}
+
+/**
+ * Asks the page to open two URLs and reports which of them the host actually
+ * handed to the operating system.
+ *
+ * `shell.openExternal` is replaced inside the main process for the duration of
+ * the probe, because the alternative — observing whether Windows launched
+ * something — is not something a test can do. The replacement records and
+ * returns; the decision under test is the host's, and it happens before this
+ * point.
+ */
+async function probeExternalOpen(app: ElectronApplication): Promise<string[]> {
+  await app.evaluate(({ shell }) => {
+    const opened: string[] = [];
+    (globalThis as unknown as Record<string, unknown>).__openedExternally = opened;
+    Object.defineProperty(shell, 'openExternal', {
+      configurable: true,
+      value: async (url: string) => {
+        opened.push(url);
+      }
+    });
+  });
+
+  const page = await app.firstWindow();
+  await page.evaluate(() => {
+    // `file:` has a handler on every Windows install and is exactly what the
+    // unguarded version forwarded; the https one proves the guard did not
+    // simply turn the feature off.
+    window.open('file:///C:/Windows/System32/calc.exe');
+    window.open('https://example.com/docs');
+  });
+
+  // The handler runs in the main process, so the page returning is not proof
+  // that it has run yet.
+  await page.waitForTimeout(250);
+
+  return app.evaluate(
+    () => (globalThis as unknown as Record<string, string[]>).__openedExternally ?? []
+  );
 }
 
 function directorySize(directory: string): { bytes: number; files: number } {
@@ -145,19 +211,22 @@ test.describe('packaged desktop host', () => {
   });
 
   test('the content security policy blocks an inline script', async () => {
-    const page = await app.firstWindow();
-
     // Behaviour, not a header string. Over file:// there is no response header
     // to read at all, and a policy can be present and permissive — what
     // matters is whether the page can execute script it did not ship with.
-    const inlineScriptRan = await page.evaluate(() => {
-      const element = document.createElement('script');
-      element.textContent = 'window.__inlineScriptRan = true;';
-      document.head.append(element);
-      return (window as unknown as Record<string, unknown>).__inlineScriptRan === true;
-    });
+    expect(
+      await probeInlineScript(app),
+      'an inline script must not run under the policy'
+    ).toBe(true);
+  });
 
-    expect(inlineScriptRan, 'an inline script must not run under the policy').toBe(false);
+  test('only web URLs are handed to the operating system', async () => {
+    // ADR-010 §80 keeps the renderer sandboxed; this is the other direction —
+    // what the sandboxed page can make the host do on its behalf. Electron's
+    // security guidance names `shell.openExternal` with untrusted input as a
+    // route to arbitrary command execution, and the page is the untrusted
+    // input.
+    expect(await probeExternalOpen(app)).toEqual(['https://example.com/docs']);
   });
 
   test('the one allowed IPC method answers, and the run is recorded', async () => {
@@ -173,6 +242,11 @@ test.describe('packaged desktop host', () => {
     const metrics = await readProcessMetrics(app);
     const size = directorySize(packagedDirectory);
 
+    // Measured here, in the run that writes the report, rather than assumed
+    // from the tests above.
+    const inlineScriptBlocked = await probeInlineScript(app);
+    const openedExternally = await probeExternalOpen(app);
+
     const evidence: GateEvidence = {
       executable,
       packagedBytes: size.bytes,
@@ -183,7 +257,8 @@ test.describe('packaged desktop host', () => {
       processes: metrics,
       pageExposure: await readPageExposure(app),
       hostDescription,
-      inlineScriptBlocked: true
+      inlineScriptBlocked,
+      openedExternally
     };
 
     // AGENTS.md §11: a number a reader sees comes from the run that produced
@@ -210,5 +285,12 @@ test.describe('packaged desktop host', () => {
     // observed against 500 MB. This one is a real gate — a leak or a second
     // renderer would show up here.
     expect(evidence.rssBytes).toBeLessThanOrEqual(500 * 1024 * 1024);
+
+    // The two security probes are asserted against the values written above,
+    // not re-run. That is what keeps the artifact and the verdict from
+    // disagreeing: if either probe came back wrong, the file on disk says so
+    // and this test is red for the same reason.
+    expect(evidence.inlineScriptBlocked).toBe(true);
+    expect(evidence.openedExternally).toEqual(['https://example.com/docs']);
   });
 });
