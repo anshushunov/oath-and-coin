@@ -96,6 +96,63 @@ jobs:
       - name: Test
         run: dotnet test OathAndCoin.sln -c Release --no-build
 
+      # ADR-010 makes migration/oracle/v1 the record of this build's behaviour
+      # that outlives the build. Named as its own stage even though the
+      # solution-wide run above already covers the project: when the oracle
+      # goes red the cause is "the frozen behaviour changed", which is a
+      # different conversation from any other failing test, and a reader
+      # scanning the log should not have to find that out from a test name.
+      #
+      # Deliberately validates and never regenerates. Re-running the exporter
+      # here would make the pipeline agree with whatever the current code says
+      # — the corpus would be "correct" by construction and would have stopped
+      # being evidence. Regeneration is a local, reviewed act with a recorded
+      # reason (see migration/oracle/v1/README.md).
+      - name: Validate the migration oracle corpus
+        id: oracle
+        run: >-
+          dotnet test tests/OathAndCoin.MigrationOracle.Tests/OathAndCoin.MigrationOracle.Tests.csproj
+          -c Release --no-build
+
+      # The other half of "validates, but does not regenerate": proves the
+      # stage above wrote nothing. A validator that quietly rewrote a corpus it
+      # disagreed with would be green forever, which is exactly the failure
+      # mode an immutable artifact exists to rule out.
+      #
+      # `git status --porcelain --untracked-files=all`, not
+      # `git diff --exit-code`. External review finding: plain `git diff` does
+      # not see untracked files — the very fact the corpus export procedure
+      # documents and works around by staging its first run — so a validator
+      # that wrote a *new* file into the corpus would have passed this check
+      # silently. Any output at all is a failure here, which covers a modified
+      # tracked byte and a created untracked file with one command.
+      #
+      # `always()`, so this runs even when validation failed: "the oracle went
+      # red" and "the oracle rewrote itself" are different diagnoses, and a
+      # step that only runs after a green validation can never report the
+      # second one.
+      - name: Prove corpus validation changed no byte of it
+        if: always() && steps.oracle.outcome != 'skipped'
+        shell: bash
+        run: |
+          changed=$(git status --porcelain=v1 --untracked-files=all -- migration/oracle)
+          if [ -n "$changed" ]; then
+            echo "::error::Validating the oracle corpus modified it. Validation must be read-only." >&2
+            echo "$changed" >&2
+            exit 1
+          fi
+
+      # The corpus manifest is the digest a later job, a reviewer or a
+      # TypeScript parity run compares against; published so it is readable
+      # without cloning the commit.
+      - name: Upload oracle manifest
+        if: always() && steps.oracle.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-oracle-manifest
+          path: migration/oracle/v1/manifest.json
+          if-no-files-found: error
+
       # TDD §19.7. The tests above prove determinism inside one process; this
       # proves it across two, which is the claim MVP_PLAN §4.3 actually makes.
       # Two independent processes, same seed, byte-identical canonical

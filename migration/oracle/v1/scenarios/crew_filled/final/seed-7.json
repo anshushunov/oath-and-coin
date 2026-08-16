@@ -1,0 +1,558 @@
+{
+  "artifact_schema_version": 1,
+  "canonical_base64": "eyJhcnRpZmFjdF92ZXJzaW9uIjozLCJjb250ZW50X3ZlcnNpb24iOiI4YTBhYjkyNGE1MTM1NDUzIiwiZmluYWxfc3RhdGUiOnsiYXBwbGllZF9jb21tYW5kX2lkcyI6WzEsMl0sImNvbnRyYWN0cyI6W3siYWNjZXB0ZWRfYnkiOlsxLDJdLCJpZCI6ImZpeHR1cmU6Y3Jld19qb2IiLCJwYXltZW50Ijo1MCwicmVxdWlyZWRfY3JldyI6MiwicmVzcG9uZGVkX2J5IjpbMSwyXSwicmlzayI6MCwic3RhdHVzIjoiY3Jld2VkIiwidGFncyI6W119LHsiYWNjZXB0ZWRfYnkiOltdLCJpZCI6ImZpeHR1cmU6ZG91YmxlX3Ryb3VibGVfY29udHJhY3QiLCJwYXltZW50IjoxMCwicmVxdWlyZWRfY3JldyI6MSwicmVzcG9uZGVkX2J5IjpbXSwicmlzayI6MTAsInN0YXR1cyI6Im9mZmVyZWQiLCJ0YWdzIjpbInRlc3Q6YWxwaGEiLCJ0ZXN0OmJldGEiXX0seyJhY2NlcHRlZF9ieSI6W10sImlkIjoiZml4dHVyZTpnYW1tYV9qb2IiLCJwYXltZW50IjowLCJyZXF1aXJlZF9jcmV3IjoxLCJyZXNwb25kZWRfYnkiOltdLCJyaXNrIjowLCJzdGF0dXMiOiJvZmZlcmVkIiwidGFncyI6WyJ0ZXN0OmdhbW1hIl19LHsiYWNjZXB0ZWRfYnkiOltdLCJpZCI6ImZpeHR1cmU6am9iX2FscGhhIiwicGF5bWVudCI6NTAsInJlcXVpcmVkX2NyZXciOjIsInJlc3BvbmRlZF9ieSI6W10sInJpc2siOjAsInN0YXR1cyI6Im9mZmVyZWQiLCJ0YWdzIjpbXX1dLCJoZXJvZXMiOlt7ImNhdXRpb24iOjAsImRlZmluaXRpb24iOiJmaXh0dXJlOmF2ZXJzZV9oZXJvIiwiZGlzcGxheV9uYW1lX2tleSI6Imhlcm8uZml4dHVyZS5hdmVyc2VfaGVyby5uYW1lIiwiZ3JlZWQiOjAsImhlcm9faWQiOjAsInByaWRlIjowLCJyZWxhdGlvbnNoaXBzIjp7fSwidHJhaXRzIjpbImZpeHR1cmU6dGVzdF9hdmVyc2lvbiJdLCJ0cnVzdF9pbl9ndWlsZCI6ODB9LHsiY2F1dGlvbiI6MCwiZGVmaW5pdGlvbiI6ImZpeHR1cmU6Y3Jld19sZWFkZXIiLCJkaXNwbGF5X25hbWVfa2V5IjoiaGVyby5maXh0dXJlLmNyZXdfbGVhZGVyLm5hbWUiLCJncmVlZCI6MTAwLCJoZXJvX2lkIjoxLCJwcmlkZSI6MCwicmVsYXRpb25zaGlwcyI6e30sInRyYWl0cyI6W10sInRydXN0X2luX2d1aWxkIjoxMDB9LHsiY2F1dGlvbiI6MCwiZGVmaW5pdGlvbiI6ImZpeHR1cmU6Y3Jld19yZWNydWl0IiwiZGlzcGxheV9uYW1lX2tleSI6Imhlcm8uZml4dHVyZS5jcmV3X3JlY3J1aXQubmFtZSIsImdyZWVkIjoxMDAsImhlcm9faWQiOjIsInByaWRlIjowLCJyZWxhdGlvbnNoaXBzIjp7fSwidHJhaXRzIjpbXSwidHJ1c3RfaW5fZ3VpbGQiOjEwMH0seyJjYXV0aW9uIjowLCJkZWZpbml0aW9uIjoiZml4dHVyZTpjcmV3X3NrZXB0aWMiLCJkaXNwbGF5X25hbWVfa2V5IjoiaGVyby5maXh0dXJlLmNyZXdfc2tlcHRpYy5uYW1lIiwiZ3JlZWQiOjAsImhlcm9faWQiOjMsInByaWRlIjowLCJyZWxhdGlvbnNoaXBzIjp7ImZpeHR1cmU6Y3Jld19sZWFkZXIiOi0yMH0sInRyYWl0cyI6W10sInRydXN0X2luX2d1aWxkIjoxMDB9LHsiY2F1dGlvbiI6NTAsImRlZmluaXRpb24iOiJmaXh0dXJlOmRvdWJsZV9wcmluY2lwbGVfaGVybyIsImRpc3BsYXlfbmFtZV9rZXkiOiJoZXJvLmZpeHR1cmUuZG91YmxlX3ByaW5jaXBsZV9oZXJvLm5hbWUiLCJncmVlZCI6NTAsImhlcm9faWQiOjQsInByaWRlIjo1MCwicmVsYXRpb25zaGlwcyI6e30sInRyYWl0cyI6WyJmaXh0dXJlOnByaW5jaXBsZV9hbHBoYSIsImZpeHR1cmU6cHJpbmNpcGxlX2JldGEiXSwidHJ1c3RfaW5fZ3VpbGQiOjUwfV0sImhpc3RvcnkiOlt7ImNhdXNhbF90cmFjZV9pZCI6MCwiY29udHJhY3RfaWQiOiJmaXh0dXJlOmNyZXdfam9iIiwiZXZlbnRfaWQiOjAsImhlcm9faWQiOjEsImtpbmQiOiJoZXJvX2FjY2VwdGVkX2NvbnRyYWN0IiwibG9naWNhbF90aW1lIjowfSx7ImNhdXNhbF90cmFjZV9pZCI6MSwiY29udHJhY3RfaWQiOiJmaXh0dXJlOmNyZXdfam9iIiwiZXZlbnRfaWQiOjEsImhlcm9faWQiOjIsImtpbmQiOiJoZXJvX2FjY2VwdGVkX2NvbnRyYWN0IiwibG9naWNhbF90aW1lIjowfV0sIm1ldGFkYXRhIjp7ImNhbXBhaWduX3NlZWQiOjcsImNvbnRlbnRfdmVyc2lvbiI6IjhhMGFiOTI0YTUxMzU0NTMiLCJsb2dpY2FsX3RpbWUiOjAsIm5leHRfZGVjaXNpb25fb3JkaW5hbCI6MiwibmV4dF9ldmVudF9pZCI6MiwibmV4dF90cmFjZV9pZCI6MiwicnVsZXNldF92ZXJzaW9uIjoibTEtZGVjaXNpb24vMSIsInNhdmVfc2NoZW1hX3ZlcnNpb24iOjEsInN0YXRlX3ZlcnNpb24iOjJ9LCJ0cmFjZXMiOlt7ImJsb2NrZWRfYnkiOltdLCJuZWdhdGl2ZV9mYWN0b3JzIjpbeyJtYWduaXR1ZGUiOjIsInJlYXNvbl9jb2RlIjoiaGVyby5kZWNpc2lvbi51bnByZWRpY3RhYmxlX21vb2QiLCJzb3VyY2VfZW50aXR5IjoiZml4dHVyZTpjcmV3X2xlYWRlciJ9XSwicG9zaXRpdmVfZmFjdG9ycyI6W3sibWFnbml0dWRlIjo1MCwicmVhc29uX2NvZGUiOiJoZXJvLmRlY2lzaW9uLnBheW1lbnRfYXR0cmFjdGl2ZSIsInNvdXJjZV9lbnRpdHkiOiJmaXh0dXJlOmNyZXdfam9iIn0seyJtYWduaXR1ZGUiOjEwLCJyZWFzb25fY29kZSI6Imhlcm8uZGVjaXNpb24udHJ1c3RzX3RoZV9ndWlsZCIsInNvdXJjZV9lbnRpdHkiOiJmaXh0dXJlOmNyZXdfbGVhZGVyIn1dLCJ0aWVfYnJlYWsiOm51bGwsInRyYWNlX2lkIjowfSx7ImJsb2NrZWRfYnkiOltdLCJuZWdhdGl2ZV9mYWN0b3JzIjpbXSwicG9zaXRpdmVfZmFjdG9ycyI6W3sibWFnbml0dWRlIjo1MCwicmVhc29uX2NvZGUiOiJoZXJvLmRlY2lzaW9uLnBheW1lbnRfYXR0cmFjdGl2ZSIsInNvdXJjZV9lbnRpdHkiOiJmaXh0dXJlOmNyZXdfam9iIn0seyJtYWduaXR1ZGUiOjEwLCJyZWFzb25fY29kZSI6Imhlcm8uZGVjaXNpb24udHJ1c3RzX3RoZV9ndWlsZCIsInNvdXJjZV9lbnRpdHkiOiJmaXh0dXJlOmNyZXdfcmVjcnVpdCJ9LHsibWFnbml0dWRlIjoyLCJyZWFzb25fY29kZSI6Imhlcm8uZGVjaXNpb24udW5wcmVkaWN0YWJsZV9tb29kIiwic291cmNlX2VudGl0eSI6ImZpeHR1cmU6Y3Jld19yZWNydWl0In1dLCJ0aWVfYnJlYWsiOm51bGwsInRyYWNlX2lkIjoxfV0sInRyYWl0X3J1bGVzIjpbeyJpZCI6ImZpeHR1cmU6cHJpbmNpcGxlX2FscGhhIiwiaXNfcHJpbmNpcGxlIjp0cnVlLCJ0YWciOiJ0ZXN0OmFscGhhIiwid2VpZ2h0IjowfSx7ImlkIjoiZml4dHVyZTpwcmluY2lwbGVfYmV0YSIsImlzX3ByaW5jaXBsZSI6dHJ1ZSwidGFnIjoidGVzdDpiZXRhIiwid2VpZ2h0IjowfSx7ImlkIjoiZml4dHVyZTp0ZXN0X2F2ZXJzaW9uIiwiaXNfcHJpbmNpcGxlIjpmYWxzZSwidGFnIjoidGVzdDpnYW1tYSIsIndlaWdodCI6LTE0fV19LCJybmdfYWxnb3JpdGhtIjoic3BsaXRtaXg2NC1jb21wb3NlZC8xIiwicnVsZXNldF92ZXJzaW9uIjoibTEtZGVjaXNpb24vMSIsInNlZWQiOjcsInN0ZXBzIjpbeyJhcHBsaWVkIjp0cnVlLCJjb21tYW5kIjp7ImNvbW1hbmRfaWQiOjEsImNvbnRyYWN0IjoiZml4dHVyZTpjcmV3X2pvYiIsImV4cGVjdGVkX3N0YXRlX3ZlcnNpb24iOjAsImhlcm9faW5kZXgiOjF9LCJkZWNpc2lvbiI6eyJjb25zaWRlcmVkX2FjdGlvbnMiOlsiYWN0aW9uOmFjY2VwdCIsImFjdGlvbjpkZWNsaW5lIl0sInNlbGVjdGVkX2FjdGlvbiI6ImFjdGlvbjphY2NlcHQiLCJzZWxlY3RlZF9zY29yZSI6NTgsInRyYWNlX2lkIjowfSwiZXZlbnRzIjpbeyJjYXVzYWxfdHJhY2VfaWQiOjAsImNvbnRyYWN0X2lkIjoiZml4dHVyZTpjcmV3X2pvYiIsImV2ZW50X2lkIjowLCJoZXJvX2lkIjoxLCJraW5kIjoiaGVyb19hY2NlcHRlZF9jb250cmFjdCIsImxvZ2ljYWxfdGltZSI6MH1dLCJoZXJvX2RlZmluaXRpb24iOiJmaXh0dXJlOmNyZXdfbGVhZGVyIiwicmVqZWN0aW9uX2NvZGUiOm51bGx9LHsiYXBwbGllZCI6dHJ1ZSwiY29tbWFuZCI6eyJjb21tYW5kX2lkIjoyLCJjb250cmFjdCI6ImZpeHR1cmU6Y3Jld19qb2IiLCJleHBlY3RlZF9zdGF0ZV92ZXJzaW9uIjoxLCJoZXJvX2luZGV4IjoyfSwiZGVjaXNpb24iOnsiY29uc2lkZXJlZF9hY3Rpb25zIjpbImFjdGlvbjphY2NlcHQiLCJhY3Rpb246ZGVjbGluZSJdLCJzZWxlY3RlZF9hY3Rpb24iOiJhY3Rpb246YWNjZXB0Iiwic2VsZWN0ZWRfc2NvcmUiOjYyLCJ0cmFjZV9pZCI6MX0sImV2ZW50cyI6W3siY2F1c2FsX3RyYWNlX2lkIjoxLCJjb250cmFjdF9pZCI6ImZpeHR1cmU6Y3Jld19qb2IiLCJldmVudF9pZCI6MSwiaGVyb19pZCI6Miwia2luZCI6Imhlcm9fYWNjZXB0ZWRfY29udHJhY3QiLCJsb2dpY2FsX3RpbWUiOjB9XSwiaGVyb19kZWZpbml0aW9uIjoiZml4dHVyZTpjcmV3X3JlY3J1aXQiLCJyZWplY3Rpb25fY29kZSI6bnVsbH1dfQ==",
+  "canonical_sha256": "9c195867bb1cb7fe69632cbbd35644552ca867a5e0982a08a16197f33fbb2e89",
+  "checkpoint": "final",
+  "draws": {
+    "next_decision_ordinal_final": "2",
+    "next_decision_ordinal_initial": "0",
+    "per_step": [
+      {
+        "command_id": 1,
+        "consumed": "1",
+        "ordinal_after": "1",
+        "ordinal_before": "0"
+      },
+      {
+        "command_id": 2,
+        "consumed": "1",
+        "ordinal_after": "2",
+        "ordinal_before": "1"
+      }
+    ],
+    "total_consumed": "2"
+  },
+  "events": [
+    {
+      "causal_trace_id": 0,
+      "contract_id": "fixture:crew_job",
+      "event_id": 0,
+      "hero_id": 1,
+      "kind": "hero_accepted_contract",
+      "logical_time": 0
+    },
+    {
+      "causal_trace_id": 1,
+      "contract_id": "fixture:crew_job",
+      "event_id": 1,
+      "hero_id": 2,
+      "kind": "hero_accepted_contract",
+      "logical_time": 0
+    }
+  ],
+  "final_state": {
+    "applied_command_ids": [
+      1,
+      2
+    ],
+    "contracts": [
+      {
+        "accepted_by": [
+          1,
+          2
+        ],
+        "id": "fixture:crew_job",
+        "payment": 50,
+        "required_crew": 2,
+        "responded_by": [
+          1,
+          2
+        ],
+        "risk": 0,
+        "status": "crewed",
+        "tags": []
+      },
+      {
+        "accepted_by": [],
+        "id": "fixture:double_trouble_contract",
+        "payment": 10,
+        "required_crew": 1,
+        "responded_by": [],
+        "risk": 10,
+        "status": "offered",
+        "tags": [
+          "test:alpha",
+          "test:beta"
+        ]
+      },
+      {
+        "accepted_by": [],
+        "id": "fixture:gamma_job",
+        "payment": 0,
+        "required_crew": 1,
+        "responded_by": [],
+        "risk": 0,
+        "status": "offered",
+        "tags": [
+          "test:gamma"
+        ]
+      },
+      {
+        "accepted_by": [],
+        "id": "fixture:job_alpha",
+        "payment": 50,
+        "required_crew": 2,
+        "responded_by": [],
+        "risk": 0,
+        "status": "offered",
+        "tags": []
+      }
+    ],
+    "heroes": [
+      {
+        "caution": 0,
+        "definition": "fixture:averse_hero",
+        "display_name_key": "hero.fixture.averse_hero.name",
+        "greed": 0,
+        "hero_id": 0,
+        "pride": 0,
+        "relationships": {},
+        "traits": [
+          "fixture:test_aversion"
+        ],
+        "trust_in_guild": 80
+      },
+      {
+        "caution": 0,
+        "definition": "fixture:crew_leader",
+        "display_name_key": "hero.fixture.crew_leader.name",
+        "greed": 100,
+        "hero_id": 1,
+        "pride": 0,
+        "relationships": {},
+        "traits": [],
+        "trust_in_guild": 100
+      },
+      {
+        "caution": 0,
+        "definition": "fixture:crew_recruit",
+        "display_name_key": "hero.fixture.crew_recruit.name",
+        "greed": 100,
+        "hero_id": 2,
+        "pride": 0,
+        "relationships": {},
+        "traits": [],
+        "trust_in_guild": 100
+      },
+      {
+        "caution": 0,
+        "definition": "fixture:crew_skeptic",
+        "display_name_key": "hero.fixture.crew_skeptic.name",
+        "greed": 0,
+        "hero_id": 3,
+        "pride": 0,
+        "relationships": {
+          "fixture:crew_leader": -20
+        },
+        "traits": [],
+        "trust_in_guild": 100
+      },
+      {
+        "caution": 50,
+        "definition": "fixture:double_principle_hero",
+        "display_name_key": "hero.fixture.double_principle_hero.name",
+        "greed": 50,
+        "hero_id": 4,
+        "pride": 50,
+        "relationships": {},
+        "traits": [
+          "fixture:principle_alpha",
+          "fixture:principle_beta"
+        ],
+        "trust_in_guild": 50
+      }
+    ],
+    "history": [
+      {
+        "causal_trace_id": 0,
+        "contract_id": "fixture:crew_job",
+        "event_id": 0,
+        "hero_id": 1,
+        "kind": "hero_accepted_contract",
+        "logical_time": 0
+      },
+      {
+        "causal_trace_id": 1,
+        "contract_id": "fixture:crew_job",
+        "event_id": 1,
+        "hero_id": 2,
+        "kind": "hero_accepted_contract",
+        "logical_time": 0
+      }
+    ],
+    "metadata": {
+      "campaign_seed": 7,
+      "content_version": "8a0ab924a5135453",
+      "logical_time": 0,
+      "next_decision_ordinal": 2,
+      "next_event_id": 2,
+      "next_trace_id": 2,
+      "ruleset_version": "m1-decision/1",
+      "save_schema_version": 1,
+      "state_version": 2
+    },
+    "traces": [
+      {
+        "blocked_by": [],
+        "negative_factors": [
+          {
+            "magnitude": 2,
+            "reason_code": "hero.decision.unpredictable_mood",
+            "source_entity": "fixture:crew_leader"
+          }
+        ],
+        "positive_factors": [
+          {
+            "magnitude": 50,
+            "reason_code": "hero.decision.payment_attractive",
+            "source_entity": "fixture:crew_job"
+          },
+          {
+            "magnitude": 10,
+            "reason_code": "hero.decision.trusts_the_guild",
+            "source_entity": "fixture:crew_leader"
+          }
+        ],
+        "tie_break": null,
+        "trace_id": 0
+      },
+      {
+        "blocked_by": [],
+        "negative_factors": [],
+        "positive_factors": [
+          {
+            "magnitude": 50,
+            "reason_code": "hero.decision.payment_attractive",
+            "source_entity": "fixture:crew_job"
+          },
+          {
+            "magnitude": 10,
+            "reason_code": "hero.decision.trusts_the_guild",
+            "source_entity": "fixture:crew_recruit"
+          },
+          {
+            "magnitude": 2,
+            "reason_code": "hero.decision.unpredictable_mood",
+            "source_entity": "fixture:crew_recruit"
+          }
+        ],
+        "tie_break": null,
+        "trace_id": 1
+      }
+    ],
+    "trait_rules": [
+      {
+        "id": "fixture:principle_alpha",
+        "is_principle": true,
+        "tag": "test:alpha",
+        "weight": 0
+      },
+      {
+        "id": "fixture:principle_beta",
+        "is_principle": true,
+        "tag": "test:beta",
+        "weight": 0
+      },
+      {
+        "id": "fixture:test_aversion",
+        "is_principle": false,
+        "tag": "test:gamma",
+        "weight": -14
+      }
+    ]
+  },
+  "inputs": {
+    "checkpoint_after_command_id": 2,
+    "commands": [
+      {
+        "command_id": 1,
+        "contract": "fixture:crew_job",
+        "expected_state_version": 0,
+        "hero_index": 1
+      },
+      {
+        "command_id": 2,
+        "contract": "fixture:crew_job",
+        "expected_state_version": 1,
+        "hero_index": 2
+      }
+    ],
+    "content_root": "scenarios/fixtures/decision_core",
+    "content_root_exists": true,
+    "content_schema_version": 2,
+    "content_version": "8a0ab924a5135453",
+    "determinism_artifact_version": 3,
+    "manifest": {
+      "checkpoints": [
+        {
+          "after_command_id": 2,
+          "name": "final"
+        }
+      ],
+      "content_root": "scenarios/fixtures/decision_core",
+      "expected_error_code": null,
+      "expected_outcome": "success",
+      "expected_screen_state": null,
+      "fault": null,
+      "scenario": "crew_filled",
+      "schema_version": 1
+    },
+    "manifest_schema_version": 1,
+    "rng_algorithm": "splitmix64-composed/1",
+    "ruleset_version": "m1-decision/1",
+    "save_schema_version": 1,
+    "schema_root": "schemas"
+  },
+  "outcome": {
+    "error_code": null,
+    "kind": "success",
+    "screen_state": "incomplete"
+  },
+  "read_model": {
+    "contract": {
+      "accepted_count": 2,
+      "definition": "fixture:crew_job",
+      "display_name_key": "contract.fixture.crew_job.name",
+      "payment": 50,
+      "required_crew": 2,
+      "risk": "Negligible",
+      "tag_keys": []
+    },
+    "error_code": null,
+    "responses": [
+      {
+        "action": "action:accept",
+        "blocked_by_display_name_key": null,
+        "blocked_by_entity": null,
+        "hero_definition": "fixture:crew_leader",
+        "hero_display_name_key": "hero.fixture.crew_leader.name",
+        "reasons": [
+          {
+            "direction": "Supported",
+            "reason_code": "hero.decision.payment_attractive",
+            "source_display_name_key": null,
+            "source_entity": "fixture:crew_job",
+            "strength": "High"
+          },
+          {
+            "direction": "Supported",
+            "reason_code": "hero.decision.trusts_the_guild",
+            "source_display_name_key": null,
+            "source_entity": "fixture:crew_leader",
+            "strength": "Low"
+          },
+          {
+            "direction": "Opposed",
+            "reason_code": "hero.decision.unpredictable_mood",
+            "source_display_name_key": null,
+            "source_entity": "fixture:crew_leader",
+            "strength": "Negligible"
+          }
+        ],
+        "tie_break_code": null,
+        "wavered": false
+      },
+      {
+        "action": "action:accept",
+        "blocked_by_display_name_key": null,
+        "blocked_by_entity": null,
+        "hero_definition": "fixture:crew_recruit",
+        "hero_display_name_key": "hero.fixture.crew_recruit.name",
+        "reasons": [
+          {
+            "direction": "Supported",
+            "reason_code": "hero.decision.payment_attractive",
+            "source_display_name_key": null,
+            "source_entity": "fixture:crew_job",
+            "strength": "High"
+          },
+          {
+            "direction": "Supported",
+            "reason_code": "hero.decision.trusts_the_guild",
+            "source_display_name_key": null,
+            "source_entity": "fixture:crew_recruit",
+            "strength": "Low"
+          },
+          {
+            "direction": "Supported",
+            "reason_code": "hero.decision.unpredictable_mood",
+            "source_display_name_key": null,
+            "source_entity": "fixture:crew_recruit",
+            "strength": "Negligible"
+          }
+        ],
+        "tie_break_code": null,
+        "wavered": false
+      }
+    ],
+    "roster": [
+      {
+        "caution": "Negligible",
+        "definition": "fixture:averse_hero",
+        "display_name_key": "hero.fixture.averse_hero.name",
+        "greed": "Negligible",
+        "inclination_keys": [
+          "trait.fixture.test_aversion.name"
+        ],
+        "pride": "Negligible",
+        "principle_keys": []
+      },
+      {
+        "caution": "Negligible",
+        "definition": "fixture:crew_leader",
+        "display_name_key": "hero.fixture.crew_leader.name",
+        "greed": "Extreme",
+        "inclination_keys": [],
+        "pride": "Negligible",
+        "principle_keys": []
+      },
+      {
+        "caution": "Negligible",
+        "definition": "fixture:crew_recruit",
+        "display_name_key": "hero.fixture.crew_recruit.name",
+        "greed": "Extreme",
+        "inclination_keys": [],
+        "pride": "Negligible",
+        "principle_keys": []
+      },
+      {
+        "caution": "Negligible",
+        "definition": "fixture:crew_skeptic",
+        "display_name_key": "hero.fixture.crew_skeptic.name",
+        "greed": "Negligible",
+        "inclination_keys": [],
+        "pride": "Negligible",
+        "principle_keys": []
+      },
+      {
+        "caution": "Moderate",
+        "definition": "fixture:double_principle_hero",
+        "display_name_key": "hero.fixture.double_principle_hero.name",
+        "greed": "Moderate",
+        "inclination_keys": [],
+        "pride": "Moderate",
+        "principle_keys": [
+          "trait.fixture.principle_alpha.name",
+          "trait.fixture.principle_beta.name"
+        ]
+      }
+    ],
+    "sha256": "3c267c7582bb9a72f5290e8c5b6bb73a50a688991c55f1c8c5015b19566d4a70",
+    "state": "Incomplete",
+    "title_key": "screen.contract_offer.title"
+  },
+  "scenario": "crew_filled",
+  "seed": "7",
+  "source_commit": "12565862b1e88e0524f95def18c023571ec4269f",
+  "steps": [
+    {
+      "applied": true,
+      "command": {
+        "command_id": 1,
+        "contract": "fixture:crew_job",
+        "expected_state_version": 0,
+        "hero_index": 1
+      },
+      "decision": {
+        "considered_actions": [
+          "action:accept",
+          "action:decline"
+        ],
+        "selected_action": "action:accept",
+        "selected_score": 58,
+        "trace_id": 0
+      },
+      "events": [
+        {
+          "causal_trace_id": 0,
+          "contract_id": "fixture:crew_job",
+          "event_id": 0,
+          "hero_id": 1,
+          "kind": "hero_accepted_contract",
+          "logical_time": 0
+        }
+      ],
+      "hero_definition": "fixture:crew_leader",
+      "rejection_code": null
+    },
+    {
+      "applied": true,
+      "command": {
+        "command_id": 2,
+        "contract": "fixture:crew_job",
+        "expected_state_version": 1,
+        "hero_index": 2
+      },
+      "decision": {
+        "considered_actions": [
+          "action:accept",
+          "action:decline"
+        ],
+        "selected_action": "action:accept",
+        "selected_score": 62,
+        "trace_id": 1
+      },
+      "events": [
+        {
+          "causal_trace_id": 1,
+          "contract_id": "fixture:crew_job",
+          "event_id": 1,
+          "hero_id": 2,
+          "kind": "hero_accepted_contract",
+          "logical_time": 0
+        }
+      ],
+      "hero_definition": "fixture:crew_recruit",
+      "rejection_code": null
+    }
+  ],
+  "traces": [
+    {
+      "blocked_by": [],
+      "negative_factors": [
+        {
+          "magnitude": 2,
+          "reason_code": "hero.decision.unpredictable_mood",
+          "source_entity": "fixture:crew_leader"
+        }
+      ],
+      "positive_factors": [
+        {
+          "magnitude": 50,
+          "reason_code": "hero.decision.payment_attractive",
+          "source_entity": "fixture:crew_job"
+        },
+        {
+          "magnitude": 10,
+          "reason_code": "hero.decision.trusts_the_guild",
+          "source_entity": "fixture:crew_leader"
+        }
+      ],
+      "tie_break": null,
+      "trace_id": 0
+    },
+    {
+      "blocked_by": [],
+      "negative_factors": [],
+      "positive_factors": [
+        {
+          "magnitude": 50,
+          "reason_code": "hero.decision.payment_attractive",
+          "source_entity": "fixture:crew_job"
+        },
+        {
+          "magnitude": 10,
+          "reason_code": "hero.decision.trusts_the_guild",
+          "source_entity": "fixture:crew_recruit"
+        },
+        {
+          "magnitude": 2,
+          "reason_code": "hero.decision.unpredictable_mood",
+          "source_entity": "fixture:crew_recruit"
+        }
+      ],
+      "tie_break": null,
+      "trace_id": 1
+    }
+  ]
+}

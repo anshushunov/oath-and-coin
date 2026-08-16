@@ -1,0 +1,65 @@
+{
+  "artifact_schema_version": 1,
+  "canonical_base64": null,
+  "canonical_sha256": null,
+  "checkpoint": "screen_error",
+  "draws": {
+    "next_decision_ordinal_final": "0",
+    "next_decision_ordinal_initial": "0",
+    "per_step": [],
+    "total_consumed": "0"
+  },
+  "events": [],
+  "final_state": null,
+  "inputs": {
+    "checkpoint_after_command_id": 0,
+    "commands": [],
+    "content_root": "artifacts/oracle-faults/fixtures/does-not-exist",
+    "content_root_exists": false,
+    "content_schema_version": 2,
+    "content_version": null,
+    "determinism_artifact_version": 3,
+    "manifest": {
+      "checkpoints": [
+        {
+          "after_command_id": 0,
+          "name": "screen_error"
+        }
+      ],
+      "content_root": null,
+      "expected_error_code": "CONTENT_ROOT_NOT_FOUND",
+      "expected_outcome": "error",
+      "expected_screen_state": "error",
+      "fault": {
+        "kind": "missing_content_root",
+        "path": "fixtures/does-not-exist"
+      },
+      "scenario": "screen_error",
+      "schema_version": 1
+    },
+    "manifest_schema_version": 1,
+    "rng_algorithm": "splitmix64-composed/1",
+    "ruleset_version": "m1-decision/1",
+    "save_schema_version": 1,
+    "schema_root": "schemas"
+  },
+  "outcome": {
+    "error_code": "CONTENT_ROOT_NOT_FOUND",
+    "kind": "error",
+    "screen_state": "error"
+  },
+  "read_model": {
+    "contract": null,
+    "error_code": "CONTENT_ROOT_NOT_FOUND",
+    "responses": [],
+    "roster": [],
+    "sha256": "551d02cea3c839f2b6e29265004baa5e0d61a1a924e8ee4787e0e5a9d5655d4a",
+    "state": "Error",
+    "title_key": "screen.contract_offer.title"
+  },
+  "scenario": "screen_error",
+  "seed": "7",
+  "source_commit": "12565862b1e88e0524f95def18c023571ec4269f",
+  "steps": [],
+  "traces": []
+}

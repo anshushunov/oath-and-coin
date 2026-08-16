@@ -9,6 +9,26 @@ content/**/*.json text eol=lf
 schemas/**/*.json text eol=lf
 scenarios/**/*.json text eol=lf
 
+# The migration oracle corpus is the same kind of file as the three above, and
+# then some: every file in it is covered by a SHA-256 recorded in the corpus's
+# own manifest, so a checkout that turned LF into CRLF would make every digest
+# in that manifest wrong at once — on a corpus whose entire purpose is to be
+# byte-identical on every machine after the C# implementation it describes has
+# been deleted. `OracleCorpusTests` reads the raw bytes and rejects 0x0D, so
+# this line is part of the corpus contract rather than a workstation
+# convention: without it the test fails on a CRLF checkout of a correct corpus.
+migration/oracle/**/*.json text eol=lf
+
+# The corpus's own README is covered by a digest too — every file in it is —
+# so it needs the identical rule. Left to the repository default it would be
+# checked out CRLF on Windows and the manifest's digest for it would be wrong
+# on a fresh clone, while every JSON file beside it stayed correct: a failure
+# that looks like a corrupted corpus and is a line-ending rule with a hole in
+# it. Stated as its own line rather than by widening the pattern above to
+# `migration/oracle/**`, so adding a genuinely binary file here has to be a
+# deliberate act rather than something a blanket `text` rule silently mangles.
+migration/oracle/**/*.md text eol=lf
+
 # Shell scripts keep LF in the working copy on every platform. Checked out with
 # CRLF they do not run at all: bash reads the carriage return as part of the
 # command and reports `$'\r': command not found`. The scripts here are run both

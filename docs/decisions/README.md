@@ -44,7 +44,7 @@ ADR-001-engine-and-language.md
 
 | ID | Решение | Статус |
 |---|---|---|
-| [ADR-001](ADR-001-engine-and-language.md) | Движок и язык: Godot 4.7.1 и C# на net8.0 | accepted |
+| [ADR-001](ADR-001-engine-and-language.md) | Движок и язык: Godot 4.7.1 и C# на net8.0 | superseded [ADR-010](ADR-010-full-typescript-web-stack.md) |
 | [ADR-002](ADR-002-simulation-core-boundary.md) | Граница simulation core: две сборки и механическая проверка | accepted |
 | [ADR-003](ADR-003-deterministic-rng.md) | Counter-based RNG без хранимого состояния | accepted |
 | [ADR-004](ADR-004-content-format.md) | Контент: JSON с JSON Schema и вычисляемой версией | accepted |
@@ -52,6 +52,9 @@ ADR-001-engine-and-language.md
 | [ADR-007](ADR-007-events-and-causal-trace.md) | Конверт события и хранение causal trace в состоянии | accepted |
 | [ADR-008](ADR-008-runtime-harness.md) | Runtime harness: свой инструмент и состав условий успеха прогона | accepted |
 | [ADR-009](ADR-009-decision-contracts-and-content-v2.md) | Контракты решения и формат контента 2 | accepted |
+| [ADR-010](ADR-010-full-typescript-web-stack.md) | Полный переход на TypeScript web stack с Electron-хостом | accepted |
+
+`ADR-001` заменён `ADR-010`. Тело `ADR-001` и Godot-специфичный механизм `ADR-008` переписываются на этапе cutover, вместе с удалением кода, который они описывают ([`FULL_TYPESCRIPT_MIGRATION`](../production/FULL_TYPESCRIPT_MIGRATION.md), Task 19): до тех пор `ADR-001` читается как исторический контекст Gate 0, а действующим решением о движке и языке является `ADR-010`.
 
 Зарезервированные номера: `ADR-006` — стратегия сохранений (Milestone 3). Номер `ADR-009` держали пустым под фиксированный симуляционный тик; тик отозван из Gate 0 и входит в постановку модели времени боя на старте Milestone 2, где получит свой номер, а `ADR-009` занят записью выше.
 
