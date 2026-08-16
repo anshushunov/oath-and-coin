@@ -85,7 +85,7 @@ Feature freeze для новой функциональности старого
 | Gate | Владелец | Начато | Завершено | Команда | Артефакт | Результат | Решение |
 |---|---|---|---|---|---|---|---|
 | Task 1 — рубеж и ADR-010 | agent | 2026-08-16 | 2026-08-16 | `dotnet test OathAndCoin.sln -c Release`; `bash ./scripts/code-lines.sh simulation adapters tools tests game` | §1 этого файла; `docs/decisions/ADR-010-full-typescript-web-stack.md` | 511 тестов зелёные; 27 манифестов; code=13 814 raw=24 408 | принят: рубеж `12565862`, `ADR-010` accepted |
-| Task 2 — неизменяемый oracle corpus | agent | 2026-08-16 | | `dotnet run --project tools/OathAndCoin.MigrationOracle -c Release -- export --root . --output migration/oracle/v1`; `dotnet test tests/OathAndCoin.MigrationOracle.Tests/OathAndCoin.MigrationOracle.Tests.csproj -c Release`; `git diff --exit-code -- migration/oracle/v1` | `migration/oracle/v1/**`; §3 этого файла | | |
+| Task 2 — неизменяемый oracle corpus | agent | 2026-08-16 | 2026-08-16 | `dotnet run --project tools/OathAndCoin.MigrationOracle -c Release -- export --root . --output migration/oracle/v1`; `dotnet test tests/OathAndCoin.MigrationOracle.Tests/OathAndCoin.MigrationOracle.Tests.csproj -c Release`; `git diff --exit-code -- migration/oracle/v1` | `migration/oracle/v1/**` (31 файл, manifest SHA-256 `32107b7c…d29c`); §3 этого файла | 27/27 манифестов и checkpoints; 18/18 тестов корпуса; повторный экспорт побайтно идентичен; мутация `HeroDecision = 3 → 9` красит 4 теста | принят, ожидает внешнего ревью segment PR |
 | Task 3 — pinned TypeScript workspace | | | | `corepack pnpm install --frozen-lockfile`; `corepack pnpm typecheck`; `corepack pnpm test`; `corepack pnpm test:e2e` | `pnpm-lock.yaml`, bootstrap-тесты | | |
 | Task 4 — packaged Electron + Steam gate (**stop gate**) | | | | `corepack pnpm package:desktop`; `corepack pnpm test:desktop` | `artifacts/electron-spike/**` | | Task 6 не начинается до зелёного; owner review 2026-08-31 |
 | Task 5 — архитектурные границы и dual-stack CI | | | | `corepack pnpm lint:deps`; `corepack pnpm test` | `.github/workflows/typescript.yml` | | |
@@ -136,14 +136,75 @@ Feature freeze для новой функциональности старого
 | `scenarios/<scenario>/<checkpoint>.json` | входы, исход и код ошибки, финальное состояние, шаги, события, следы, presentation read model, канонические байты и SHA-256 |
 | `README.md` | правило неизменности корпуса |
 
-### 3.2. Воспроизводимость
+Seed корпуса — **7**. Это тот же seed, под которым `ScenarioCoverageTests.EveryScenarioReplaysToItsCanonicalArtifact` воспроизводит каждый сценарий, поэтому запись, checkpoint которой покрывает весь список команд, обязана побайтно совпасть с закоммиченным `scenarios/<scenario>.canonical.json`. Корпус на другом seed был бы внутренне согласованным и не связанным с уже проверенным свидетельством репозитория.
 
-Команды и результаты — раздел заполняется по факту прогона в §3.4.
+`screen_incomplete` — единственный сценарий, где checkpoint намеренно останавливается после первой из шести команд; тест утверждает расхождение с полным canonical-артефактом, чтобы checkpoint, молча начавший покрывать всё, был замечен.
 
-### 3.3. Мутация
+### 3.2. Размер и дайджест
 
-Гейт, который никогда не краснел, гейтом не является (`AGENTS.md` §8). Мутация, команда и упавший тест — §3.4.
+| Факт | Значение | Команда |
+|---|---|---|
+| Файлов в корпусе | 31 (27 записей сценариев + `manifest.json` + `rng-vectors.json` + `jcs-compatibility-vectors.json` + `README.md`) | `fd . migration/oracle/v1 --type f \| wc -l` |
+| Сценариев / checkpoints | 27 / 27 | `jq '{scenarios:(.scenarios\|length), checkpoints:([.scenarios[].checkpoints[]]\|length)}' migration/oracle/v1/manifest.json` |
+| Файлов под дайджестом | 30 (все, кроме самого `manifest.json`) | `jq '.files\|length' migration/oracle/v1/manifest.json` |
+| Суммарный объём файлов под дайджестом | 1 082 875 байт | `jq '[.files[].bytes]\|add' migration/oracle/v1/manifest.json` |
+| SHA-256 корневого `manifest.json` | `32107b7c39b0c9c06633c9afb698ce52ff1516d8d18349f954f73ddca272d29c` | `sha256sum migration/oracle/v1/manifest.json` |
+| Строк RNG-векторов | 306 raw + 1764 int32, 7 потоков | `jq '{raw:(.raw_draws\|length), int32:(.int32_draws\|length), streams:(.streams\|length)}' migration/oracle/v1/rng-vectors.json` |
 
-### 3.4. Прогон
+### 3.3. Расхождение текущей канонизации с RFC 8785
 
-_Заполняется исполнителем Task 2 сразу после прогона; числа переносятся из вывода команд, а не пересказываются._
+`jcs-compatibility-vectors.json` содержит 10 векторов. Пять совпадают побайтно (`object_key_ordering`, `nested_structure`, `scalars`, `safe_integer_bounds`, `artifact_shaped_fragment`) — на них старый хеш сохраняет смысл. Пять расходятся и названы поимённо:
+
+| Вектор | Различие |
+|---|---|
+| `non_ascii_text` | текущий писатель экранирует каждый не-ASCII символ в `\uXXXX`; RFC 8785 выдаёт его литерально в UTF-8 |
+| `html_sensitive_text` | encoder по умолчанию экранирует `<`, `>`, `&`, `'`, `+`; RFC 8785 — нет |
+| `negative_zero` | RFC 8785 сводит `-0` к `0` (ECMAScript `Number::toString`); текущий писатель сохраняет авторский токен |
+| `control_characters` | RFC 8785 использует пять коротких экранов там, где они есть, и `\u00xx` иначе |
+| `astral_plane_text` | суррогатная пара: RFC 8785 выдаёт код-поинт как UTF-8, текущий писатель экранирует обе единицы |
+
+Эти пять — счёт, который Task 6 обязан оплатить **одним** явным шагом версии артефакта с сохранённым отображением старых и новых хешей. Молчаливая пересъёмка прежних артефактов под новое правило запрещена.
+
+Область чисел векторов ограничена целыми в пределах ±(2^53−1) — ровно то, что содержит канонический артефакт детерминизма. Дробные числа, экспоненциальные формы и целые за пределами безопасного диапазона этими векторами **не покрыты**: RFC 8785 делегирует их ECMAScript `Number::toString`, и приближённая реализация выдала бы цель, выглядящую авторитетной и неверную. Они закрываются в Task 6 официальными conformance-векторами RFC 8785. Ограничение записано в самом файле (`covered_number_domain`, `out_of_scope`), а не только здесь.
+
+### 3.4. Воспроизводимость
+
+```powershell
+dotnet run --project tools/OathAndCoin.MigrationOracle -c Release -- export --root . --output migration/oracle/v1
+git add migration/oracle/v1
+dotnet run --project tools/OathAndCoin.MigrationOracle -c Release -- export --root . --output migration/oracle/v1
+git diff --exit-code -- migration/oracle/v1
+```
+
+Результат: `git diff --exit-code` вернул 0 и не напечатал ничего — второй экспорт побайтно совпал с первым. Первый экспорт индексируется намеренно: untracked-файлы обычному `git diff` не видны, и без `git add` эта проверка была бы зелёной, ничего не сравнив.
+
+`dotnet test tests/OathAndCoin.MigrationOracle.Tests/OathAndCoin.MigrationOracle.Tests.csproj -c Release` — 18 из 18 пройдено. Полный набор решения после добавления проекта: `dotnet test OathAndCoin.sln -c Release` — **529** пройдено, 0 не пройдено (511 baseline + 18 новых).
+
+### 3.5. Мутация
+
+Гейт, который никогда не краснел, гейтом не является (`AGENTS.md` §8). Мутант поставлен **после** коммита проверяемого состояния (`2dd8c81`), иначе откат мутанта снёс бы саму правку.
+
+**Мутация:** `simulation/OathAndCoin.Simulation/Random/RngStream.cs`, `HeroDecision = 3` → `HeroDecision = 9`.
+
+**Команда:** `dotnet test tests/OathAndCoin.MigrationOracle.Tests/OathAndCoin.MigrationOracle.Tests.csproj -c Release`
+
+**Результат:** 4 из 18 покраснели — три независимых семейства проверок:
+
+| Упавший тест | Что поймал |
+|---|---|
+| `RngVectors_ReproduceThisBuildsGenerator` | значения draw разошлись: `Assert.Equal() Failure: Strings differ`, ожидалось `8599741187704137444` |
+| `RngVectors_CoverEveryStreamAndTheProductionMoodRange` | объявленное значение потока перестало совпадать с `enum` |
+| `EveryEntry_ReproducesTheCanonicalArtifactThisBuildProduces` | замороженное поведение сценариев разошлось с текущей сборкой |
+| `EveryEntry_ReproducesTheReadModelThisBuildProduces` | замороженный экран разошёлся с тем, что строит фабрика |
+
+**Откат:** `git checkout -- simulation/OathAndCoin.Simulation/Random/RngStream.cs`; повторный прогон — 18 из 18 пройдено, `git diff --exit-code -- migration/oracle/v1` пуст.
+
+Мутация подтверждает то, что структурных проверок доказать не может: корпус, проверяемый только дайджестами, остался бы зелёным при любом изменении правил — файлы на диске не тронуты, и каждый хеш от них по-прежнему сходится. Красным его делают проверки воспроизведения, которые заново прогоняют production-загрузчики, правила и фабрику представления.
+
+### 3.6. Отклонения от плана
+
+| План | Сделано | Причина |
+|---|---|---|
+| Task 2 Step 5: «Add a **job** that validates, but does not regenerate, the committed corpus» | Добавлены три **шага** в существующий job `build` (`.github/workflows/dotnet.yml`) | Отдельный job повторил бы restore и build ради того, что solution-прогон уже собрал. Комментарии самого workflow задают «один раннер, один отчёт, одно место, куда смотреть». Намерение выполнено полностью: именованный шаг валидации, шаг `git diff --exit-code -- migration/oracle`, доказывающий, что валидация ничего не переписала, и публикация `manifest.json` артефактом |
+| Task 2 Files: `Program.cs`, `OracleEnvelope.cs` | Добавлены также `RngVectors.cs`, `JcsVectors.cs`, `JcsReference.cs` | Справочный сериализатор RFC 8785 и два набора векторов внутри `OracleEnvelope.cs` сделали бы файл про сценарии файлом про всё сразу |
+| — | `.gitattributes` получил вторую строку `migration/oracle/**/*.md text eol=lf` сверх указанной в плане `*.json` | `README.md` корпуса тоже покрыт дайджестом в `manifest.json`. Без этой строки свежий Windows-клон получил бы его в CRLF, и дайджест на него не сошёлся бы при верных JSON-файлах рядом — отказ, выглядящий как испорченный корпус, а на деле правило переводов строк с дырой |
