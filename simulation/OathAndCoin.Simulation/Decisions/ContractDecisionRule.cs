@@ -39,10 +39,17 @@ public sealed record HeroDecision(DecisionResult Result, ulong OrdinalsConsumed)
 /// </summary>
 /// <remarks>
 /// <para>
-/// <c>score = payment*greed/100 − risk*caution/100 − insult + inclinations +
-/// trust/10 + bonds + mood</c>, accepted at <c>score &gt;= 0</c>. <c>insult</c>
-/// is <c>(risk − payment)*pride/100</c> when payment is below risk, otherwise
-/// absent entirely — not a zero term. <c>inclinations</c> and <c>bonds</c> are
+/// <c>score = payment*greed/TraitScale − risk*caution/TraitScale − insult +
+/// inclinations + trust/10 + bonds + mood</c>; refused below zero, taken
+/// above it, and at exactly zero settled by an explicit tie-break (see
+/// <see cref="Decide"/>). <c>insult</c> is
+/// <c>(risk − payment)*pride/TraitScale</c> when payment is below risk,
+/// otherwise absent entirely — not a zero term. The divisor is written as
+/// <see cref="TraitScale"/>'s name rather than as the number it happens to
+/// hold: that range is stated exactly twice, as that constant and as a
+/// literal in the schema, and a third hand-copied statement of it in a
+/// comment is a claim nothing checks and the first thing to become
+/// confidently-written falsehood when the scale moves. <c>inclinations</c> and <c>bonds</c> are
 /// each a sum of signed per-source contributions (a hero's own traits;
 /// comrades already committed to the same contract). Every term divides on
 /// its own, before being added into the sum — dividing the sum instead would
