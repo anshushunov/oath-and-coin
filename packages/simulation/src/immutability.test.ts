@@ -120,7 +120,21 @@ describe('withEvent bounds what it adds to the ordinal', () => {
     // RNG then masked into a huge valid-looking unsigned ordinal — the campaign's
     // randomness walking backwards into an alias of a legitimate value.
     expect(() => withEvent(aState(), anEvent(), aTraceWith([]), drawsConsumed)).toThrow(
-      /drawsConsumed is -\d+, outside the 64-bit unsigned range/
+      /outside the 64-bit unsigned range/
+    );
+  });
+
+  it('refuses a rewind that leaves the total in range', () => {
+    // The case only the `drawsConsumed` bound catches, and the reason there are two
+    // bounds rather than one: ordinal 5 plus −5n is 0, which passes any check on the
+    // total, and the campaign has silently rewound five draws it already spent. The next
+    // decision would then replay a sample already consumed and accepted, and every
+    // replay would agree, because they would all repeat the same mistake.
+    const state = aState();
+    const spent = { ...state, metadata: { ...state.metadata, nextDecisionOrdinal: 5n } };
+
+    expect(() => withEvent(spent, anEvent(), aTraceWith([]), -5n)).toThrow(
+      /drawsConsumed is -5, outside the 64-bit unsigned range/
     );
   });
 

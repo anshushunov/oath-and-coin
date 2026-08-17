@@ -129,20 +129,11 @@ export function withEvent(
 ): GameState {
   const { metadata } = state;
 
-  // Frozen before anything is checked, not after. External review reproduced the
-  // alternative: the function validated the caller's objects and then stored them by
-  // reference, so mutating them afterwards moved history behind the checks — an event
-  // dated 99 in a log whose clock read 0, and a factor injected into an explanation
-  // this function refuses to overwrite. `readonly` is erased at runtime; this is what
-  // C#'s immutable records gave for free.
-  freezeDeep(domainEvent);
-  if (trace !== null) {
-    freezeDeep(trace);
-  }
-
-  // The floor `bigint` lost when it replaced `ulong`, and the ceiling C# enforced with
-  // `checked`. Without the first, `drawsConsumed: -1n` walked the campaign's randomness
-  // backwards into a value the RNG then masked into a valid-looking one.
+  // Two bounds, and both are load-bearing — a mutant proved it. The sum check alone
+  // misses a negative `drawsConsumed` that leaves the total in range: ordinal 5 plus
+  // −5n is 0, perfectly valid-looking, and the campaign's randomness has just rewound
+  // five draws it already spent. The `drawsConsumed` check alone misses an overflow.
+  // C# needed neither: `ulong` had no negatives and its addition was `checked`.
   requireUint64('drawsConsumed', drawsConsumed);
   requireUint64('nextDecisionOrdinal', metadata.nextDecisionOrdinal + drawsConsumed);
 
@@ -208,10 +199,18 @@ export function withEvent(
     );
   }
 
-  // Frozen on the way out too, so the state a caller is handed cannot be edited into
-  // one this function would have refused. Everything below the top level was frozen
-  // either here or when it entered, so the walk short-circuits on the first already
-  // frozen node.
+  // The one freeze, and it covers everything: the event and the trace are reachable from
+  // the state being returned, so deep-freezing it freezes them too. There used to be a
+  // second pair of freezes at the top of this function, on the arguments; a mutant
+  // removing them stayed green, which is the signal that they were buying nothing this
+  // freeze does not already buy. Their only remaining effect would have been to freeze a
+  // caller's object on a call that then threw.
+  //
+  // Why any of this is here: external review reproduced a state edited *behind* the
+  // checks above — `history[0].logicalTime` set to 99 while the clock read 0, a factor
+  // pushed into a stored explanation, a trace reporting an id other than the key it sits
+  // under. `readonly` is erased at runtime, so this is what C#'s immutable records gave
+  // for free.
   return freezeDeep({
     ...state,
     metadata: {
