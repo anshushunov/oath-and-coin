@@ -17,6 +17,7 @@
     "format:check": "prettier --check .",
     "schema:generate": "node scripts/generate-schemas.mjs",
     "schema:check": "node scripts/check-schemas.mjs",
+    "bench:decision": "node scripts/benchmark-decision.mjs",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:desktop": "playwright test --config playwright.desktop.config.ts",

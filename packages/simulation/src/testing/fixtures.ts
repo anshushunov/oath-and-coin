@@ -2,6 +2,7 @@ import { compareNumbers, compareStrings } from '../collections/comparator.ts';
 import { SortedMap } from '../collections/sorted-map.ts';
 import { SortedSet } from '../collections/sorted-set.ts';
 import type { CausalTrace } from '../decisions/causal-trace.ts';
+import type { DecisionContext } from '../decisions/context.ts';
 import type { HeldTrait } from '../decisions/held-trait.ts';
 import type { DomainEvent } from '../events/domain-event.ts';
 import { compareContentIds, parseContentId, type ContentId } from '../ids/content-id.ts';
@@ -22,7 +23,11 @@ import type { HeroState } from '../state/hero-state.ts';
 
 export const ids = {
   bram: parseContentId('core:bram'),
+  doran: parseContentId('core:doran'),
   zara: parseContentId('core:zara'),
+  /** Two ordinary inclinations, named so that `loyal` sorts before `squeamish`. */
+  loyal: parseContentId('core:loyal'),
+  squeamish: parseContentId('core:squeamish'),
   crypt: parseContentId('core:cleanse_the_crypt'),
   temple: parseContentId('target:temple'),
   undead: parseContentId('target:undead'),
@@ -55,6 +60,35 @@ export function aContract(overrides: Partial<ContractState> = {}): ContractState
     status: ContractStatus.Offered,
     respondedBy: SortedSet.empty<HeroId>(compareHeroIds),
     acceptedBy: SortedSet.empty<HeroId>(compareHeroIds),
+    ...overrides
+  };
+}
+
+export function aTrait(overrides: Partial<HeldTrait> = {}): HeldTrait {
+  return {
+    id: ids.hatesUndead,
+    tag: ids.undead,
+    isPrinciple: false,
+    weight: 10,
+    ...overrides
+  };
+}
+
+/**
+ * A decision context whose scales are all zero, so a test states only the term it is
+ * about and every other term contributes nothing. The default seed and ordinal are the
+ * fixture campaign's, so `drawMood(7n, 0n)` is the mood every case here gets unless it
+ * names another ordinal.
+ */
+export function aContext(overrides: Partial<DecisionContext> = {}): DecisionContext {
+  return {
+    hero: aHero({ greed: 0, caution: 0, pride: 0, trustInGuild: 0 }),
+    contract: aContract({ payment: 0, risk: 0 }),
+    traits: [],
+    crew: SortedMap.empty<HeroId, ContentId>(compareHeroIds),
+    campaignSeed: 7n,
+    decisionOrdinal: 0n,
+    traceId: 0,
     ...overrides
   };
 }

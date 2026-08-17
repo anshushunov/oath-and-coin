@@ -174,7 +174,15 @@ export default tseslint.config(
     files: ['scripts/**/*.mjs', '**/*.cjs', 'eslint.config.js'],
     extends: [js.configs.recommended],
     languageOptions: {
-      globals: { console: 'readonly', process: 'readonly', require: 'readonly', module: 'writable' }
+      globals: {
+        console: 'readonly',
+        process: 'readonly',
+        require: 'readonly',
+        module: 'writable',
+        // Node's own high-resolution clock, which the decision benchmark times with.
+        // `Date.now` would not do: its resolution is coarser than a single decision.
+        performance: 'readonly'
+      }
     },
     rules: {
       eqeqeq: ['error', 'always', { null: 'ignore' }]
