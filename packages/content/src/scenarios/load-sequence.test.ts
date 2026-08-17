@@ -1,4 +1,4 @@
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -224,6 +224,66 @@ describe('a scenario with no command file at all', () => {
     const directory = scenarioCopy('gate0', false);
 
     expect(codeOf(run({ scenarioRoot: directory }))).toBe(ErrorCodes.CheckpointUnknown);
+  });
+});
+
+describe('a hero index outside the roster is a rejection, not a crash', () => {
+  function withCommands(commands: readonly Record<string, unknown>[]): string {
+    const directory = join(root, 'scenarios');
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(
+      join(directory, 'demo.manifest.json'),
+      JSON.stringify({
+        schema_version: 1,
+        scenario: 'demo',
+        expected_outcome: 'success',
+        checkpoints: [{ name: 'final', after_command_id: 1 }]
+      }),
+      'utf8'
+    );
+    writeFileSync(join(directory, 'demo.commands.json'), JSON.stringify({ commands }), 'utf8');
+    return directory;
+  }
+
+  it('answers UNKNOWN_HERO for a negative index, the way C# does', () => {
+    // External review's counterexample. `hero_index` is `int` in C#, `new HeroId(-1)` is
+    // a legal value there, the roster lookup misses and the engine records a rejection.
+    // Refusing the id outright turned that recorded rejection into a thrown exception —
+    // on an input no shipped scenario contains, so the corpus could never see it.
+    const directory = withCommands([
+      { command_id: 1, hero_index: -1, contract: 'core:cleanse_the_crypt', expected_state_version: 0 }
+    ]);
+
+    const result = run({ scenarioRoot: directory, scenario: 'demo' });
+
+    expect(result.kind).toBe('ran');
+    if (result.kind !== 'ran') {
+      return;
+    }
+
+    expect(result.outcome.steps[0]?.applied).toBe(false);
+    expect(result.outcome.steps[0]?.rejectionCode).toBe('rejected.unknown_hero');
+    expect(result.outcome.steps[0]?.heroDefinition).toBeNull();
+    // And it costs the campaign nothing, like every other rejection.
+    expect(result.outcome.finalState.metadata.nextDecisionOrdinal).toBe(0n);
+  });
+
+  it('refuses an index the original could not have deserialized at all', () => {
+    const directory = withCommands([
+      {
+        command_id: 1,
+        hero_index: 2147483648,
+        contract: 'core:cleanse_the_crypt',
+        expected_state_version: 0
+      }
+    ]);
+
+    const result = run({ scenarioRoot: directory, scenario: 'demo' });
+
+    // A contract violation naming the file and the path, not a thrown id: the value is
+    // outside what a signed 32-bit field holds, so no C# run could have produced it.
+    expect(codeOf(result)).toBe(ErrorCodes.ScenarioInvalid);
+    expect(result.kind === 'failed' && result.errorDetail).toContain('$.commands[0].hero_index');
   });
 });
 

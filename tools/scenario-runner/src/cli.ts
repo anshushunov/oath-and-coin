@@ -35,6 +35,22 @@ const EXIT_OK = 0;
 const EXIT_MISMATCH = 1;
 const EXIT_USAGE = 2;
 
+/** Every option each command accepts. An unknown one is a usage error, not a no-op. */
+const KNOWN_OPTIONS: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  run: ['--scenario', '--checkpoint', '--seed', '--scenarios', '--content', '--repo', '--output'],
+  parity: ['--oracle', '--repo', '--output']
+});
+
+/**
+ * Every path out of this function returns a code; none throws.
+ *
+ * External review found the gap by running the commands rather than by calling `main`:
+ * `run --scenario` with no value threw out of the option parser and the process exited
+ * **1**, the code that means "the corpus disagreed", and `run --scenario gate0 --bogus
+ * value` exited **0** with the flag silently ignored. Both contradicted the contract
+ * three lines up, and the tests could not see either, because they called `main` with
+ * arrays that were already well-formed.
+ */
 export function main(argv: readonly string[]): number {
   const [command, ...rest] = argv;
 
@@ -44,16 +60,28 @@ export function main(argv: readonly string[]): number {
   // it is `string | undefined` and no `default` can ever be dropped from it. A `switch`
   // here would have to carry a `case undefined` that exists only to satisfy a rule
   // whose whole point is elsewhere.
-  if (command === 'run') {
-    return runCommand(parseOptions(rest));
+  if (command !== 'run' && command !== 'parity') {
+    console.error(command === undefined ? USAGE : `Unknown command '${command}'.\n${USAGE}`);
+    return EXIT_USAGE;
   }
 
-  if (command === 'parity') {
-    return parityCommand(parseOptions(rest));
+  let options: Options;
+  try {
+    options = parseOptions(rest, KNOWN_OPTIONS[command]!);
+  } catch (cause) {
+    console.error(messageOf(cause));
+    return EXIT_USAGE;
   }
 
-  console.error(command === undefined ? USAGE : `Unknown command '${command}'.\n${USAGE}`);
-  return EXIT_USAGE;
+  try {
+    return command === 'run' ? runCommand(options) : parityCommand(options);
+  } catch (cause) {
+    // A malformed argument value — a `--seed` that is not a number — reaches this. It is
+    // still the command line being wrong, so it is still 2. A genuine defect in the run
+    // would surface here too; that is why the message is printed rather than swallowed.
+    console.error(messageOf(cause));
+    return EXIT_USAGE;
+  }
 }
 
 function runCommand(options: Options): number {
@@ -156,15 +184,28 @@ interface Options {
  * `--name value` pairs, and nothing else. No short flags, no `--name=value`, no
  * clustering: a CLI with one spelling per option cannot have two spellings disagree,
  * and every caller of this one is a script or a pipeline rather than a person typing.
+ *
+ * An option outside `known` is refused rather than ignored. A silently dropped flag is
+ * the failure where a pipeline runs the command it did not mean to and reports success:
+ * a misspelled `--content` would have quietly read the production tree.
  */
-function parseOptions(argv: readonly string[]): Options {
+function parseOptions(argv: readonly string[], known: readonly string[]): Options {
   const values = new Map<string, string>();
 
   for (let index = 0; index < argv.length; index += 2) {
     const name = argv[index]!;
     const value = argv[index + 1];
+
     if (!name.startsWith('--') || value === undefined) {
       throw new Error(`Malformed option near '${name}'.\n${USAGE}`);
+    }
+
+    if (!known.includes(name)) {
+      throw new Error(`Unknown option '${name}'. Accepted here: ${known.join(', ')}.\n${USAGE}`);
+    }
+
+    if (values.has(name)) {
+      throw new Error(`Option '${name}' given more than once.\n${USAGE}`);
     }
 
     values.set(name, value);

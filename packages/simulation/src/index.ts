@@ -21,7 +21,7 @@ export {
   type ContentId
 } from './ids/content-id.ts';
 
-export { compareHeroIds, heroId, type HeroId } from './ids/hero-id.ts';
+export { HERO_ID_MAX, HERO_ID_MIN, compareHeroIds, heroId, type HeroId } from './ids/hero-id.ts';
 
 export { compareNumbers, compareStrings, type Comparator } from './collections/comparator.ts';
 export { deepEqual } from './collections/deep-equal.ts';

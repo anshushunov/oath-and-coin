@@ -1,6 +1,8 @@
+import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import process from 'node:process';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -123,6 +125,33 @@ function doctoredCorpus(): string {
 
   return target;
 }
+
+describe('the process exit code, driven as a process', () => {
+  // These spawn `node` rather than calling `main`, and that is the whole point of them.
+  // External review found two defects the in-process cases could not see, because they
+  // handed `main` arrays that were already well formed: a missing option value threw out
+  // of the parser and the process exited 1 — the code that means "the corpus disagreed"
+  // — and an unknown flag was silently ignored and exited 0.
+  const cli = join(import.meta.dirname, 'cli.ts');
+
+  const exitCodeOf = (...args: readonly string[]): number =>
+    spawnSync(process.execPath, [cli, ...args], { cwd: repoRoot, encoding: 'utf8' }).status ?? -1;
+
+  it.each([
+    [['run', '--scenario'], 'an option with no value'],
+    [['run', '--scenario', 'gate0', '--bogus', 'value'], 'an option this command does not have'],
+    [['run', '--scenario', 'gate0', '--seed', 'abc'], 'a seed that is not a number'],
+    [['run', '--scenario', 'gate0', '--seed', '7', '--seed', '8'], 'the same option twice'],
+    [['parity', '--oracle'], 'parity with no value for its one required option'],
+    [['nonsense'], 'a command that does not exist']
+  ])('answers 2 for %j — %s', (args) => {
+    expect(exitCodeOf(...args)).toBe(2);
+  });
+
+  it('answers 0 for a run that worked', () => {
+    expect(exitCodeOf('run', '--scenario', 'gate0', '--seed', '7')).toBe(0);
+  });
+});
 
 describe('run', () => {
   it('reports the hash of the artifact it produced and writes it when asked', () => {

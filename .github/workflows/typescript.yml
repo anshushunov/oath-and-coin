@@ -103,6 +103,29 @@ jobs:
           path: artifacts/
           if-no-files-found: error
 
+      # A measurement, published as an artifact, with no threshold attached — and it is
+      # here because of AGENTS.md §11, not because of §8. The record's rule is that a
+      # number is quoted together with the command that produced it and that the trail
+      # is "артефакт CI, а не файл в git": a p50 that exists only in an agent's local
+      # console is unverifiable by anyone else, however honestly it was measured. That
+      # is what external review found about the numbers in the migration journal §9.1.
+      #
+      # It is still a step that can fail — a benchmark that no longer runs stops the job
+      # — so it carries the mutant AGENTS.md §8 asks of every new stage. What it is not
+      # is a gate on latency: Task 18 owns that, and inventing a budget here would dress
+      # a number this script chose as a requirement.
+      - name: Decision benchmark
+        id: bench
+        run: pnpm bench:decision
+
+      - name: Upload the decision benchmark
+        if: always() && steps.bench.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: decision-benchmark
+          path: artifacts/decision-benchmark/
+          if-no-files-found: error
+
   # The Task 4 gate, on the only OS it means anything on. Its own job because
   # a Windows runner is several times slower to provision than the Linux one
   # above, and nothing in `checks` should wait behind it.

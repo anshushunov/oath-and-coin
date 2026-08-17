@@ -1,7 +1,13 @@
 import { existsSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 
-import { CONTENT_ID_PATTERN, parseContentId, type ContentId } from '@oath-and-coin/simulation';
+import {
+  CONTENT_ID_PATTERN,
+  HERO_ID_MAX,
+  HERO_ID_MIN,
+  parseContentId,
+  type ContentId
+} from '@oath-and-coin/simulation';
 import { z } from 'zod';
 
 import { readFile } from '../strict-json.ts';
@@ -26,9 +32,15 @@ export interface ScenarioCommand {
 // file and the JSON path, which is what an author needs, instead of a bare parse error.
 const contentIdString = z.string().regex(new RegExp(CONTENT_ID_PATTERN));
 
+// `hero_index` is bounded to the id's own domain — signed 32-bit, exactly what the C#
+// `int` field could hold. Unbounded, a scenario could name an index this port accepts
+// and the original could not have deserialized at all, and the difference would surface
+// as a thrown `Invalid HeroId` rather than as the `UNKNOWN_HERO` rejection C# records.
+// Found by external review; the corpus cannot see it, because no shipped scenario names
+// an index outside the roster.
 const commandFileSchema = z.strictObject({
   command_id: z.int(),
-  hero_index: z.int(),
+  hero_index: z.int().min(HERO_ID_MIN).max(HERO_ID_MAX),
   contract: contentIdString,
   expected_state_version: z.int()
 });

@@ -70,6 +70,45 @@ describe('the frozen entry, untouched, still reproduces', () => {
   });
 });
 
+describe('the index and the file must be talking about the same entry', () => {
+  // External review reproduced this: `verifyEntry` located the file by the manifest's
+  // path and then ran the file's own scenario, checkpoint and seed, never comparing the
+  // two. Handing it a reference with a different checkpoint returned `matched: true`
+  // under the wrong name — a verdict signed with an identity nothing had verified.
+  it.each([
+    ['scenario', { scenario: 'not_the_entry_scenario' }],
+    ['checkpoint', { checkpoint: 'not-the-entry-checkpoint' }],
+    ['seed', { seed: '999' }]
+  ])('refuses a reference whose %s the file does not confirm', (field, override) => {
+    const verdict = verifyEntry(
+      repoRoot,
+      corpusWith(() => undefined),
+      {
+        ...reference,
+        ...override
+      }
+    );
+
+    expect(verdict.matched).toBe(false);
+    expect(verdict.failures.some((failure) => failure.includes(field))).toBe(true);
+  });
+
+  it('refuses an entry filed away from the path its own identity names', () => {
+    // The corpus addresses an entry by `scenarios/<scenario>/<checkpoint>/seed-<seed>`.
+    // A manifest that indexes the same content somewhere else has stopped describing the
+    // corpus it indexes, and the seed is part of that address (§3.1).
+    const movedPath = reference.path.replace('seed-', 'seedx-');
+    const target = join(root, movedPath);
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, readFileSync(join(corpusRoot, reference.path), 'utf8'), 'utf8');
+
+    const verdict = verifyEntry(repoRoot, root, { ...reference, path: movedPath });
+
+    expect(verdict.matched).toBe(false);
+    expect(verdict.failures.some((failure) => failure.includes('not '))).toBe(true);
+  });
+});
+
 describe('a doctored entry is reported, and the report says where', () => {
   it('notices canonical bytes that changed, and names the first differing path', () => {
     const failures = failuresFor((entry) => {
@@ -163,6 +202,20 @@ describe('a doctored entry is reported, and the report says where', () => {
 
     expect(verdict.matched).toBe(false);
     expect(verdict.failures.length).toBeGreaterThan(0);
+  });
+
+  it('notices an entry that disagrees with itself', () => {
+    // The two recorded fields are two statements about one artifact, and §9.5 draws a
+    // line between what each buys — a line that only holds once they are known to agree.
+    // Until external review pointed it out, nothing checked that: an entry whose hash did
+    // not cover its own bytes let the corpus decide which of the two the port was
+    // measured against.
+    const failures = failuresFor((entry) => {
+      const text = Buffer.from(entry.canonical_base64 as string, 'base64').toString('utf8');
+      entry.canonical_base64 = Buffer.from(`${text} `, 'utf8').toString('base64');
+    });
+
+    expect(failures.some((failure) => failure.includes('disagrees with itself'))).toBe(true);
   });
 
   it('reports every disagreement, not only the first', () => {

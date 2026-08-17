@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { sha256Hex } from '@oath-and-coin/simulation';
 import {
   artifactHash,
   loadAndRunScenario,
@@ -12,19 +13,20 @@ import {
 /**
  * Replays the frozen C# corpus against this port.
  *
- * **Bytes first, hash second, and that order is the point.** Every entry carries both
- * `canonical_base64` and `canonical_sha256`. A matching hash over different bytes is not
- * a thing that happens, so the hash is not what makes the comparison sound — it is a
- * second, independent signal, computed by a different route (this repository's own
- * SHA-256 over the same text). What the hash cannot do is say *where* two runs parted:
- * a report built on hashes alone answers "no" and stops. So the bytes are compared, and
- * when they differ the structures are walked to name the first JSON path that disagrees.
+ * **Bytes first, hash second, and each buys something the other does not.** Every entry
+ * carries both `canonical_base64` and `canonical_sha256`. Once the two are known to
+ * agree — which is checked here first, and was not before external review pointed out
+ * that the claim below assumed it — a divergence in the *run* is caught by either, and
+ * what the bytes add is the answer to *where*: the structures are walked and the first
+ * disagreeing JSON path is named. What the bytes also add, and the hash cannot, is
+ * catching an entry that disagrees with itself.
  *
  * Byte parity subsumes a good deal on its own — the seed, the ruleset version, the
  * content version, every step, every trace and the whole final state are inside those
- * bytes. Two things are outside them and are therefore checked separately: how much
+ * bytes. Three things are outside them and are therefore checked separately: how much
  * randomness each individual step spent (the artifact records only the final ordinal),
- * and the error code of an entry that never produced an artifact at all.
+ * the error code of an entry that never produced an artifact at all, and the identity
+ * the manifest indexes the entry under.
  */
 
 export interface EntryReference {
@@ -105,6 +107,9 @@ export function verifyEntry(
   const entry = readJson<OracleEntry>(join(oracleRoot, reference.path));
   const failures: string[] = [];
   const seed = BigInt(entry.seed);
+
+  failures.push(...compareIdentity(entry, reference));
+  failures.push(...compareInternalConsistency(entry));
 
   const result = loadAndRunScenario({
     scenarioRoot: join(repositoryRoot, 'scenarios'),
@@ -217,6 +222,81 @@ interface OracleEntry {
       readonly consumed: string;
     }[];
   };
+}
+
+/**
+ * The index and the file must be talking about the same entry.
+ *
+ * Until external review reproduced it, nothing tied the two together: the file was
+ * located by the manifest's `path` and then run from *its own* `scenario`, `checkpoint`
+ * and `seed`, while the verdict was labelled from the manifest's. Handing this function
+ * a reference whose checkpoint had been changed produced `matched: true` under the wrong
+ * name — a report signed with an identity it had not verified. The seed is part of an
+ * entry's identity (`FULL_TYPESCRIPT_MIGRATION` §3.1), so it is part of what has to
+ * agree, and the path is checked as well: the corpus addresses an entry by
+ * `scenarios/<scenario>/<checkpoint>/seed-<seed>.json`, and a manifest naming a file
+ * somewhere else has stopped describing the corpus it indexes.
+ *
+ * The bytes of each file are covered elsewhere and are not re-checked here: the manifest
+ * carries a SHA-256 per file and `tests/oracle/canonical.test.ts` recomputes all 57 with
+ * this repository's own implementation (§7.3).
+ */
+function compareIdentity(entry: OracleEntry, reference: EntryReference): readonly string[] {
+  const failures: string[] = [];
+
+  if (entry.scenario !== reference.scenario) {
+    failures.push(
+      `the manifest indexes this file as scenario '${reference.scenario}', the file says ` +
+        `'${entry.scenario}'`
+    );
+  }
+
+  if (entry.checkpoint !== reference.checkpoint) {
+    failures.push(
+      `the manifest indexes this file as checkpoint '${reference.checkpoint}', the file says ` +
+        `'${entry.checkpoint}'`
+    );
+  }
+
+  if (entry.seed !== reference.seed) {
+    failures.push(
+      `the manifest indexes this file at seed ${reference.seed}, the file says ${entry.seed}`
+    );
+  }
+
+  const expectedPath = `scenarios/${entry.scenario}/${entry.checkpoint}/seed-${entry.seed}.json`;
+  if (reference.path.replace(/\\/gu, '/') !== expectedPath) {
+    failures.push(`the manifest indexes this entry at '${reference.path}', not '${expectedPath}'`);
+  }
+
+  return failures;
+}
+
+/**
+ * The corpus entry has to agree with itself before it can be an oracle for anything.
+ *
+ * `canonical_base64` and `canonical_sha256` are two statements about the same artifact.
+ * Comparing a run against both without first checking that they agree lets an
+ * internally inconsistent entry decide which of the two the port is measured on — and
+ * `FULL_TYPESCRIPT_MIGRATION` §9.5 draws a line between what the hash buys and what the
+ * bytes buy that only holds once these two are known to be consistent. Found by external
+ * review, which pointed out that the claim was unconditional and the code did not make
+ * it so.
+ */
+function compareInternalConsistency(entry: OracleEntry): readonly string[] {
+  if (entry.canonical_base64 === null || entry.canonical_sha256 === null) {
+    return entry.canonical_base64 === entry.canonical_sha256
+      ? []
+      : ['the corpus entry records one of canonical_base64 and canonical_sha256 without the other'];
+  }
+
+  const recomputed = sha256Hex(Buffer.from(entry.canonical_base64, 'base64'));
+  return recomputed === entry.canonical_sha256
+    ? []
+    : [
+        `the corpus entry disagrees with itself: sha256 of its own canonical_base64 is ` +
+          `${recomputed}, but it records ${entry.canonical_sha256}`
+      ];
 }
 
 function compareOutcomeKind(entry: OracleEntry, result: ScenarioRunResult): readonly string[] {
