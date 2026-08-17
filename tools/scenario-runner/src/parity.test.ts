@@ -148,6 +148,23 @@ describe('a doctored entry is reported, and the report says where', () => {
     expect(failures.some((failure) => failure.includes('before producing an artifact'))).toBe(true);
   });
 
+  it('marks the entry unmatched, which is the field the exit code is built on', () => {
+    // A mutant setting `matched: true` unconditionally came back green: every case above
+    // asserts on `failures`, and the CLI reports `54/54` from a count of `matched`. So
+    // the derived field gets its own check here, and the exit code gets one in
+    // `cli.test.ts` — otherwise a pipeline could pass over a corpus that did not.
+    const verdict = verifyEntry(
+      repoRoot,
+      corpusWith((entry) => {
+        entry.canonical_sha256 = 'f'.repeat(64);
+      }),
+      reference
+    );
+
+    expect(verdict.matched).toBe(false);
+    expect(verdict.failures.length).toBeGreaterThan(0);
+  });
+
   it('reports every disagreement, not only the first', () => {
     const failures = failuresFor((entry) => {
       entry.canonical_sha256 = 'f'.repeat(64);

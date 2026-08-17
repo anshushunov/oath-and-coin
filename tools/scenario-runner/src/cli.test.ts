@@ -1,6 +1,6 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -69,7 +69,60 @@ describe('exit codes are the interface', () => {
     expect(main(['parity', '--oracle', corpusRoot, '--repo', repoRoot])).toBe(0);
     expect(output).toContain('54/54 reproduced');
   });
+
+  it('answers 1 against a corpus one of whose entries does not reproduce', () => {
+    // The other half of the exit-code contract, and it had no case until a mutant made
+    // `matched` unconditionally true and every check stayed green. A pipeline reads this
+    // number and nothing else.
+    expect(main(['parity', '--oracle', doctoredCorpus(), '--repo', repoRoot])).toBe(1);
+    expect(output).toContain('0/1 reproduced');
+    expect(output).toContain('canonical sha256 differs');
+  });
 });
+
+/**
+ * A one-entry corpus built from a real frozen entry whose recorded hash has been
+ * replaced. Everything else about it is the corpus as exported, so the only reason it
+ * fails is the field that was changed.
+ */
+function doctoredCorpus(): string {
+  const frozen = JSON.parse(readFileSync(join(corpusRoot, 'manifest.json'), 'utf8')) as {
+    scenarios: {
+      scenario: string;
+      checkpoints: { checkpoint: string; entries: { path: string; seed: string }[] }[];
+    }[];
+  };
+
+  const scenario = frozen.scenarios[0]!;
+  const checkpoint = scenario.checkpoints[0]!;
+  const reference = checkpoint.entries[0]!;
+
+  const entry = JSON.parse(readFileSync(join(corpusRoot, reference.path), 'utf8')) as Record<
+    string,
+    unknown
+  >;
+  entry.canonical_sha256 = 'f'.repeat(64);
+
+  const target = join(root, 'corpus');
+  mkdirSync(dirname(join(target, reference.path)), { recursive: true });
+  writeFileSync(join(target, reference.path), JSON.stringify(entry), 'utf8');
+  writeFileSync(
+    join(target, 'manifest.json'),
+    JSON.stringify({
+      source_commit: 'doctored',
+      seeds: [reference.seed],
+      scenarios: [
+        {
+          scenario: scenario.scenario,
+          checkpoints: [{ checkpoint: checkpoint.checkpoint, entries: [reference] }]
+        }
+      ]
+    }),
+    'utf8'
+  );
+
+  return target;
+}
 
 describe('run', () => {
   it('reports the hash of the artifact it produced and writes it when asked', () => {
