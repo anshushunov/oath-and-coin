@@ -255,6 +255,49 @@ describe('an applied command records what the hero decided', () => {
     expect(second.state.contracts.get(ids.crypt)!.status).toBe(ContractStatus.Crewed);
   });
 
+  it('fails loudly when acceptedBy names a hero the campaign does not have', () => {
+    const state = aCampaign({
+      contracts: SortedMap.from(compareContentIds, [
+        [ids.crypt, aContract({ acceptedBy: SortedSet.from(compareHeroIds, [heroId(7)]) })]
+      ])
+    });
+
+    expect(() => proposeContractToHero(state, aProposal())).toThrow(/no such hero/);
+  });
+
+  it('keeps acceptedBy a subset of respondedBy on both answers', () => {
+    // Recorded because an equivalence argument rests on it. Building the crew table from
+    // `respondedBy` instead of `acceptedBy` is a mutant that stays green — the rule walks
+    // `acceptedBy` for bonds and only looks ids *up* in the table, so a table with spare
+    // entries answers identically. That holds exactly while this subset does, and nothing
+    // else in the package states it: `ContractState` calls acceptedBy "a subset of
+    // respondedBy" in prose only. The day a transition breaks it, this reddens and the
+    // equivalence stops being quietly false.
+    const threeSeats = aCampaign({
+      contracts: SortedMap.from(compareContentIds, [
+        [ids.crypt, aContract({ payment: 0, risk: 100, requiredCrew: 3 })]
+      ])
+    });
+
+    const first = proposeContractToHero(threeSeats, aProposal());
+    const second = proposeContractToHero(
+      first.state,
+      aProposal({ commandId: 2, heroId: zara.id, expectedStateVersion: 1 })
+    );
+
+    const contract = second.state.contracts.get(ids.crypt)!;
+
+    // Bram refuses an unpaid, dangerous job; Zara, who cares about none of it, does not.
+    // So the two sets genuinely differ and the subset is not trivially true.
+    expect(first.decision?.selectedAction).toBe(Actions.Decline);
+    expect(second.decision?.selectedAction).toBe(Actions.Accept);
+    expect(contract.respondedBy.values()).toEqual([bram.id, zara.id]);
+    expect(contract.acceptedBy.values()).toEqual([zara.id]);
+    for (const accepter of contract.acceptedBy.values()) {
+      expect(contract.respondedBy.has(accepter)).toBe(true);
+    }
+  });
+
   it('carries the comrades who already accepted into the decision', () => {
     // Zara thinks well of Bram, and only because Bram is in `acceptedBy` does that reach
     // the score at all.
