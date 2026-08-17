@@ -131,9 +131,28 @@ importers:
 
   tests/oracle:
     devDependencies:
+      '@oath-and-coin/content':
+        specifier: workspace:*
+        version: link:../../packages/content
+      '@oath-and-coin/scenario-runner':
+        specifier: workspace:*
+        version: link:../../tools/scenario-runner
       '@oath-and-coin/simulation':
         specifier: workspace:*
         version: link:../../packages/simulation
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+
+  tools/scenario-runner:
+    dependencies:
+      '@oath-and-coin/content':
+        specifier: workspace:*
+        version: link:../../packages/content
+      '@oath-and-coin/simulation':
+        specifier: workspace:*
+        version: link:../../packages/simulation
+    devDependencies:
       typescript:
         specifier: 6.0.3
         version: 6.0.3

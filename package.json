@@ -11,7 +11,7 @@
   },
   "scripts": {
     "typecheck": "tsc --build tsconfig.json --force",
-    "lint:deps": "depcruise --config .dependency-cruiser.cjs apps packages tests scripts",
+    "lint:deps": "depcruise --config .dependency-cruiser.cjs apps packages tests tools scripts",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -19,6 +19,8 @@
     "schema:check": "node scripts/check-schemas.mjs",
     "bench:decision": "node scripts/benchmark-decision.mjs",
     "test": "vitest run",
+    "test:scenario": "vitest run tests/oracle tools/scenario-runner",
+    "scenario:parity": "node tools/scenario-runner/src/cli.ts parity --oracle migration/oracle/v1",
     "test:e2e": "playwright test",
     "test:desktop": "playwright test --config playwright.desktop.config.ts",
     "build": "node scripts/build-workspace.mjs",

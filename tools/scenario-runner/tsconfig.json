@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // A CLI: it reads argv, opens the corpus and writes a report, so it needs
+    // Node's types the same way the content layer does.
+    "types": ["node"]
+  },
+  "include": ["src"]
+}
