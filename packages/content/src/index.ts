@@ -78,3 +78,40 @@ export {
   validateContentTreeOrThrow,
   type ContentViolation
 } from './validate.ts';
+
+export { ERROR_CODES, ErrorCodes, type ErrorCode } from './error-codes.ts';
+
+export {
+  KNOWN_SCREEN_STATES,
+  SUPPORTED_MANIFEST_SCHEMA_VERSION,
+  ScenarioOutcomeKind,
+  loadScenarioManifest,
+  type Checkpoint,
+  type FaultInjection,
+  type ScenarioManifest
+} from './scenarios/scenario-manifest.ts';
+export { loadScenarioCommands, type ScenarioCommand } from './scenarios/scenario-commands.ts';
+export { commandsUpTo, resolveCheckpoint } from './scenarios/checkpoint-resolver.ts';
+export { resolveContentRoot, type ResolvedContentRoot } from './scenarios/content-root.ts';
+export {
+  RULESET_VERSION,
+  runScenario,
+  type ScenarioOutcome,
+  type StepOutcome
+} from './scenarios/scenario-runner.ts';
+export {
+  ARTIFACT_VERSION,
+  artifactHash,
+  renderDecision,
+  renderTrace,
+  toCanonicalBytes,
+  toCanonicalJson
+} from './scenarios/determinism-artifact.ts';
+export {
+  loadAndRunScenario,
+  type FailedResult,
+  type LoadingResult,
+  type RanResult,
+  type ScenarioRunRequest,
+  type ScenarioRunResult
+} from './scenarios/load-sequence.ts';

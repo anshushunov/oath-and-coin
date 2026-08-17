@@ -7,8 +7,8 @@
  * reaching past the contract into a file that happened to be convenient.
  *
  * Grown by the task that adds each part, not written ahead: Task 6 brings
- * identity, canonicalization and the trait scale; Tasks 7-9 bring the RNG, state
- * and the decision rule.
+ * identity, canonicalization and the trait scale; Tasks 7-9 bring the RNG, state,
+ * the decision rule and the engine that applies commands to it.
  */
 
 export {
@@ -21,7 +21,7 @@ export {
   type ContentId
 } from './ids/content-id.ts';
 
-export { compareHeroIds, heroId, type HeroId } from './ids/hero-id.ts';
+export { HERO_ID_MAX, HERO_ID_MIN, compareHeroIds, heroId, type HeroId } from './ids/hero-id.ts';
 
 export { compareNumbers, compareStrings, type Comparator } from './collections/comparator.ts';
 export { deepEqual } from './collections/deep-equal.ts';
@@ -36,6 +36,18 @@ export {
   type TraceFactor
 } from './decisions/causal-trace.ts';
 export type { HeldTrait } from './decisions/held-trait.ts';
+export { ACTIONS, Actions } from './decisions/actions.ts';
+export { REASON_CODES, ReasonCodes, type ReasonCode } from './decisions/reason-codes.ts';
+export type { DecisionContext } from './decisions/context.ts';
+export {
+  MOOD_MAX,
+  MOOD_MIN,
+  decide,
+  drawMood,
+  type HeroDecision
+} from './decisions/contract-decision-rule.ts';
+export { proposeContractToHero } from './engine.ts';
+export { divideTowardZero, multiplyInt32, toInt32 } from './integer-division.ts';
 
 export type {
   DomainEvent,
