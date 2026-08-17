@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { divideTowardZero } from './integer-division.ts';
+import { divideTowardZero, multiplyInt32, toInt32 } from './integer-division.ts';
 
 /**
  * The rounding the port has to get right and the corpus cannot check.
@@ -47,6 +47,48 @@ describe('divideTowardZero rounds the way C# integer division does', () => {
       const differ = dividend < 0 && dividend % 100 !== 0;
 
       expect(truncated === floored).toBe(!differ);
+    }
+  });
+});
+
+describe('multiplyInt32 wraps the way C# multiplies two ints', () => {
+  it.each([
+    [2147483647, 2147483647, 1],
+    [2147483647, 2, -2],
+    [65536, 65536, 0],
+    [-2147483648, -1, -2147483648],
+    [100, 100, 10000],
+    [70, 60, 4200]
+  ])('%i * %i is %i', (left, right, expected) => {
+    expect(multiplyInt32(left, right)).toBe(expected);
+  });
+
+  it('agrees with plain multiplication on every value content can hold', () => {
+    // Which is exactly why the corpus cannot separate the two: payment and risk are
+    // 0..100 and the scales are 0..100, so no product this rule forms on valid content
+    // comes within twenty bits of the boundary.
+    for (let left = 0; left <= 100; left += 5) {
+      for (let right = 0; right <= 100; right += 5) {
+        expect(multiplyInt32(left, right)).toBe(left * right);
+      }
+    }
+  });
+});
+
+describe('toInt32 wraps the way every int addition in the original does', () => {
+  it.each([
+    [2147483647 + 1, -2147483648],
+    [-2147483648 - 1, 2147483647],
+    [0, 0],
+    [-7, -7],
+    [4294967296, 0]
+  ])('%i becomes %i', (value, expected) => {
+    expect(toInt32(value)).toBe(expected);
+  });
+
+  it('is the identity on every score the shipped content can produce', () => {
+    for (let score = -1000; score <= 1000; score++) {
+      expect(toInt32(score)).toBe(score);
     }
   });
 });

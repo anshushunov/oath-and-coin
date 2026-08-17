@@ -70,6 +70,7 @@ function run(overrides: {
   contentRoot?: string;
 }): ScenarioRunResult {
   return loadAndRunScenario({
+    repositoryRoot: repoRoot,
     scenarioRoot: overrides.scenarioRoot ?? scenarioRoot,
     scenario: overrides.scenario ?? 'gate0',
     checkpoint: overrides.checkpoint ?? null,

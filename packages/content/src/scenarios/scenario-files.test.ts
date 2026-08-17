@@ -148,6 +148,16 @@ describe('a manifest is refused rather than read on a guess', () => {
     );
   });
 
+  it('cannot carry an after_command_id past 2^53-1, the same inherited narrowing', () => {
+    const text =
+      '{"schema_version":1,"scenario":"demo","expected_outcome":"success",' +
+      '"checkpoints":[{"name":"final","after_command_id":9007199254740993}]}';
+    const path = join(root, 'demo.manifest.json');
+    writeFileSync(path, text, 'utf8');
+
+    expect(() => loadScenarioManifest(path)).toThrow(/does not satisfy its contract/);
+  });
+
   it('refuses a checkpoint name declared twice', () => {
     const path = writeManifest('demo', {
       ...validManifest('demo'),
@@ -207,6 +217,44 @@ describe('a command list is refused rather than read on a guess', () => {
 
     expect(() => loadScenarioCommands(path)).toThrow(/does not satisfy its contract/);
   });
+
+  it.each(['command_id', 'expected_state_version'])(
+    'cannot carry a %s past 2^53-1, which C# `long` held exactly',
+    (field) => {
+      // A recorded limit, pinned so it stays recorded — and pinned through raw JSON text
+      // on purpose. Written as a number literal the value is already gone: the linter is
+      // right that `9007199254740993` does not survive being parsed as a double, and a
+      // test asserting "the contract refuses it" would be passing for a different reason
+      // than the one it states.
+      //
+      // What actually happens is worse than a refusal and is the limit itself: `JSON.parse`
+      // rounds the token to 9007199254740992 before any contract sees it. So the loader
+      // never gets the chance to refuse the authored value — it refuses a neighbouring one.
+      // Nothing in the shipped tree comes near this (ids start at 1); the exact path for a
+      // 64-bit value is `bigint`, the same sentence §7.2 already uses for the campaign
+      // seed. Widening these would move `stateVersion`, `nextEventId` and the artifact's
+      // own number domain, which is a decision rather than a drive-by.
+      const fields: Record<string, string> = {
+        command_id: '1',
+        hero_index: '0',
+        contract: '"core:job"',
+        expected_state_version: '0'
+      };
+      fields[field] = '9007199254740993';
+
+      const body = Object.entries(fields)
+        .map(([name, value]) => `"${name}":${value}`)
+        .join(',');
+      const text = `{"commands":[{${body}}]}`;
+      const path = join(root, 'demo.commands.json');
+      writeFileSync(path, text, 'utf8');
+
+      const reparsed = JSON.parse(text) as { commands: Record<string, number>[] };
+      expect(reparsed.commands[0]![field]).toBe(9007199254740992);
+
+      expect(() => loadScenarioCommands(path)).toThrow(/does not satisfy its contract/);
+    }
+  );
 });
 
 describe('resolving a checkpoint', () => {

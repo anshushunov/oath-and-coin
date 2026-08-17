@@ -5,6 +5,7 @@ import { sha256Hex } from '@oath-and-coin/simulation';
 import {
   artifactHash,
   loadAndRunScenario,
+  loadScenarioManifest,
   runScenario,
   toCanonicalBytes,
   type ScenarioRunResult
@@ -111,15 +112,26 @@ export function verifyEntry(
   failures.push(...compareIdentity(entry, reference));
   failures.push(...compareInternalConsistency(entry));
 
+  // No `contentRoot` override: today's manifest decides, and the root it decides on is
+  // then compared with the one the corpus recorded. Passing the recorded value in would
+  // have made the run agree with the corpus about the one input the corpus is supposed
+  // to be checking.
   const result = loadAndRunScenario({
-    scenarioRoot: join(repositoryRoot, 'scenarios'),
+    repositoryRoot,
     scenario: entry.scenario,
     checkpoint: entry.checkpoint,
-    contentRoot: join(repositoryRoot, entry.inputs.content_root),
     seed
   });
 
+  failures.push(...compareManifest(entry, repositoryRoot));
   failures.push(...compareOutcomeKind(entry, result));
+
+  if (result.kind === 'ran' && result.contentRoot !== entry.inputs.content_root) {
+    failures.push(
+      `the manifest sends this run to '${result.contentRoot}', the corpus recorded ` +
+        `'${entry.inputs.content_root}'`
+    );
+  }
 
   if (result.kind !== 'ran') {
     // An entry that produced no artifact must not quietly "match" one that did.
@@ -209,7 +221,11 @@ interface OracleEntry {
   readonly seed: string;
   readonly canonical_base64: string | null;
   readonly canonical_sha256: string | null;
-  readonly inputs: { readonly content_root: string; readonly content_version: string | null };
+  readonly inputs: {
+    readonly content_root: string;
+    readonly content_version: string | null;
+    readonly manifest: RecordedManifest;
+  };
   readonly outcome: { readonly kind: string; readonly error_code: string | null };
   readonly draws: {
     readonly next_decision_ordinal_initial: string;
@@ -297,6 +313,64 @@ function compareInternalConsistency(entry: OracleEntry): readonly string[] {
         `the corpus entry disagrees with itself: sha256 of its own canonical_base64 is ` +
           `${recomputed}, but it records ${entry.canonical_sha256}`
       ];
+}
+
+/** The manifest exactly as the exporter recorded it, field for field. */
+interface RecordedManifest {
+  readonly schema_version: number;
+  readonly scenario: string;
+  readonly expected_outcome: string;
+  readonly expected_error_code: string | null;
+  readonly expected_screen_state: string | null;
+  readonly content_root: string | null;
+  readonly fault: { readonly kind: string; readonly path: string } | null;
+  readonly checkpoints: readonly { readonly name: string; readonly after_command_id: number }[];
+}
+
+/**
+ * Today's manifest against the one the corpus froze.
+ *
+ * This is the hole external review found, and it was the biggest one in the segment:
+ * parity ran a scenario from the *corpus entry's* recorded inputs, so the manifest files
+ * in `scenarios/` were never read by the gate at all. Changing `screen_error`'s
+ * `expected_error_code` to a different valid code left `54/54 reproduced` untouched —
+ * a scenario had quietly stopped meaning what it used to mean and the one gate that
+ * exists to notice said nothing.
+ *
+ * The whole declarative half of a manifest is compared, not a chosen subset: the outcome
+ * it expects, the error code, the screen state, the content root, the fault and the
+ * checkpoints. Those are exactly the fields byte parity cannot reach — a scenario that
+ * produces no artifact has no bytes to differ, and `expected_outcome` never enters an
+ * artifact even when one exists.
+ */
+function compareManifest(entry: OracleEntry, repositoryRoot: string): readonly string[] {
+  let current: RecordedManifest;
+  try {
+    const manifest = loadScenarioManifest(
+      join(repositoryRoot, 'scenarios', `${entry.scenario}.manifest.json`)
+    );
+
+    current = {
+      schema_version: manifest.schemaVersion,
+      scenario: manifest.scenario,
+      expected_outcome: manifest.expectedOutcome,
+      expected_error_code: manifest.expectedErrorCode,
+      expected_screen_state: manifest.expectedScreenState,
+      content_root: manifest.contentRoot,
+      fault: manifest.fault,
+      checkpoints: manifest.checkpoints.map((checkpoint) => ({
+        name: checkpoint.name,
+        after_command_id: checkpoint.afterCommandId
+      }))
+    };
+  } catch (cause) {
+    return [`the scenario's manifest no longer loads: ${messageOf(cause)}`];
+  }
+
+  const difference = firstDifference(current, entry.inputs.manifest, '$.manifest');
+  return difference === null
+    ? []
+    : [`the manifest has changed since the corpus was frozen: ${difference}`];
 }
 
 function compareOutcomeKind(entry: OracleEntry, result: ScenarioRunResult): readonly string[] {
@@ -482,6 +556,10 @@ function safeParse(text: string): unknown {
   } catch {
     return text;
   }
+}
+
+function messageOf(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
 }
 
 function readJson<T>(path: string): T {

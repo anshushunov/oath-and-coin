@@ -92,6 +92,7 @@ export {
 } from './scenarios/scenario-manifest.ts';
 export { loadScenarioCommands, type ScenarioCommand } from './scenarios/scenario-commands.ts';
 export { commandsUpTo, resolveCheckpoint } from './scenarios/checkpoint-resolver.ts';
+export { resolveContentRoot, type ResolvedContentRoot } from './scenarios/content-root.ts';
 export {
   RULESET_VERSION,
   runScenario,

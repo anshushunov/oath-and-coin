@@ -6,6 +6,7 @@ import { ErrorCodes, type ErrorCode } from '../error-codes.ts';
 import { validateContentTreeOrThrow } from '../validate.ts';
 
 import { commandsUpTo, resolveCheckpoint } from './checkpoint-resolver.ts';
+import { resolveContentRoot } from './content-root.ts';
 import { loadScenarioCommands, type ScenarioCommand } from './scenario-commands.ts';
 import {
   loadScenarioManifest,
@@ -43,12 +44,27 @@ import { runScenario, type ScenarioOutcome } from './scenario-runner.ts';
  */
 
 export interface ScenarioRunRequest {
-  /** Directory holding `<scenario>.manifest.json` and `<scenario>.commands.json`. */
-  readonly scenarioRoot: string;
+  /** The repository root every relative path below is resolved against. */
+  readonly repositoryRoot: string;
+  /**
+   * Directory holding `<scenario>.manifest.json` and `<scenario>.commands.json`.
+   * Defaults to `<repositoryRoot>/scenarios`.
+   */
+  readonly scenarioRoot?: string;
   readonly scenario: string;
   /** The checkpoint to stop at, or `null` for the manifest's last one. */
   readonly checkpoint: string | null;
-  readonly contentRoot: string;
+  /**
+   * An explicit content root, overriding the one the manifest decides.
+   *
+   * Optional, and that is the fix for a defect external review reproduced: this used to
+   * be required, so every caller had to know a scenario's content root before reading
+   * the scenario — and the two callers that did not, the CLI and the parity checker,
+   * silently ran `screen_error` and `screen_empty` against the production tree.
+   * `content_root` and `fault` were parsed by the manifest loader and consumed by
+   * nothing. When this is absent the manifest decides, which is what it is for.
+   */
+  readonly contentRoot?: string;
   readonly seed: bigint;
 }
 
@@ -79,13 +95,16 @@ export interface RanResult {
   readonly commands: readonly ScenarioCommand[];
   readonly content: ContentSet;
   readonly outcome: ScenarioOutcome;
+  /** Which content root the run actually read, in the repository-relative recorded form. */
+  readonly contentRoot: string;
 }
 
 export type ScenarioRunResult = LoadingResult | FailedResult | RanResult;
 
 export function loadAndRunScenario(request: ScenarioRunRequest): ScenarioRunResult {
-  const manifestPath = join(request.scenarioRoot, `${request.scenario}.manifest.json`);
-  const commandsPath = join(request.scenarioRoot, `${request.scenario}.commands.json`);
+  const scenarioRoot = request.scenarioRoot ?? join(request.repositoryRoot, 'scenarios');
+  const manifestPath = join(scenarioRoot, `${request.scenario}.manifest.json`);
+  const commandsPath = join(scenarioRoot, `${request.scenario}.commands.json`);
 
   let manifest: ScenarioManifest;
   let commands: readonly ScenarioCommand[];
@@ -116,7 +135,27 @@ export function loadAndRunScenario(request: ScenarioRunRequest): ScenarioRunResu
     return { kind: 'loading', manifest, checkpoint };
   }
 
-  const contentRoot = resolve(request.contentRoot);
+  // The manifest decides, unless the caller overrode it. Resolving here rather than in
+  // each caller is what makes `content_root` and `fault` mean something: a scenario that
+  // declares a broken root reproduces its own failure without anyone having to know that
+  // it should.
+  let contentRoot: string;
+  let recordedContentRoot: string;
+  try {
+    if (request.contentRoot === undefined) {
+      const resolved = resolveContentRoot(request.repositoryRoot, manifest);
+      contentRoot = resolved.absolute;
+      recordedContentRoot = resolved.recorded;
+    } else {
+      contentRoot = resolve(request.contentRoot);
+      recordedContentRoot = request.contentRoot.replace(/\\/gu, '/');
+    }
+  } catch (cause) {
+    // An unreproducible fault kind is a fact about the scenario file, so it is reported
+    // the way every other unreadable scenario is.
+    return { kind: 'failed', errorCode: ErrorCodes.ScenarioInvalid, errorDetail: messageOf(cause) };
+  }
+
   if (!isDirectory(contentRoot)) {
     return {
       kind: 'failed',
@@ -146,7 +185,8 @@ export function loadAndRunScenario(request: ScenarioRunRequest): ScenarioRunResu
     checkpoint,
     commands: replayed,
     content,
-    outcome: runScenario(content, replayed, request.seed)
+    outcome: runScenario(content, replayed, request.seed),
+    contentRoot: recordedContentRoot
   };
 }
 

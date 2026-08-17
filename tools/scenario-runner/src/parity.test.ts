@@ -4,6 +4,8 @@ import { dirname, join, resolve } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { sha256Hex } from '@oath-and-coin/simulation';
+
 import { readCorpusIndex, verifyEntry, type EntryReference } from './parity.ts';
 
 /**
@@ -25,6 +27,8 @@ const SOURCE_SCENARIO = 'gate0';
 
 let root = '';
 let reference: EntryReference;
+/** A scenario that produces no artifact at all — its fault is a missing content root. */
+let errorReference: EntryReference;
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'oac-parity-'));
@@ -39,25 +43,40 @@ beforeEach(() => {
   }
 
   reference = source;
+
+  const errorSource = entries.find((entry) => entry.scenario === 'screen_error');
+  if (errorSource === undefined) {
+    throw new Error('The frozen corpus has no screen_error entry.');
+  }
+
+  errorReference = errorSource;
 });
 
 afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-/** Writes a one-entry corpus whose entry is the frozen one, passed through `doctor`. */
-function corpusWith(doctor: (entry: Record<string, unknown>) => void): string {
-  const entry = JSON.parse(readFileSync(join(corpusRoot, reference.path), 'utf8')) as Record<
+/** Writes a one-entry corpus from `source`, passed through `doctor`. */
+function corpusFor(
+  source: EntryReference,
+  doctor: (entry: Record<string, unknown>) => void
+): string {
+  const entry = JSON.parse(readFileSync(join(corpusRoot, source.path), 'utf8')) as Record<
     string,
     unknown
   >;
   doctor(entry);
 
-  const target = join(root, reference.path);
+  const target = join(root, source.path);
   mkdirSync(dirname(target), { recursive: true });
   writeFileSync(target, JSON.stringify(entry), 'utf8');
 
   return root;
+}
+
+/** The same, for the entry every case defaults to. */
+function corpusWith(doctor: (entry: Record<string, unknown>) => void): string {
+  return corpusFor(reference, doctor);
 }
 
 function failuresFor(doctor: (entry: Record<string, unknown>) => void): readonly string[] {
@@ -179,12 +198,59 @@ describe('a doctored entry is reported, and the report says where', () => {
     ).toBe(true);
   });
 
-  it('notices an entry that recorded bytes where the port produced none', () => {
+  it('notices a content root the manifest no longer sends the run to', () => {
+    // The run is driven by today's manifest, not by the recorded input, so a corpus that
+    // remembers a different root is a disagreement rather than an instruction.
     const failures = failuresFor((entry) => {
       (entry.inputs as Record<string, unknown>).content_root = 'no/such/content';
     });
 
-    expect(failures.some((failure) => failure.includes('before producing an artifact'))).toBe(true);
+    expect(failures.some((failure) => failure.includes('sends this run to'))).toBe(true);
+  });
+
+  it('notices an entry that recorded bytes where the port produced none', () => {
+    // `screen_error` produces no artifact by design. Giving its entry bytes must not let
+    // it quietly match a run that never made any.
+    const verdict = verifyEntry(
+      repoRoot,
+      corpusFor(errorReference, (entry) => {
+        entry.canonical_base64 = 'e30=';
+        entry.canonical_sha256 = sha256Hex(Buffer.from('{}', 'utf8'));
+      }),
+      errorReference
+    );
+
+    expect(
+      verdict.failures.some((failure) => failure.includes('before producing an artifact'))
+    ).toBe(true);
+  });
+
+  it('notices an entry that recorded no bytes where the port produced some', () => {
+    const failures = failuresFor((entry) => {
+      entry.canonical_base64 = null;
+      entry.canonical_sha256 = null;
+    });
+
+    expect(
+      failures.some((failure) => failure.includes('produced an artifact where the corpus'))
+    ).toBe(true);
+  });
+
+  it('notices a manifest that has changed since the corpus was frozen', () => {
+    // The blocker of the second review round: parity ran from the corpus's own recorded
+    // inputs, so the scenario files were never read by the gate. Changing
+    // `screen_error`'s expected_error_code to another valid code left 54/54 untouched.
+    const failures = failuresFor((entry) => {
+      const manifest = (entry.inputs as Record<string, unknown>).manifest as Record<
+        string,
+        unknown
+      >;
+      manifest.expected_screen_state = 'normal';
+    });
+
+    expect(
+      failures.some((failure) => failure.includes('manifest has changed since the corpus'))
+    ).toBe(true);
   });
 
   it('marks the entry unmatched, which is the field the exit code is built on', () => {

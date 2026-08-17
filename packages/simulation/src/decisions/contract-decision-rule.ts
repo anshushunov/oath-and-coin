@@ -1,5 +1,5 @@
 import { compareContentIds, type ContentId } from '../ids/content-id.ts';
-import { divideTowardZero } from '../integer-division.ts';
+import { divideTowardZero, multiplyInt32, toInt32 } from '../integer-division.ts';
 import { drawInt32, type Int32Draw } from '../random/deterministic-rng.ts';
 import { RngStream } from '../random/rng-stream.ts';
 
@@ -129,7 +129,7 @@ export function decide(context: DecisionContext): HeroDecision {
 
   // Выгода: what the contract pays, pulled toward acceptance by greed. The contract is
   // the source of the money, and a factor points at the thing a player could go look at.
-  const paymentPull = divideTowardZero(contract.payment * hero.greed, TRAIT_SCALE);
+  const paymentPull = divideTowardZero(multiplyInt32(contract.payment, hero.greed), TRAIT_SCALE);
   if (paymentPull > 0) {
     positive.push({
       reasonCode: ReasonCodes.PaymentAttractive,
@@ -139,7 +139,7 @@ export function decide(context: DecisionContext): HeroDecision {
   }
 
   // Риск: what the contract risks, pushed toward refusal by caution.
-  const riskAversion = divideTowardZero(contract.risk * hero.caution, TRAIT_SCALE);
+  const riskAversion = divideTowardZero(multiplyInt32(contract.risk, hero.caution), TRAIT_SCALE);
   if (riskAversion > 0) {
     negative.push({
       reasonCode: ReasonCodes.RiskTooHigh,
@@ -152,7 +152,10 @@ export function decide(context: DecisionContext): HeroDecision {
   // or better there is no insult at all, not a zero-magnitude one.
   const insult =
     contract.payment < contract.risk
-      ? divideTowardZero((contract.risk - contract.payment) * hero.pride, TRAIT_SCALE)
+      ? divideTowardZero(
+          multiplyInt32(toInt32(contract.risk - contract.payment), hero.pride),
+          TRAIT_SCALE
+        )
       : 0;
   if (insult > 0) {
     negative.push({
@@ -171,7 +174,7 @@ export function decide(context: DecisionContext): HeroDecision {
       continue;
     }
 
-    inclinationSum += trait.weight;
+    inclinationSum = toInt32(inclinationSum + trait.weight);
 
     if (trait.weight > 0) {
       positive.push({
@@ -183,7 +186,7 @@ export function decide(context: DecisionContext): HeroDecision {
       negative.push({
         reasonCode: ReasonCodes.PersonalAversion,
         sourceEntity: trait.id,
-        magnitude: -trait.weight
+        magnitude: toInt32(-trait.weight)
       });
     }
   }
@@ -218,7 +221,7 @@ export function decide(context: DecisionContext): HeroDecision {
       continue;
     }
 
-    bondSum += weight;
+    bondSum = toInt32(bondSum + weight);
 
     if (weight > 0) {
       positive.push({
@@ -230,7 +233,7 @@ export function decide(context: DecisionContext): HeroDecision {
       negative.push({
         reasonCode: ReasonCodes.WillNotWorkWith,
         sourceEntity: comrade,
-        magnitude: -weight
+        magnitude: toInt32(-weight)
       });
     }
   }
@@ -250,12 +253,17 @@ export function decide(context: DecisionContext): HeroDecision {
     negative.push({
       reasonCode: ReasonCodes.UnpredictableMood,
       sourceEntity: hero.definition,
-      magnitude: -mood.value
+      magnitude: toInt32(-mood.value)
     });
   }
 
-  const score =
-    paymentPull - riskAversion - insult + inclinationSum + guildTrust + bondSum + mood.value;
+  // Wrapped once, not after each term — see `toInt32`. Every `int` operation in the
+  // original wraps on overflow, and a port that computed this in doubles answered
+  // `46116860141324210` where C# answers `0` on inputs C# accepts (external review's
+  // counterexample: payment and greed both `2147483647`).
+  const score = toInt32(
+    paymentPull - riskAversion - insult + inclinationSum + guildTrust + bondSum + mood.value
+  );
 
   // Exactly zero is a tie, not an acceptance with a very small margin: nothing weighed
   // either way, so taking the contract and refusing it scored the same. The rule still

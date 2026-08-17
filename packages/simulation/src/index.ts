@@ -47,7 +47,7 @@ export {
   type HeroDecision
 } from './decisions/contract-decision-rule.ts';
 export { proposeContractToHero } from './engine.ts';
-export { divideTowardZero } from './integer-division.ts';
+export { divideTowardZero, multiplyInt32, toInt32 } from './integer-division.ts';
 
 export type {
   DomainEvent,

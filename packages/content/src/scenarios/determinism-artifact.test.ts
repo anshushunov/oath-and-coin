@@ -1,4 +1,4 @@
-import { join, resolve } from 'node:path';
+import { resolve } from 'node:path';
 
 import { canonicalSha256, sha256Hex } from '@oath-and-coin/simulation';
 import { describe, expect, it } from 'vitest';
@@ -24,10 +24,9 @@ const repoRoot = resolve(import.meta.dirname, '..', '..', '..', '..');
 
 function ran(scenario: string, seed = 7n): RanResult {
   const result = loadAndRunScenario({
-    scenarioRoot: join(repoRoot, 'scenarios'),
+    repositoryRoot: repoRoot,
     scenario,
     checkpoint: null,
-    contentRoot: join(repoRoot, 'content'),
     seed
   });
 

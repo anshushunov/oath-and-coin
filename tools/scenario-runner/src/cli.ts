@@ -92,12 +92,18 @@ function runCommand(options: Options): number {
   }
 
   const repositoryRoot = resolve(options.get('--repo') ?? '.');
+  const contentOverride = options.get('--content');
+
   const result = loadAndRunScenario({
+    repositoryRoot,
     scenarioRoot: resolve(options.get('--scenarios') ?? join(repositoryRoot, 'scenarios')),
     scenario,
     checkpoint: options.get('--checkpoint') ?? null,
-    contentRoot: resolve(options.get('--content') ?? join(repositoryRoot, 'content')),
-    seed: BigInt(options.get('--seed') ?? '424242')
+    // Absent unless the caller asked for one: the manifest decides otherwise. Defaulting
+    // to `content/` here is what made `run --scenario screen_error` load the production
+    // tree and exit 0 on a scenario whose whole purpose is to fail.
+    ...(contentOverride === undefined ? {} : { contentRoot: resolve(contentOverride) }),
+    seed: parseSeed(options.get('--seed') ?? '424242')
   });
 
   switch (result.kind) {
@@ -212,6 +218,27 @@ function parseOptions(argv: readonly string[], known: readonly string[]): Option
   }
 
   return { get: (name) => values.get(name) };
+}
+
+/**
+ * A campaign seed, in the one spelling the C# runner accepted.
+ *
+ * `BigInt` is more permissive than `ulong.TryParse(..., NumberStyles.None)`: it takes
+ * `0x7`, `+7`, leading whitespace and an empty string. External review reproduced the
+ * first two — `--seed 0x7` ran seed 7 and reported success under a spelling the original
+ * refuses. A CLI that accepts a spelling the thing it ports does not is a CLI whose
+ * arguments mean something slightly different, which is the hardest kind of divergence
+ * to notice.
+ */
+function parseSeed(text: string): bigint {
+  if (!/^\d+$/u.test(text)) {
+    throw new Error(
+      `Seed '${text}' is not an unsigned decimal integer. The original parses seeds with ` +
+        `NumberStyles.None — no sign, no radix prefix, no whitespace.\n${USAGE}`
+    );
+  }
+
+  return BigInt(text);
 }
 
 function writeTo(path: string, text: string): void {
