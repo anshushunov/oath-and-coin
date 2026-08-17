@@ -53,6 +53,7 @@ migration/oracle/**/*.md text eol=lf
 # CRLF.
 *.ts text eol=lf
 *.tsx text eol=lf
+*.js text eol=lf
 *.mjs text eol=lf
 *.cjs text eol=lf
 package.json text eol=lf
@@ -63,3 +64,13 @@ pnpm-workspace.yaml text eol=lf
 apps/**/*.html text eol=lf
 .npmrc text eol=lf
 .nvmrc text eol=lf
+
+# The formatter's own configuration, and the hole this rule had until Tasks 6-8.
+# `eslint.config.js` arrived with the linter stage and matched none of the patterns
+# above — `*.js` was not among them — so a Windows clone checked it out with CRLF and
+# `pnpm format:check` failed on a file nobody had edited, while CI was green on the
+# same commit. A gate that fails locally and passes remotely gets ignored locally,
+# which is the whole value of the gate gone.
+.prettierrc.json text eol=lf
+.prettierignore text eol=lf
+.editorconfig text eol=lf
