@@ -83,6 +83,25 @@ importers:
         specifier: 8.2.1
         version: 8.2.1(@types/node@26.2.0)(jiti@2.7.0)(yaml@2.9.0)
 
+  packages/content:
+    dependencies:
+      '@oath-and-coin/simulation':
+        specifier: workspace:*
+        version: link:../simulation
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
+    devDependencies:
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+
+  packages/simulation:
+    devDependencies:
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+
   tests/architecture:
     devDependencies:
       typescript:
@@ -106,6 +125,15 @@ importers:
       '@playwright/test':
         specifier: 1.62.1
         version: 1.62.1
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+
+  tests/oracle:
+    devDependencies:
+      '@oath-and-coin/simulation':
+        specifier: workspace:*
+        version: link:../../packages/simulation
       typescript:
         specifier: 6.0.3
         version: 6.0.3

@@ -29,8 +29,8 @@
     },
     "display_name_key": {
       "type": "string",
-      "minLength": 1,
-      "description": "Localization key, never a player-facing literal (TDD 11.1)."
+      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$",
+      "description": "Localization key, never a player-facing literal (TDD 11.1). The pattern is the artifact-safe character set: this key travels unchanged into HeroState and from there into the canonical determinism artifact, where non-ASCII text and control characters are exactly the inputs the frozen corpus records the C# writer and RFC 8785 disagreeing on."
     },
     "greed": {
       "type": "integer",
@@ -68,7 +68,10 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["hero", "weight"],
+        "required": [
+          "hero",
+          "weight"
+        ],
         "properties": {
           "hero": {
             "type": "string",

@@ -1,0 +1,19 @@
+{
+  "name": "@oath-and-coin/content",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Zod contracts, loaders, referential integrity and the content digest — the only layer that knows about files, paths and encodings (ADR-002, ADR-004)",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "test": "vitest run --root ../.. packages/content"
+  },
+  "dependencies": {
+    "@oath-and-coin/simulation": "workspace:*",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3"
+  }
+}

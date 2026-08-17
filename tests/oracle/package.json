@@ -1,0 +1,14 @@
+{
+  "name": "@oath-and-coin/oracle-tests",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The port replayed against the frozen C# corpus in migration/oracle/v1 — the evidence that behaviour survived the rewrite",
+  "scripts": {
+    "test": "vitest run --root ../.. tests/oracle"
+  },
+  "devDependencies": {
+    "@oath-and-coin/simulation": "workspace:*",
+    "typescript": "6.0.3"
+  }
+}

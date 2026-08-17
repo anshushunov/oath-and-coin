@@ -69,6 +69,14 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      # Three statements of the content rules, held to each other: the Zod
+      # contracts, the generated schemas committed beside them, and the
+      # hand-written schemas the .NET stack still reads until cutover. Cheap, and
+      # it is the only thing standing between "a range was raised in one place"
+      # and content that is valid for exactly one of the two stacks.
+      - name: Content schemas
+        run: pnpm schema:check
+
       # ADR-010 §63 makes this the single authoritative check on dependency
       # direction and cycles.
       - name: Dependency boundaries

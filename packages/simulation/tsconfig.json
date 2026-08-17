@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Empty on purpose, and it is the boundary rather than an omission. Without
+    // this entry TypeScript pulls in every `@types/*` it can see, and `@types/node`
+    // is a root devDependency — so `import { readFileSync } from 'node:fs'` would
+    // typecheck inside the one package forbidden to have it
+    // (`simulation-depends-on-nothing`). dependency-cruiser would still catch the
+    // import; this makes the compiler catch it first, at the point of writing.
+    //
+    // The consequence is deliberate: `lib: ["ES2023"]` is this package's whole
+    // vocabulary, which is why UTF-8 encoding is written out by hand here rather
+    // than calling `TextEncoder` — a global that exists in every runtime and in
+    // none of this package's type surface. Tests here are pure for the same reason;
+    // anything that has to read the frozen corpus from disk is a test in a layer
+    // that owns files.
+    "types": []
+  },
+  "include": ["src"]
+}

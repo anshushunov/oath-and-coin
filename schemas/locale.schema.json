@@ -5,7 +5,11 @@
   "description": "A flat 'key -> text' catalogue for one locale. LocaleCatalogue enforces the same rules at load time (duplicate keys and empty values are rejected there, because JsonSchema alone cannot express 'no two properties share this name' any more than a plain JSON object can represent it after parsing).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "locale", "entries"],
+  "required": [
+    "schema_version",
+    "locale",
+    "entries"
+  ],
   "properties": {
     "schema_version": {
       "type": "integer",
@@ -23,7 +27,10 @@
         "type": "string",
         "minLength": 1
       },
-      "description": "Localization key to player-facing text. Every key content refers to must appear here (ShippedContentTests)."
+      "description": "Localization key to player-facing text. Every key content refers to must appear here (ShippedContentTests).",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$"
+      }
     }
   }
 }
