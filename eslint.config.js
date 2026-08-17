@@ -106,6 +106,55 @@ export default tseslint.config(
     }
   },
 
+  // The pure core, and the three bans ADR-010 states that no other gate here can
+  // enforce.
+  //
+  // External review found the hole: `dependency-cruiser`'s
+  // `simulation-depends-on-nothing` checks *imports*, and `types: []` in the
+  // package's tsconfig was claimed to close the rest. Neither touches these. A
+  // file holding `Math.random(); Date.now(); const s: string = 'node:fs'; void
+  // import(s);` produced no TypeScript diagnostics and no dependency violation:
+  // the clock and global randomness are declared by the standard library, not by
+  // `@types/node`, and a computed specifier is not a resolvable import for the
+  // graph to see. So the record's ban on "часы и глобальная случайность" was
+  // prose with nothing behind it.
+  {
+    files: ['packages/simulation/**/*.ts'],
+    rules: {
+      'no-restricted-properties': [
+        'error',
+        {
+          object: 'Math',
+          property: 'random',
+          message:
+            'The simulation may not use global randomness (ADR-010). Randomness is derived from (campaignSeed, stream, ordinal) through deterministic-rng.ts, so that a run is reproducible from state rather than from a generator having been called a certain number of times.'
+        },
+        {
+          object: 'Date',
+          property: 'now',
+          message:
+            'The simulation may not read the clock (ADR-010, TDD §7.3). Campaign time is logical time carried in state; wall-clock time would make a replay depend on when it was run.'
+        }
+      ],
+      'no-restricted-globals': [
+        'error',
+        {
+          name: 'Date',
+          message:
+            'The simulation may not read the clock (ADR-010, TDD §7.3). Campaign time is logical time carried in GameMetadata.'
+        }
+      ],
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'ImportExpression[source.type!="Literal"]',
+          message:
+            'A dynamic import with a computed specifier is invisible to the dependency-boundary gate, which is the only authoritative check on what the simulation may import. Name the module literally, or it cannot be checked at all.'
+        }
+      ]
+    }
+  },
+
   // React lives in exactly one package, so its rules apply there and nowhere
   // else. Both catch bugs no type can express: a hook called conditionally
   // corrupts the hook order, and a stale dependency array silently freezes a

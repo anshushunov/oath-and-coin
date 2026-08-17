@@ -104,7 +104,46 @@ describe('createInitialState', () => {
     expect(state.appliedCommandIds.size).toBe(0);
   });
 
-  it('refuses an empty ruleset version, which travels in every artifact', () => {
-    expect(() => createInitialState(content, 7n, '')).toThrow(/needs a ruleset version/);
+  it.each([
+    { name: 'an empty ruleset version', version: '' },
+    { name: 'a ruleset version of spaces', version: '   ' },
+    { name: 'a non-ASCII ruleset version', version: 'м1-decision/1' },
+    { name: 'a ruleset version with a control character', version: 'm1' },
+    { name: "a ruleset version with the `< > & ' +` set", version: 'm1+decision' }
+  ])('refuses $name, because it travels in every artifact', ({ version }) => {
+    // External review's blocker, from the other end: the version string reaches every
+    // canonical artifact the campaign will ever produce, and `!== ''` was the whole
+    // check. Non-ASCII, control characters and that punctuation set are exactly where
+    // the frozen corpus records the old C# writer and RFC 8785 producing different
+    // bytes — so any of them would make the artifact version a false claim.
+    expect(() => createInitialState(content, 7n, version)).toThrow(/outside the character set/);
+  });
+
+  it.each([-1n, -7n, 2n ** 64n, 2n ** 70n])('refuses the seed %s', (seed) => {
+    // The floor `bigint` lost when it replaced `ulong`. The RNG masks whatever it is
+    // given back to 64 bits, so a negative seed silently aliases a valid unsigned one.
+    expect(() => createInitialState(content, seed, 'm1-decision/1')).toThrow(
+      /outside the 64-bit unsigned range/
+    );
+  });
+
+  it('accepts both ends of the seed range', () => {
+    expect(createInitialState(content, 0n, 'm1-decision/1').metadata.campaignSeed).toBe(0n);
+    expect(
+      createInitialState(content, 2n ** 64n - 1n, 'm1-decision/1').metadata.campaignSeed
+    ).toBe(2n ** 64n - 1n);
+  });
+
+  it('hands back a tree nothing can edit afterwards', () => {
+    // Persistence used to exist only in the types: `readonly` is erased, so a caller
+    // holding a reference could rewrite state behind every check that had passed.
+    const built = createInitialState(content, 7n, 'm1-decision/1');
+
+    expect(Object.isFrozen(built)).toBe(true);
+    expect(Object.isFrozen(built.metadata)).toBe(true);
+    expect(Object.isFrozen(built.heroes.values()[0])).toBe(true);
+    expect(() => {
+      (built.metadata as { stateVersion: number }).stateVersion = 99;
+    }).toThrow(TypeError);
   });
 });

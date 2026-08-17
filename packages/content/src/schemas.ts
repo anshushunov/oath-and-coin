@@ -43,8 +43,25 @@ import { SUPPORTED_CONTENT_SCHEMA_VERSION, SUPPORTED_LOCALE_SCHEMA_VERSION } fro
 
 const contentIdString = z.string().regex(new RegExp(CONTENT_ID_PATTERN));
 
-/** A localization key, never a player-facing literal (`TDD` §11.1). */
-const localizationKey = z.string().min(1);
+/**
+ * A localization key, never a player-facing literal (`TDD` §11.1): dot-separated
+ * lowercase segments, as in `hero.core.bram.name`.
+ *
+ * It was `z.string().min(1)` and that was a blocker external review found. A key
+ * travels unchanged into `HeroState.displayNameKey` and from there into the canonical
+ * determinism artifact, so `min(1)` let a Cyrillic character, a control character or a
+ * string of spaces reach it — the first two being exactly where the frozen corpus
+ * records that the old C# writer and RFC 8785 emit different bytes. The argument for
+ * leaving the artifact version at 3 rests on that being impossible, so it has to be
+ * impossible rather than merely absent from today's files.
+ *
+ * The whitespace-only case was a second, plainer defect: `min(1)` accepted `'   '`
+ * where the C# loader refused it through `IsNullOrWhiteSpace`, so the port was laxer
+ * than the original on a field that ends up on screen.
+ */
+export const LOCALIZATION_KEY_PATTERN = '^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$';
+
+const localizationKey = z.string().regex(new RegExp(LOCALIZATION_KEY_PATTERN));
 
 const contentSchemaVersion = z.literal(SUPPORTED_CONTENT_SCHEMA_VERSION);
 
@@ -112,10 +129,24 @@ export const traitFileSchema = z.discriminatedUnion('kind', [
   })
 ]);
 
+/**
+ * A locale catalogue.
+ *
+ * The asymmetry here is deliberate and is the line `TDD` §11.1 draws: entry *keys* are
+ * localization keys and are held to the same pattern content is, because they have to
+ * match what content declares. Entry *values* are player-facing text and stay
+ * unconstrained — they are Cyrillic today, and a rule that forbade that would forbid
+ * the game having a language. Values never reach a canonical artifact: the read model
+ * carries keys all the way through, precisely so its hash is a property of game state
+ * rather than of the player's language.
+ */
 export const localeFileSchema = z.strictObject({
   schema_version: z.literal(SUPPORTED_LOCALE_SCHEMA_VERSION),
+  // Left as "non-empty", matching the C# loader exactly. Tightening it to a language
+  // tag would be a divergence no finding asked for, and this field never reaches an
+  // artifact.
   locale: z.string().min(1),
-  entries: z.record(z.string(), z.string().min(1))
+  entries: z.record(localizationKey, z.string().min(1))
 });
 
 export type HeroFile = z.infer<typeof heroFileSchema>;

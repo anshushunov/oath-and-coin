@@ -79,16 +79,21 @@ module.exports = {
       severity: 'error',
       comment:
         'ADR-010: the simulation must not know about the DOM, React, PixiJS, Electron, the filesystem, the clock or global randomness. It is a pure library, so it imports nothing outside itself — not another workspace package, not an npm package, not a Node built-in.',
-      // The test files of this package are exempt from being *sources* of the
-      // rule, exactly as `not-to-dev-dep` exempts them below and for the same
-      // reason: a test importing the runner it is executed by is not the core
-      // reaching outside itself at runtime. The exemption is narrow on purpose —
-      // it matches the very suffix `vitest.config.ts` collects, so a file it
-      // excuses is a file the runner executes as a test, and production code
-      // cannot hide behind it without also being run as a test. The mutant that
-      // proves the rule still bites (`node:fs` in a non-test module) is recorded
-      // in the migration journal.
-      from: { path: '^packages/simulation/', pathNot: '[.](test|spec)[.]tsx?$' },
+      // No exemption for test files, and the one that was briefly here is gone
+      // because it was never needed. It was added on the assumption that a test
+      // importing `vitest` would violate this rule; measured, it does not —
+      // dependency-cruiser does not report `vitest` as a dependency of any test
+      // file in this workspace, while it does report `node:fs` and `node:path`.
+      // So the rule is absolute again and now also bites inside a `*.test.ts`,
+      // which is strictly what ADR-010 asks for.
+      //
+      // The residual blind spot is worth naming rather than relying on: since
+      // `vitest` is invisible here, this gate cannot be assumed to see every npm
+      // import. What ADR-010 bans and this rule provably cannot see — the clock,
+      // global randomness and a dynamic import with a computed specifier — is
+      // covered by scoped ESLint rules instead (`eslint.config.js`), each with
+      // its own mutant.
+      from: { path: '^packages/simulation/' },
       // Everything whose resolved path is not inside the package. Written as
       // one negation rather than as a list of forbidden layers, because the
       // list version was the whole defect external review found: it named the

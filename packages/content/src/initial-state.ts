@@ -5,7 +5,10 @@ import {
   compareContentIds,
   compareHeroIds,
   compareNumbers,
+  freezeDeep,
   heroId,
+  requireArtifactSafeText,
+  requireUint64,
   type CausalTrace,
   type ContentId,
   type ContractState,
@@ -40,9 +43,14 @@ export function createInitialState(
   campaignSeed: bigint,
   rulesetVersion: string
 ): GameState {
-  if (rulesetVersion === '') {
-    throw new Error('createInitialState needs a ruleset version; it travels in every artifact.');
-  }
+  // Both checks are the second half of a pair, and both were added after external
+  // review: the content contracts hold authored strings to the artifact's character
+  // set, and this holds the strings that arrive from somewhere other than a content
+  // file — a ruleset version a tool passed in — to the same set. `!== ''` was all this
+  // used to be, which let a version string put anything at all into every artifact the
+  // campaign would ever produce.
+  requireArtifactSafeText('rulesetVersion', rulesetVersion);
+  requireUint64('campaignSeed', campaignSeed);
 
   const heroes = SortedMap.from(
     compareHeroIds,
@@ -101,7 +109,9 @@ export function createInitialState(
     ])
   );
 
-  return {
+  // The whole starting tree frozen at construction, so every later transition inherits
+  // runtime immutability instead of re-establishing it (see `freeze.ts`).
+  return freezeDeep({
     metadata: {
       saveSchemaVersion: SAVE_SCHEMA_VERSION,
       rulesetVersion,
@@ -119,5 +129,5 @@ export function createInitialState(
     traitRules,
     traces: SortedMap.empty<number, CausalTrace>(compareNumbers),
     history: []
-  };
+  });
 }

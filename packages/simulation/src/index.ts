@@ -63,11 +63,18 @@ export {
 export type { ProposeContractToHero } from './commands/propose-contract-to-hero.ts';
 
 export {
+  ARTIFACT_SAFE_TEXT_PATTERN,
+  isArtifactSafeText,
+  requireArtifactSafeText
+} from './canonical/artifact-domain.ts';
+export {
   canonicalBytes,
   canonicalSha256,
   canonicalize,
   type CanonicalValue
 } from './canonical/canonical-json.ts';
+export { freezeDeep } from './freeze.ts';
+export { UINT64_MAX, isUint64, requireUint64 } from './uint64.ts';
 export { Sha256, sha256Hex, toHex } from './canonical/sha256.ts';
 export { utf8Bytes } from './canonical/utf8.ts';
 

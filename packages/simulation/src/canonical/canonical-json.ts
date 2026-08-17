@@ -40,6 +40,23 @@ import { utf8Bytes } from './utf8.ts';
  * the TypeScript port to close it. There is nothing to close: this code runs on
  * ECMAScript, so the specified algorithm is the platform's own and is not
  * reimplemented here.
+ *
+ * ## `bigint` is a deliberate extension, not part of the standard
+ *
+ * External review was right to object to this file calling its whole output "RFC 8785
+ * text". RFC 8785 canonicalizes JSON numbers, which are IEEE-754 doubles; `bigint`
+ * accepts a 64-bit integer and writes it exactly, which is **outside** that domain. A
+ * document containing one does not round-trip: `canonicalize(18446744073709551615n)`
+ * gives `18446744073709551615`, and feeding that text through `JSON.parse` yields
+ * `18446744073709552000`, whose canonical form is a different string. The limit is
+ * pinned by a test rather than left as a footnote.
+ *
+ * The extension exists because the campaign seed is a `ulong` and the C# writer emitted
+ * it as a bare integer token: `"campaign_seed":7`, not `"7"`. Byte parity with the
+ * frozen corpus requires the same token, and a double cannot hold every seed. So on the
+ * JSON domain this function is RFC 8785, and on `bigint` it is RFC 8785 plus one
+ * documented rule — which is the honest description, and the one the artifact's own
+ * format depends on.
  */
 
 /** Everything a canonical document may hold. A key bound to `undefined` is omitted. */

@@ -21,7 +21,11 @@ const VECTORS: readonly { readonly message: string; readonly digest: string }[] 
   { message: '', digest: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' },
   { message: 'abc', digest: 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad' },
   {
-    // 448 bits — the longest message that still fits in one padded block.
+    // 448 bits, which is 56 bytes — and external review caught the comment that used to
+    // sit here claiming this was "the longest message that still fits in one padded
+    // block". It is not: a single padded block holds at most 55 bytes, because the
+    // 0x80 marker and the 64-bit length field need the other nine. So this vector is
+    // already the two-block case, and the boundary itself is pinned separately below.
     message: 'abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq',
     digest: '248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1'
   },
@@ -47,6 +51,25 @@ describe('sha256', () => {
     expect(sha256Hex(utf8Bytes('a'.repeat(1_000_000)))).toBe(
       'cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0'
     );
+  });
+
+  it.each([
+    { bytes: 54, digest: 'a3f01b6939256127582ac8ae9fb47a382a244680806a3f613a118851c1ca1d47' },
+    // 55 is the last length that fits in one padded block: 55 + the 0x80 marker + the
+    // eight length bytes is exactly 64.
+    { bytes: 55, digest: '9f4390f8d30c2dd92ec9f095b65e2b9ae9b0a925a5258e241c9f1e910f734318' },
+    // 56 is the first that does not, and it is the length the FIPS 448-bit vector has.
+    { bytes: 56, digest: 'b35439a4ac6f0948b6d6f9e3c6af0f5f590ce20f1bde7090ef7970686ec6738a' },
+    { bytes: 57, digest: 'f13b2d724659eb3bf47f2dd6af1accc87b81f09f59f2b75e5c0bed6589dfe8c6' },
+    { bytes: 63, digest: '7d3e74a05d7db15bce4ad9ec0658ea98e3f06eeecf16b4c6fff2da457ddc2f34' },
+    // Exactly one block of message, so the padding is a whole extra block on its own.
+    { bytes: 64, digest: 'ffe054fe7ae0cb6dc65c3af9b61d5209f439851db43d0ba5997337df154668eb' },
+    { bytes: 65, digest: '635361c48bb9eab14198e76ea8ab7f1a41685d6ad62aa9146d301d4f17eb0ae0' }
+  ])('pins the padding boundary at $bytes bytes', ({ bytes, digest }) => {
+    // Every length either side of the two places padding changes shape. The expected
+    // digests come from an implementation this repository did not write, so the boundary
+    // is proven rather than asserted against this code's own opinion of it.
+    expect(sha256Hex(utf8Bytes('a'.repeat(bytes)))).toBe(digest);
   });
 
   it('does not depend on how the message was chunked', () => {

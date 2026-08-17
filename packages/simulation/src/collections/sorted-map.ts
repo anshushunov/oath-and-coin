@@ -47,7 +47,11 @@ export class SortedMap<K, V> {
    * authoring error, and "last one wins" is how it becomes an invisible one.
    */
   static from<K, V>(compare: Comparator<K>, entries: Iterable<readonly [K, V]>): SortedMap<K, V> {
-    const collected = [...entries];
+    // Copied and frozen, never the caller's tuples. External review found that freezing
+    // only the outer array left every entry mutable through the reference the caller
+    // still held: `SortedMap.from(compare, [tuple])` followed by `tuple[1] = 999`
+    // changed what `get` returned. The type said `readonly`; the runtime did not.
+    const collected = [...entries].map((entry) => Object.freeze([entry[0], entry[1]] as const));
     collected.sort((left, right) => compare(left[0], right[0]));
 
     for (let index = 1; index < collected.length; index++) {
@@ -78,11 +82,12 @@ export class SortedMap<K, V> {
   set(key: K, value: V): SortedMap<K, V> {
     const index = this.indexOf(key);
     const next = [...this.sorted];
+    const entry = Object.freeze([key, value] as const);
 
     if (index >= 0) {
-      next[index] = [key, value];
+      next[index] = entry;
     } else {
-      next.splice(~index, 0, [key, value]);
+      next.splice(~index, 0, entry);
     }
 
     return new SortedMap<K, V>(this.compare, Object.freeze(next));

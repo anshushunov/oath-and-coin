@@ -1,3 +1,5 @@
+import { requireUint64 } from '../uint64.ts';
+
 import type { RngStream } from './rng-stream.ts';
 
 /**
@@ -60,6 +62,11 @@ export interface Int32Draw {
  * the same value.
  */
 export function draw(campaignSeed: bigint, stream: RngStream, ordinal: bigint): bigint {
+  // Both bounds checked, not just masked. Masking a negative value turns an input C#
+  // could not represent into a silent alias for a valid unsigned one — see `uint64.ts`.
+  requireUint64('campaignSeed', campaignSeed);
+  requireUint64('ordinal', ordinal);
+
   const key = mix((campaignSeed + (BigInt(stream) + 1n) * GOLDEN_GAMMA) & MASK_64);
   return mix((key + ordinal * GOLDEN_GAMMA) & MASK_64);
 }

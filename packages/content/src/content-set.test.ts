@@ -202,6 +202,22 @@ describe('loadContentSet refuses', () => {
     { name: 'a fractional hero scale', file: { ...HERO, caution: 30.5 } },
     { name: 'a hero scale written as a string', file: { ...HERO, pride: '45' } },
     { name: 'an empty display_name_key', file: { ...HERO, display_name_key: '' } },
+    // External review's blocker: a key travels unchanged into state and from there into
+    // the canonical artifact, so the three inputs below would put a byte into it that the
+    // old C# writer and RFC 8785 disagree about — under the same artifact version.
+    { name: 'a non-ASCII display_name_key', file: { ...HERO, display_name_key: 'герой.имя' } },
+    {
+      name: 'a display_name_key with a control character',
+      file: { ...HERO, display_name_key: `hero.${String.fromCharCode(1)}name` }
+    },
+    {
+      name: "a display_name_key with the `< > & ' +` set",
+      file: { ...HERO, display_name_key: 'hero+core.name' }
+    },
+    // And the plainer defect beside it: the C# loader refused this through
+    // `IsNullOrWhiteSpace`, and `min(1)` accepted it.
+    { name: 'a display_name_key of spaces', file: { ...HERO, display_name_key: '   ' } },
+    { name: 'an uppercase display_name_key', file: { ...HERO, display_name_key: 'Hero.Name' } },
     { name: 'a malformed content id', file: { ...HERO, id: 'Core:Bram' } },
     {
       name: 'more traits than a hero may carry',

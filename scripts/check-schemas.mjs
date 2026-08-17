@@ -36,6 +36,7 @@ const { generateJsonSchemas, renderJsonSchema } = await moduleAt(
   'src',
   'json-schema.ts'
 );
+const { LOCALIZATION_KEY_PATTERN } = await moduleAt('packages', 'content', 'src', 'schemas.ts');
 const bounds = await moduleAt('packages', 'content', 'src', 'bounds.ts');
 const limits = await moduleAt('packages', 'content', 'src', 'limits.ts');
 const versions = await moduleAt('packages', 'content', 'src', 'versions.ts');
@@ -101,7 +102,7 @@ const expectations = {
   'hero.schema.json': {
     'properties.schema_version.const': versions.SUPPORTED_CONTENT_SCHEMA_VERSION,
     'properties.id.pattern': CONTENT_ID_PATTERN,
-    'properties.display_name_key.minLength': 1,
+    'properties.display_name_key.pattern': LOCALIZATION_KEY_PATTERN,
     'properties.greed.minimum': heroScale.minimum,
     'properties.greed.maximum': heroScale.maximum,
     'properties.caution.minimum': heroScale.minimum,
@@ -122,7 +123,7 @@ const expectations = {
   'contract.schema.json': {
     'properties.schema_version.const': versions.SUPPORTED_CONTENT_SCHEMA_VERSION,
     'properties.id.pattern': CONTENT_ID_PATTERN,
-    'properties.display_name_key.minLength': 1,
+    'properties.display_name_key.pattern': LOCALIZATION_KEY_PATTERN,
     'properties.payment.minimum': bounds.PAYMENT_MIN,
     'properties.payment.maximum': bounds.PAYMENT_MAX,
     'properties.risk.minimum': bounds.RISK_MIN,
@@ -137,7 +138,7 @@ const expectations = {
     'properties.schema_version.const': versions.SUPPORTED_CONTENT_SCHEMA_VERSION,
     'properties.id.pattern': CONTENT_ID_PATTERN,
     'properties.tag.pattern': CONTENT_ID_PATTERN,
-    'properties.display_name_key.minLength': 1,
+    'properties.display_name_key.pattern': LOCALIZATION_KEY_PATTERN,
     'properties.kind.enum': ['inclination', 'principle'],
     'properties.weight.minimum': bounds.INCLINATION_WEIGHT_MIN,
     'properties.weight.maximum': bounds.INCLINATION_WEIGHT_MAX,
@@ -147,6 +148,9 @@ const expectations = {
     'properties.schema_version.const': versions.SUPPORTED_LOCALE_SCHEMA_VERSION,
     'properties.locale.minLength': 1,
     'properties.entries.additionalProperties.minLength': 1,
+    // Entry keys are localization keys and are held to the same pattern content is;
+    // entry *values* stay unconstrained, because they are the player-facing text.
+    'properties.entries.propertyNames.pattern': LOCALIZATION_KEY_PATTERN,
     additionalProperties: false
   }
 };
@@ -159,7 +163,141 @@ for (const [fileName, paths] of Object.entries(expectations)) {
 }
 
 // ---------------------------------------------------------------------------
-// 3. One asymmetry between the two documents, recorded rather than discovered.
+// 3. The two documents describe the same object, not merely the same numbers.
+// ---------------------------------------------------------------------------
+
+// External review found the table above sufficient for bounds and blind to structure:
+// deleting the `oneOf` from `schemas/trait.schema.json` — which lets a principle carry a
+// weight and an inclination omit one, both of which Zod refuses — left this command
+// green. A gate that checks only the numbers is a gate that says "the schemas agree"
+// about two documents that no longer describe the same shape.
+
+/** `integer` and `number` are the same claim when a `const` pins an integral value. */
+function normalisedType(node) {
+  if (node?.type === 'number' && Number.isInteger(node.const)) {
+    return 'integer';
+  }
+  return node?.type;
+}
+
+function propertiesOf(document) {
+  return document.properties ?? {};
+}
+
+const asSet = (values) => [...(values ?? [])].sort().join(',');
+
+// The trait schema is compared separately, below: the two documents express one rule in
+// two shapes. The hand-written one declares every property at the top level and refines
+// them in a two-branch `oneOf`; the Zod union emits two *complete* branches and nothing at
+// the top. Comparing those structurally would report a disagreement that is not one.
+for (const fileName of Object.keys(expectations).filter((name) => name !== 'trait.schema.json')) {
+  const handWritten = readJson(join(schemasDirectory, fileName));
+  const generated = readJson(join(schemasDirectory, 'generated', fileName));
+
+  const handWrittenProperties = Object.keys(propertiesOf(handWritten)).sort();
+  const generatedProperties = Object.keys(propertiesOf(generated)).sort();
+  if (handWrittenProperties.join(',') !== generatedProperties.join(',')) {
+    fail(
+      `${fileName}: the two documents declare different properties — hand-written ` +
+        `[${handWrittenProperties.join(', ')}], generated [${generatedProperties.join(', ')}]`
+    );
+  }
+
+  for (const property of handWrittenProperties) {
+    const left = normalisedType(propertiesOf(handWritten)[property]);
+    const right = normalisedType(propertiesOf(generated)[property]);
+    if (left !== right) {
+      fail(
+        `${fileName}: properties.${property}.type is '${left}' in the hand-written schema and ` +
+          `'${right}' in the generated one`
+      );
+    }
+  }
+
+  // `required` is compared as a set: order carries no meaning in JSON Schema, and a
+  // reordering would otherwise read as a disagreement.
+  const handWrittenRequired = [...(handWritten.required ?? [])].sort();
+  const generatedRequired = [...(generated.required ?? [])].sort();
+  if (handWrittenRequired.join(',') !== generatedRequired.join(',')) {
+    fail(
+      `${fileName}: required differs — hand-written [${handWrittenRequired.join(', ')}], ` +
+        `generated [${generatedRequired.join(', ')}]`
+    );
+  }
+}
+
+// The trait union, compared as the rule it encodes: an inclination declares a weight, a
+// principle does not. This is the check whose absence external review demonstrated by
+// deleting `oneOf` from the hand-written schema and watching this command stay green.
+{
+  const handWritten = readJson(join(schemasDirectory, 'trait.schema.json'));
+  const generated = readJson(join(schemasDirectory, 'generated', 'trait.schema.json'));
+
+  const generatedBranches = generated.oneOf;
+  const handWrittenBranches = handWritten.oneOf;
+
+  if (!Array.isArray(handWrittenBranches) || handWrittenBranches.length !== 2) {
+    fail(
+      'trait.schema.json: expected a two-branch `oneOf` discriminating on `kind`. Without it the ' +
+        'schema accepts a principle that declares a weight and an inclination that omits one, ' +
+        'while the Zod contract refuses both.'
+    );
+  }
+
+  if (!Array.isArray(generatedBranches) || generatedBranches.length !== 2) {
+    fail('schemas/generated/trait.schema.json: expected a two-branch `oneOf` from the Zod union.');
+  }
+
+  if (Array.isArray(handWrittenBranches) && Array.isArray(generatedBranches)) {
+    const branchFor = (branches, kind) =>
+      branches.find((branch) => at(branch, 'properties.kind.const') === kind);
+
+    for (const kind of ['inclination', 'principle']) {
+      const handWrittenBranch = branchFor(handWrittenBranches, kind);
+      const generatedBranch = branchFor(generatedBranches, kind);
+
+      if (!handWrittenBranch || !generatedBranch) {
+        fail(`trait schemas: no '${kind}' branch in one of the two documents`);
+        continue;
+      }
+
+      // What the hand-written document *effectively* requires for this kind: its shared
+      // `required` list, plus `weight` where the branch demands it.
+      const effectiveRequired = new Set(handWritten.required ?? []);
+      for (const name of handWrittenBranch.required ?? []) {
+        effectiveRequired.add(name);
+      }
+      if ((at(handWrittenBranch, 'not.required') ?? []).includes('weight')) {
+        effectiveRequired.delete('weight');
+      }
+
+      if (asSet([...effectiveRequired]) !== asSet(generatedBranch.required)) {
+        fail(
+          `trait schemas disagree for kind '${kind}': hand-written effectively requires ` +
+            `[${asSet([...effectiveRequired])}], generated requires [${asSet(generatedBranch.required)}]`
+        );
+      }
+
+      // And the properties each kind may carry: the shared bag, minus `weight` for a
+      // principle, which is the whole point of the union.
+      const effectiveProperties = new Set(Object.keys(propertiesOf(handWritten)));
+      if (kind === 'principle') {
+        effectiveProperties.delete('weight');
+      }
+
+      if (asSet([...effectiveProperties]) !== asSet(Object.keys(propertiesOf(generatedBranch)))) {
+        fail(
+          `trait schemas disagree on the properties kind '${kind}' may carry: hand-written ` +
+            `[${asSet([...effectiveProperties])}], generated ` +
+            `[${asSet(Object.keys(propertiesOf(generatedBranch)))}]`
+        );
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 4. One asymmetry between the two documents, recorded rather than discovered.
 // ---------------------------------------------------------------------------
 
 // Zod has no way to express "every item is distinct", so the generated schema does

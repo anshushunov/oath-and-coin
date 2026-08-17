@@ -4,8 +4,10 @@ import type { SortedSet } from '../collections/sorted-set.ts';
 import type { CausalTrace } from '../decisions/causal-trace.ts';
 import type { HeldTrait } from '../decisions/held-trait.ts';
 import type { DomainEvent } from '../events/domain-event.ts';
+import { freezeDeep } from '../freeze.ts';
 import type { ContentId } from '../ids/content-id.ts';
 import type { HeroId } from '../ids/hero-id.ts';
+import { requireUint64 } from '../uint64.ts';
 
 import type { ContractState } from './contract-state.ts';
 import type { HeroState } from './hero-state.ts';
@@ -127,6 +129,23 @@ export function withEvent(
 ): GameState {
   const { metadata } = state;
 
+  // Frozen before anything is checked, not after. External review reproduced the
+  // alternative: the function validated the caller's objects and then stored them by
+  // reference, so mutating them afterwards moved history behind the checks — an event
+  // dated 99 in a log whose clock read 0, and a factor injected into an explanation
+  // this function refuses to overwrite. `readonly` is erased at runtime; this is what
+  // C#'s immutable records gave for free.
+  freezeDeep(domainEvent);
+  if (trace !== null) {
+    freezeDeep(trace);
+  }
+
+  // The floor `bigint` lost when it replaced `ulong`, and the ceiling C# enforced with
+  // `checked`. Without the first, `drawsConsumed: -1n` walked the campaign's randomness
+  // backwards into a value the RNG then masked into a valid-looking one.
+  requireUint64('drawsConsumed', drawsConsumed);
+  requireUint64('nextDecisionOrdinal', metadata.nextDecisionOrdinal + drawsConsumed);
+
   if (domainEvent.eventId !== metadata.nextEventId) {
     throw new Error(
       `Event id ${domainEvent.eventId} is out of order; expected ${metadata.nextEventId}.`
@@ -189,7 +208,11 @@ export function withEvent(
     );
   }
 
-  return {
+  // Frozen on the way out too, so the state a caller is handed cannot be edited into
+  // one this function would have refused. Everything below the top level was frozen
+  // either here or when it entered, so the walk short-circuits on the first already
+  // frozen node.
+  return freezeDeep({
     ...state,
     metadata: {
       ...metadata,
@@ -201,7 +224,7 @@ export function withEvent(
     },
     history: [...state.history, domainEvent],
     traces: storesNewTrace && trace !== null ? state.traces.set(trace.traceId, trace) : state.traces
-  };
+  });
 }
 
 /** The hero with `id`. @throws if no such hero exists. */
