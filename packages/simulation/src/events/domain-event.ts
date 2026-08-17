@@ -1,0 +1,47 @@
+import type { ContentId } from '../ids/content-id.ts';
+import type { HeroId } from '../ids/hero-id.ts';
+
+/**
+ * Everything that happens in a campaign (`ADR-007`). Every event carries its own
+ * place in the log, the campaign's logical time when it happened, and — optionally —
+ * the id of a stored explanation. The trace itself does not live on the event: only
+ * its id does, so the event stays small and the explanation is looked up from state
+ * rather than carried around redundantly.
+ */
+interface DomainEventBase {
+  readonly eventId: number;
+  readonly logicalTime: number;
+  /** `null` when the event explains itself — a tick, not a decision. */
+  readonly causalTraceId: number | null;
+}
+
+/** A hero accepted a contract offer. */
+export interface HeroAcceptedContract extends DomainEventBase {
+  readonly kind: 'hero_accepted_contract';
+  readonly heroId: HeroId;
+  readonly contractId: ContentId;
+}
+
+/**
+ * A hero declined a contract offer. Declining does not close the offer for other
+ * heroes — see `ContractStatus`.
+ */
+export interface HeroDeclinedContract extends DomainEventBase {
+  readonly kind: 'hero_declined_contract';
+  readonly heroId: HeroId;
+  readonly contractId: ContentId;
+}
+
+/**
+ * A discriminated union rather than an abstract base class with subtypes, and the
+ * discriminant is the exact string the canonical artifact writes.
+ *
+ * The C# version needed a `switch` in the artifact projection that *threw* for an
+ * unmapped event type, so that adding one failed loudly instead of silently
+ * serializing under a name derived from its class. That runtime guard is unnecessary
+ * here and is replaced by a stronger one: every `switch` over this union has to
+ * handle a new member or the build fails — `switch-exhaustiveness-check` and
+ * `noImplicitReturns` see to it — and the projection cannot even reach the payload
+ * fields without narrowing on `kind` first.
+ */
+export type DomainEvent = HeroAcceptedContract | HeroDeclinedContract;

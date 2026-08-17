@@ -69,6 +69,8 @@ export {
   type ContentFile
 } from './content-digest.ts';
 
+export { createInitialState } from './initial-state.ts';
+
 export { loadLocaleCatalogue } from './locale.ts';
 
 export {

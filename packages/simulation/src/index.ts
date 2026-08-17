@@ -24,8 +24,43 @@ export {
 export { compareHeroIds, heroId, type HeroId } from './ids/hero-id.ts';
 
 export { compareNumbers, compareStrings, type Comparator } from './collections/comparator.ts';
+export { deepEqual } from './collections/deep-equal.ts';
 export { SortedMap } from './collections/sorted-map.ts';
 export { SortedSet } from './collections/sorted-set.ts';
+
+export {
+  createDecisionResult,
+  type CausalTrace,
+  type DecisionResult,
+  type TraceBlock,
+  type TraceFactor
+} from './decisions/causal-trace.ts';
+export type { HeldTrait } from './decisions/held-trait.ts';
+
+export type {
+  DomainEvent,
+  HeroAcceptedContract,
+  HeroDeclinedContract
+} from './events/domain-event.ts';
+
+export { ContractStatus, type ContractState } from './state/contract-state.ts';
+export type { HeroState } from './state/hero-state.ts';
+export {
+  contractOf,
+  heroOf,
+  withEvent,
+  type GameMetadata,
+  type GameState
+} from './state/game-state.ts';
+
+export {
+  RejectionCodes,
+  fromDecision,
+  rejected,
+  type CommandResult,
+  type RejectionCode
+} from './commands/command-result.ts';
+export type { ProposeContractToHero } from './commands/propose-contract-to-hero.ts';
 
 export {
   canonicalBytes,
