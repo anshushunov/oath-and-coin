@@ -93,7 +93,16 @@ export default tseslint.config(
       // allowed to have them and in the `page.evaluate` callbacks that run
       // inside the browser. TypeScript already answers this question, and
       // answers it per project.
-      'no-undef': 'off'
+      'no-undef': 'off',
+
+      // Third of the same kind: `no-redeclare` does not know that a type and a
+      // value may share a name. `export const RngStream = {...}` beside
+      // `export type RngStream = ...` is the idiom this workspace uses wherever
+      // an `enum` would have gone — `erasableSyntaxOnly` bans `enum`, because
+      // Node's type stripping cannot run one — so the rule would fire on every
+      // closed vocabulary in the simulation. TypeScript already refuses a real
+      // redeclaration, and refuses it per declaration space.
+      'no-redeclare': 'off'
     }
   },
 

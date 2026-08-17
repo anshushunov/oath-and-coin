@@ -32,7 +32,7 @@ import { describe, expect, it } from 'vitest';
  * them is agreement with an implementation nobody here wrote.
  */
 
-const repoRoot = resolve(import.meta.dirname, '..', '..', '..');
+const repoRoot = resolve(import.meta.dirname, '..', '..');
 const corpusRoot = join(repoRoot, 'migration', 'oracle', 'v1');
 
 interface Rendering {
@@ -56,7 +56,11 @@ interface JcsVectorFile {
 }
 
 interface CorpusManifest {
-  readonly files: readonly { readonly path: string; readonly bytes: number; readonly sha256: string }[];
+  readonly files: readonly {
+    readonly path: string;
+    readonly bytes: number;
+    readonly sha256: string;
+  }[];
 }
 
 function readCorpusJson<T>(name: string): T {

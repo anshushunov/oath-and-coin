@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // These tests read the frozen corpus from disk, which is exactly why they are
+    // here and not inside `packages/simulation`: that package has no Node types at
+    // all, on purpose, so it cannot open a file to check itself against.
+    "types": ["node"]
+  },
+  "include": ["*.test.ts"]
+}

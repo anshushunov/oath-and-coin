@@ -36,4 +36,14 @@ export {
 export { Sha256, sha256Hex, toHex } from './canonical/sha256.ts';
 export { utf8Bytes } from './canonical/utf8.ts';
 
+export {
+  MAX_UINT64,
+  RNG_ALGORITHM_VERSION,
+  acceptanceThreshold,
+  draw,
+  drawInt32,
+  type Int32Draw
+} from './random/deterministic-rng.ts';
+export { RNG_STREAM_NAMES, RngStream } from './random/rng-stream.ts';
+
 export { TRAIT_SCALE } from './decisions/trait-scale.ts';
