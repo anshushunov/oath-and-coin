@@ -151,6 +151,27 @@ describe('the process exit code, driven as a process', () => {
   it('answers 0 for a run that worked', () => {
     expect(exitCodeOf('run', '--scenario', 'gate0', '--seed', '7')).toBe(0);
   });
+
+  // The seed's spelling, held to the one the original accepts. `BigInt` takes all four
+  // of the rejected forms below and would have run seed 7 under three of them; C# parses
+  // seeds with `NumberStyles.None`, which allows digits and nothing else. This block
+  // exists because the first attempt at the fix shipped without it and a mutant removing
+  // the whole check came back green.
+  it.each([
+    ['0x7', 'a radix prefix'],
+    ['+7', 'an explicit sign'],
+    [' 7', 'leading whitespace'],
+    ['7 ', 'trailing whitespace'],
+    ['', 'nothing at all'],
+    ['7.0', 'a decimal point'],
+    ['1e3', 'exponent notation']
+  ])('answers 2 for a seed written as %j — %s', (seed) => {
+    expect(exitCodeOf('run', '--scenario', 'gate0', '--seed', seed)).toBe(2);
+  });
+
+  it('accepts leading zeros, which are digits and which the original takes', () => {
+    expect(exitCodeOf('run', '--scenario', 'gate0', '--seed', '007')).toBe(0);
+  });
 });
 
 describe('run', () => {
