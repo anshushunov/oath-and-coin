@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oath-and-coin.invalid/schemas/generated/locale.schema.json",
+  "title": "Locale catalogue",
+  "description": "Generated from the Zod contracts in packages/content/src/schemas.ts — do not edit. Regenerate with `pnpm schema:generate`; `pnpm schema:check` fails if this file and the contracts disagree, or if the numbers here drift from the hand-written schema the .NET stack still reads until cutover.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "number",
+      "const": 2
+    },
+    "locale": {
+      "type": "string",
+      "minLength": 1
+    },
+    "entries": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "locale",
+    "entries"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,310 @@
+import { join } from 'node:path';
+
+import type { ZodType } from 'zod';
+
+import {
+  SortedMap,
+  compareContentIds,
+  parseContentId,
+  type ContentId
+} from '@oath-and-coin/simulation';
+
+import { computeContentVersion, isDirectory, listFilesInOrdinalOrder } from './content-digest.ts';
+import {
+  contractFileSchema,
+  heroFileSchema,
+  traitFileSchema,
+  type ContractFile,
+  type HeroFile,
+  type TraitFile
+} from './schemas.ts';
+import { parseJsonFile, validateValue } from './strict-json.ts';
+import { SUPPORTED_CONTENT_SCHEMA_VERSION } from './versions.ts';
+
+/**
+ * Everything the game was authored with, read from disk once. This package is
+ * where files, paths and encodings live; the simulation core never touches any of
+ * them (`ADR-002`), which is what lets its boundary rule ban every import outright.
+ */
+
+/** Whether a trait contributes a strength to a decision or closes it outright (`HERO_DECISION_SPEC` §1.3). */
+export type TraitKind = 'inclination' | 'principle';
+
+/**
+ * A named trait a hero can carry. `weight` is meaningful only for an inclination
+ * and is always 0 for a principle: a red line has no strength, it closes the path.
+ */
+export interface TraitDefinition {
+  readonly id: ContentId;
+  readonly displayNameKey: string;
+  readonly kind: TraitKind;
+  readonly tag: ContentId;
+  readonly weight: number;
+}
+
+/** One-directional: what the hero holding the record thinks about `hero`, never the reverse. */
+export interface HeroRelationship {
+  readonly hero: ContentId;
+  readonly weight: number;
+}
+
+/** A hero as authored in content — the template a runtime hero is created from. */
+export interface HeroDefinition {
+  readonly id: ContentId;
+  readonly displayNameKey: string;
+  readonly greed: number;
+  readonly caution: number;
+  readonly pride: number;
+  readonly trustInGuild: number;
+  readonly traits: readonly ContentId[];
+  readonly relationships: readonly HeroRelationship[];
+}
+
+/**
+ * A contract offer as authored in content. `tags` are what a hero's traits latch
+ * onto (`HERO_DECISION_SPEC` §1.4) — a hero's trait names a tag, and a contract
+ * carrying that same tag is where the trait has something to say.
+ */
+export interface ContractDefinition {
+  readonly id: ContentId;
+  readonly displayNameKey: string;
+  readonly payment: number;
+  readonly risk: number;
+  readonly requiredCrew: number;
+  readonly tags: readonly ContentId[];
+}
+
+export interface ContentSet {
+  readonly heroes: SortedMap<ContentId, HeroDefinition>;
+  readonly contracts: SortedMap<ContentId, ContractDefinition>;
+  /**
+   * Traits authored as standalone content, keyed by id. A hero's `traits` list
+   * names these ids, and {@link loadContentSet} is where every such name is
+   * resolved — after all three directories have been read, because until then
+   * there is nothing complete to check against.
+   */
+  readonly traits: SortedMap<ContentId, TraitDefinition>;
+  /**
+   * A digest of the loaded files, not a declared constant: it is wrong to claim
+   * "same content" for a tree that was edited, and this is the value a replay or a
+   * bug report pins down (`TDD` §7.1).
+   */
+  readonly contentVersion: string;
+}
+
+/**
+ * Reads `heroes/`, `contracts/` and `traits/` under `contentRoot`.
+ *
+ * @throws if a file is missing, unreadable, malformed, has an unknown property, has
+ * a value outside its bounds, declares another format version, reuses an id another
+ * file already defined, or a hero names a trait or a hero id nothing defines, twice,
+ * or to itself. The message always names the file, and the JSON path when there is
+ * one.
+ */
+export function loadContentSet(contentRoot: string): ContentSet {
+  if (!isDirectory(contentRoot)) {
+    throw new Error(`Content root '${contentRoot}' does not exist.`);
+  }
+
+  const seenIds = new Map<ContentId, string>();
+
+  // Heroes and contracts before traits. The order among the three is free —
+  // nothing here resolves a reference until all of them have been read — and it is
+  // deliberately not "traits first": a content tree from before traits existed has
+  // `heroes/` and `contracts/` and no `traits/` directory at all, and reading
+  // traits first would make such a tree fail with "no 'traits' directory" before
+  // ever reporting the schema_version mismatch that actually explains it.
+  const heroes = SortedMap.from(
+    compareContentIds,
+    readDirectory(contentRoot, 'heroes', heroFileSchema).map(({ relativePath, file }) => {
+      const id = parseContentId(file.id);
+      requireUniqueId(seenIds, id, relativePath);
+      return [id, toHeroDefinition(file)] as const;
+    })
+  );
+
+  const contracts = SortedMap.from(
+    compareContentIds,
+    readDirectory(contentRoot, 'contracts', contractFileSchema).map(({ relativePath, file }) => {
+      const id = parseContentId(file.id);
+      requireUniqueId(seenIds, id, relativePath);
+      return [id, toContractDefinition(file)] as const;
+    })
+  );
+
+  const traits = SortedMap.from(
+    compareContentIds,
+    readDirectory(contentRoot, 'traits', traitFileSchema).map(({ relativePath, file }) => {
+      const id = parseContentId(file.id);
+      requireUniqueId(seenIds, id, relativePath);
+      return [id, toTraitDefinition(file)] as const;
+    })
+  );
+
+  validateReferences(heroes, traits);
+
+  return { heroes, contracts, traits, contentVersion: computeContentVersion(contentRoot) };
+}
+
+function toHeroDefinition(file: HeroFile): HeroDefinition {
+  return {
+    id: parseContentId(file.id),
+    displayNameKey: file.display_name_key,
+    greed: file.greed,
+    caution: file.caution,
+    pride: file.pride,
+    trustInGuild: file.trust_in_guild,
+    traits: file.traits.map((trait) => parseContentId(trait)),
+    relationships: file.relationships.map((relationship) => ({
+      hero: parseContentId(relationship.hero),
+      weight: relationship.weight
+    }))
+  };
+}
+
+function toContractDefinition(file: ContractFile): ContractDefinition {
+  return {
+    id: parseContentId(file.id),
+    displayNameKey: file.display_name_key,
+    payment: file.payment,
+    risk: file.risk,
+    requiredCrew: file.required_crew,
+    tags: file.tags.map((tag) => parseContentId(tag))
+  };
+}
+
+/**
+ * The rule that gives weight its meaning is enforced by the contract rather than
+ * here: the trait contract is a union discriminated on `kind`, so a principle
+ * carrying a weight and an inclination missing one are both rejected before this
+ * function runs. All that is left is to state the domain's own convention — a
+ * principle weighs 0, because it closes the decision instead of contributing to it.
+ */
+function toTraitDefinition(file: TraitFile): TraitDefinition {
+  return {
+    id: parseContentId(file.id),
+    displayNameKey: file.display_name_key,
+    kind: file.kind,
+    tag: parseContentId(file.tag),
+    weight: file.kind === 'inclination' ? file.weight : 0
+  };
+}
+
+/**
+ * Checks every hero's `traits` and `relationships` against the dictionaries built
+ * from all three directories.
+ *
+ * @throws if a hero names a trait no trait file defines, lists the same trait
+ * twice, holds a relationship to itself, holds a relationship to a hero no hero
+ * file defines, or holds more than one relationship to the same hero.
+ */
+function validateReferences(
+  heroes: SortedMap<ContentId, HeroDefinition>,
+  traits: SortedMap<ContentId, TraitDefinition>
+): void {
+  for (const hero of heroes.values()) {
+    const seenTraits = new Set<ContentId>();
+    for (const trait of hero.traits) {
+      if (!traits.has(trait)) {
+        throw new Error(
+          `Hero '${hero.id}' references trait '${trait}', which no trait file defines.`
+        );
+      }
+      if (seenTraits.has(trait)) {
+        throw new Error(`Hero '${hero.id}' lists trait '${trait}' more than once.`);
+      }
+      seenTraits.add(trait);
+    }
+
+    const seenTargets = new Set<ContentId>();
+    for (const bond of hero.relationships) {
+      if (bond.hero === hero.id) {
+        throw new Error(`Hero '${hero.id}' holds a relationship to itself.`);
+      }
+      if (!heroes.has(bond.hero)) {
+        throw new Error(
+          `Hero '${hero.id}' holds a relationship to '${bond.hero}', which no hero file defines.`
+        );
+      }
+      if (seenTargets.has(bond.hero)) {
+        throw new Error(`Hero '${hero.id}' holds more than one relationship to '${bond.hero}'.`);
+      }
+      seenTargets.add(bond.hero);
+    }
+  }
+}
+
+interface ReadFile<TFile> {
+  readonly relativePath: string;
+  readonly file: TFile;
+}
+
+/**
+ * Reads every `*.json` under one content directory, in ordinal path order.
+ *
+ * The version is checked against a bare peek at the JSON, before the contract is
+ * applied: a file authored for an earlier version legitimately lacks fields this
+ * version requires, and validating it straight against the contract would report
+ * those missing fields rather than the version mismatch that explains them.
+ */
+function readDirectory<TFile>(
+  contentRoot: string,
+  subdirectory: string,
+  schema: ZodType<TFile>
+): readonly ReadFile<TFile>[] {
+  const directory = join(contentRoot, subdirectory);
+  if (!isDirectory(directory)) {
+    throw new Error(`Content root '${contentRoot}' has no '${subdirectory}' directory.`);
+  }
+
+  return listFilesInOrdinalOrder(directory, '.json').map((entry) => {
+    // Named by its path under the content root, not under the subdirectory, so a
+    // diagnostic reads the way an author thinks about the tree.
+    const relativePath = `${subdirectory}/${entry.relativePath}`;
+    const value = parseJsonFile(relativePath, entry.fullPath);
+    requireSupportedSchemaVersion(peekSchemaVersion(relativePath, value), relativePath);
+
+    return { relativePath, file: validateValue(relativePath, value, schema) };
+  });
+}
+
+/** Reads only `schema_version`, without binding the rest of the file to any version's shape. */
+function peekSchemaVersion(relativePath: string, value: unknown): number {
+  const version =
+    typeof value === 'object' && value !== null
+      ? (value as Record<string, unknown>)['schema_version']
+      : undefined;
+
+  if (typeof version !== 'number' || !Number.isInteger(version)) {
+    throw new Error(
+      `Content file '${relativePath}' has no integer 'schema_version' property.`
+    );
+  }
+
+  return version;
+}
+
+function requireSupportedSchemaVersion(schemaVersion: number, relativePath: string): void {
+  if (schemaVersion !== SUPPORTED_CONTENT_SCHEMA_VERSION) {
+    throw new Error(
+      `Content file '${relativePath}' declares schema_version ${schemaVersion}, but this build ` +
+        `reads version ${SUPPORTED_CONTENT_SCHEMA_VERSION}. Migrate the file, or run a build that ` +
+        'understands its version — reading it under the wrong version would be a guess.'
+    );
+  }
+}
+
+function requireUniqueId(
+  seenIds: Map<ContentId, string>,
+  id: ContentId,
+  relativePath: string
+): void {
+  const firstPath = seenIds.get(id);
+  if (firstPath !== undefined) {
+    throw new Error(
+      `Duplicate content id '${id}': defined in both '${firstPath}' and '${relativePath}'.`
+    );
+  }
+
+  seenIds.set(id, relativePath);
+}

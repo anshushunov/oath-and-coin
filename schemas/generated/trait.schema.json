@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oath-and-coin.invalid/schemas/generated/trait.schema.json",
+  "title": "Trait definition",
+  "description": "Generated from the Zod contracts in packages/content/src/schemas.ts — do not edit. Regenerate with `pnpm schema:generate`; `pnpm schema:check` fails if this file and the contracts disagree, or if the numbers here drift from the hand-written schema the .NET stack still reads until cutover.",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "type": "number",
+          "const": 2
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$"
+        },
+        "display_name_key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "const": "inclination"
+        },
+        "tag": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$"
+        },
+        "weight": {
+          "type": "integer",
+          "minimum": -30,
+          "maximum": 30
+        }
+      },
+      "required": [
+        "schema_version",
+        "id",
+        "display_name_key",
+        "kind",
+        "tag",
+        "weight"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "type": "number",
+          "const": 2
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$"
+        },
+        "display_name_key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "const": "principle"
+        },
+        "tag": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$"
+        }
+      },
+      "required": [
+        "schema_version",
+        "id",
+        "display_name_key",
+        "kind",
+        "tag"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

@@ -25,6 +25,32 @@
     "isolatedModules": true,
     "resolveJsonModule": true,
 
+    // Relative imports inside `packages/**` and `tools/**` name the `.ts` file
+    // they mean, and this is what lets them. The reason is not style: Node 24
+    // strips types and runs a `.ts` file directly, but its resolver does no
+    // extension guessing, so `import './limits'` fails with ERR_MODULE_NOT_FOUND
+    // while `import './limits.ts'` works. Measured here, not assumed — both
+    // spellings were run under Node 24.12.0 before this line was written.
+    //
+    // What it buys: the pure packages and the scenario-runner CLI are executable
+    // by plain Node, so schema generation and oracle parity are scripts rather
+    // than tests-pretending-to-be-scripts, and a CLI that needs a bundler to
+    // start is not the CLI this repository ships. Requires `noEmit`, which is
+    // already the rule above.
+    "allowImportingTsExtensions": true,
+
+    // The other half of "plain Node can run these files". Node strips types; it
+    // does not compile them, so TypeScript syntax with a runtime effect — `enum`,
+    // `namespace`, constructor parameter properties, decorators — fails at load
+    // with ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX. This option makes the compiler refuse
+    // that syntax at the point of writing instead, where the message names the
+    // construct rather than a stack inside the module loader.
+    //
+    // Not a hypothetical: `SortedMap` was first written with parameter properties
+    // and the schema generator died on it. The comment there records the same fact
+    // from the other end.
+    "erasableSyntaxOnly": true,
+
     "strict": true,
     // Not implied by `strict`, and each one closes a defect class the domain
     // here actually has: integer indexing into arrays of heroes and reasons,

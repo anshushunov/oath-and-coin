@@ -17,6 +17,8 @@
   "references": [
     { "path": "apps/web" },
     { "path": "apps/desktop" },
+    { "path": "packages/simulation" },
+    { "path": "packages/content" },
     { "path": "tests/architecture" },
     { "path": "tests/desktop" },
     { "path": "tests/e2e" }

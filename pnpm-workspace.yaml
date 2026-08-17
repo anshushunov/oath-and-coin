@@ -1,14 +1,21 @@
 # The workspace ADR-010 fixes. Only the members that already hold a real
-# artifact are listed: `packages/simulation`, `packages/content`,
-# `packages/presentation`, `packages/application` and `tools/scenario-runner`
-# join this list in the task that writes their first file (Tasks 6-12). That is
-# what TDD §20 asks for — "не нужно создавать пустые каталоги до появления их
-# первого артефакта". A member listed here with nothing in it would still be
-# typechecked, tested and linted by every gate, all of them green on nothing,
-# which reads as coverage of a package that does not exist yet.
+# artifact are listed: `packages/presentation`, `packages/application` and
+# `tools/scenario-runner` join this list in the task that writes their first file
+# (Tasks 10-12). That is what TDD §20 asks for — "не нужно создавать пустые
+# каталоги до появления их первого артефакта". A member listed here with nothing
+# in it would still be typechecked, tested and linted by every gate, all of them
+# green on nothing, which reads as coverage of a package that does not exist yet.
+#
+# `packages/simulation` arrives in Task 6 rather than in Task 7 as the segment 2
+# hand-off expected. Identity is Task 6's own deliverable, and the direction
+# ADR-010 fixes (simulation ← content) puts `ContentId` in the innermost package:
+# both state and content key collections by it, so putting it in `content` would
+# have made the simulation import the content layer.
 packages:
   - apps/web
   - apps/desktop
+  - packages/simulation
+  - packages/content
   - tests/architecture
   - tests/desktop
   - tests/e2e

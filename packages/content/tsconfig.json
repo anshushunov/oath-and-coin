@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // This is the layer that owns files, paths and encodings (ADR-002), so it is
+    // the layer that legitimately needs Node's types. The simulation package
+    // deliberately has no such entry — that asymmetry *is* the boundary.
+    "types": ["node"]
+  },
+  "include": ["src"]
+}
