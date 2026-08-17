@@ -36,6 +36,18 @@ const DESCRIPTION =
 export function jsonSchemaFor(directory: ContentDirectory): Record<string, unknown> {
   const generated = z.toJSONSchema(CONTENT_DIRECTORIES[directory], {
     target: 'draft-2020-12',
+
+    // `input`, not the default `output`, and a mutant is what settled it. These
+    // schemas describe a file on disk — what an author may write — so the input
+    // side is the semantically right one. It is also the only one that can tell a
+    // strict contract from a stripping one: under `output` Zod emits
+    // `additionalProperties: false` for `z.object` too, because the *parsed value*
+    // has only known keys either way. So `strictObject` → `object` on the hero
+    // contract, which is a real loss of strictness, produced byte-identical
+    // schemas and left `schema:check` green while the loader silently began
+    // accepting misspelled fields.
+    io: 'input',
+
     // A contract this repository cannot represent as a schema has to be a visible
     // failure, not a schema quietly missing a constraint the loader enforces.
     unrepresentable: 'throw'
