@@ -1,7 +1,8 @@
 # The workspace ADR-010 fixes. Only the members that already hold a real
-# artifact are listed: `packages/presentation` and `packages/application` join this
-# list in the task that writes their first file (Tasks 11-12);
-# `tools/scenario-runner` joined it in Task 10. That is what TDD §20 asks for —
+# artifact are listed: `packages/application` joins this list in the task that
+# writes its first file (Task 12); `packages/presentation` and the `tests/locale`
+# member that checks its keys against the shipped catalogue joined in Task 11,
+# and `tools/scenario-runner` in Task 10. That is what TDD §20 asks for —
 # "не нужно создавать пустые каталоги до появления их первого артефакта". A member listed here with nothing
 # in it would still be typechecked, tested and linted by every gate, all of them
 # green on nothing, which reads as coverage of a package that does not exist yet.
@@ -16,7 +17,9 @@ packages:
   - apps/desktop
   - packages/simulation
   - packages/content
+  - packages/presentation
   - tests/architecture
+  - tests/locale
   - tests/desktop
   - tests/e2e
   - tests/oracle

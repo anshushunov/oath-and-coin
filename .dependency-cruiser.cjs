@@ -114,9 +114,25 @@ module.exports = {
     {
       name: 'presentation-depends-only-on-simulation',
       severity: 'error',
-      comment: 'ADR-010 direction: simulation ← presentation.',
+      comment:
+        'ADR-010 direction: simulation ← presentation. The layer projects a decision onto a screen; it opens no file, reads no clock and pulls in no npm package, so the only imports it may resolve are inside itself and inside the simulation.',
+      // Written as one negation — everything whose resolved path is outside the two
+      // allowed roots — rather than as a list of forbidden neighbours. The list
+      // version is exactly the defect external review found in
+      // `simulation-depends-on-nothing` in segment 2 (§5.6): it named the sibling
+      // packages, so `import { readFileSync } from "node:fs"` passed the only
+      // authoritative boundary check with `0 violations`. This rule was written in the
+      // list shape anyway when the package arrived in Task 11, and the second external
+      // review reproduced the same hole in it. A rule that enumerates what is banned
+      // misses whatever is invented next.
+      //
+      // The residual blind spot named on `simulation-depends-on-nothing` applies here
+      // too: dependency-cruiser does not report `vitest` as a dependency of a test
+      // file in this workspace, so this gate cannot be assumed to see every npm
+      // import. It provably does see `node:*` and cross-package imports, which is what
+      // the two mutants recorded in the journal exercise.
       from: { path: '^packages/presentation/' },
-      to: { path: '^(packages/(content|application)|apps|tools)/' }
+      to: { pathNot: '^packages/(presentation|simulation)/' }
     },
     {
       name: 'application-does-not-depend-on-apps',

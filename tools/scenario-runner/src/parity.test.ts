@@ -284,6 +284,73 @@ describe('a doctored entry is reported, and the report says where', () => {
     expect(failures.some((failure) => failure.includes('disagrees with itself'))).toBe(true);
   });
 
+  it('notices a screen whose projection no longer matches, and names the field', () => {
+    // The read-model comparison arrived in Task 11 with no negative case of its own, and
+    // external review named the mutant that exposed it: delete the `compareReadModel`
+    // call and every entry still reports 54/54 while this suite stays green. `AGENTS.md`
+    // §8 asks for exactly the opposite of that on a new check.
+    const failures = failuresFor((entry) => {
+      const readModel = entry.read_model as Record<string, unknown>;
+      readModel.title_key = 'screen.contract_offer.other_title';
+    });
+
+    expect(failures.some((failure) => failure.includes('$.read_model.title_key'))).toBe(true);
+  });
+
+  it('notices a recorded screen hash that no longer covers the screen beside it', () => {
+    // Only the hash is doctored, so the projections still agree field for field. What
+    // has to be reported is the entry disagreeing with itself — otherwise the corpus
+    // decides which of its two statements the port is measured against, which is the
+    // hole §9.5 already closed for the artifact and this check reopened for the screen.
+    const failures = failuresFor((entry) => {
+      (entry.read_model as Record<string, unknown>).sha256 = 'f'.repeat(64);
+    });
+
+    expect(failures.some((failure) => failure.includes('read_model disagrees with itself'))).toBe(
+      true
+    );
+    expect(failures.some((failure) => failure.includes('read_model sha256 differs'))).toBe(true);
+  });
+
+  it('notices a screen state the run did not land on', () => {
+    // Outside the canonical bytes entirely, like the error code and the per-step draws:
+    // an artifact records what the run computed, never which of the five shapes the
+    // screen took.
+    const failures = failuresFor((entry) => {
+      (entry.outcome as Record<string, unknown>).screen_state = 'empty';
+    });
+
+    expect(failures.some((failure) => failure.includes('screen state is'))).toBe(true);
+  });
+
+  it('reports an entry with no recorded screen instead of dying on it', () => {
+    // A corpus missing the field is a corpus this comparison cannot run against, and it
+    // has to say so. Before external review the first line of the comparison destructured
+    // the field, so this input aborted the whole parity run with a TypeError naming
+    // neither the entry nor the field.
+    const failures = failuresFor((entry) => {
+      delete entry.read_model;
+    });
+
+    expect(failures.some((failure) => failure.includes('records no read_model'))).toBe(true);
+  });
+
+  it('compares the screen of an entry that never produced an artifact', () => {
+    // `screen_error` stops before any artifact exists, and it still has a screen to show
+    // a player. The comparison therefore runs before the early return for such entries —
+    // if it ran after, the two states with the most to say about failure would be the
+    // two nothing checked.
+    const failures = verifyEntry(
+      repoRoot,
+      corpusFor(errorReference, (entry) => {
+        (entry.read_model as Record<string, unknown>).error_code = 'SCHEMA_INVALID';
+      }),
+      errorReference
+    ).failures;
+
+    expect(failures.some((failure) => failure.includes('$.read_model.error_code'))).toBe(true);
+  });
+
   it('reports every disagreement, not only the first', () => {
     const failures = failuresFor((entry) => {
       entry.canonical_sha256 = 'f'.repeat(64);

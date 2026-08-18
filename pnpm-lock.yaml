@@ -96,6 +96,16 @@ importers:
         specifier: 6.0.3
         version: 6.0.3
 
+  packages/presentation:
+    dependencies:
+      '@oath-and-coin/simulation':
+        specifier: workspace:*
+        version: link:../simulation
+    devDependencies:
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+
   packages/simulation:
     devDependencies:
       typescript:
@@ -129,6 +139,21 @@ importers:
         specifier: 6.0.3
         version: 6.0.3
 
+  tests/locale:
+    devDependencies:
+      '@oath-and-coin/content':
+        specifier: workspace:*
+        version: link:../../packages/content
+      '@oath-and-coin/presentation':
+        specifier: workspace:*
+        version: link:../../packages/presentation
+      '@oath-and-coin/simulation':
+        specifier: workspace:*
+        version: link:../../packages/simulation
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+
   tests/oracle:
     devDependencies:
       '@oath-and-coin/content':
@@ -149,6 +174,9 @@ importers:
       '@oath-and-coin/content':
         specifier: workspace:*
         version: link:../../packages/content
+      '@oath-and-coin/presentation':
+        specifier: workspace:*
+        version: link:../../packages/presentation
       '@oath-and-coin/simulation':
         specifier: workspace:*
         version: link:../../packages/simulation

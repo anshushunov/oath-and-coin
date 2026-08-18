@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Empty for the same reason `packages/simulation` keeps it empty, and it is
+    // the boundary rather than an omission. Without this entry TypeScript pulls
+    // in every visible `@types/*`, and `@types/node` is a root devDependency — so
+    // `import { readFileSync } from 'node:fs'` would typecheck inside a layer that
+    // `presentation-depends-only-on-simulation` forbids it in. dependency-cruiser
+    // would still catch it; this makes the compiler catch it first.
+    //
+    // The consequence is deliberate and shows up immediately: this package hashes
+    // a read model without `node:crypto` (Task 6 put a pure SHA-256 in the
+    // simulation for exactly this) and encodes UTF-8 without `TextEncoder`.
+    "types": []
+  },
+  "include": ["src"]
+}
