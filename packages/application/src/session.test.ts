@@ -95,7 +95,10 @@ const ranScenario: ScenarioFixture = {
     expected_outcome: 'success',
     expected_screen_state: 'normal',
     content_root: 'fixture-content',
-    checkpoints: [{ name: 'final', after_command_id: 1 }]
+    checkpoints: [
+      { name: 'start', after_command_id: 0 },
+      { name: 'final', after_command_id: 1 }
+    ]
   },
   commands: {
     commands: [{ command_id: 1, hero_index: 0, contract: 'core:escort', expected_state_version: 0 }]
@@ -124,11 +127,15 @@ const failingScenario: ScenarioFixture = {
   }
 };
 
-function session(scenario: ScenarioFixture, content: ContentFileSource | null = contentTree()) {
+function session(
+  scenario: ScenarioFixture,
+  content: ContentFileSource | null = contentTree(),
+  checkpoint: string | null = null
+) {
   return startSession({
     content: portOver(scenario, content),
     scenario: 'fixture',
-    checkpoint: null,
+    checkpoint,
     seed: 424242n
   });
 }
@@ -174,6 +181,16 @@ describe('the screen a session lands on', () => {
 
     expect(state.screen.state).toBe(ScreenState.Normal);
     expect(state.screen.responses).toHaveLength(1);
+  });
+
+  it('is the screen of the checkpoint asked for, not of the whole scenario', () => {
+    // The checkpoint is an input, and a session that dropped it would answer the same
+    // screen for every point in a run — which is precisely what the harness of Task 15
+    // drives five different states from.
+    const state = session(ranScenario, contentTree(), 'start');
+
+    expect(state.screen.state).toBe(ScreenState.Incomplete);
+    expect(state.screen.responses).toEqual([]);
   });
 });
 
