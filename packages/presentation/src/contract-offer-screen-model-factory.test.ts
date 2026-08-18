@@ -559,6 +559,47 @@ describe('the read-model hash', () => {
     expect(JSON.stringify(describeReadModel(here))).not.toMatch(/does not exist/u);
   });
 
+  it('refuses to hash a model built by stepping around the factory', () => {
+    // External review reproduced this with the exact value below. In C# the cross-field
+    // rules lived in `init` accessors, so `Loading with { State = Normal }` re-ran them
+    // and threw; a TypeScript spread runs no accessor at all, and this hashed to
+    // 54a6996d… without complaint — a Normal screen with nothing on offer.
+    const impossible = { ...LOADING_SCREEN, state: ScreenState.Normal };
+
+    expect(() => readModelHash(impossible)).toThrow(/nothing to offer/u);
+    expect(() => describeReadModel(impossible)).toThrow(/nothing to offer/u);
+  });
+
+  it('refuses to hash a string the corpus and this repository canonicalize differently', () => {
+    // `failedScreen` is the one place a caller supplies a projection string freely, and
+    // `A+B` is the input external review used: the C# writer escapes `+` as + and
+    // RFC 8785 leaves it literal, so the hash would be one the corpus could never have
+    // recorded — and a comparison against it would mean nothing.
+    expect(() => readModelHash(failedScreen('A+B', 'detail'))).toThrow(/outside the set/u);
+    expect(() => readModelHash(failedScreen('ОШИБКА', 'detail'))).toThrow(/outside the set/u);
+    // Escaped rather than typed literally: a raw control character in a source file is
+    // invisible to whoever reads this next, which is the wrong property for the one
+    // case that is about invisible characters.
+    expect(() => readModelHash(failedScreen('A\u0007B', 'detail'))).toThrow(/outside the set/u);
+  });
+
+  it('names where an uncomparable string sat, not only that one existed', () => {
+    // The walk covers the whole projection rather than the one field that is loose
+    // today, so a field added to a later projection cannot reopen the hole quietly.
+    expect(() => readModelHash(failedScreen("it's broken", 'detail'))).toThrow(
+      /\$\.error_code is/u
+    );
+  });
+
+  it('still accepts every shape the shipped corpus records', () => {
+    // The domain has to be wider than the simulation's artifact-safe alphabet, which is
+    // lowercase-only: a read model legitimately carries `Normal`, `Moderate` and
+    // `CONTENT_ROOT_NOT_FOUND`. A check that rejected those would be a check nothing
+    // could pass.
+    expect(() => readModelHash(failedScreen('CONTENT_ROOT_NOT_FOUND', 'detail'))).not.toThrow();
+    expect(() => readModelHash(LOADING_SCREEN)).not.toThrow();
+  });
+
   it('is a hash of the canonical projection, not of the model object', () => {
     // The projection is a stable, named contract with snake_case keys the frozen
     // corpus records; the model's own field names are this package's business.

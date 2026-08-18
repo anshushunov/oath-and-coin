@@ -8,7 +8,10 @@ import {
   screenStateKey,
   waveredKey
 } from './keys.ts';
-import type { ContractOfferScreenModel } from './contract-offer-screen-model.ts';
+import {
+  createContractOfferScreenModel,
+  type ContractOfferScreenModel
+} from './contract-offer-screen-model.ts';
 import { qualitativeKey } from './qualitative-scale.ts';
 
 /**
@@ -60,6 +63,12 @@ export function expectedSnapshot(
   model: ContractOfferScreenModel,
   catalogue: ReadonlyMap<string, string>
 ): readonly string[] {
+  // Re-validated for the reason the read-model projection is (see its own remarks): a
+  // TypeScript spread walks around the factory, and this is the second place a model
+  // becomes evidence about a screen. A snapshot built from a Normal model carrying no
+  // contract would describe a frame no screen can draw.
+  createContractOfferScreenModel(model);
+
   const texts: string[] = [];
   const resolve = (key: string): void => {
     texts.push(resolveText(catalogue, key));

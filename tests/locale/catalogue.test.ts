@@ -77,12 +77,24 @@ describe('the shipped catalogue', () => {
     );
   });
 
-  it('answers each of them with text a person reads, not with the key again', () => {
-    // A catalogue that echoed its keys back would pass the check above while the screen
-    // showed `field.hero.greed` to a player.
+  it('answers each of them with text a person reads, not with a key of any kind', () => {
+    // A catalogue that echoed its keys back would pass the completeness check above
+    // while the screen showed `field.hero.greed` to a player.
+    //
+    // "Not the key itself" is not enough, and external review reproduced why:
+    // `field.hero.greed: "field.hero.caution"` passes that test and still puts an
+    // untranslated key in front of a player. What has to be rejected is the *shape* of
+    // a key — a dotted lowercase path with no spaces — because no Russian sentence
+    // looks like one.
+    const looksLikeAKey = /^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$/u;
+
     for (const key of everyKeyTheScreenCanShow()) {
-      expect(catalogue.get(key), key).not.toBe(key);
-      expect((catalogue.get(key) ?? '').trim(), key).not.toBe('');
+      const text = (catalogue.get(key) ?? '').trim();
+
+      expect(text, key).not.toBe('');
+      expect(text, `'${key}' is answered with '${text}', which is itself a key`).not.toMatch(
+        looksLikeAKey
+      );
     }
   });
 

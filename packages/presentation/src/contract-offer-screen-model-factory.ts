@@ -15,6 +15,7 @@ import {
   type TraceFactor
 } from '@oath-and-coin/simulation';
 
+import { requireCorpusComparableText } from './corpus-comparable-text.ts';
 import { TITLE_KEY, contractDisplayNameKey, tagKey, traitDisplayNameKey } from './keys.ts';
 import {
   createContractOfferScreenModel,
@@ -465,6 +466,38 @@ function computeWavered(decision: DecisionResult): boolean {
 }
 
 /**
+ * Walks a finished projection and refuses any string the frozen corpus and this
+ * repository would canonicalize into different bytes.
+ *
+ * Over the whole tree rather than over the one field that is loose today. External
+ * review found `errorCode` — the only string in the projection a caller supplies
+ * freely — but a field added to a later projection would reopen the same hole without
+ * anyone noticing, and the walk costs one traversal of an object that is about to be
+ * serialized anyway.
+ */
+function requireComparableStrings(value: CanonicalValue, path: string): void {
+  if (typeof value === 'string') {
+    requireCorpusComparableText(path, value);
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((element, index) => {
+      requireComparableStrings(element, `${path}[${String(index)}]`);
+    });
+    return;
+  }
+
+  if (typeof value === 'object' && value !== null) {
+    for (const [key, element] of Object.entries(value)) {
+      if (element !== undefined) {
+        requireComparableStrings(element, `${path}.${key}`);
+      }
+    }
+  }
+}
+
+/**
  * The canonical projection the read-model hash is taken over: every field a player can
  * see except `errorDetail`, and including the state itself.
  *
@@ -479,14 +512,28 @@ function computeWavered(decision: DecisionResult): boolean {
  * hash could not say *where* two screens disagreed.
  */
 export function describeReadModel(model: ContractOfferScreenModel): CanonicalValue {
-  return {
-    state: model.state,
-    title_key: model.titleKey,
-    error_code: model.errorCode,
-    contract: model.contract === null ? null : describeContract(model.contract),
-    roster: model.roster.map(describeHero),
-    responses: model.responses.map(describeResponse)
+  // Re-validated here, not trusted. In C# the cross-field rules lived in `init`
+  // accessors and survived a `with` expression, so a copy could not weaken them; a
+  // TypeScript spread has no such property, and external review reproduced it:
+  // `{ ...LOADING_SCREEN, state: 'Normal' }` is a Normal screen with no contract on
+  // offer, and it hashed without complaint. The factory function cannot be the only
+  // gate when the type system lets a caller step around it, so the two places that
+  // turn a model into evidence — this projection and the expected snapshot — check it
+  // again at the point the claim is made.
+  const validated = createContractOfferScreenModel(model);
+
+  const projection: CanonicalValue = {
+    state: validated.state,
+    title_key: validated.titleKey,
+    error_code: validated.errorCode,
+    contract: validated.contract === null ? null : describeContract(validated.contract),
+    roster: validated.roster.map(describeHero),
+    responses: validated.responses.map(describeResponse)
   };
+
+  requireComparableStrings(projection, '$');
+
+  return projection;
 }
 
 /** SHA-256 of the canonical bytes of {@link describeReadModel}, lowercase hex. */

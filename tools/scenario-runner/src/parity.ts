@@ -442,7 +442,25 @@ function compareOutcomeKind(entry: OracleEntry, result: ScenarioRunResult): read
  */
 function compareReadModel(entry: OracleEntry, result: ScenarioRunResult): readonly string[] {
   const failures: string[] = [];
+
+  // An entry with no recorded screen is not "an entry that happens to match"; it is an
+  // entry this comparison cannot be run against. Reported rather than thrown: the first
+  // version destructured `entry.read_model` directly, and external review pointed out
+  // that a corpus missing the field would abort the whole parity run with a TypeError
+  // naming neither the entry nor the field.
+  if (typeof entry.read_model !== 'object' || entry.read_model === null) {
+    return ['the corpus entry records no read_model, so the screen cannot be compared at all'];
+  }
+
+  if (typeof entry.outcome.screen_state !== 'string') {
+    failures.push('the corpus entry records no outcome.screen_state');
+  }
+
   const { sha256: recordedHash, ...recorded } = entry.read_model;
+
+  if (typeof recordedHash !== 'string') {
+    return [...failures, 'the corpus entry records a read_model with no sha256 beside it'];
+  }
 
   // The corpus hashed the projection *without* the hash it stores beside it. Recomputed
   // here from the recorded object rather than trusted, so an entry that disagrees with

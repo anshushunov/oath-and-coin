@@ -45,6 +45,21 @@ function everyKeyOf(model: ContractOfferScreenModel): ReadonlyMap<string, string
   }
 }
 
+/**
+ * A model that reaches every branch of the projection at once.
+ *
+ * Deliberately richer than the screen a single scenario produces, and that richness is
+ * the point. The first version of this fixture had one hero with no inclinations, one
+ * response with no block and no tie-break — so deleting the whole `inclinationKeys`
+ * branch from `expectedSnapshot` left the order assertion below passing, and external
+ * review reproduced exactly that. A branch not exercised by the order assertion is a
+ * binding this test cannot notice going missing.
+ *
+ * Every optional branch therefore appears: a contract with tags, a hero with both
+ * principles and inclinations, a hero with neither, a reason whose source is named, a
+ * reason whose source is not, a blocked response and a response settled by a
+ * tie-break.
+ */
 const aFullModel = createContractOfferScreenModel({
   state: ScreenState.Normal,
   titleKey: TITLE_KEY,
@@ -53,7 +68,7 @@ const aFullModel = createContractOfferScreenModel({
     displayNameKey: 'contract.core.escort_the_caravan.name',
     payment: 40,
     risk: QualitativeGrade.Moderate,
-    tagKeys: ['tag.patron.merchant_guild'],
+    tagKeys: ['tag.patron.merchant_guild', 'tag.target.bandits'],
     requiredCrew: 4,
     acceptedCount: 3
   },
@@ -65,6 +80,17 @@ const aFullModel = createContractOfferScreenModel({
       caution: QualitativeGrade.Low,
       pride: QualitativeGrade.Moderate,
       principleKeys: ['trait.core.will_not_strike_a_temple.name'],
+      inclinationKeys: ['trait.core.hates_the_cult.name', 'trait.core.hungry_for_renown.name']
+    },
+    {
+      // A hero with neither list, so the "no caption over an empty list" rule is
+      // exercised by the same walk that checks the order.
+      definition: 'core:doran',
+      displayNameKey: 'hero.core.doran.name',
+      greed: QualitativeGrade.High,
+      caution: QualitativeGrade.Negligible,
+      pride: QualitativeGrade.Extreme,
+      principleKeys: [],
       inclinationKeys: []
     }
   ],
@@ -80,11 +106,40 @@ const aFullModel = createContractOfferScreenModel({
           strength: QualitativeGrade.Low,
           sourceDisplayNameKey: 'trait.core.loyal_to_the_merchant_guild.name',
           direction: ReasonDirection.Supported
+        },
+        {
+          // Source deliberately unnamed: the contract is already on the screen under
+          // its own key, so naming it again would repeat rather than explain.
+          reasonCode: ReasonCodes.RiskTooHigh,
+          sourceEntity: 'core:escort_the_caravan',
+          strength: QualitativeGrade.High,
+          sourceDisplayNameKey: null,
+          direction: ReasonDirection.Opposed
         }
       ],
       blockedByEntity: null,
       blockedByDisplayNameKey: null,
       tieBreakCode: null,
+      wavered: true
+    },
+    {
+      heroDefinition: 'core:doran',
+      heroDisplayNameKey: 'hero.core.doran.name',
+      action: 'action:decline',
+      reasons: [],
+      blockedByEntity: 'core:will_not_serve_slavers',
+      blockedByDisplayNameKey: 'trait.core.will_not_serve_slavers.name',
+      tieBreakCode: null,
+      wavered: false
+    },
+    {
+      heroDefinition: 'core:bram',
+      heroDisplayNameKey: 'hero.core.bram.name',
+      action: 'action:accept',
+      reasons: [],
+      blockedByEntity: null,
+      blockedByDisplayNameKey: null,
+      tieBreakCode: ReasonCodes.NoReasonToRefuse,
       wavered: false
     }
   ],
@@ -125,6 +180,9 @@ describe('the texts a correctly bound screen produces', () => {
   it('walks title, state, error, contract, roster, then responses', () => {
     const texts = expectedSnapshot(aFullModel, everyKeyOf(aFullModel));
 
+    // Every optional branch of the projection is in this list, which is what makes it
+    // able to notice one going missing. Deleting any single `resolve` from
+    // `expectedSnapshot` removes a line here.
     expect(texts).toEqual([
       'text(screen.contract_offer.title)',
       'text(screen.contract_offer.state.normal)',
@@ -139,6 +197,7 @@ describe('the texts a correctly bound screen produces', () => {
       '3',
       'text(field.contract.tags)',
       'text(tag.patron.merchant_guild)',
+      'text(tag.target.bandits)',
       'text(hero.core.bram.name)',
       'text(field.hero.greed)',
       'text(qualitative.moderate)',
@@ -148,6 +207,16 @@ describe('the texts a correctly bound screen produces', () => {
       'text(qualitative.moderate)',
       'text(field.hero.principles)',
       'text(trait.core.will_not_strike_a_temple.name)',
+      'text(field.hero.inclinations)',
+      'text(trait.core.hates_the_cult.name)',
+      'text(trait.core.hungry_for_renown.name)',
+      'text(hero.core.doran.name)',
+      'text(field.hero.greed)',
+      'text(qualitative.high)',
+      'text(field.hero.caution)',
+      'text(qualitative.negligible)',
+      'text(field.hero.pride)',
+      'text(qualitative.extreme)',
       'text(hero.core.bram.name)',
       'text(action.accept)',
       'text(hero.decision.personal_conviction)',
@@ -155,8 +224,51 @@ describe('the texts a correctly bound screen produces', () => {
       'text(reason.direction.supported)',
       'text(field.reason.strength)',
       'text(qualitative.low)',
+      'text(hero.decision.risk_too_high)',
+      'text(reason.direction.opposed)',
+      'text(field.reason.strength)',
+      'text(qualitative.high)',
+      'text(response.wavered.true)',
+      'text(hero.core.doran.name)',
+      'text(action.decline)',
+      'text(field.response.blocked_by)',
+      'text(trait.core.will_not_serve_slavers.name)',
+      'text(response.wavered.false)',
+      'text(hero.core.bram.name)',
+      'text(action.accept)',
+      'text(hero.decision.no_reason_to_refuse)',
       'text(response.wavered.false)'
     ]);
+  });
+
+  it('resolves every key the model carries, and shows no key the model does not', () => {
+    // The independent half of the assertion above. That one states an order; this one
+    // states coverage — every key on the model reaches the frame exactly as many times
+    // as the model carries it. A dropped binding fails both, and a binding added to
+    // the projection without a model field behind it fails this one.
+    const texts = expectedSnapshot(aFullModel, everyKeyOf(aFullModel));
+    const shown = texts.filter((text) => text.startsWith('text(')).map((text) => text.slice(5, -1));
+
+    for (const key of [
+      aFullModel.contract!.displayNameKey,
+      ...aFullModel.contract!.tagKeys,
+      ...aFullModel.roster.flatMap((hero) => [
+        hero.displayNameKey,
+        ...hero.principleKeys,
+        ...hero.inclinationKeys
+      ]),
+      ...aFullModel.responses.flatMap((response) => [
+        response.heroDisplayNameKey,
+        ...response.reasons.flatMap((reason) => [
+          reason.reasonCode,
+          ...(reason.sourceDisplayNameKey === null ? [] : [reason.sourceDisplayNameKey])
+        ]),
+        ...(response.blockedByDisplayNameKey === null ? [] : [response.blockedByDisplayNameKey]),
+        ...(response.tieBreakCode === null ? [] : [response.tieBreakCode])
+      ])
+    ]) {
+      expect(shown, `the frame must resolve '${key}'`).toContain(key);
+    }
   });
 
   it('shows the three objective numbers literally and nothing else unresolved', () => {
@@ -182,13 +294,17 @@ describe('the texts a correctly bound screen produces', () => {
   });
 
   it('never draws a caption over an empty list', () => {
-    const withoutTags = createContractOfferScreenModel({
+    const withoutLists = createContractOfferScreenModel({
       ...aFullModel,
       contract: { ...aFullModel.contract!, tagKeys: [] },
-      roster: [{ ...aFullModel.roster[0]!, principleKeys: [] }]
+      roster: aFullModel.roster.map((hero) => ({
+        ...hero,
+        principleKeys: [],
+        inclinationKeys: []
+      }))
     });
 
-    const texts = expectedSnapshot(withoutTags, everyKeyOf(withoutTags));
+    const texts = expectedSnapshot(withoutLists, everyKeyOf(withoutLists));
 
     expect(texts).not.toContain('text(field.contract.tags)');
     expect(texts).not.toContain('text(field.hero.principles)');
@@ -203,28 +319,17 @@ describe('the texts a correctly bound screen produces', () => {
     expect(texts.join(' ')).not.toContain('C:/nope');
   });
 
-  it('gives a blocked answer its own captioned line, and a tie-break its own', () => {
-    const model = createContractOfferScreenModel({
-      ...aFullModel,
-      responses: [
-        {
-          ...aFullModel.responses[0]!,
-          reasons: [],
-          blockedByEntity: 'core:will_not_strike_a_temple',
-          blockedByDisplayNameKey: 'trait.core.will_not_strike_a_temple.name'
-        },
-        {
-          ...aFullModel.responses[0]!,
-          reasons: [],
-          tieBreakCode: ReasonCodes.NoReasonToRefuse
-        }
-      ]
-    });
+  it('refuses to describe a model no screen could draw', () => {
+    // The C# original enforced its cross-field rules from `init` accessors, so a `with`
+    // expression re-ran them and a copy could not weaken them. A TypeScript spread has
+    // no such property, and external review reproduced the consequence: this exact
+    // value is a Normal screen with nothing on offer, and it produced a snapshot and a
+    // hash without complaint. Both places a model becomes evidence now re-validate.
+    const impossible = { ...LOADING_SCREEN, state: ScreenState.Normal };
 
-    const texts = expectedSnapshot(model, everyKeyOf(model));
-
-    expect(texts).toContain('text(field.response.blocked_by)');
-    expect(texts).toContain(`text(${ReasonCodes.NoReasonToRefuse})`);
+    expect(() => expectedSnapshot(impossible, everyKeyOf(LOADING_SCREEN))).toThrow(
+      /nothing to offer/u
+    );
   });
 
   it('fails loudly on a key the catalogue does not carry', () => {
