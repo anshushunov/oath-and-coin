@@ -34,6 +34,24 @@ test.describe('web bootstrap', () => {
     expect(consoleErrors, 'the page must load with a clean console').toEqual([]);
   });
 
+  test('the contract-offer screen shows content read out of the bundle', async ({ page }) => {
+    await page.goto('/');
+
+    // The one thing no unit test in `apps/web` can say. `import.meta.glob` is
+    // resolved by Vite, and vitest and `vite build` are two different code paths
+    // through it: a pattern that reaches the shipped tree in the dev transform
+    // and inlines nothing in the production bundle leaves every jsdom test green
+    // and the page blank. §13.5 of the migration journal named exactly this — a
+    // browser source that had never run in a browser — as what Task 13 owes.
+    //
+    // The two texts asserted are the title and the screen state, both resolved
+    // from `content/locale/ru.json`. A bundle that carried no content could not
+    // produce either: the session would have failed before the screen existed.
+    await expect(page.getByTestId('contract-offer-screen')).toBeVisible();
+    await expect(page.getByTestId('contract-offer-screen')).toContainText('Предложение контракта');
+    await expect(page.getByTestId('contract-offer-screen')).toContainText('Все ответили');
+  });
+
   test('no Node API is reachable from the page', async ({ page }) => {
     await page.goto('/');
 
