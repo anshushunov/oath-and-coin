@@ -3,6 +3,7 @@ import type { ZodType } from 'zod';
 import type { ContentFileSource } from './file-source.ts';
 import { scanJson } from './json-scan.ts';
 import { MAX_FILE_SIZE_BYTES } from './limits.ts';
+import { decodeUtf8OrThrow } from './text-codec.ts';
 
 /**
  * The one reader every data file in this package goes through, and the one place
@@ -67,7 +68,7 @@ export function readBounded(source: ContentFileSource, path: string): Uint8Array
  */
 export function parseJsonFile(source: ContentFileSource, path: string): unknown {
   const displayPath = source.describe(path);
-  const text = new TextDecoder('utf-8', { fatal: true }).decode(readBounded(source, path));
+  const text = decodeUtf8OrThrow(readBounded(source, path));
 
   // Structure first, value second — the order the C# reader enforced, and the
   // only order in which a depth ceiling guards anything.

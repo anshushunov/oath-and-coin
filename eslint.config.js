@@ -155,36 +155,35 @@ export default tseslint.config(
     }
   },
 
-  // The application layer sees the DOM's type declarations and may not touch the
-  // DOM.
+  // The three layers a browser bundle is built from, and the one ban that no other
+  // gate here can enforce.
   //
-  // Not a preference: ADR-010 puts this layer between content and apps/web
-  // precisely so that the screen can be replaced without it, and a layer holding a
-  // `document` reference is a layer the desktop host and the test runner cannot
-  // instantiate. It sees those declarations only because
-  // `packages/application/tsconfig.json` needs `lib: ["DOM"]` for `TextDecoder`,
-  // which `packages/content` uses and `ES2023` does not declare — the reason is
-  // written out there. The compiler cannot admit one and refuse the other, so this
-  // is where the second half of that decision lives.
+  // `dependency-cruiser` is the authoritative check on what these packages import,
+  // and `eslint.config.js:118` already records what it provably cannot see: a
+  // dynamic import whose specifier is computed is not a resolvable edge, so it is
+  // not in the graph at all. That ban was written for the simulation and for
+  // nothing else, and external review reproduced the consequence —
+  // `const m: string = 'node:fs'; void import(m);` inside `packages/content` and
+  // inside `packages/application` left `pnpm typecheck`, `pnpm lint` and
+  // `pnpm lint:deps` all green, which is `node:fs` reaching a browser bundle past
+  // every gate that exists to stop it.
+  //
+  // The node adapter is inside the ban as well, deliberately: it may name `node:*`
+  // literally, and a computed specifier there would step around its own allowlist
+  // just the same.
   {
-    files: ['packages/application/**/*.ts'],
+    files: [
+      'packages/content/**/*.ts',
+      'packages/presentation/**/*.ts',
+      'packages/application/**/*.ts'
+    ],
     rules: {
-      'no-restricted-globals': [
+      'no-restricted-syntax': [
         'error',
         {
-          name: 'document',
+          selector: 'ImportExpression[source.type!="Literal"]',
           message:
-            'The application layer may not touch the DOM (ADR-010). It hands a read model to whatever draws it; apps/web is what draws.'
-        },
-        {
-          name: 'window',
-          message:
-            'The application layer may not touch the DOM (ADR-010). A layer holding a window reference cannot be run by the test runner or by the desktop host.'
-        },
-        {
-          name: 'navigator',
-          message:
-            'The application layer may not read the browser environment (ADR-010). Everything it needs arrives through a port.'
+            'A dynamic import with a computed specifier is invisible to the dependency-boundary gate, which is the only authoritative check on what these layers may import. Name the module literally, or it cannot be checked at all.'
         }
       ]
     }

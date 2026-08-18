@@ -28,6 +28,53 @@ export function toPosixPath(path: string): string {
 }
 
 /**
+ * `path` as a path inside a source, or a refusal.
+ *
+ * A source holds a set of files and every one of them is named relative to that
+ * source's own root. Three spellings say otherwise and all three are refused rather
+ * than normalized away:
+ *
+ * - an **absolute** path names a place on a machine, which a source has no notion of;
+ * - a `..` **segment** names something outside the source. External review reproduced
+ *   what its absence cost: `nodeFileSource('content').read('../package.json')` returned
+ *   the repository's own manifest, while `memoryFileSource` answered that it held no
+ *   such file. Two implementations of one port disagreeing about what the port means is
+ *   the defect the port exists to rule out, and a content tree is data a mod or a
+ *   corrupted download can author;
+ * - a `.` segment or a NUL byte name nothing at all, and the loaders never produce
+ *   either — so accepting them would only ever admit a caller's mistake.
+ *
+ * Refused, not answered `false`: a path that leaves the source is a caller's error, and
+ * the load sequence already turns a throw from the scenario stage into
+ * `SCENARIO_INVALID`, which is the diagnostic that names it.
+ */
+export function requireSourcePath(path: string): string {
+  const slashed = path.replace(/\\/gu, '/');
+
+  if (slashed.includes('\0')) {
+    throw new Error(`Path '${path}' holds a NUL byte, so it names no file.`);
+  }
+
+  if (/^([A-Za-z]:)?\//u.test(slashed)) {
+    throw new Error(
+      `Path '${path}' is absolute. A source is addressed by paths relative to its own root, ` +
+        'because a source need not be a directory on a disk at all.'
+    );
+  }
+
+  const trimmed = trimSlashes(slashed);
+  if (trimmed.split('/').some((segment) => segment === '..' || segment === '.')) {
+    throw new Error(
+      `Path '${path}' navigates with '.' or '..'. A source holds the files under its own root ` +
+        'and nothing else; a path that climbs out of it would read whatever happened to be beside ' +
+        'the content.'
+    );
+  }
+
+  return trimmed;
+}
+
+/**
  * Segments joined with `/`, skipping the empty ones.
  *
  * The empty segment is what makes the root addressable: `joinPath('', 'heroes')`

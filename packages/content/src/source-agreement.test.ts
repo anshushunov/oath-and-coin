@@ -7,6 +7,10 @@ import { computeContentDigest, computeContentVersion } from './content-digest.ts
 import { loadContentSet } from './content-set.ts';
 import { memoryFileSource, type ContentFileSource } from './file-source.ts';
 import { nodeFileSource } from './node/file-source.ts';
+import {
+  computeContentDigest as digestOfDirectory,
+  computeContentVersion as versionOfDirectory
+} from './node/index.ts';
 
 /**
  * One tree, two sources, one `content_version`.
@@ -119,6 +123,36 @@ describe('the shipped tree read through two sources', () => {
     for (const path of inMemory.list('')) {
       expect(fromDisk.describe(path)).toBe(inMemory.describe(path));
     }
+  });
+});
+
+describe('the two sources answer the same way about a path outside them', () => {
+  // The port has two implementations, and an implementation that answered differently
+  // would make "the browser reads the same content" a claim about whichever one was
+  // measured. External review found exactly this divergence: the Node source read
+  // `../package.json` and the in-memory source said it held no such file.
+  const cases = ['../package.json', '/etc/passwd', 'heroes/../../package.json'];
+
+  it.each(cases)('both refuse %s', (path) => {
+    const fromDisk = nodeFileSource(shippedContent);
+    const inMemory = memoryFileSource({ 'heroes/a.json': '{}' });
+
+    expect(() => fromDisk.exists(path)).toThrow();
+    expect(() => inMemory.exists(path)).toThrow();
+  });
+});
+
+describe('a content root that is not there', () => {
+  it('is refused by the digest wrappers rather than digested as nothing', () => {
+    // Reproduced by external review: this answered `e3b0c442…b855`, the SHA-256 of an
+    // empty input, so content that does not exist was given a plausible version. Before
+    // the split the missing directory threw out of `readdirSync`.
+    expect(() => digestOfDirectory('artifacts/definitely-missing-content-root')).toThrow(
+      /does not exist/u
+    );
+    expect(() => versionOfDirectory('artifacts/definitely-missing-content-root')).toThrow(
+      /does not exist/u
+    );
   });
 });
 

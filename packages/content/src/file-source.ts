@@ -1,4 +1,5 @@
-import { compareOrdinal, isUnder, toPosixPath } from './paths.ts';
+import { compareOrdinal, isUnder, requireSourcePath } from './paths.ts';
+import { encodeUtf8 } from './text-codec.ts';
 
 /**
  * Where this package's files come from, stated as four questions instead of as a
@@ -71,11 +72,13 @@ export function memoryFileSource(
   files: Readonly<Record<string, Uint8Array | string>>,
   describePath: (path: string) => string = (path) => path
 ): ContentFileSource {
-  const encoder = new TextEncoder();
   const held = new Map<string, Uint8Array>();
 
   for (const [path, contents] of Object.entries(files)) {
-    held.set(toPosixPath(path), typeof contents === 'string' ? encoder.encode(contents) : contents);
+    held.set(
+      requireSourcePath(path),
+      typeof contents === 'string' ? encodeUtf8(contents) : contents
+    );
   }
 
   // Sorted once, at construction: `list` is called per content directory and per
@@ -84,20 +87,23 @@ export function memoryFileSource(
   const paths = [...held.keys()].sort(compareOrdinal);
 
   return {
-    list: (directory, extension) =>
-      paths.filter(
-        (path) =>
-          isUnder(path, directory) && (extension === undefined || path.endsWith(extension))
-      ),
+    list: (directory, extension) => {
+      const scope = requireSourcePath(directory);
+
+      return paths.filter(
+        (path) => isUnder(path, scope) && (extension === undefined || path.endsWith(extension))
+      );
+    },
     read: (path) => {
-      const bytes = held.get(toPosixPath(path));
+      const inSource = requireSourcePath(path);
+      const bytes = held.get(inSource);
       if (bytes === undefined) {
-        throw new Error(`File '${describePath(toPosixPath(path))}' is not in this source.`);
+        throw new Error(`File '${describePath(inSource)}' is not in this source.`);
       }
 
       return bytes;
     },
-    exists: (path) => held.has(toPosixPath(path)),
-    describe: (path) => describePath(toPosixPath(path))
+    exists: (path) => held.has(requireSourcePath(path)),
+    describe: (path) => describePath(requireSourcePath(path))
   };
 }

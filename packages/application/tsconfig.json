@@ -9,23 +9,19 @@
     // Without this entry `@types/node` is visible from the root devDependencies
     // and `readFileSync` would typecheck inside the layer whose boundary rule
     // forbids it.
-    "types": [],
-
-    // `DOM` is here for one reason and it is not the DOM. This project compiles
-    // the sources of everything it imports, and `packages/content` reads bytes
-    // through `TextDecoder('utf-8', { fatal: true })` — the strict decode that
-    // refuses a malformed content file. `TextDecoder` and `TextEncoder` exist in
-    // Node, in every browser and in Electron, but they are declared by
-    // `lib.dom.d.ts` and by `@types/node`, and by nothing in `ES2023`. With
-    // neither, this project fails to build on a file it does not own.
+    // No `lib` entry either, so this project builds under the base `ES2023` and
+    // the DOM is simply not declared. That was not true in the first draft: this
+    // project compiles the sources of everything it imports, `packages/content`
+    // decodes bytes with `TextDecoder`, and `ES2023` declares neither that nor
+    // `TextEncoder` — so `lib: ["DOM"]` was added to get two constructors.
     //
-    // The cost is named rather than hidden: with `DOM` in scope, `document` and
-    // `window` typecheck here too, and `ADR-010` forbids this layer to touch
-    // either. The compiler cannot make that distinction, so a scoped
-    // `no-restricted-globals` in `eslint.config.js` does — the same division of
-    // labour the simulation's ban on the clock and on global randomness already
-    // uses, and it carries its own mutant.
-    "lib": ["ES2023", "DOM"]
+    // External review measured what came with them. `location`, `fetch`,
+    // `localStorage` and every DOM constructor typechecked here, against a
+    // hand-written ban on three names; a ban written as a list of three is the
+    // same shape the boundary rules were repaired for twice. `packages/content`
+    // now declares those two constructors itself (`src/text-codec.ts`), so the
+    // whole question goes away and `document` is a compiler error again.
+    "types": []
   },
   "include": ["src"]
 }

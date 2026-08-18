@@ -2,8 +2,10 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 
 import type { ContentFileSource } from '../file-source.ts';
 import { MAX_FILE_SIZE_BYTES } from '../limits.ts';
-import { compareOrdinal, joinPath, toPosixPath } from '../paths.ts';
+import { compareOrdinal, joinPath, requireSourcePath } from '../paths.ts';
 import { fileSizeCeilingMessage } from '../strict-json.ts';
+
+import { joinFsPath, normalizeFsPath } from './fs-path.ts';
 
 /**
  * The filesystem behind a {@link ContentFileSource}: one of the two implementations of
@@ -30,13 +32,13 @@ import { fileSizeCeilingMessage } from '../strict-json.ts';
  * handed to it and paths it answers with are relative to that root.
  */
 export function nodeFileSource(root: string): ContentFileSource {
-  const rootPath = normalizeRoot(root);
-  const fullPath = (path: string): string => under(rootPath, path);
+  const rootPath = normalizeFsPath(root);
+  const fullPath = (path: string): string => joinFsPath(rootPath, requireSourcePath(path));
 
   return {
     list: (directory, extension) => {
       const found: string[] = [];
-      walk(rootPath, toPosixPath(directory), extension, found);
+      walk(rootPath, requireSourcePath(directory), extension, found);
 
       // Ordinal, never the filesystem's own enumeration order: that order differs
       // between platforms and filesystems, and it decides both what the digest hashes
@@ -52,7 +54,7 @@ export function nodeFileSource(root: string): ContentFileSource {
       const full = fullPath(path);
       const { size } = statSync(full);
       if (size > MAX_FILE_SIZE_BYTES) {
-        throw new Error(fileSizeCeilingMessage(toPosixPath(path), size));
+        throw new Error(fileSizeCeilingMessage(requireSourcePath(path), size));
       }
 
       return readFileSync(full);
@@ -61,7 +63,7 @@ export function nodeFileSource(root: string): ContentFileSource {
     // Root-relative, so a message names the file the way an author thinks about the
     // tree and never leaks the absolute path of the machine that produced it
     // (`TDD` §18).
-    describe: (path) => toPosixPath(path)
+    describe: (path) => requireSourcePath(path)
   };
 }
 
@@ -82,27 +84,6 @@ function isFile(path: string): boolean {
   }
 }
 
-/**
- * The root as a `/`-separated prefix, kept whole.
- *
- * `paths.ts` is about paths *inside* a source, where a leading `/` means nothing and is
- * trimmed; a root is the one path in this package that may be absolute, so it is
- * normalized here rather than there. An empty root is the current directory — spelled
- * `.` rather than left empty, so that `'' + '/heroes'` cannot become an absolute path
- * naming the filesystem root.
- */
-function normalizeRoot(root: string): string {
-  const posix = root.replace(/\\/gu, '/').replace(/\/+$/u, '');
-
-  return posix.length === 0 ? '.' : posix;
-}
-
-/** `base` with a source-relative path appended, or `base` itself for the source root. */
-function under(base: string, path: string): string {
-  const suffix = toPosixPath(path);
-
-  return suffix.length === 0 ? base : `${base}/${suffix}`;
-}
 
 /**
  * Every file under `<root>/<directory>`, deepest included, as root-relative paths.
@@ -120,7 +101,7 @@ function walk(
 ): void {
   let entries;
   try {
-    entries = readdirSync(under(root, directory), { withFileTypes: true });
+    entries = readdirSync(joinFsPath(root, directory), { withFileTypes: true });
   } catch {
     return;
   }

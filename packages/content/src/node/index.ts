@@ -5,7 +5,6 @@ import {
 import { loadContentSet as loadContentSetFrom, type ContentSet } from '../content-set.ts';
 import type { ContentFileSource } from '../file-source.ts';
 import { loadLocaleCatalogue as loadLocaleCatalogueFrom } from '../locale.ts';
-import { fileName, parentPath, toPosixPath } from '../paths.ts';
 import {
   loadAndRunScenario as loadAndRunScenarioFrom,
   type ScenarioRunRequest,
@@ -26,6 +25,13 @@ import {
 } from '../validate.ts';
 
 import { isDirectory, nodeFileSource } from './file-source.ts';
+import {
+  fsFileName,
+  fsParentPath,
+  isAbsoluteFsPath,
+  joinFsPath,
+  normalizeFsPath
+} from './fs-path.ts';
 
 /**
  * `@oath-and-coin/content/node` — the same loaders, addressed by directory.
@@ -51,14 +57,22 @@ import { isDirectory, nodeFileSource } from './file-source.ts';
 
 export { nodeFileSource } from './file-source.ts';
 
-/** SHA-256 over every file under `contentRoot` (`computeContentDigest`). */
+/**
+ * SHA-256 over every file under `contentRoot` (`computeContentDigest`).
+ *
+ * The root's existence is required here, and external review found why it has to be:
+ * a source answers "no files under that directory" with an empty list, so a digest over
+ * a root that is not there came back as the SHA-256 of nothing at all — a plausible
+ * version for content that does not exist. Before the split the missing directory threw
+ * from `readdirSync`.
+ */
 export function computeContentDigest(contentRoot: string): string {
-  return digestOfSource(nodeFileSource(contentRoot));
+  return digestOfSource(requireDirectory(contentRoot));
 }
 
 /** The first sixteen hex characters of the digest of the tree at `contentRoot`. */
 export function computeContentVersion(contentRoot: string): string {
-  return versionOfSource(nodeFileSource(contentRoot));
+  return versionOfSource(requireDirectory(contentRoot));
 }
 
 /**
@@ -83,19 +97,26 @@ export function validateContentTreeOrThrow(contentRoot: string): void {
   validateContentTreeOrThrowFrom(requireDirectory(contentRoot));
 }
 
-/** One locale catalogue, named by its path. */
+/**
+ * One locale catalogue, named by its path.
+ *
+ * Split with `fsParentPath`/`fsFileName` rather than with the source-relative helpers,
+ * because the argument is a place on a disk: `/home/runner/work/content/locale/ru.json`
+ * has a leading slash that means the filesystem root, and a source-relative reading of
+ * it means a directory of that name under whatever the process was started in.
+ */
 export function loadLocaleCatalogue(path: string) {
-  return loadLocaleCatalogueFrom(nodeFileSource(parentPath(path)), fileName(path));
+  return loadLocaleCatalogueFrom(nodeFileSource(fsParentPath(path)), fsFileName(path));
 }
 
 /** One scenario manifest, named by its path. */
 export function loadScenarioManifest(path: string): ScenarioManifest {
-  return loadScenarioManifestFrom(nodeFileSource(parentPath(path)), fileName(path));
+  return loadScenarioManifestFrom(nodeFileSource(fsParentPath(path)), fsFileName(path));
 }
 
 /** One scenario command list, named by its path. */
 export function loadScenarioCommands(path: string): readonly ScenarioCommand[] {
-  return loadScenarioCommandsFrom(nodeFileSource(parentPath(path)), fileName(path));
+  return loadScenarioCommandsFrom(nodeFileSource(fsParentPath(path)), fsFileName(path));
 }
 
 /**
@@ -119,17 +140,23 @@ export interface ScenarioRunRequestFromDisk {
 }
 
 export function loadAndRunScenario(request: ScenarioRunRequestFromDisk): ScenarioRunResult {
-  const repositoryRoot = toPosixPath(request.repositoryRoot);
+  // Through the filesystem helpers, never the source-relative ones. External review
+  // called this the blocker of the round and it was: `toPosixPath` trims a leading
+  // slash, which is nothing on a source-relative path and everything on
+  // `/home/runner/work/oath-and-coin`. On Windows there is no leading slash to lose, so
+  // every local gate stayed green at 54/54 while the Ubuntu job that runs `pnpm test`
+  // would have looked for the scenarios under the current directory.
+  const repositoryRoot = normalizeFsPath(request.repositoryRoot);
   const scenarioRoot =
     request.scenarioRoot === undefined
-      ? `${repositoryRoot}/scenarios`
-      : request.scenarioRoot.replace(/\\/gu, '/');
+      ? joinFsPath(repositoryRoot, 'scenarios')
+      : normalizeFsPath(request.scenarioRoot);
 
   // The absent root is a result, not an accident: `CONTENT_ROOT_NOT_FOUND` is one of the
   // five stable error codes, and `screen_error` is a shipped scenario whose whole purpose
   // is to reach it.
   const openContentRoot = (path: string): ContentFileSource | null => {
-    const full = isAbsolutePath(path) ? path : `${repositoryRoot}/${path}`;
+    const full = isAbsoluteFsPath(path) ? normalizeFsPath(path) : joinFsPath(repositoryRoot, path);
 
     return isDirectory(full) ? nodeFileSource(full) : null;
   };
@@ -152,17 +179,4 @@ function requireDirectory(contentRoot: string): ContentFileSource {
   }
 
   return nodeFileSource(contentRoot);
-}
-
-/**
- * Whether a path names a place rather than something inside a source: a POSIX absolute
- * path, a Windows drive-qualified one, or a UNC share.
- *
- * Written out rather than taken from `node:path` for the reason the whole package no
- * longer imports it — one regular expression is cheaper than the platform-dependent
- * behaviour that came with it, and this is the only question about a path that this side
- * of the split still asks.
- */
-function isAbsolutePath(path: string): boolean {
-  return /^([A-Za-z]:)?[\\/]/u.test(path);
 }
