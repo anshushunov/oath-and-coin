@@ -105,11 +105,59 @@ module.exports = {
       to: { pathNot: '^packages/simulation/' }
     },
     {
-      name: 'content-depends-only-on-simulation',
+      name: 'content-core-imports-only-simulation-and-zod',
       severity: 'error',
-      comment: 'ADR-010 direction: simulation ← content.',
-      from: { path: '^packages/content/' },
-      to: { path: '^(packages/(presentation|application)|apps|tools)/' }
+      comment:
+        'ADR-010 direction simulation ← content, and ADR-010 §59 direction content ← application ← apps/web: the content package is inside the browser bundle, so the half of it outside `src/node/` may not name a Node built-in. Vite fails the build on `node:fs`, and that failure would arrive on the first line of the screen that shows real content rather than on a gate.',
+      // Written as one negation — everything whose resolved path is outside the
+      // three allowed roots — rather than as a list of forbidden neighbours. The
+      // list version is the defect external review found twice
+      // (`simulation-depends-on-nothing` in segment 2 §5.6,
+      // `presentation-depends-only-on-simulation` in segment 4 §11.2): it named
+      // the sibling packages, so `import { readFileSync } from "node:fs"` passed
+      // the only authoritative boundary check with `0 violations`. This rule was
+      // the third copy of that shape and §12.6 addressed Task 12 to fix it; a rule
+      // that enumerates what is banned misses whatever is invented next.
+      //
+      // `zod` is in the allowed set because the contracts are Zod contracts and the
+      // browser validates content with them — which is the whole reason the loader
+      // moved rather than being replaced by a build-time snapshot (§12.2).
+      //
+      // Test files are outside this rule's `from`, and that exemption is not "tests
+      // are trusted". A test is not reachable from the package's browser entry, so
+      // it cannot put anything into a bundle; what is reachable from that entry is
+      // stated as its own rule below, and that one has no exemption at all. The
+      // fixtures here build content trees on a real disk on purpose (§12.2: "тестовый
+      // член вправе оставаться node-овым").
+      from: {
+        path: '^packages/content/src/',
+        pathNot: '^packages/content/src/node/|[.]test[.]ts$'
+      },
+      to: {
+        pathNot: '^packages/simulation/|^packages/content/src/(?!node/)|/node_modules/zod/'
+      }
+    },
+    {
+      name: 'content-browser-entry-reaches-no-node-builtin',
+      severity: 'error',
+      comment:
+        'What `apps/web` actually bundles is whatever is reachable from `@oath-and-coin/content`, and that graph must hold no Node built-in. Stated over reachability rather than over one directory because that is the property: the rule above can be satisfied by a file that imports another file that imports `node:fs`, and this one cannot.',
+      from: { path: '^packages/content/src/index[.]ts$' },
+      // Everything reachable from the browser entry has to be a file in this
+      // workspace or a package installed beside it. A Node built-in resolves to a
+      // bare `fs` or `path`, which is neither.
+      to: { pathNot: '^(apps|packages|tests|tools|scripts)/|/node_modules/', reachable: true }
+    },
+    {
+      name: 'content-node-adapter-imports-only-its-package-and-node',
+      severity: 'error',
+      comment:
+        'The other half of the split: `packages/content/src/node/` is the one place in this package allowed to name `node:*`, and it is allowed nothing else beyond its own package, the simulation and zod. It exists to answer "where do the bytes come from" and nothing more — an adapter that reached into `apps` or `tools` would have made the layering circular.',
+      from: { path: '^packages/content/src/node/' },
+      to: {
+        pathNot: '^packages/simulation/|^packages/content/src/|/node_modules/zod/',
+        dependencyTypesNot: ['core']
+      }
     },
     {
       name: 'presentation-depends-only-on-simulation',
@@ -187,6 +235,13 @@ module.exports = {
       // do not exist — a false failure that would teach everyone to ignore
       // this rule.
       conditionNames: ['import', 'require', 'node', 'types', 'default'],
+      // Without this the resolver ignores every `exports` map and falls back to
+      // `main`, so `@oath-and-coin/content` resolves and `@oath-and-coin/content/node`
+      // — the entry Task 12 added for the filesystem half of the loader — comes back
+      // as `no-unresolvable`. Node itself resolves both; the gate has to see what Node
+      // sees, or it reports a broken import where there is none and teaches everyone
+      // to ignore the rule.
+      exportsFields: ['exports'],
       mainFields: ['module', 'main', 'types']
     },
     reporterOptions: {

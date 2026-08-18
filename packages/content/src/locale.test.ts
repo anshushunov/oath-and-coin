@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { loadLocaleCatalogue } from './locale.ts';
+import { loadLocaleCatalogue } from './node/index.ts';
 
 const repoRoot = resolve(import.meta.dirname, '..', '..', '..');
 const shippedLocale = join(repoRoot, 'content', 'locale', 'ru.json');

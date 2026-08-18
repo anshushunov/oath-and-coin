@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path';
 import { ContractStatus, parseContentId } from '@oath-and-coin/simulation';
 import { describe, expect, it } from 'vitest';
 
-import { loadContentSet } from './content-set.ts';
+import { loadContentSet } from './node/index.ts';
 import { createInitialState } from './initial-state.ts';
 import { SAVE_SCHEMA_VERSION } from './versions.ts';
 

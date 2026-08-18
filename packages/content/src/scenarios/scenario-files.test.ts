@@ -4,12 +4,12 @@ import { join, resolve } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { loadScenarioCommands, loadScenarioManifest } from '../node/index.ts';
+
 import { commandsUpTo, resolveCheckpoint } from './checkpoint-resolver.ts';
-import { loadScenarioCommands } from './scenario-commands.ts';
 import {
   KNOWN_SCREEN_STATES,
   SUPPORTED_MANIFEST_SCHEMA_VERSION,
-  loadScenarioManifest,
   type ScenarioManifest
 } from './scenario-manifest.ts';
 

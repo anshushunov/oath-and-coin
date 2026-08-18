@@ -2,12 +2,8 @@ import { join, resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import {
-  ERROR_CODES,
-  KNOWN_SCREEN_STATES,
-  loadContentSet,
-  loadLocaleCatalogue
-} from '@oath-and-coin/content';
+import { ERROR_CODES, KNOWN_SCREEN_STATES } from '@oath-and-coin/content';
+import { loadContentSet, loadLocaleCatalogue } from '@oath-and-coin/content/node';
 import {
   ACTION_KEYS,
   FIELD_KEYS,

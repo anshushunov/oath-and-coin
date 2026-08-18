@@ -4,12 +4,11 @@ import { join } from 'node:path';
 import { canonicalSha256, sha256Hex, type CanonicalValue } from '@oath-and-coin/simulation';
 import {
   artifactHash,
-  loadAndRunScenario,
-  loadScenarioManifest,
   runScenario,
   toCanonicalBytes,
   type ScenarioRunResult
 } from '@oath-and-coin/content';
+import { loadAndRunScenario, loadScenarioManifest } from '@oath-and-coin/content/node';
 import {
   LOADING_SCREEN,
   contractOfferScreenModel,

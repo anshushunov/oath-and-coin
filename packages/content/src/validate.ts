@@ -1,4 +1,4 @@
-import { isDirectory, listFilesInOrdinalOrder } from './content-digest.ts';
+import type { ContentFileSource } from './file-source.ts';
 import { CONTENT_DIRECTORIES, type ContentDirectory } from './schemas.ts';
 import { jsonPathOf, parseJsonFile } from './strict-json.ts';
 
@@ -22,19 +22,16 @@ export interface ContentViolation {
 }
 
 /**
- * Validates every `*.json` file under `contentRoot`, returning all violations in
+ * Validates every `*.json` file `source` holds, returning all violations in
  * ordinal path order. An empty result means every file was matched to a contract
  * and satisfied it.
  */
-export function validateContentTree(contentRoot: string): readonly ContentViolation[] {
-  if (!isDirectory(contentRoot)) {
-    throw new Error(`Content root '${contentRoot}' does not exist.`);
-  }
-
+export function validateContentTree(source: ContentFileSource): readonly ContentViolation[] {
   const violations: ContentViolation[] = [];
 
-  for (const entry of listFilesInOrdinalOrder(contentRoot, '.json')) {
-    const directory = entry.relativePath.split('/')[0] ?? '';
+  for (const path of source.list('', '.json')) {
+    const relativePath = source.describe(path);
+    const directory = path.split('/')[0] ?? '';
     const schema = CONTENT_DIRECTORIES[directory as ContentDirectory];
 
     // A file in a directory no contract is registered for is itself a violation,
@@ -42,7 +39,7 @@ export function validateContentTree(contentRoot: string): readonly ContentViolat
     // stage reports success over data it never looked at.
     if (schema === undefined) {
       violations.push({
-        relativePath: entry.relativePath,
+        relativePath,
         instanceLocation: '$',
         message: `No contract is registered for content directory '${directory}'.`
       });
@@ -53,13 +50,13 @@ export function validateContentTree(contentRoot: string): readonly ContentViolat
     try {
       // Through the same reader the loader uses, so validation reads external data
       // under the same size and depth ceilings and refuses a repeated key the same
-      // way (`TDD` §18). Reading it here with a plain `readFileSync` would leave the
+      // way (`TDD` §18). Reading it here straight from the source would leave the
       // laxest path into the program unbounded, which is the only path an oversized
       // or deeply nested file needs.
-      value = parseJsonFile(entry.relativePath, entry.fullPath);
+      value = parseJsonFile(source, path);
     } catch (cause) {
       violations.push({
-        relativePath: entry.relativePath,
+        relativePath,
         instanceLocation: '$',
         message: cause instanceof Error ? cause.message : String(cause)
       });
@@ -73,7 +70,7 @@ export function validateContentTree(contentRoot: string): readonly ContentViolat
 
     for (const issue of parsed.error.issues) {
       violations.push({
-        relativePath: entry.relativePath,
+        relativePath,
         instanceLocation: jsonPathOf(issue.path),
         message: `${issue.code}: ${issue.message}`
       });
@@ -87,8 +84,8 @@ export function validateContentTree(contentRoot: string): readonly ContentViolat
  * Throws on the first violation, for callers that want a hard stop rather than a
  * report — the CLI runner's data-error exit path.
  */
-export function validateContentTreeOrThrow(contentRoot: string): void {
-  const violations = validateContentTree(contentRoot);
+export function validateContentTreeOrThrow(source: ContentFileSource): void {
+  const violations = validateContentTree(source);
   if (violations.length === 0) {
     return;
   }

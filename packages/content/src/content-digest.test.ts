@@ -1,58 +1,48 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { computeContentDigest, computeContentVersion } from './content-digest.ts';
+import { memoryFileSource } from './file-source.ts';
 
-const temporaryRoots: string[] = [];
+/**
+ * The digest against sources built in memory rather than trees written to a temporary
+ * directory.
+ *
+ * Not a convenience: a source is what the digest now takes, and building one here is
+ * the same act a browser performs. The cases are the ones this file has always held —
+ * an edited byte, a rename, enumeration order, files no loader reads — and each of them
+ * is a property of the (path, bytes) pairs, which is exactly what a source is. That the
+ * value agrees with a real directory is a separate claim and has its own test
+ * (`source-agreement.test.ts`), because it is about the Node source rather than about
+ * the digest.
+ */
 
-afterEach(() => {
-  while (temporaryRoots.length > 0) {
-    rmSync(temporaryRoots.pop()!, { recursive: true, force: true });
-  }
-});
-
-function writeTree(files: Readonly<Record<string, string>>): string {
-  const root = mkdtempSync(join(tmpdir(), 'oac-digest-'));
-  temporaryRoots.push(root);
-
-  for (const [relativePath, text] of Object.entries(files)) {
-    const path = join(root, ...relativePath.split('/'));
-    mkdirSync(join(path, '..'), { recursive: true });
-    writeFileSync(path, text, 'utf8');
-  }
-
-  return root;
+function tree(files: Readonly<Record<string, string>>) {
+  return memoryFileSource(files);
 }
 
 describe('computeContentDigest', () => {
   it('changes when a byte of content changes', () => {
     // The whole reason the version is computed rather than declared: a declared version
     // is wrong exactly when it matters most, which is after an edit.
-    const before = computeContentDigest(writeTree({ 'heroes/a.json': '{"greed":1}' }));
-    const after = computeContentDigest(writeTree({ 'heroes/a.json': '{"greed":2}' }));
+    const before = computeContentDigest(tree({ 'heroes/a.json': '{"greed":1}' }));
+    const after = computeContentDigest(tree({ 'heroes/a.json': '{"greed":2}' }));
 
     expect(after).not.toBe(before);
   });
 
   it('changes when a file is renamed, because renaming changes what content exists', () => {
-    const before = computeContentDigest(writeTree({ 'heroes/a.json': '{}' }));
-    const after = computeContentDigest(writeTree({ 'heroes/b.json': '{}' }));
+    const before = computeContentDigest(tree({ 'heroes/a.json': '{}' }));
+    const after = computeContentDigest(tree({ 'heroes/b.json': '{}' }));
 
     expect(after).not.toBe(before);
   });
 
-  it('does not depend on the order the filesystem returns files', () => {
+  it('does not depend on the order the source lists files in', () => {
     // Ordinal path order, never enumeration order: the same tree has to hash the same on
-    // Windows and on Linux and after a fresh checkout.
-    const one = computeContentDigest(
-      writeTree({ 'heroes/a.json': '{"a":1}', 'heroes/z.json': '{"z":1}' })
-    );
-    const two = computeContentDigest(
-      writeTree({ 'heroes/z.json': '{"z":1}', 'heroes/a.json': '{"a":1}' })
-    );
+    // Windows and on Linux, after a fresh checkout, and out of a bundle whose keys arrive
+    // in whatever order the bundler emitted them.
+    const one = computeContentDigest(tree({ 'heroes/a.json': '{"a":1}', 'heroes/z.json': '{"z":1}' }));
+    const two = computeContentDigest(tree({ 'heroes/z.json': '{"z":1}', 'heroes/a.json': '{"a":1}' }));
 
     expect(two).toBe(one);
   });
@@ -60,17 +50,27 @@ describe('computeContentDigest', () => {
   it('covers files no loader reads', () => {
     // The digest is over the tree, not over what was parsed — a README beside the content
     // is part of what content exists.
-    const without = computeContentDigest(writeTree({ 'heroes/a.json': '{}' }));
-    const with_ = computeContentDigest(writeTree({ 'heroes/a.json': '{}', 'README.md': 'x' }));
+    const without = computeContentDigest(tree({ 'heroes/a.json': '{}' }));
+    const with_ = computeContentDigest(tree({ 'heroes/a.json': '{}', 'README.md': 'x' }));
 
     expect(with_).not.toBe(without);
   });
 
-  it('shortens the version to sixteen hex characters of the digest', () => {
-    const root = writeTree({ 'heroes/a.json': '{}' });
+  it('covers a nested directory, not only the files at the top', () => {
+    // The walk is recursive and the corpus depends on it: `content/` holds `heroes/`,
+    // `contracts/`, `traits/` and `locale/`, and a source that listed only the root
+    // would hash an empty tree to the same value as the shipped one.
+    const shallow = computeContentDigest(tree({ 'README.md': 'x' }));
+    const deep = computeContentDigest(tree({ 'README.md': 'x', 'heroes/core/a.json': '{}' }));
 
-    expect(computeContentVersion(root)).toBe(computeContentDigest(root).slice(0, 16));
-    expect(computeContentVersion(root)).toHaveLength(16);
+    expect(deep).not.toBe(shallow);
+  });
+
+  it('shortens the version to sixteen hex characters of the digest', () => {
+    const source = tree({ 'heroes/a.json': '{}' });
+
+    expect(computeContentVersion(source)).toBe(computeContentDigest(source).slice(0, 16));
+    expect(computeContentVersion(source)).toHaveLength(16);
   });
 
   it('collides between two trees whose bytes differ, which is an inherited defect', () => {
@@ -90,10 +90,8 @@ describe('computeContentDigest', () => {
     // Pinned as a test rather than left as a comment so that the day somebody reframes the
     // input, this fails and forces the decision to be taken deliberately.
     const separator = String.fromCharCode(0x1f);
-    const oneFile = computeContentDigest(
-      writeTree({ a: `b${separator}c${separator}d` })
-    );
-    const twoFiles = computeContentDigest(writeTree({ a: 'b', c: 'd' }));
+    const oneFile = computeContentDigest(tree({ a: `b${separator}c${separator}d` }));
+    const twoFiles = computeContentDigest(tree({ a: 'b', c: 'd' }));
 
     expect(twoFiles).toBe(oneFile);
   });

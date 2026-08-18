@@ -1,8 +1,6 @@
-import { existsSync, statSync } from 'node:fs';
-import { join, resolve } from 'node:path';
-
 import { loadContentSet, type ContentSet } from '../content-set.ts';
 import { ErrorCodes, type ErrorCode } from '../error-codes.ts';
+import type { ContentFileSource } from '../file-source.ts';
 import { validateContentTreeOrThrow } from '../validate.ts';
 
 import { commandsUpTo, resolveCheckpoint } from './checkpoint-resolver.ts';
@@ -31,26 +29,37 @@ import { runScenario, type ScenarioOutcome } from './scenario-runner.ts';
  * first, because a broken scenario is not a content problem and reporting it as one
  * sends an author to the wrong tree. The checkpoint resolves next, against a manifest
  * and a command list that are already known good. Only then is content touched, and
- * within that: the directory's existence (checked directly rather than inferred from
- * the loader's message), then schema validation (stage 1, `TDD` §11.2), then the loader
- * itself. Swapping the last two would report a mistyped field as whatever the loader
- * happens to say about the same file, which is the diagnostic an author cannot act on.
+ * within that: whether the content root can be opened at all, then schema validation
+ * (stage 1, `TDD` §11.2), then the loader itself. Swapping the last two would report a
+ * mistyped field as whatever the loader happens to say about the same file, which is the
+ * diagnostic an author cannot act on.
  *
  * **One argument the C# version had is gone.** `LoadModel` took a `schemaRoot` and ran
  * `ContentSchemas.Load(schemaRoot).ValidateOrThrow(contentRoot)`; here stage 1 is the
  * Zod contracts themselves, which are code rather than files on disk, so there is no
  * root to point at. The hand-written JSON Schemas still exist for the .NET side and are
  * held to the contracts by `pnpm schema:check` until cutover.
+ *
+ * **Two arguments the TypeScript version had are gone too, and for the same reason the
+ * package as a whole stopped taking directories** (`FULL_TYPESCRIPT_MIGRATION` §12.2).
+ * `repositoryRoot` and `scenarioRoot` were places on a disk; a browser has neither. What
+ * is left is what the sequence actually needs: a source holding the scenario's own files,
+ * and a way to open the content root the manifest decides on. `@oath-and-coin/content/node`
+ * keeps the directory-shaped call for every caller that does have a disk.
  */
 
 export interface ScenarioRunRequest {
-  /** The repository root every relative path below is resolved against. */
-  readonly repositoryRoot: string;
+  /** The scenario's own files — `<scenario>.manifest.json` and `<scenario>.commands.json`. */
+  readonly scenarios: ContentFileSource;
   /**
-   * Directory holding `<scenario>.manifest.json` and `<scenario>.commands.json`.
-   * Defaults to `<repositoryRoot>/scenarios`.
+   * Opens the content root at a repository-relative path, or answers `null` when
+   * there is no such root.
+   *
+   * `null` rather than a throw because an absent content root is one of the five
+   * stable error codes this sequence reports, not an accident: `screen_error` is a
+   * shipped scenario whose entire purpose is to reach `CONTENT_ROOT_NOT_FOUND`.
    */
-  readonly scenarioRoot?: string;
+  readonly openContentRoot: (repositoryRelativePath: string) => ContentFileSource | null;
   readonly scenario: string;
   /** The checkpoint to stop at, or `null` for the manifest's last one. */
   readonly checkpoint: string | null;
@@ -80,9 +89,9 @@ export interface FailedResult {
   readonly kind: 'failed';
   readonly errorCode: ErrorCode;
   /**
-   * The underlying message. Machine-dependent — it can hold an absolute path — so it is
-   * for a human reading a console, never for a comparison: the frozen corpus records
-   * that `read_model` deliberately carries no `error_detail` for exactly this reason.
+   * The underlying message. For a human reading a console, never for a comparison: the
+   * frozen corpus records that `read_model` deliberately carries no `error_detail` for
+   * exactly that reason.
    */
   readonly errorDetail: string;
 }
@@ -102,20 +111,21 @@ export interface RanResult {
 export type ScenarioRunResult = LoadingResult | FailedResult | RanResult;
 
 export function loadAndRunScenario(request: ScenarioRunRequest): ScenarioRunResult {
-  const scenarioRoot = request.scenarioRoot ?? join(request.repositoryRoot, 'scenarios');
-  const manifestPath = join(scenarioRoot, `${request.scenario}.manifest.json`);
-  const commandsPath = join(scenarioRoot, `${request.scenario}.commands.json`);
+  const manifestPath = `${request.scenario}.manifest.json`;
+  const commandsPath = `${request.scenario}.commands.json`;
 
   let manifest: ScenarioManifest;
   let commands: readonly ScenarioCommand[];
   try {
-    manifest = loadScenarioManifest(manifestPath);
+    manifest = loadScenarioManifest(request.scenarios, manifestPath);
 
     // A scenario that fails before any command runs has no command file at all, and
     // neither does one shown before any content is read. The resolver still refuses a
     // checkpoint naming a command id, so a command file that has genuinely gone missing
     // is caught there rather than assumed away.
-    commands = existsSync(commandsPath) ? loadScenarioCommands(commandsPath) : [];
+    commands = request.scenarios.exists(commandsPath)
+      ? loadScenarioCommands(request.scenarios, commandsPath)
+      : [];
   } catch (cause) {
     return { kind: 'failed', errorCode: ErrorCodes.ScenarioInvalid, errorDetail: messageOf(cause) };
   }
@@ -140,23 +150,19 @@ export function loadAndRunScenario(request: ScenarioRunRequest): ScenarioRunResu
   // declares a broken root reproduces its own failure without anyone having to know that
   // it should.
   let contentRoot: string;
-  let recordedContentRoot: string;
   try {
-    if (request.contentRoot === undefined) {
-      const resolved = resolveContentRoot(request.repositoryRoot, manifest);
-      contentRoot = resolved.absolute;
-      recordedContentRoot = resolved.recorded;
-    } else {
-      contentRoot = resolve(request.contentRoot);
-      recordedContentRoot = request.contentRoot.replace(/\\/gu, '/');
-    }
+    contentRoot =
+      request.contentRoot === undefined
+        ? resolveContentRoot(manifest)
+        : request.contentRoot.replace(/\\/gu, '/');
   } catch (cause) {
     // An unreproducible fault kind is a fact about the scenario file, so it is reported
     // the way every other unreadable scenario is.
     return { kind: 'failed', errorCode: ErrorCodes.ScenarioInvalid, errorDetail: messageOf(cause) };
   }
 
-  if (!isDirectory(contentRoot)) {
+  const content = request.openContentRoot(contentRoot);
+  if (content === null) {
     return {
       kind: 'failed',
       errorCode: ErrorCodes.ContentRootNotFound,
@@ -165,14 +171,14 @@ export function loadAndRunScenario(request: ScenarioRunRequest): ScenarioRunResu
   }
 
   try {
-    validateContentTreeOrThrow(contentRoot);
+    validateContentTreeOrThrow(content);
   } catch (cause) {
     return { kind: 'failed', errorCode: ErrorCodes.SchemaInvalid, errorDetail: messageOf(cause) };
   }
 
-  let content: ContentSet;
+  let contentSet: ContentSet;
   try {
-    content = loadContentSet(contentRoot);
+    contentSet = loadContentSet(content);
   } catch (cause) {
     return { kind: 'failed', errorCode: ErrorCodes.ContentInvalid, errorDetail: messageOf(cause) };
   }
@@ -184,18 +190,10 @@ export function loadAndRunScenario(request: ScenarioRunRequest): ScenarioRunResu
     manifest,
     checkpoint,
     commands: replayed,
-    content,
-    outcome: runScenario(content, replayed, request.seed),
-    contentRoot: recordedContentRoot
+    content: contentSet,
+    outcome: runScenario(contentSet, replayed, request.seed),
+    contentRoot
   };
-}
-
-function isDirectory(path: string): boolean {
-  try {
-    return statSync(path).isDirectory();
-  } catch {
-    return false;
-  }
 }
 
 function messageOf(cause: unknown): string {

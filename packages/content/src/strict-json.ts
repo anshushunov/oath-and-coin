@@ -1,7 +1,6 @@
-import { readFileSync, statSync } from 'node:fs';
-
 import type { ZodType } from 'zod';
 
+import type { ContentFileSource } from './file-source.ts';
 import { scanJson } from './json-scan.ts';
 import { MAX_FILE_SIZE_BYTES } from './limits.ts';
 
@@ -31,33 +30,44 @@ import { MAX_FILE_SIZE_BYTES } from './limits.ts';
  */
 
 /**
- * Reads a file's bytes, refusing anything over {@link MAX_FILE_SIZE_BYTES} before
- * allocating for it.
+ * How an oversized file is reported, stated once because it is enforced twice.
  *
- * The size is checked against the file's own length rather than after reading it,
- * so an oversized file costs a `stat` call instead of its own size in memory.
+ * The rule belongs to this layer and holds for every source, so {@link readBounded}
+ * applies it to whatever bytes it is handed. A source that can see a file's length
+ * without reading it — the Node one can, from `stat` — applies the same ceiling
+ * earlier, so an oversized file still costs a `stat` call rather than its own size
+ * in memory. Two guards, one constant and one wording: an author sees the same
+ * message whichever of them refuses the file, and neither can be relaxed without
+ * the other going quiet about the same number.
  */
-export function readBounded(displayPath: string, fullPath: string): Uint8Array {
-  const { size } = statSync(fullPath);
-  if (size > MAX_FILE_SIZE_BYTES) {
-    throw new Error(
-      `File '${displayPath}' is ${size} bytes, over the ${MAX_FILE_SIZE_BYTES}-byte limit.`
-    );
+export function fileSizeCeilingMessage(displayPath: string, size: number): string {
+  return `File '${displayPath}' is ${size} bytes, over the ${MAX_FILE_SIZE_BYTES}-byte limit.`;
+}
+
+/** Reads a file's bytes from `source`, refusing anything over {@link MAX_FILE_SIZE_BYTES}. */
+export function readBounded(source: ContentFileSource, path: string): Uint8Array {
+  const bytes = source.read(path);
+  if (bytes.length > MAX_FILE_SIZE_BYTES) {
+    throw new Error(fileSizeCeilingMessage(source.describe(path), bytes.length));
   }
 
-  return readFileSync(fullPath);
+  return bytes;
 }
 
 /**
  * Reads one file as an untyped JSON value, under the size and depth ceilings and
  * with a repeated object key refused.
  *
- * @param displayPath How the file should be named in diagnostics: a
- * repository-relative path where there is one, so an error message does not leak
- * an absolute path from the machine that produced it (`TDD` §18).
+ * How the file is named in diagnostics is the source's answer, not the caller's:
+ * a repository-relative path where there is one, so an error message does not leak
+ * an absolute path from the machine that produced it (`TDD` §18). That used to be
+ * a `displayPath` argument every caller had to remember to pass correctly beside
+ * the real path; a source that describes its own files cannot be handed the two
+ * out of step.
  */
-export function parseJsonFile(displayPath: string, fullPath: string): unknown {
-  const text = new TextDecoder('utf-8', { fatal: true }).decode(readBounded(displayPath, fullPath));
+export function parseJsonFile(source: ContentFileSource, path: string): unknown {
+  const displayPath = source.describe(path);
+  const text = new TextDecoder('utf-8', { fatal: true }).decode(readBounded(source, path));
 
   // Structure first, value second — the order the C# reader enforced, and the
   // only order in which a depth ceiling guards anything.
@@ -80,8 +90,8 @@ export function parseJsonFile(displayPath: string, fullPath: string): unknown {
  * author fixing files one error per run is the slowest possible way to learn what
  * is wrong.
  */
-export function readFile<T>(displayPath: string, fullPath: string, schema: ZodType<T>): T {
-  return validateValue(displayPath, parseJsonFile(displayPath, fullPath), schema);
+export function readFile<T>(source: ContentFileSource, path: string, schema: ZodType<T>): T {
+  return validateValue(source.describe(path), parseJsonFile(source, path), schema);
 }
 
 /**

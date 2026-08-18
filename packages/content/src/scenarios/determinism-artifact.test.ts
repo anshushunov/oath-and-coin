@@ -3,7 +3,9 @@ import { resolve } from 'node:path';
 import { canonicalSha256, sha256Hex } from '@oath-and-coin/simulation';
 import { describe, expect, it } from 'vitest';
 
-import { loadAndRunScenario, type RanResult } from './load-sequence.ts';
+import { loadAndRunScenario } from '../node/index.ts';
+
+import { type RanResult } from './load-sequence.ts';
 import {
   ARTIFACT_VERSION,
   artifactHash,
