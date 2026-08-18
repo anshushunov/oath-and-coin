@@ -216,6 +216,24 @@ describe('the scene behind the contract-offer screen', () => {
     ).toEqual(model.roster.map((hero) => answered.has(hero.definition)));
   });
 
+  it('gives every shape a size a renderer can draw', () => {
+    // External review found this one by substitution: `width: TOKEN_SIZE` → `width: 0`
+    // passed every other check in this file. Order, ids, `answered` and the scene's
+    // height are all unaffected; the overlap check accepts a zero-width rectangle
+    // because it cannot overlap anything; containment accepts it for the same reason.
+    // On the canvas the roster simply disappears.
+    const shapes = describeScene(aModel(['core:bram', 'core:zara'], ['core:bram'])).shapes;
+
+    expect(shapes.length).toBeGreaterThan(0);
+
+    for (const shape of shapes) {
+      expect(Number.isFinite(shape.x), `${shape.id} x`).toBe(true);
+      expect(Number.isFinite(shape.y), `${shape.id} y`).toBe(true);
+      expect(shape.width, `${shape.id} width`).toBeGreaterThan(0);
+      expect(shape.height, `${shape.id} height`).toBeGreaterThan(0);
+    }
+  });
+
   it('keeps a hero token distinct from every other shape', () => {
     // Ten heroes, so the grid wraps and rows are tested as well as columns. Pairwise
     // rather than "the positions are distinct": two tokens can sit at different

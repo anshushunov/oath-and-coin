@@ -64,6 +64,19 @@ describe('the inputs a run declares', () => {
     }
   );
 
+  it.each(['scenario', 'checkpoint', 'seed', 'locale'])('refuses %s stated twice', (name) => {
+    // `?scenario=screen_error&scenario=screen_normal` runs `screen_error` under
+    // `URLSearchParams.get`, and would run `screen_normal` under any reader that takes
+    // the last value. The URL is ambiguous, so it is refused rather than resolved.
+    expect(() => parseRunRequest(`?${name}=a&${name}=b`)).toThrow(/stated 2 times/u);
+  });
+
+  it('refuses a parameter repeated with the same value', () => {
+    // The ambiguity is in the URL rather than in the values: a reader still cannot tell
+    // whether the author meant one input or wrote two by accident.
+    expect(() => parseRunRequest('?seed=7&seed=7')).toThrow(/stated 2 times/u);
+  });
+
   it('refuses a parameter it does not know', () => {
     // The failure this rule exists for: a typo produces a screenshot, a report and a
     // green verdict about a scenario nobody asked for.

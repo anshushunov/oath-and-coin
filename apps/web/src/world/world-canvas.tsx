@@ -12,16 +12,26 @@ import { describeScene } from './scene-model.ts';
  * what React contributes to it — an element, a lifetime, and the description to draw.
  * The description itself is computed by a pure function, so what this component would
  * get wrong is confined to the lifetime: mounting twice, or leaving a renderer alive
- * after the element it drew on is gone.
+ * after the element it drew on is gone. Both are real and both were found by external
+ * review rather than by a test, because there is no test here — jsdom has no WebGL.
+ *
+ * **Mounts are serialized through one chain.** `Application.init` is asynchronous, and
+ * React replays effects under `StrictMode`: set up, tear down, set up again, with the
+ * second setup starting before the first `init` has settled. Two renderers initializing
+ * on one canvas is undefined behaviour, and the first one's teardown then destroys
+ * resources the second is using. So every mount and every teardown is appended to a
+ * single promise chain held in a ref, and each step runs after the previous one has
+ * finished rather than beside it.
  *
  * **A failure to mount is not swallowed.** If no renderer can be created the rejection
- * reaches the page as an unhandled one, which is what Task 15's evidence records. The
+ * reaches the page as an unhandled one, which is what the browser evidence records. The
  * alternative — a `catch` that leaves the canvas blank — would make "the scene is empty
  * because the roster is" and "the scene is empty because WebGL is unavailable" the same
  * observation, and the second is the one worth knowing about.
  */
 export function WorldCanvas({ model }: { readonly model: ContractOfferScreenModel }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const chainRef = useRef<Promise<void>>(Promise.resolve());
   const description = useMemo(() => describeScene(model), [model]);
 
   useEffect(() => {
@@ -31,14 +41,16 @@ export function WorldCanvas({ model }: { readonly model: ContractOfferScreenMode
       return;
     }
 
-    // `Application.init` is asynchronous, so a component unmounted before it settles
-    // would otherwise leave a renderer attached to a canvas React has already removed.
-    // The flag is read after the await; the handle is kept so the cleanup that runs
-    // later can still reach it.
     let cancelled = false;
     let scene: PixiScene | null = null;
 
-    void mountPixiScene(canvas, description).then((mounted) => {
+    chainRef.current = chainRef.current.then(async () => {
+      if (cancelled) {
+        return;
+      }
+
+      const mounted = await mountPixiScene(canvas, description);
+
       if (cancelled) {
         mounted.destroy();
 
@@ -46,12 +58,22 @@ export function WorldCanvas({ model }: { readonly model: ContractOfferScreenMode
       }
 
       scene = mounted;
+
+      // The one thing this component states about itself, and it states only that the
+      // renderer got as far as drawing: the browser evidence waits for it so a frame is
+      // never captured mid-`init`, and then checks the pixels, which this attribute
+      // cannot fake. A marker without a pixel check would be a page marking its own
+      // work; a pixel check without a marker would be a race.
+      canvas.dataset['sceneShapes'] = String(description.shapes.length);
     });
 
     return () => {
       cancelled = true;
-      scene?.destroy();
-      scene = null;
+      chainRef.current = chainRef.current.then(() => {
+        delete canvas.dataset['sceneShapes'];
+        scene?.destroy();
+        scene = null;
+      });
     };
   }, [description]);
 

@@ -55,6 +55,9 @@ const LOCALE = 'ru';
 /** The element the rendered-UI hash is collected from. */
 const SCREEN = 'contract-offer-screen';
 
+/** The PixiJS canvas — the one thing on this page with no DOM to inspect. */
+const CANVAS = 'world-canvas';
+
 /**
  * The five scenarios whose manifests declare the five states `AGENTS.md` §7 requires.
  *
@@ -140,6 +143,21 @@ interface LayoutMeasurement {
   readonly viewportHeight: number;
 }
 
+/**
+ * What the rendered scene looks like from outside the renderer.
+ *
+ * `distinctColors` is the port of `TerminalEvent.FrameDistinctColors` from the Godot
+ * harness, and it carries the same idea: a frame can be judged without a reference image
+ * by asking whether anything was drawn at all. `shapes` is what the page says it drew,
+ * checked against a count this process derives from the model on disk.
+ */
+interface FrameMeasurement {
+  readonly width: number;
+  readonly height: number;
+  readonly shapes: number;
+  readonly distinctColors: number;
+}
+
 const manifest = readJson<OracleManifest>(join(ORACLE_ROOT, 'manifest.json'));
 
 const catalogue = new Map(
@@ -179,12 +197,17 @@ test.describe('contract-offer screen, in a browser', () => {
       // The other side of the second hash, built in this process off the disk. Nothing in
       // it can know what the page rendered, which is exactly what makes agreement mean
       // something.
-      const expectedTexts = expectedSnapshot(
-        screenFor(
-          loadAndRunScenario({ repositoryRoot: REPOSITORY_ROOT, scenario, checkpoint, seed: SEED })
-        ),
-        catalogue
+      const expectedModel = screenFor(
+        loadAndRunScenario({ repositoryRoot: REPOSITORY_ROOT, scenario, checkpoint, seed: SEED })
       );
+      const expectedTexts = expectedSnapshot(expectedModel, catalogue);
+
+      // What the scene owes, derived here from the same model — a marker when there is a
+      // contract, a token per hero. The projection's own rule, restated in one line
+      // because this process may not import `apps/web`; if the two ever disagree the
+      // disagreement surfaces as a red run rather than as agreement by construction.
+      const expectedShapes =
+        (expectedModel.contract === null ? 0 : 1) + expectedModel.roster.length;
 
       const events: string[] = [];
       recordEvents(page, events);
@@ -192,11 +215,18 @@ test.describe('contract-offer screen, in a browser', () => {
       await page.goto(runUrl(scenario, checkpoint));
       await expect(page.getByTestId(SCREEN)).toBeVisible();
 
+      // Waited for before anything is measured or photographed. `Application.init` is
+      // asynchronous, so without this the frame could be captured — and the pixels read —
+      // while the renderer was still coming up, and a blank canvas would be ind...
+      // ambiguous between "not ready" and "drew nothing".
+      await expect(page.getByTestId(CANVAS)).toHaveAttribute('data-scene-shapes', /^\d+$/u);
+
       const reported = JSON.parse(
         (await page.getByTestId('run-report').textContent()) ?? ''
       ) as PageReport;
       const renderedTexts = await collectRenderedTexts(page);
       const layout = await measureLayout(page);
+      const frame = await measureFrame(page);
 
       const directory = join(EVIDENCE_ROOT, scenario);
       mkdirSync(directory, { recursive: true });
@@ -215,6 +245,7 @@ test.describe('contract-offer screen, in a browser', () => {
         canonical_hash: reported.canonical_hash,
         texts: renderedTexts.length,
         layout,
+        frame,
         events: events.length
       };
       writeFileSync(join(directory, 'report.json'), `${JSON.stringify(report, null, 2)}\n`);
@@ -233,11 +264,13 @@ test.describe('contract-offer screen, in a browser', () => {
 
       expect(reported.read_model_hash).toBe(expectedReadModelHash);
 
-      // The list, not only its hash: a hash says two screens differ and only the lists say
+      // The list, not its hash: a hash says two screens differ and only the lists say
       // where, and "where" is the whole difference between a gate someone can act on and
-      // one they have to re-derive.
+      // one they have to re-derive. `report.rendered_ui_hash` is a field of the artifact
+      // and not a second check — external review pointed out that asserting it here after
+      // this line is green by construction, since it is the same function of the same two
+      // lists that were just compared.
       expect(renderedTexts).toEqual(expectedTexts);
-      expect(report.rendered_ui_hash).toBe(snapshotHash(expectedTexts));
 
       // `null` on both sides exactly when the run produced no artifact — a loading screen
       // read no content and a failed one produced none. The corpus records the same two
@@ -266,6 +299,40 @@ test.describe('contract-offer screen, in a browser', () => {
         layout.reachableWidth,
         'content past the right edge must be reachable by scrolling'
       ).toBeGreaterThanOrEqual(layout.contentWidth);
+
+      // The scene, and this is the half of the evidence external review found missing.
+      // Every check above is about the DOM, and the scene has no DOM: a `draw` reduced to
+      // a no-op left the texts, both hashes, the reachability numbers, the event log and
+      // the report identical, and the whole suite green over a page whose world was
+      // blank. So the canvas is asserted about directly, in three steps that fail
+      // differently.
+      //
+      // First, the shape count the page drew against the count derived here from the
+      // model on disk. Second, the drawing buffer has the size the scene stated — a
+      // canvas left at the browser's default 300x150 is a canvas the renderer never took
+      // over. Third, and the one the no-op mutant cannot survive: the pixels.
+      expect(frame.shapes, 'the page must draw the shapes its model implies').toBe(expectedShapes);
+      expect(
+        frame.width,
+        'the canvas must carry the scene, not the browser default'
+      ).toBeGreaterThan(0);
+      expect(frame.height).toBeGreaterThan(0);
+
+      // `distinctColors` is the port of `TerminalEvent.FrameDistinctColors`, and it says
+      // the one thing about a frame that needs no reference image: a scene that drew
+      // nothing is exactly one colour — its background — however correct everything
+      // around it is. States with shapes must therefore hold more than one, and states
+      // without them exactly one. Antialiasing puts the real count in the hundreds, so
+      // the bound is deliberately loose: the claim is "something was drawn", not "this
+      // picture".
+      if (expectedShapes === 0) {
+        expect(frame.distinctColors, 'a scene with nothing in it must be one flat colour').toBe(1);
+      } else {
+        expect(
+          frame.distinctColors,
+          'a scene with shapes in it must not be one flat colour'
+        ).toBeGreaterThan(1);
+      }
 
       // A page that logged an error rendered the right texts by accident at best. Last,
       // so the specific comparisons above name the failure first when both go.
@@ -419,11 +486,18 @@ async function measureLayout(page: Page): Promise<LayoutMeasurement> {
   // a threshold — the position is read back, never assumed.
   const FAR = 100_000;
 
-  await page.mouse.wheel(0, FAR);
-  const maxTop = await settledScroll(page, 'scrollTop');
+  const wheelDown = async (): Promise<void> => {
+    await page.mouse.wheel(0, FAR);
+  };
+  const wheelRight = async (): Promise<void> => {
+    await page.mouse.wheel(FAR, 0);
+  };
 
-  await page.mouse.wheel(FAR, 0);
-  const maxLeft = await settledScroll(page, 'scrollLeft');
+  await wheelDown();
+  const maxTop = await settledScroll(page, 'scrollTop', wheelDown);
+
+  await wheelRight();
+  const maxLeft = await settledScroll(page, 'scrollLeft', wheelRight);
 
   return page.evaluate(
     ({ testId, top, left }) => {
@@ -435,15 +509,30 @@ async function measureLayout(page: Page): Promise<LayoutMeasurement> {
 
       // The screen is meant to be the only scrolling box on the page: `html`, `body` and
       // `#root` are pinned to the window's height, so nothing else can take the wheel.
-      // Asserted rather than assumed, because if the document ever did scroll, content
-      // this function called unreachable might be reachable by scrolling the page — and
-      // the measurement would be wrong in the direction that fails a working screen.
-      const document_ = document.documentElement;
-      if (document_.scrollHeight > document_.clientHeight) {
-        throw new Error(
-          'The document itself scrolls, so the screen element is no longer the only place ' +
-            'content can be reached from and this measurement no longer answers the question.'
-        );
+      // Asserted rather than assumed, because if anything above the screen did scroll,
+      // content this function called unreachable might be reachable by scrolling that
+      // instead — and the measurement would be wrong in the direction that fails a
+      // working screen.
+      //
+      // Every ancestor, not just `documentElement`, and both axes: external review
+      // pointed out that the first version checked one element and one direction, while
+      // `body`, `#root`, `main` and `document.scrollingElement` are all boxes a wheel
+      // could go to. The walk is bounded by the document.
+      for (
+        let ancestor: Element | null = element.parentElement;
+        ancestor !== null;
+        ancestor = ancestor.parentElement
+      ) {
+        if (
+          ancestor.scrollHeight > ancestor.clientHeight ||
+          ancestor.scrollWidth > ancestor.clientWidth
+        ) {
+          throw new Error(
+            `<${ancestor.tagName.toLowerCase()}> above the screen overflows its own box, so the ` +
+              'screen element is no longer the only place content can be reached from and this ' +
+              'measurement no longer answers the question.'
+          );
+        }
       }
 
       return {
@@ -459,28 +548,150 @@ async function measureLayout(page: Page): Promise<LayoutMeasurement> {
   );
 }
 
-/** Where the screen ended up once it stopped moving. */
-async function settledScroll(page: Page, axis: 'scrollTop' | 'scrollLeft'): Promise<number> {
-  let previous = -1;
+/**
+ * Where the screen ended up once it stopped moving.
+ *
+ * Two things make this less fragile than it first was, and external review named both.
+ * A position is settled only after it has read the same across three consecutive
+ * animation frames — two reads 25ms apart can both catch a wheel that has not been
+ * processed yet and call a working screen unscrollable. And a position short of the
+ * arithmetic maximum is not accepted on the first try: the wheel is delivered again, up
+ * to a bounded number of attempts, because falling short is what a slow compositor looks
+ * like and reaching the end is what a scrolling box does. A box that genuinely cannot
+ * scroll spends the whole budget and still answers zero, which is the correct answer
+ * arrived at slowly rather than a wrong one arrived at quickly.
+ */
+async function settledScroll(
+  page: Page,
+  axis: 'scrollTop' | 'scrollLeft',
+  wheel: () => Promise<void>
+): Promise<number> {
+  const extent = axis === 'scrollTop' ? 'vertical' : 'horizontal';
 
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const now = await page.evaluate(
-      ({ testId, property }) =>
-        document.querySelector(`[data-testid="${testId}"]`)?.[
-          property as 'scrollTop' | 'scrollLeft'
-        ] ?? -1,
-      { testId: SCREEN, property: axis }
-    );
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const { position, maximum } = await stableScrollPosition(page, axis);
 
-    if (now === previous) {
-      return now;
+    if (position >= maximum) {
+      return position;
     }
 
-    previous = now;
-    await page.waitForTimeout(25);
+    // Short of the end. Either the box stops here — an overflow rule that denies the
+    // user the rest — or the wheel has not been fully applied yet. Another wheel tells
+    // the two apart; the loop bound stops it being a wait forever.
+    await wheel();
+
+    if (attempt === 4) {
+      return position;
+    }
   }
 
-  throw new Error(`The screen's ${axis} never settled; it is still moving after 20 reads.`);
+  throw new Error(`Unreachable: the ${extent} scroll loop always returns.`);
+}
+
+/** The screen's scroll offset once three consecutive frames agree on it. */
+async function stableScrollPosition(
+  page: Page,
+  axis: 'scrollTop' | 'scrollLeft'
+): Promise<{ position: number; maximum: number }> {
+  return page.evaluate(
+    async ({ testId, property }) => {
+      const element = document.querySelector(`[data-testid="${testId}"]`);
+
+      if (element === null) {
+        throw new Error(`The page has no [data-testid="${testId}"] to measure.`);
+      }
+
+      const nextFrame = async (): Promise<void> => {
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => {
+            resolve();
+          });
+        });
+      };
+
+      const read = (): { position: number; maximum: number } =>
+        property === 'scrollTop'
+          ? {
+              position: element.scrollTop,
+              maximum: element.scrollHeight - element.clientHeight
+            }
+          : {
+              position: element.scrollLeft,
+              maximum: element.scrollWidth - element.clientWidth
+            };
+
+      let agreed = 0;
+      let last = read();
+
+      // Bounded: 60 frames is a second at 60Hz, and a scroll that is still moving after
+      // a second of nothing but this is not a scroll anyone is waiting on.
+      for (let frame = 0; frame < 60; frame += 1) {
+        await nextFrame();
+        const now = read();
+
+        agreed = now.position === last.position ? agreed + 1 : 0;
+        last = now;
+
+        if (agreed >= 2) {
+          return now;
+        }
+      }
+
+      throw new Error(`The screen's ${property} never settled across 60 frames.`);
+    },
+    { testId: SCREEN, property: axis }
+  );
+}
+
+/**
+ * The rendered scene, read back out of the canvas.
+ *
+ * `drawImage` into a 2D context is what makes a WebGL canvas readable at all, and it
+ * only answers real pixels because the renderer is initialized with
+ * `preserveDrawingBuffer` — without it the back buffer is cleared after compositing and
+ * this would report transparent black for every frame, which is exactly the answer a
+ * scene that drew nothing gives. That would make the check agree with the failure it
+ * exists to catch.
+ */
+async function measureFrame(page: Page): Promise<FrameMeasurement> {
+  return page.evaluate((testId: string) => {
+    const canvas = document.querySelector(`[data-testid="${testId}"]`);
+
+    if (!(canvas instanceof HTMLCanvasElement)) {
+      throw new Error(`The page has no <canvas data-testid="${testId}">.`);
+    }
+
+    const probe = document.createElement('canvas');
+    probe.width = canvas.width;
+    probe.height = canvas.height;
+
+    const context = probe.getContext('2d', { willReadFrequently: true });
+
+    if (context === null) {
+      throw new Error('This browser gave no 2D context to read the scene back with.');
+    }
+
+    context.drawImage(canvas, 0, 0);
+
+    const { data } = context.getImageData(0, 0, probe.width, probe.height);
+    const colours = new Set<number>();
+
+    for (let offset = 0; offset < data.length; offset += 4) {
+      colours.add(
+        ((data[offset] ?? 0) << 24) |
+          ((data[offset + 1] ?? 0) << 16) |
+          ((data[offset + 2] ?? 0) << 8) |
+          (data[offset + 3] ?? 0)
+      );
+    }
+
+    return {
+      width: canvas.width,
+      height: canvas.height,
+      shapes: Number(canvas.dataset['sceneShapes'] ?? '-1'),
+      distinctColors: colours.size
+    };
+  }, CANVAS);
 }
 
 function readJson<T>(path: string): T {

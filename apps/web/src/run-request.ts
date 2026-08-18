@@ -76,7 +76,22 @@ export function parseRunRequest(search: string): RunRequest {
 
 /** The value of a parameter, or `null` when it was not stated at all. */
 function stated(parameters: URLSearchParams, name: string): string | null {
-  const value = parameters.get(name);
+  // `getAll`, not `get`: `get` answers the *first* value and says nothing about there
+  // having been a second. `?scenario=screen_error&scenario=screen_normal` is a URL
+  // declaring two contradictory runs, and a reader who took the last value — which is
+  // how several other tools read a repeated parameter — would disagree with this page
+  // about which run it performed. Refused rather than resolved, including when the two
+  // values are identical: the ambiguity is in the URL, not in the values.
+  const values = parameters.getAll(name);
+
+  if (values.length > 1) {
+    throw new Error(
+      `Run parameter '${name}' was stated ${String(values.length)} times. A run declares each of ` +
+        'its inputs once; a URL that names two is a URL two readers can disagree about.'
+    );
+  }
+
+  const value = values[0] ?? null;
 
   if (value === null) {
     return null;

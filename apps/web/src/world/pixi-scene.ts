@@ -81,6 +81,16 @@ export async function mountPixiScene(
     height: initial.height,
     background: BACKGROUND,
     antialias: true,
+    // What makes the drawn frame observable from outside the renderer. Without it the
+    // WebGL back buffer is cleared after compositing, and reading the canvas back —
+    // `drawImage` into a 2D context, `toDataURL`, `readPixels` — answers transparent
+    // black. That reply is indistinguishable from "the scene drew nothing", which is
+    // exactly the failure the browser evidence has to be able to see: external review
+    // found that a `draw` reduced to a no-op left every check in this repository green.
+    //
+    // The cost is a second buffer that survives the frame, and here it is paid once:
+    // this scene renders on demand and does not animate.
+    preserveDrawingBuffer: true,
     // Nothing here animates: the scene is a projection of a model that does not move,
     // so a ticker running every frame would spend a core redrawing an identical image.
     // Each `apply` renders once, explicitly.
@@ -112,7 +122,13 @@ export async function mountPixiScene(
     },
 
     destroy(): void {
-      application.destroy(true, { children: true });
+      // `false` — do **not** remove the canvas from the document. React created that
+      // element and React removes it; a renderer that also removes it is a second owner
+      // of one node, and the two disagree the moment an effect is torn down and set up
+      // again. External review found the consequence: under `StrictMode` React replays
+      // effects, and a `destroy(true, …)` from the first pass deletes the element the
+      // second pass is already drawing into.
+      application.destroy(false, { children: true });
     }
   };
 
