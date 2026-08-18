@@ -183,12 +183,24 @@ module.exports = {
       to: { pathNot: '^packages/(presentation|simulation)/' }
     },
     {
-      name: 'application-does-not-depend-on-apps',
+      name: 'application-imports-only-the-three-layers-below-it',
       severity: 'error',
       comment:
-        'The application layer is consumed by apps/web; an import the other way makes the layer a part of the UI it was extracted from.',
+        'ADR-010 direction: content ← application ← apps/web, and simulation ← presentation ← application. This layer joins content and presentation and is consumed by apps/web; an import the other way makes it a part of the UI it was extracted from, and an npm import makes it something a browser has to be given before it can run.',
+      // Stated as what is allowed, not as a list of forbidden neighbours. §12.6
+      // addressed that repair to this task and this rule is the second half of it:
+      // the list form is what external review found defective twice (§5.6, §11.2),
+      // and this rule had nothing under it until Task 12, so its shape was decided
+      // by the task that gave it code rather than inherited from the day it was
+      // written blind.
+      //
+      // The allowed set is exactly the three layers below: this layer opens no
+      // file, reads no clock and pulls in no npm package — everything it needs
+      // arrives through `ContentSourcePort`.
       from: { path: '^packages/application/' },
-      to: { path: '^(apps|tools)/' }
+      to: {
+        pathNot: '^packages/(application|content|presentation|simulation)/'
+      }
     },
     {
       name: 'not-to-dev-dep',

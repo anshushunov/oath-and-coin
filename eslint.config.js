@@ -155,6 +155,41 @@ export default tseslint.config(
     }
   },
 
+  // The application layer sees the DOM's type declarations and may not touch the
+  // DOM.
+  //
+  // Not a preference: ADR-010 puts this layer between content and apps/web
+  // precisely so that the screen can be replaced without it, and a layer holding a
+  // `document` reference is a layer the desktop host and the test runner cannot
+  // instantiate. It sees those declarations only because
+  // `packages/application/tsconfig.json` needs `lib: ["DOM"]` for `TextDecoder`,
+  // which `packages/content` uses and `ES2023` does not declare — the reason is
+  // written out there. The compiler cannot admit one and refuse the other, so this
+  // is where the second half of that decision lives.
+  {
+    files: ['packages/application/**/*.ts'],
+    rules: {
+      'no-restricted-globals': [
+        'error',
+        {
+          name: 'document',
+          message:
+            'The application layer may not touch the DOM (ADR-010). It hands a read model to whatever draws it; apps/web is what draws.'
+        },
+        {
+          name: 'window',
+          message:
+            'The application layer may not touch the DOM (ADR-010). A layer holding a window reference cannot be run by the test runner or by the desktop host.'
+        },
+        {
+          name: 'navigator',
+          message:
+            'The application layer may not read the browser environment (ADR-010). Everything it needs arrives through a port.'
+        }
+      ]
+    }
+  },
+
   // React lives in exactly one package, so its rules apply there and nowhere
   // else. Both catch bugs no type can express: a hook called conditionally
   // corrupts the hook order, and a stale dependency array silently freezes a

@@ -83,6 +83,22 @@ importers:
         specifier: 8.2.1
         version: 8.2.1(@types/node@26.2.0)(jiti@2.7.0)(yaml@2.9.0)
 
+  packages/application:
+    dependencies:
+      '@oath-and-coin/content':
+        specifier: workspace:*
+        version: link:../content
+      '@oath-and-coin/presentation':
+        specifier: workspace:*
+        version: link:../presentation
+      '@oath-and-coin/simulation':
+        specifier: workspace:*
+        version: link:../simulation
+    devDependencies:
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+
   packages/content:
     dependencies:
       '@oath-and-coin/simulation':
@@ -171,6 +187,9 @@ importers:
 
   tools/scenario-runner:
     dependencies:
+      '@oath-and-coin/application':
+        specifier: workspace:*
+        version: link:../../packages/application
       '@oath-and-coin/content':
         specifier: workspace:*
         version: link:../../packages/content
