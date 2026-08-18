@@ -518,6 +518,14 @@ async function measureLayout(page: Page): Promise<LayoutMeasurement> {
       // pointed out that the first version checked one element and one direction, while
       // `body`, `#root`, `main` and `document.scrollingElement` are all boxes a wheel
       // could go to. The walk is bounded by the document.
+      //
+      // **This is a guard, not a check proven by a plausible mutant.** Measured: neither
+      // relaxing the grid row nor removing the screen's `min-height` makes any ancestor
+      // overflow, because a grid item with `overflow: auto` already has a zero automatic
+      // minimum size. It does fire — an explicit `height: 200%` on `main` reddens all
+      // five states with the message below — so the mechanism works; what is missing is
+      // an authoring mistake small enough to be likely. Named rather than counted as
+      // covered, on the same terms as the horizontal reachability assertion.
       for (
         let ancestor: Element | null = element.parentElement;
         ancestor !== null;

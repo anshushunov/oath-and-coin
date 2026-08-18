@@ -62,10 +62,18 @@ body {
 
 /*
  * The application fills the window exactly, so the screen below has a bounded height to
- * scroll inside. `minmax(0, 1fr)` rather than `1fr`: a grid row's default minimum is its
- * content, so with `1fr` alone the row grows to fit the roster, the page scrolls as a
- * whole, and the screen element never overflows — which would leave the reachability
- * measurement asking its question of an element that cannot answer it.
+ * scroll inside.
+ *
+ * `minmax(0, 1fr)` rather than `1fr` is the usual spelling of "this row may be smaller
+ * than its content", and it is written here for readers rather than because it is load
+ * bearing. Measured: removing it changes nothing, and removing `min-height: 0` from the
+ * screen as well changes nothing either. A grid item whose `overflow` is not `visible`
+ * already has an automatic minimum size of zero, and the screen below is `overflow:
+ * auto` — so the row cannot grow to the roster whichever of the three rules is present.
+ *
+ * Recorded because the obvious mutant on this line is green and that reads as "the
+ * check is broken" until someone works out why. The rule that actually bounds the screen
+ * is the `overflow` below.
  */
 #root > main {
   display: grid;
