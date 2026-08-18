@@ -28,6 +28,42 @@ export function collectRenderedTexts(root: Node): readonly string[] {
   return texts;
 }
 
+/**
+ * Every attribute value in the subtree, in document order — the half of the markup
+ * the second hash cannot see.
+ *
+ * Not part of the snapshot comparison, and it must not become part of it: which
+ * attributes a screen carries is layout and plumbing, and hashing them would make the
+ * rendered-ui hash move on a class name. What it is for is the one rule that has
+ * already been broken this way once. The Godot original put `errorDetail` — a
+ * machine's absolute path and an exception's own text — on a label's *tooltip*, where
+ * neither hash covered it, so the single unlocalized player-facing string on the
+ * screen was also the only one nothing compared. `title` and `aria-label` are that
+ * tooltip's browser equivalents, and a leak into either is invisible to a walk over
+ * text nodes.
+ *
+ * So this exists to be asserted *against*: a value that must not reach a player is
+ * looked for here as well as in the text.
+ */
+export function collectRenderedAttributes(root: Node): readonly string[] {
+  const values: string[] = [];
+  collectAttributes(root, values);
+
+  return values;
+}
+
+function collectAttributes(node: Node, values: string[]): void {
+  if (node.nodeType === node.ELEMENT_NODE) {
+    for (const attribute of Array.from((node as Element).attributes)) {
+      values.push(attribute.value);
+    }
+  }
+
+  for (const child of Array.from(node.childNodes)) {
+    collectAttributes(child, values);
+  }
+}
+
 function collect(node: Node, texts: string[]): void {
   if (node.nodeType === node.TEXT_NODE) {
     const text = node.nodeValue ?? '';

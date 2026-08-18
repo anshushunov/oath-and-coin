@@ -38,10 +38,18 @@ import {
  *   because which files a manifest decides to name is the manifest's business —
  *   a narrower pattern would turn a new scenario layout into a missing file in the
  *   browser and nowhere else;
- * - `*.canonical.json` is excluded because it is the oracle's recorded *output*, read
- *   by the parity tool and by nothing the game runs. It is also 137 KB of the 154 KB
- *   under `scenarios/`, so shipping it would nearly double the bundle to carry
- *   answers the browser never asks for.
+ * - `scenarios/*.canonical.json` is excluded because it is the oracle's recorded
+ *   *output*, read by the parity tool and by nothing the game runs. It is also 137 KB
+ *   of the 154 KB under `scenarios/`, so shipping it would nearly double the bundle to
+ *   carry answers the browser never asks for.
+ *
+ * The exclusion is anchored to the top level rather than written `**\/*.canonical.json`,
+ * and external review of this task is why. Oracle outputs live beside their manifests
+ * and nowhere else; a recursive exclusion would also drop a *content* file that
+ * happened to end in `.canonical.json` inside `scenarios/fixtures/`, which nothing
+ * forbids an author from writing. The node source would read and hash it, this one
+ * would not, and the two `content_version`s would part company on one fixture root
+ * with every existing digest test still green.
  *
  * `exhaustive: true` is not a detail. Without it the glob skips dotfiles, and
  * `scenarios/fixtures/screen_empty` keeps two `.gitkeep` files that hold its empty
@@ -51,7 +59,7 @@ import {
  * something else — on one scenario, in the browser only.
  */
 const bundledFiles: Readonly<Record<string, unknown>> = import.meta.glob(
-  ['../../../content/**/*', '../../../scenarios/**/*', '!../../../scenarios/**/*.canonical.json'],
+  ['../../../content/**/*', '../../../scenarios/**/*', '!../../../scenarios/*.canonical.json'],
   { query: '?raw', import: 'default', eager: true, exhaustive: true }
 );
 

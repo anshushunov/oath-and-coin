@@ -1,4 +1,4 @@
-import { computeContentVersion, loadContentSet } from '@oath-and-coin/content';
+import { computeContentVersion, loadContentSet, resolveContentRoot } from '@oath-and-coin/content';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -121,6 +121,43 @@ describe('a repository root the bundle does not hold', () => {
   });
 });
 
+describe('a root spelled in a way a filesystem would read differently', () => {
+  // This source matches a repository-relative path literally; a filesystem resolves
+  // `..`, reads `.` and understands an absolute path. Every string where those two
+  // readings differ therefore has to be refused before either is asked, or one
+  // manifest produces a loaded content set on the desktop and `CONTENT_ROOT_NOT_FOUND`
+  // in the browser — the divergence external review of this task found.
+  //
+  // The pairing is asserted rather than assumed: each case is both something this
+  // source answers `null` for and something the content layer refuses outright. A
+  // repair that relaxed the refusal upstream would fail here, in the package that
+  // would silently start disagreeing.
+  const cases = [
+    'scenarios/fixtures/decision_core/../screen_empty',
+    '../content',
+    './content',
+    '/etc',
+    'C:/content',
+    ''
+  ];
+
+  it.each(cases)('is refused upstream and unreachable here: %s', (contentRoot) => {
+    expect(openRepositoryRoot(contentRoot)).toBeNull();
+    expect(() =>
+      resolveContentRoot({
+        schemaVersion: 1,
+        scenario: 'a_scenario',
+        expectedOutcome: 'success',
+        fault: null,
+        expectedErrorCode: null,
+        checkpoints: [{ name: 'final', afterCommandId: 0 }],
+        contentRoot,
+        expectedScreenState: null
+      })
+    ).toThrow();
+  });
+});
+
 describe('the content source port the application is handed', () => {
   it('reads scenario files from the scenarios root', () => {
     const port = browserContentSource();
@@ -133,6 +170,33 @@ describe('the content source port the application is handed', () => {
     // `*.canonical.json` is a recorded answer, not an input to a run. Excluding it is
     // what keeps the bundle from carrying 137 KB the game never reads.
     expect(browserContentSource().scenarios.exists('screen_normal.canonical.json')).toBe(false);
+  });
+
+  it('drops exactly the top-level oracle outputs and nothing else', () => {
+    // The exclusion is the one place this source can lose a file on purpose, so what
+    // it loses is stated against the tree rather than against the pattern that wrote
+    // it. Enumerated by a second glob with no exclusion at all — the same device
+    // `source-agreement.test.ts` uses when it walks the tree itself instead of asking
+    // the source under test what the tree contains.
+    //
+    // Written recursively, the exclusion would also drop a content file inside
+    // `scenarios/fixtures/` whose name happened to end in `.canonical.json`. Nothing
+    // forbids one, the node source would hash it, and the two `content_version`s would
+    // part company on one fixture root with every digest test above still green.
+    const everyScenarioFile = Object.keys(
+      import.meta.glob('../../../scenarios/**/*', {
+        query: '?raw',
+        import: 'default',
+        eager: true,
+        exhaustive: true
+      })
+    ).map((key) => key.replace('../../../scenarios/', ''));
+
+    const held = new Set(requireRoot('scenarios').list(''));
+    const dropped = everyScenarioFile.filter((path) => !held.has(path)).sort();
+
+    expect(dropped.length).toBeGreaterThan(0);
+    expect(dropped.filter((path) => !/^[^/]+[.]canonical[.]json$/u.test(path))).toEqual([]);
   });
 
   it('opens the content root a manifest names and refuses the one it cannot', () => {

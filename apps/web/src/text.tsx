@@ -13,13 +13,19 @@ import { createContext, useContext, useMemo, type ReactNode } from 'react';
  * **Context rather than a parameter, and that is a deviation from the segment plan
  * worth naming.** §4 of the plan writes it as `useText(catalogue)`, which mirrors C#,
  * where a `TextSource` was threaded through every `Build*` method because a static
- * method has no other way to receive one. React has another way, and the difference
- * is not stylistic: threading the resolver as a prop puts it in every component's
- * signature and lets two subtrees of one screen resolve against two different
- * catalogues, which is precisely what "one catalogue per run" forbids. A context
- * carries a value that belongs to the run rather than to any component, and
- * {@link useText} throwing outside a provider turns forgotten wiring into a failed
- * render rather than into a screen of blanks.
+ * method has no other way to receive one. React has another way, and what it buys is
+ * ordinary: the catalogue is a dependency of the whole run rather than a property of
+ * any component, so it is injected once at the top instead of appearing in the
+ * signature of every component between there and the label that needs it. The failure
+ * mode also improves — a component rendered with no provider above it fails the render
+ * (see below) rather than receiving whatever the nearest caller happened to have.
+ *
+ * What this is *not* is a guarantee that one run resolves against one catalogue. A
+ * nested `TextSource` overrides the one above it, exactly as any React context does;
+ * external review of this task corrected an earlier version of this comment that
+ * claimed otherwise. Nothing in the screen nests one, and if single-catalogue ever
+ * becomes an invariant worth having, it needs a check of its own rather than a
+ * mechanism that reads as if it were one.
  *
  * What does *not* move into context is the catalogue the tests resolve against:
  * `expectedSnapshot(model, catalogue)` takes it as an argument, and the two lists it
