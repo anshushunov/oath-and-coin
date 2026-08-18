@@ -84,24 +84,24 @@ describe('fsParentPath and fsFileName', () => {
   });
 });
 
-describe('the wrappers keep a POSIX-absolute path absolute', () => {
-  /**
-   * The repository root spelled without a drive letter.
-   *
-   * On Linux this is the root as it already is. On Windows it is drive-relative —
-   * `/gamedev/oath-and-coin` resolves against the current drive, which is the drive the
-   * repository is on — so the same expression names the same directory on both, and a
-   * leading slash is present on both.
-   *
-   * That is what makes these cases portable, and portability is the whole point: the
-   * blocker external review found was a leading slash being trimmed, which no Windows
-   * path has to lose. The unit cases above pin the helpers; these pin the call sites,
-   * which is where the defect actually was.
-   */
-  const posixRepoRoot = resolve(import.meta.dirname, '..', '..', '..', '..')
-    .replace(/\\/gu, '/')
-    .replace(/^[A-Za-z]:/u, '');
+/**
+ * The repository root spelled without a drive letter.
+ *
+ * On Linux this is the root as it already is. On Windows it is drive-relative —
+ * `/gamedev/oath-and-coin` resolves against the current drive, which is the drive the
+ * repository is on — so the same expression names the same directory on both, and a
+ * leading slash is present on both.
+ *
+ * That is what makes the cases below portable, and portability is the whole point: the
+ * blocker external review found was a leading slash being trimmed, which no Windows path
+ * has to lose. The unit cases above pin the helpers; these pin the call sites, which is
+ * where the defect actually was.
+ */
+const posixRepoRoot = resolve(import.meta.dirname, '..', '..', '..', '..')
+  .replace(/\\/gu, '/')
+  .replace(/^[A-Za-z]:/u, '');
 
+describe('the wrappers keep a POSIX-absolute path absolute', () => {
   it('when a locale catalogue is named by one', () => {
     const catalogue = loadLocaleCatalogue(`${posixRepoRoot}/content/locale/ru.json`);
 
@@ -129,7 +129,13 @@ describe('the wrappers keep a POSIX-absolute path absolute', () => {
 });
 
 describe('a source is confined to its own root', () => {
-  const source = nodeFileSource('content');
+  // Rooted absolutely, not at `content` relative to the current directory. Vitest's
+  // `--root` moves where tests are collected from and not where the process is: under
+  // `pnpm --filter @oath-and-coin/content test` the working directory is the package,
+  // and a relative root names a directory that is not there. Caught by that gate while
+  // `pnpm test` from the repository root stayed green — the same shape as the blocker
+  // above, a path that means two things depending on where it is read.
+  const source = nodeFileSource(`${posixRepoRoot}/content`);
 
   it('refuses a path that climbs out of it', () => {
     // Reproduced by external review: this returned `true`, and `read` came back with
