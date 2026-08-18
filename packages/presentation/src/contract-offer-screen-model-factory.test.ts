@@ -307,23 +307,33 @@ describe('how a response ranks its reasons', () => {
   });
 
   it('caps each side after sorting, so what is shown is that side\u2019s strongest', () => {
+    // Four factors on the winning side, and the strongest is the *last* the trace
+    // computed. Three would not pose the question at all: a side no longer than the cap
+    // survives being cut before being sorted, and a mutant that slices first stayed
+    // green through every case here until this one was written. The corpus cannot ask
+    // it either \u2014 no shipped scenario puts more than three factors on one side.
     const reasons = reasonsOf(
       [
         aFactor({ reasonCode: ReasonCodes.PaymentAttractive, magnitude: 1 }),
-        aFactor({ reasonCode: ReasonCodes.TrustsTheGuild, sourceEntity: ids.bram, magnitude: 50 }),
+        aFactor({ reasonCode: ReasonCodes.TrustsTheGuild, sourceEntity: ids.bram, magnitude: 2 }),
         aFactor({
           reasonCode: ReasonCodes.PersonalConviction,
           sourceEntity: ids.loyal,
-          magnitude: 40
+          magnitude: 3
+        }),
+        aFactor({
+          reasonCode: ReasonCodes.StandsWithComrade,
+          sourceEntity: ids.doran,
+          magnitude: 50
         })
       ],
-      [aFactor({ reasonCode: ReasonCodes.RiskTooHigh, magnitude: 2 })]
+      [aFactor({ reasonCode: ReasonCodes.RiskTooHigh, magnitude: 4 })]
     );
 
-    // Capping before sorting would show `payment_attractive` (computed first, weakest)
-    // and drop the two that actually carried the decision.
+    // Capping before sorting would drop `stands_with_comrade` \u2014 the one motive that
+    // actually carried the decision \u2014 and show the two weakest in its place.
     expect(reasons.map((reason) => reason.reasonCode)).toEqual([
-      ReasonCodes.TrustsTheGuild,
+      ReasonCodes.StandsWithComrade,
       ReasonCodes.PersonalConviction,
       ReasonCodes.RiskTooHigh
     ]);
