@@ -1,9 +1,17 @@
 /**
- * The content package's public surface.
+ * The content package's public surface — the half of it a browser can reach.
  *
  * Grown by the task that adds each part: Task 6 brings the contracts, the loader,
  * the digest and the locale catalogue; Task 8 brings the initial state the loader
- * builds; Task 10 brings scenarios and the determinism artifact.
+ * builds; Task 10 brings scenarios and the determinism artifact; Task 12 replaces
+ * every directory argument with a {@link ContentFileSource}, so that `apps/web` can
+ * import this file at all (`ADR-010` §59, `FULL_TYPESCRIPT_MIGRATION` §12.2).
+ *
+ * Nothing reachable from here names a `node:*` module, and the boundary rule
+ * `content-core-imports-only-simulation-and-zod` is what keeps that true rather
+ * than the intention to keep it true. Callers with a filesystem want
+ * `@oath-and-coin/content/node`, which holds the same loaders addressed by
+ * directory.
  */
 
 export {
@@ -63,11 +71,12 @@ export {
 export {
   CONTENT_VERSION_LENGTH,
   computeContentDigest,
-  computeContentVersion,
-  listFilesInOrdinalOrder,
-  toRelativePosixPath,
-  type ContentFile
+  computeContentVersion
 } from './content-digest.ts';
+
+export { memoryFileSource, type ContentFileSource } from './file-source.ts';
+
+export { fileName, isUnder, joinPath, parentPath, toPosixPath } from './paths.ts';
 
 export { createInitialState } from './initial-state.ts';
 
@@ -92,7 +101,7 @@ export {
 } from './scenarios/scenario-manifest.ts';
 export { loadScenarioCommands, type ScenarioCommand } from './scenarios/scenario-commands.ts';
 export { commandsUpTo, resolveCheckpoint } from './scenarios/checkpoint-resolver.ts';
-export { resolveContentRoot, type ResolvedContentRoot } from './scenarios/content-root.ts';
+export { resolveContentRoot } from './scenarios/content-root.ts';
 export {
   RULESET_VERSION,
   runScenario,

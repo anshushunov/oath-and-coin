@@ -1,0 +1,27 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Empty for the same reason `packages/presentation` and `packages/simulation`
+    // keep it empty. This layer is inside the browser bundle (`ADR-010` §59:
+    // content ← application ← apps/web), so a `node:fs` that typechecked here
+    // would break the page rather than the build; and the whole point of
+    // `ContentSourcePort` is that this layer does not know where files come from.
+    // Without this entry `@types/node` is visible from the root devDependencies
+    // and `readFileSync` would typecheck inside the layer whose boundary rule
+    // forbids it.
+    // No `lib` entry either, so this project builds under the base `ES2023` and
+    // the DOM is simply not declared. That was not true in the first draft: this
+    // project compiles the sources of everything it imports, `packages/content`
+    // decodes bytes with `TextDecoder`, and `ES2023` declares neither that nor
+    // `TextEncoder` — so `lib: ["DOM"]` was added to get two constructors.
+    //
+    // External review measured what came with them. `location`, `fetch`,
+    // `localStorage` and every DOM constructor typechecked here, against a
+    // hand-written ban on three names; a ban written as a list of three is the
+    // same shape the boundary rules were repaired for twice. `packages/content`
+    // now declares those two constructors itself (`src/text-codec.ts`), so the
+    // whole question goes away and `document` is a compiler error again.
+    "types": []
+  },
+  "include": ["src"]
+}

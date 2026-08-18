@@ -1,0 +1,20 @@
+{
+  "name": "@oath-and-coin/application",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The one place content and presentation meet — the load sequence turned into a screen, and the store a UI subscribes to (ADR-010: content ← application ← apps/web)",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "test": "vitest run --root ../.. packages/application"
+  },
+  "dependencies": {
+    "@oath-and-coin/content": "workspace:*",
+    "@oath-and-coin/presentation": "workspace:*",
+    "@oath-and-coin/simulation": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3"
+  }
+}

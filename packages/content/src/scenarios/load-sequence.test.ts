@@ -5,8 +5,9 @@ import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { ERROR_CODES, ErrorCodes } from '../error-codes.ts';
+import { loadAndRunScenario } from '../node/index.ts';
 
-import { loadAndRunScenario, type ScenarioRunResult } from './load-sequence.ts';
+import { type ScenarioRunResult } from './load-sequence.ts';
 
 /**
  * The debt `FULL_TYPESCRIPT_MIGRATION` §3.1 booked against this task, paid in the only
@@ -301,6 +302,10 @@ describe('the error detail is for a human, never for a comparison', () => {
     // Recorded rather than asserted away: the frozen corpus deliberately keeps no
     // `error_detail` in its read model for exactly this reason, so nothing downstream
     // may compare on it.
-    expect(result.errorDetail).toContain(root);
+    //
+    // Spelled with `/` since Task 12: the package no longer imports `node:path` and
+    // builds every path with one separator, so a caller's `C:\...` comes back as
+    // `C:/...`. Still machine-specific, which is the whole of what this asserts.
+    expect(result.errorDetail).toContain(root.replace(/\\/gu, '/'));
   });
 });

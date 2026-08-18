@@ -1,4 +1,4 @@
-import { join, resolve } from 'node:path';
+import { toPosixPath } from '../paths.ts';
 
 import type { ScenarioManifest } from './scenario-manifest.ts';
 
@@ -16,36 +16,27 @@ import type { ScenarioManifest } from './scenario-manifest.ts';
  * The kind is read from the fault, never from the scenario's name. A resolver that
  * recognised `screen_error` by name would agree with a manifest whose fault it had never
  * reproduced — the one thing this comparison exists to rule out.
+ *
+ * What it answers is a repository-relative path with POSIX separators — the form the
+ * frozen corpus records, and the form a caller hands back to a source. Turning that
+ * into somewhere a file can be read from is the caller's business and no longer this
+ * function's: the browser has no `resolve` and no absolute paths, and the decision the
+ * manifest makes is the same either way.
  */
-
-export interface ResolvedContentRoot {
-  /** Absolute, for the loader. */
-  readonly absolute: string;
-  /** Repository-relative with POSIX separators — the form the frozen corpus records. */
-  readonly recorded: string;
-}
-
-export function resolveContentRoot(
-  repositoryRoot: string,
-  manifest: ScenarioManifest
-): ResolvedContentRoot {
+export function resolveContentRoot(manifest: ScenarioManifest): string {
   if (manifest.contentRoot !== null) {
-    return {
-      absolute: resolve(join(repositoryRoot, manifest.contentRoot)),
-      recorded: manifest.contentRoot.replace(/\\/gu, '/')
-    };
+    return toPosixPath(manifest.contentRoot);
   }
 
   if (manifest.fault === null) {
-    return { absolute: resolve(join(repositoryRoot, 'content')), recorded: 'content' };
+    return 'content';
   }
 
   if (manifest.fault.kind === 'missing_content_root') {
     // Nothing is created: the fault *is* the absence. The path sits under `artifacts/`,
     // which is git-ignored, so a tree that somehow grew it would still not have it
     // committed.
-    const relative = `artifacts/oracle-faults/${manifest.fault.path.replace(/\\/gu, '/')}`;
-    return { absolute: resolve(join(repositoryRoot, relative)), recorded: relative };
+    return `artifacts/oracle-faults/${toPosixPath(manifest.fault.path)}`;
   }
 
   throw new Error(

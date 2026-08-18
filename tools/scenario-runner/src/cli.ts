@@ -2,7 +2,8 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import process from 'node:process';
 
-import { artifactHash, loadAndRunScenario, toCanonicalJson } from '@oath-and-coin/content';
+import { artifactHash, toCanonicalJson } from '@oath-and-coin/content';
+import { loadAndRunScenario } from '@oath-and-coin/content/node';
 
 import { runParity } from './parity.ts';
 

@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { validateContentTree, validateContentTreeOrThrow } from './validate.ts';
+import { validateContentTree, validateContentTreeOrThrow } from './node/index.ts';
 
 const repoRoot = resolve(import.meta.dirname, '..', '..', '..');
 const shippedContent = join(repoRoot, 'content');

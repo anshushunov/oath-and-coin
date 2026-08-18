@@ -1,8 +1,6 @@
-import { readdirSync, statSync } from 'node:fs';
-import { join, relative, sep } from 'node:path';
+import { Sha256, utf8Bytes } from '@oath-and-coin/simulation';
 
-import { Sha256 } from '@oath-and-coin/simulation';
-
+import type { ContentFileSource } from './file-source.ts';
 import { readBounded } from './strict-json.ts';
 
 /**
@@ -24,15 +22,16 @@ export const CONTENT_VERSION_LENGTH = 16;
 const FIELD_SEPARATOR = new Uint8Array([0x1f]);
 
 /**
- * SHA-256 over every file under `contentRoot`: each file's root-relative path and
+ * SHA-256 over every file the source holds: each file's root-relative path and
  * then its bytes, in ordinal path order, lowercase hex.
  *
  * Three details are what make the result a property of the content and not of the
  * machine that computed it:
  *
- * - paths are made relative to `contentRoot` and normalized to `/`, so the same
- *   tree hashes the same on Windows and on Linux and does not change when the
- *   checkout moves;
+ * - paths are relative to the source root and spelled with `/`, so the same tree
+ *   hashes the same on Windows and on Linux, does not change when the checkout
+ *   moves, and does not change when the files arrive from a bundle instead of a
+ *   disk;
  * - ordering is ordinal, never the filesystem's own enumeration order or a
  *   culture-aware sort;
  * - paths and contents are separated by a byte that cannot occur in a path.
@@ -40,89 +39,32 @@ const FIELD_SEPARATOR = new Uint8Array([0x1f]);
  * The path is part of the hash, not just the bytes: renaming a file changes what
  * content exists, so it must change the version.
  *
+ * That the source is an argument rather than a directory is what makes
+ * `content_version` comparable across the two ways this package is reached. The
+ * Node loader and the browser bundle hash the same (path, bytes) pairs through
+ * this one function, so their versions agree byte for byte — which is asserted
+ * rather than assumed, by digesting one tree through both.
+ *
  * Incremental, not one buffer over the whole tree — the digest covers every file
- * under the content root, including ones no loader ever reads, so hashing them all
- * at once would make the memory cost a property of the largest file anybody
- * dropped into `content/`. The size ceiling is the loader's own (`TDD` §18): a file
- * too large to load is not one this version should quietly account for either.
+ * the source holds, including ones no loader ever reads, so hashing them all at
+ * once would make the memory cost a property of the largest file anybody dropped
+ * into `content/`. The size ceiling is the loader's own (`TDD` §18): a file too
+ * large to load is not one this version should quietly account for either.
  */
-export function computeContentDigest(contentRoot: string): string {
-  const files = listFilesInOrdinalOrder(contentRoot);
+export function computeContentDigest(source: ContentFileSource): string {
   const hash = new Sha256();
-  const separatorBytes = FIELD_SEPARATOR;
 
-  for (const file of files) {
-    hash.update(utf8OfPath(file.relativePath));
-    hash.update(separatorBytes);
-    hash.update(readBounded(file.relativePath, file.fullPath));
-    hash.update(separatorBytes);
+  for (const path of source.list('')) {
+    hash.update(utf8Bytes(path));
+    hash.update(FIELD_SEPARATOR);
+    hash.update(readBounded(source, path));
+    hash.update(FIELD_SEPARATOR);
   }
 
   return hash.hex();
 }
 
 /** The first {@link CONTENT_VERSION_LENGTH} characters of the digest. */
-export function computeContentVersion(contentRoot: string): string {
-  return computeContentDigest(contentRoot).slice(0, CONTENT_VERSION_LENGTH);
-}
-
-export interface ContentFile {
-  /** Root-relative, POSIX separators — what the digest covers and what diagnostics name. */
-  readonly relativePath: string;
-  readonly fullPath: string;
-}
-
-/**
- * Every file under `root`, deepest included, in ordinal path order.
- *
- * Ordinal, never the filesystem's: enumeration order differs between platforms and
- * filesystems, and it decides which of two duplicate definitions is reported as
- * "the second one" — so a diagnostic would name a different file depending on
- * where the tree was checked out.
- */
-export function listFilesInOrdinalOrder(root: string, extension?: string): readonly ContentFile[] {
-  const found: ContentFile[] = [];
-
-  const walk = (directory: string): void => {
-    for (const entry of readdirSync(directory, { withFileTypes: true })) {
-      const fullPath = join(directory, entry.name);
-      if (entry.isDirectory()) {
-        walk(fullPath);
-        continue;
-      }
-      if (extension !== undefined && !entry.name.endsWith(extension)) {
-        continue;
-      }
-      found.push({ relativePath: toRelativePosixPath(root, fullPath), fullPath });
-    }
-  };
-
-  walk(root);
-  found.sort((left, right) => (left.relativePath < right.relativePath ? -1 : 1));
-
-  return found;
-}
-
-/** Root-relative with `/` separators, so the same tree reads the same on both platforms. */
-export function toRelativePosixPath(root: string, fullPath: string): string {
-  return relative(root, fullPath).split(sep).join('/').replace(/\\/g, '/');
-}
-
-/** Whether `path` names a directory that exists. */
-export function isDirectory(path: string): boolean {
-  try {
-    return statSync(path).isDirectory();
-  } catch {
-    return false;
-  }
-}
-
-/**
- * UTF-8 of a path. `Buffer.from` rather than the simulation's own `utf8Bytes`
- * because this is the layer that owns paths and encodings anyway (`ADR-002`), and a
- * path is text this process produced rather than external data to be defended
- * against.
- */
-function utf8OfPath(path: string): Uint8Array {
-  return Buffer.from(path, 'utf8');
+export function computeContentVersion(source: ContentFileSource): string {
+  return computeContentDigest(source).slice(0, CONTENT_VERSION_LENGTH);
 }

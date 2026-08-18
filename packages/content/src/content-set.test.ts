@@ -6,7 +6,7 @@ import { parseContentId } from '@oath-and-coin/simulation';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { INCLINATION_WEIGHT_MAX, TRAIT_MAX } from './bounds.ts';
-import { loadContentSet } from './content-set.ts';
+import { loadContentSet } from './node/index.ts';
 import { MAX_TRAITS_PER_HERO } from './limits.ts';
 
 const repoRoot = resolve(import.meta.dirname, '..', '..', '..');

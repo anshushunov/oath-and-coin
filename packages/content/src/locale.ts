@@ -1,7 +1,6 @@
-import { basename } from 'node:path';
-
 import { SortedMap, compareStrings } from '@oath-and-coin/simulation';
 
+import type { ContentFileSource } from './file-source.ts';
 import { localeFileSchema } from './schemas.ts';
 import { readFile } from './strict-json.ts';
 
@@ -23,8 +22,11 @@ import { readFile } from './strict-json.ts';
  * refused as well. Nothing relied on that being allowed; it was allowed because the
  * reader could not see it.
  */
-export function loadLocaleCatalogue(path: string): SortedMap<string, string> {
-  const file = readFile(basename(path), path, localeFileSchema);
+export function loadLocaleCatalogue(
+  source: ContentFileSource,
+  path: string
+): SortedMap<string, string> {
+  const file = readFile(source, path, localeFileSchema);
 
   return SortedMap.from(compareStrings, Object.entries(file.entries));
 }

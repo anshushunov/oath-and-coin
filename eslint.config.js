@@ -155,6 +155,40 @@ export default tseslint.config(
     }
   },
 
+  // The three layers a browser bundle is built from, and the one ban that no other
+  // gate here can enforce.
+  //
+  // `dependency-cruiser` is the authoritative check on what these packages import,
+  // and `eslint.config.js:118` already records what it provably cannot see: a
+  // dynamic import whose specifier is computed is not a resolvable edge, so it is
+  // not in the graph at all. That ban was written for the simulation and for
+  // nothing else, and external review reproduced the consequence —
+  // `const m: string = 'node:fs'; void import(m);` inside `packages/content` and
+  // inside `packages/application` left `pnpm typecheck`, `pnpm lint` and
+  // `pnpm lint:deps` all green, which is `node:fs` reaching a browser bundle past
+  // every gate that exists to stop it.
+  //
+  // The node adapter is inside the ban as well, deliberately: it may name `node:*`
+  // literally, and a computed specifier there would step around its own allowlist
+  // just the same.
+  {
+    files: [
+      'packages/content/**/*.ts',
+      'packages/presentation/**/*.ts',
+      'packages/application/**/*.ts'
+    ],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'ImportExpression[source.type!="Literal"]',
+          message:
+            'A dynamic import with a computed specifier is invisible to the dependency-boundary gate, which is the only authoritative check on what these layers may import. Name the module literally, or it cannot be checked at all.'
+        }
+      ]
+    }
+  },
+
   // React lives in exactly one package, so its rules apply there and nowhere
   // else. Both catch bugs no type can express: a hook called conditionally
   // corrupts the hook order, and a stale dependency array silently freezes a

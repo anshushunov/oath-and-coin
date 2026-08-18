@@ -1,8 +1,6 @@
-import { existsSync } from 'node:fs';
-import { basename, resolve } from 'node:path';
-
 import { z } from 'zod';
 
+import type { ContentFileSource } from '../file-source.ts';
 import { readFile, validateValue } from '../strict-json.ts';
 
 /**
@@ -124,19 +122,25 @@ const manifestFileSchema = z.strictObject({
  * names, repeats a checkpoint name, or states an outcome inconsistent with its own
  * fields.
  */
-export function loadScenarioManifest(path: string): ScenarioManifest {
-  const fullPath = resolve(path);
-  if (!existsSync(fullPath)) {
-    throw new Error(`Scenario manifest '${fullPath}' does not exist.`);
-  }
+export function loadScenarioManifest(
+  source: ContentFileSource,
+  path: string
+): ScenarioManifest {
+  const displayPath = source.describe(path);
 
-  const displayPath = basename(fullPath);
+  // Named by the source rather than by an absolute path, which is what the message
+  // used to carry. `TDD` §18 asks for exactly that — a diagnostic must not leak the
+  // layout of the machine that produced it — and the file name is what a scenario
+  // author addresses this file by anyway.
+  if (!source.exists(path)) {
+    throw new Error(`Scenario manifest '${displayPath}' does not exist.`);
+  }
 
   // The schema version is read before the contract is applied, the same split the
   // content loader makes: a file authored for an earlier format legitimately lacks
   // fields this one requires, and reporting those instead of the version mismatch
   // buries the one diagnostic that explains them.
-  const raw = readFile(displayPath, fullPath, z.looseObject({ schema_version: z.unknown() }));
+  const raw = readFile(source, path, z.looseObject({ schema_version: z.unknown() }));
   const declaredVersion = raw.schema_version;
   if (declaredVersion !== SUPPORTED_MANIFEST_SCHEMA_VERSION) {
     throw new Error(

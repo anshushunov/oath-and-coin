@@ -4,20 +4,17 @@ import { join } from 'node:path';
 import { canonicalSha256, sha256Hex, type CanonicalValue } from '@oath-and-coin/simulation';
 import {
   artifactHash,
-  loadAndRunScenario,
-  loadScenarioManifest,
   runScenario,
   toCanonicalBytes,
   type ScenarioRunResult
 } from '@oath-and-coin/content';
+import { loadAndRunScenario, loadScenarioManifest } from '@oath-and-coin/content/node';
 import {
-  LOADING_SCREEN,
-  contractOfferScreenModel,
   describeReadModel,
-  failedScreen,
   readModelHash,
   type ContractOfferScreenModel
 } from '@oath-and-coin/presentation';
+import { screenFor } from '@oath-and-coin/application';
 
 /**
  * Replays the frozen C# corpus against this port.
@@ -497,26 +494,6 @@ function compareReadModel(entry: OracleEntry, result: ScenarioRunResult): readon
   }
 
   return failures;
-}
-
-/**
- * The screen a run produces, by the same three-way split the application layer makes.
- *
- * `loading` is the one state no run computes — it is a fact about the scenario's
- * manifest — so it comes from the single stated constant rather than being inferred
- * from an absence of content, which would make it indistinguishable from `Empty`.
- */
-function screenFor(result: ScenarioRunResult): ContractOfferScreenModel {
-  switch (result.kind) {
-    case 'loading':
-      return LOADING_SCREEN;
-    case 'failed':
-      return failedScreen(result.errorCode, result.errorDetail);
-    case 'ran':
-      return contractOfferScreenModel(result.outcome.finalState, result.outcome.steps);
-    default:
-      return result satisfies never;
-  }
 }
 
 /**

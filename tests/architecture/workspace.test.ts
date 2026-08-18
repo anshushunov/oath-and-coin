@@ -1,4 +1,5 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join, posix, relative, resolve, sep } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
@@ -206,6 +207,97 @@ describe('gate coverage', () => {
         .join('/')}/tsconfig.base.json`;
 
       expect(tsconfig.extends, `${member.directory} must extend the base tsconfig`).toBe(expected);
+    }
+  });
+});
+
+describe('the boundary rules that must exist', () => {
+  /**
+   * A `dependency-cruiser` rule is only load-bearing while it is in the file, and
+   * deleting one leaves the gate reporting `0 violations` over a graph that has stopped
+   * being checked. External review named this in Task 12: every mutant the segment ran
+   * distorted what a rule measured, and none removed a rule outright, so "0 violations"
+   * proved nothing about the rules being there.
+   *
+   * The list is the direction `ADR-010` fixes, one entry per rule that states a piece of
+   * it. Adding a rule does not require touching this list; removing or renaming one
+   * does, which is the whole point — it becomes a deliberate edit rather than a
+   * disappearance nothing reports.
+   */
+  const REQUIRED_RULES = [
+    'no-circular',
+    'no-orphans',
+    'no-unresolvable',
+    'renderer-must-not-import-the-host',
+    'host-must-not-import-the-renderer',
+    'simulation-depends-on-nothing',
+    'content-core-imports-only-simulation-and-zod',
+    'content-browser-entry-reaches-no-node-builtin',
+    'content-node-adapter-imports-only-its-package-and-node',
+    'presentation-depends-only-on-simulation',
+    'application-imports-only-the-three-layers-below-it',
+    'not-to-dev-dep'
+  ] as const;
+
+  const configuration = createRequire(import.meta.url)(
+    join(repoRoot, '.dependency-cruiser.cjs')
+  ) as { forbidden?: readonly { name?: string; severity?: string }[] };
+
+  const declared = configuration.forbidden ?? [];
+
+  it('are all declared', () => {
+    const names = declared.map((rule) => rule.name);
+
+    for (const required of REQUIRED_RULES) {
+      expect(names, `${required} is no longer declared in .dependency-cruiser.cjs`).toContain(
+        required
+      );
+    }
+  });
+
+  it('are all errors, not warnings', () => {
+    // A rule downgraded to `warn` keeps the gate green while announcing the violation,
+    // and a warning that appears often enough is a rule that has stopped mattering.
+    for (const rule of declared) {
+      expect(rule.severity, `${rule.name ?? '(unnamed)'} must be an error`).toBe('error');
+    }
+  });
+});
+
+describe('the checks that have nowhere else to live', () => {
+  /**
+   * A test file is a gate too, and deleting one is invisible: the suite simply collects
+   * fewer files and passes. That is tolerable for a test whose property is asserted
+   * elsewhere as well, and not tolerable for the few that are the only statement of
+   * something.
+   *
+   * Short on purpose. This is not an index of the suite — it is the list of files whose
+   * absence would leave a stated property with nothing behind it, and each entry says
+   * which property.
+   */
+  const REQUIRED_CHECKS: readonly { path: string; property: string }[] = [
+    {
+      path: 'packages/content/src/source-agreement.test.ts',
+      property:
+        'the shipped tree digests to the same content_version through the Node source and through an in-memory one'
+    },
+    {
+      path: 'packages/content/src/file-size-ceiling.test.ts',
+      property: 'both guards on MAX_FILE_SIZE_BYTES are reached and word their refusal identically'
+    },
+    {
+      path: 'tests/locale/catalogue.test.ts',
+      property:
+        'the shipped catalogue answers every key the presentation layer can produce, which needs both sides of a boundary neither side may cross'
+    }
+  ];
+
+  it('are still in the tree', () => {
+    for (const check of REQUIRED_CHECKS) {
+      expect(
+        existsSync(join(repoRoot, ...check.path.split('/'))),
+        `${check.path} is gone, and with it the only check that ${check.property}`
+      ).toBe(true);
     }
   });
 });

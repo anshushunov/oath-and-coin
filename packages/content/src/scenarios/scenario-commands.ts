@@ -1,6 +1,3 @@
-import { existsSync } from 'node:fs';
-import { basename, resolve } from 'node:path';
-
 import {
   CONTENT_ID_PATTERN,
   HERO_ID_MAX,
@@ -10,6 +7,7 @@ import {
 } from '@oath-and-coin/simulation';
 import { z } from 'zod';
 
+import type { ContentFileSource } from '../file-source.ts';
 import { readFile } from '../strict-json.ts';
 
 /**
@@ -56,14 +54,16 @@ const scenarioFileSchema = z.strictObject({
  * commands. An empty scenario would "reproduce" perfectly and demonstrate nothing — the
  * most comfortable way for a determinism check to be green about nothing at all.
  */
-export function loadScenarioCommands(scenarioPath: string): readonly ScenarioCommand[] {
-  const fullPath = resolve(scenarioPath);
-  if (!existsSync(fullPath)) {
-    throw new Error(`Scenario file '${fullPath}' does not exist.`);
+export function loadScenarioCommands(
+  source: ContentFileSource,
+  path: string
+): readonly ScenarioCommand[] {
+  const displayPath = source.describe(path);
+  if (!source.exists(path)) {
+    throw new Error(`Scenario file '${displayPath}' does not exist.`);
   }
 
-  const displayPath = basename(fullPath);
-  const file = readFile(displayPath, fullPath, scenarioFileSchema);
+  const file = readFile(source, path, scenarioFileSchema);
 
   if (file.commands.length === 0) {
     throw new Error(`Scenario file '${displayPath}' declares no commands.`);

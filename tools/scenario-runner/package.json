@@ -10,6 +10,7 @@
     "test": "vitest run --root ../.. tools/scenario-runner"
   },
   "dependencies": {
+    "@oath-and-coin/application": "workspace:*",
     "@oath-and-coin/content": "workspace:*",
     "@oath-and-coin/presentation": "workspace:*",
     "@oath-and-coin/simulation": "workspace:*"

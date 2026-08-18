@@ -1,5 +1,3 @@
-import { join } from 'node:path';
-
 import type { ZodType } from 'zod';
 
 import {
@@ -9,7 +7,8 @@ import {
   type ContentId
 } from '@oath-and-coin/simulation';
 
-import { computeContentVersion, isDirectory, listFilesInOrdinalOrder } from './content-digest.ts';
+import { computeContentVersion } from './content-digest.ts';
+import type { ContentFileSource } from './file-source.ts';
 import {
   contractFileSchema,
   heroFileSchema,
@@ -22,9 +21,16 @@ import { parseJsonFile, validateValue } from './strict-json.ts';
 import { SUPPORTED_CONTENT_SCHEMA_VERSION } from './versions.ts';
 
 /**
- * Everything the game was authored with, read from disk once. This package is
- * where files, paths and encodings live; the simulation core never touches any of
- * them (`ADR-002`), which is what lets its boundary rule ban every import outright.
+ * Everything the game was authored with, read from its source once. This package
+ * is where files, paths and encodings live; the simulation core never touches any
+ * of them (`ADR-002`), which is what lets its boundary rule ban every import
+ * outright.
+ *
+ * "From its source", not "from disk": the loader is handed a
+ * {@link ContentFileSource} rather than a directory, so the same code reads a
+ * checkout under Node and a bundle in a browser. Everything below — the order the
+ * three directories are read in, the version peek, the reference check — is what
+ * it was; only where the bytes come from moved.
  */
 
 /** Whether a trait contributes a strength to a decision or closes it outright (`HERO_DECISION_SPEC` §1.3). */
@@ -93,7 +99,7 @@ export interface ContentSet {
 }
 
 /**
- * Reads `heroes/`, `contracts/` and `traits/` under `contentRoot`.
+ * Reads `heroes/`, `contracts/` and `traits/` from `source`.
  *
  * @throws if a file is missing, unreadable, malformed, has an unknown property, has
  * a value outside its bounds, declares another format version, reuses an id another
@@ -101,11 +107,7 @@ export interface ContentSet {
  * or to itself. The message always names the file, and the JSON path when there is
  * one.
  */
-export function loadContentSet(contentRoot: string): ContentSet {
-  if (!isDirectory(contentRoot)) {
-    throw new Error(`Content root '${contentRoot}' does not exist.`);
-  }
-
+export function loadContentSet(source: ContentFileSource): ContentSet {
   const seenIds = new Map<ContentId, string>();
 
   // Heroes and contracts before traits. The order among the three is free —
@@ -116,34 +118,34 @@ export function loadContentSet(contentRoot: string): ContentSet {
   // ever reporting the schema_version mismatch that actually explains it.
   const heroes = SortedMap.from(
     compareContentIds,
-    readDirectory(contentRoot, 'heroes', heroFileSchema).map(({ relativePath, file }) => {
+    readDirectory(source, 'heroes', heroFileSchema).map(({ displayPath, file }) => {
       const id = parseContentId(file.id);
-      requireUniqueId(seenIds, id, relativePath);
+      requireUniqueId(seenIds, id, displayPath);
       return [id, toHeroDefinition(file)] as const;
     })
   );
 
   const contracts = SortedMap.from(
     compareContentIds,
-    readDirectory(contentRoot, 'contracts', contractFileSchema).map(({ relativePath, file }) => {
+    readDirectory(source, 'contracts', contractFileSchema).map(({ displayPath, file }) => {
       const id = parseContentId(file.id);
-      requireUniqueId(seenIds, id, relativePath);
+      requireUniqueId(seenIds, id, displayPath);
       return [id, toContractDefinition(file)] as const;
     })
   );
 
   const traits = SortedMap.from(
     compareContentIds,
-    readDirectory(contentRoot, 'traits', traitFileSchema).map(({ relativePath, file }) => {
+    readDirectory(source, 'traits', traitFileSchema).map(({ displayPath, file }) => {
       const id = parseContentId(file.id);
-      requireUniqueId(seenIds, id, relativePath);
+      requireUniqueId(seenIds, id, displayPath);
       return [id, toTraitDefinition(file)] as const;
     })
   );
 
   validateReferences(heroes, traits);
 
-  return { heroes, contracts, traits, contentVersion: computeContentVersion(contentRoot) };
+  return { heroes, contracts, traits, contentVersion: computeContentVersion(source) };
 }
 
 function toHeroDefinition(file: HeroFile): HeroDefinition {
@@ -235,7 +237,8 @@ function validateReferences(
 }
 
 interface ReadFile<TFile> {
-  readonly relativePath: string;
+  /** As the source names it in diagnostics, which is the only use this has. */
+  readonly displayPath: string;
   readonly file: TFile;
 }
 
@@ -248,28 +251,35 @@ interface ReadFile<TFile> {
  * those missing fields rather than the version mismatch that explains them.
  */
 function readDirectory<TFile>(
-  contentRoot: string,
+  source: ContentFileSource,
   subdirectory: string,
   schema: ZodType<TFile>
 ): readonly ReadFile<TFile>[] {
-  const directory = join(contentRoot, subdirectory);
-  if (!isDirectory(directory)) {
-    throw new Error(`Content root '${contentRoot}' has no '${subdirectory}' directory.`);
+  // A directory the source holds nothing under, rather than a `stat` on a
+  // filesystem: a source is a set of files, and a directory that exists with
+  // nothing in it is not something every source can even represent. The refusal
+  // is what matters and it is unchanged — a tree from before traits existed still
+  // fails naming the directory it lacks rather than loading zero traits and
+  // pretending the content set is complete.
+  if (source.list(subdirectory).length === 0) {
+    throw new Error(`Content root has no '${subdirectory}' directory.`);
   }
 
-  return listFilesInOrdinalOrder(directory, '.json').map((entry) => {
-    // Named by its path under the content root, not under the subdirectory, so a
-    // diagnostic reads the way an author thinks about the tree.
-    const relativePath = `${subdirectory}/${entry.relativePath}`;
-    const value = parseJsonFile(relativePath, entry.fullPath);
-    requireSupportedSchemaVersion(peekSchemaVersion(relativePath, value), relativePath);
+  // Paths arrive relative to the source root rather than to the subdirectory, so
+  // nothing here has to put two path fragments back together — and how one is
+  // named in a message is the source's answer, so a diagnostic reads the way an
+  // author thinks about the tree whichever source produced it.
+  return source.list(subdirectory, '.json').map((path) => {
+    const displayPath = source.describe(path);
+    const value = parseJsonFile(source, path);
+    requireSupportedSchemaVersion(peekSchemaVersion(displayPath, value), displayPath);
 
-    return { relativePath, file: validateValue(relativePath, value, schema) };
+    return { displayPath, file: validateValue(displayPath, value, schema) };
   });
 }
 
 /** Reads only `schema_version`, without binding the rest of the file to any version's shape. */
-function peekSchemaVersion(relativePath: string, value: unknown): number {
+function peekSchemaVersion(displayPath: string, value: unknown): number {
   const version =
     typeof value === 'object' && value !== null
       ? (value as Record<string, unknown>)['schema_version']
@@ -277,17 +287,17 @@ function peekSchemaVersion(relativePath: string, value: unknown): number {
 
   if (typeof version !== 'number' || !Number.isInteger(version)) {
     throw new Error(
-      `Content file '${relativePath}' has no integer 'schema_version' property.`
+      `Content file '${displayPath}' has no integer 'schema_version' property.`
     );
   }
 
   return version;
 }
 
-function requireSupportedSchemaVersion(schemaVersion: number, relativePath: string): void {
+function requireSupportedSchemaVersion(schemaVersion: number, displayPath: string): void {
   if (schemaVersion !== SUPPORTED_CONTENT_SCHEMA_VERSION) {
     throw new Error(
-      `Content file '${relativePath}' declares schema_version ${schemaVersion}, but this build ` +
+      `Content file '${displayPath}' declares schema_version ${schemaVersion}, but this build ` +
         `reads version ${SUPPORTED_CONTENT_SCHEMA_VERSION}. Migrate the file, or run a build that ` +
         'understands its version — reading it under the wrong version would be a guess.'
     );
@@ -297,14 +307,14 @@ function requireSupportedSchemaVersion(schemaVersion: number, relativePath: stri
 function requireUniqueId(
   seenIds: Map<ContentId, string>,
   id: ContentId,
-  relativePath: string
+  displayPath: string
 ): void {
   const firstPath = seenIds.get(id);
   if (firstPath !== undefined) {
     throw new Error(
-      `Duplicate content id '${id}': defined in both '${firstPath}' and '${relativePath}'.`
+      `Duplicate content id '${id}': defined in both '${firstPath}' and '${displayPath}'.`
     );
   }
 
-  seenIds.set(id, relativePath);
+  seenIds.set(id, displayPath);
 }
