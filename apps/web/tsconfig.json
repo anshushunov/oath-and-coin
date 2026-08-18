@@ -8,7 +8,13 @@
     // comment.
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
-    "types": []
+    // `import.meta.glob` is Vite's, not the language's: without this declaration
+    // the browser content source does not typecheck at all, and with a
+    // hand-written `declare` of it the signature would be this repository's
+    // guess about the bundler rather than the bundler's own statement. Still an
+    // explicit list rather than the default "every @types package installed
+    // anywhere" — the reason `types` was emptied here in the first place.
+    "types": ["vite/client"]
   },
   "include": ["src", "vite.config.ts"]
 }
