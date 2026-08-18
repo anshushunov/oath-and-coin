@@ -1,10 +1,20 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    // Playwright's assertions run in Node and drive a browser over a protocol;
-    // the specs themselves never execute in the page, so no DOM lib here. The
-    // one place page code appears is inside `page.evaluate`, where Playwright
-    // types the callback against its own DOM declarations.
+    // A spec here is two programs in one file: the assertions run in Node and drive a
+    // browser over a protocol, and the callback of every `page.evaluate` is serialized
+    // and executed *inside the page*. The second half needs `document`, `Node` and
+    // `NodeFilter`, and until Task 15 there was no `page.evaluate` in this member at all
+    // — so the comment that used to stand here, claiming Playwright types those
+    // callbacks against its own DOM declarations, described something nothing had
+    // compiled. It does not; without `DOM` in `lib` the callbacks do not typecheck.
+    //
+    // This does not widen the boundary `ADR-010` draws. That rule is about the
+    // *simulation, content, presentation and application* packages not knowing the DOM,
+    // and each of those states its own `lib`; a suite whose job is to observe a rendered
+    // page is the one place besides `apps/web` where knowing about a document is the
+    // point rather than a leak.
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "types": ["node"]
   },
   "include": ["**/*.spec.ts"]

@@ -163,6 +163,18 @@ importers:
 
   tests/e2e:
     devDependencies:
+      '@oath-and-coin/application':
+        specifier: workspace:*
+        version: link:../../packages/application
+      '@oath-and-coin/content':
+        specifier: workspace:*
+        version: link:../../packages/content
+      '@oath-and-coin/presentation':
+        specifier: workspace:*
+        version: link:../../packages/presentation
+      '@oath-and-coin/simulation':
+        specifier: workspace:*
+        version: link:../../packages/simulation
       '@playwright/test':
         specifier: 1.62.1
         version: 1.62.1

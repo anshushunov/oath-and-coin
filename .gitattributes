@@ -54,6 +54,12 @@ migration/oracle/**/*.md text eol=lf
 *.ts text eol=lf
 *.tsx text eol=lf
 *.js text eol=lf
+# `*.css` arrives with Task 15's first stylesheet, and it is listed the moment it
+# exists rather than the second time a gate disagrees with itself. That is the lesson
+# of `eslint.config.js` below: a source file matching none of these patterns is checked
+# out CRLF on Windows and `pnpm format:check` then fails locally on a file nobody
+# edited while CI is green on the same commit.
+*.css text eol=lf
 *.mjs text eol=lf
 *.cjs text eol=lf
 package.json text eol=lf

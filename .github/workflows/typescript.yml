@@ -95,6 +95,49 @@ jobs:
         id: e2e
         run: pnpm test:e2e
 
+      # The numbers of the browser run live in this file and nowhere else — AGENTS.md
+      # §11: a number is published by the run that produced it, never retyped into a PR
+      # description. It is also the stage that makes the evidence a gate rather than a
+      # pile of files: a suite that stopped writing reports fails here, where a bare
+      # upload with `if-no-files-found` would still have found last stage's `artifacts/`.
+      #
+      # This is a new CI check, so AGENTS.md §8 requires a mutant on it, and the journal
+      # records which branch reddened it.
+      - name: Summarise the browser evidence
+        if: always() && steps.e2e.outcome != 'skipped'
+        shell: bash
+        run: |
+          root=artifacts/browser-evidence
+          expected="screen_loading screen_empty screen_error screen_incomplete screen_normal"
+
+          missing=""
+          for state in $expected; do
+            [ -f "$root/$state/report.json" ] || missing="$missing $state"
+            [ -f "$root/$state/screenshot.png" ] || missing="$missing $state/frame"
+            [ -f "$root/$state/events.jsonl" ] || missing="$missing $state/events"
+          done
+
+          if [ -n "$missing" ]; then
+            echo "::error::The browser run produced no evidence for:$missing"
+            exit 1
+          fi
+
+          {
+            echo "### browser evidence"
+            echo
+            echo "| state | read model | rendered ui | content | viewport | reachable | events |"
+            echo "|---|---|---|---|---|---|---|"
+            for state in $expected; do
+              jq -r '
+                "| \(.screen_state) | \(.read_model_hash[0:16]) | \(.rendered_ui_hash[0:16]) "
+                + "| \(.layout.contentWidth)x\(.layout.contentHeight) "
+                + "| \(.layout.viewportWidth)x\(.layout.viewportHeight) "
+                + "| \(.layout.reachableWidth)x\(.layout.reachableHeight) | \(.events) |"
+              ' "$root/$state/report.json"
+            done
+            echo
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: Upload browser evidence
         if: always() && steps.e2e.outcome != 'skipped'
         uses: actions/upload-artifact@v4
