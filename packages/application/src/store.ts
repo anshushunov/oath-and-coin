@@ -55,11 +55,27 @@ export function createStore<TState>(initial: TState): Store<TState> {
 
       current = next;
 
-      // Over a copy: a listener that unsubscribes itself — which is what React does on
-      // unmount — would otherwise mutate the set being iterated, and the listener after
-      // it would be skipped for this change only.
+      // Who is notified about a change is decided when the change happens, and the two
+      // halves of that are separate.
+      //
+      // The copy fixes the audience: a listener that subscribes *during* a notification
+      // is not told about the change it was not yet watching for. Iterating the live set
+      // would tell it, and it would then see the same change twice — once as the
+      // notification and once as whatever made it subscribe.
+      //
+      // The membership test is the other direction: a listener that unsubscribed while
+      // this notification was running is not called after it left. React unsubscribes on
+      // unmount, and a component unmounting in response to an earlier listener is
+      // ordinary.
+      //
+      // Neither is what a `Set` gives for free, and only one of them looks like it might
+      // be. A `Set` iterator does survive an element deleting *itself*, which was the
+      // first justification written here and was wrong — a mutant that removed the copy
+      // stayed green against a test built on that claim.
       for (const listener of [...listeners]) {
-        listener();
+        if (listeners.has(listener)) {
+          listener();
+        }
       }
     }
   };

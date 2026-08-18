@@ -61,23 +61,48 @@ describe('createStore', () => {
     expect(store.snapshot()).toBe(2);
   });
 
-  it('notifies every listener even when one unsubscribes during the notification', () => {
-    // React unsubscribes on unmount, and a component unmounting in response to a change
-    // is ordinary. Iterating the live set would drop whichever listener happened to
-    // follow it — for that one change only, which is the hardest kind of bug to see.
+  it('does not notify a listener that subscribed during the notification', () => {
+    // The audience for a change is fixed when the change happens. A listener told about
+    // a change it was not yet watching for would see that change twice — once here and
+    // once as whatever made it subscribe.
     const store = createStore(0);
     const notified: string[] = [];
-    const unsubscribeFirst = store.subscribe(() => {
-      notified.push('first');
-      unsubscribeFirst();
-    });
     store.subscribe(() => {
+      notified.push('first');
+      store.subscribe(() => {
+        notified.push('late');
+      });
+    });
+
+    store.replace(1);
+    expect(notified).toEqual(['first']);
+
+    // ...and it is in the audience for the next one, so this is a rule about timing
+    // rather than a listener quietly dropped. Second in that round because it
+    // subscribed second; the first listener subscribes yet another one, which waits
+    // its own turn in the same way.
+    store.replace(2);
+    expect(notified).toEqual(['first', 'first', 'late']);
+  });
+
+  it('does not notify a listener that another listener unsubscribed mid-notification', () => {
+    // The other direction, and the reason the membership test exists beside the copy.
+    // React unsubscribes on unmount, and a component unmounting in response to an
+    // earlier listener is ordinary; calling it afterwards is calling something that has
+    // said it is gone.
+    const store = createStore(0);
+    const notified: string[] = [];
+    store.subscribe(() => {
+      notified.push('first');
+      unsubscribeSecond();
+    });
+    const unsubscribeSecond = store.subscribe(() => {
       notified.push('second');
     });
 
     store.replace(1);
 
-    expect(notified).toEqual(['first', 'second']);
+    expect(notified).toEqual(['first']);
   });
 
   it('keeps the snapshot stable between changes, so a consumer may compare by identity', () => {
