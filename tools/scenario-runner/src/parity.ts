@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { sha256Hex } from '@oath-and-coin/simulation';
+import { canonicalSha256, sha256Hex, type CanonicalValue } from '@oath-and-coin/simulation';
 import {
   artifactHash,
   loadAndRunScenario,
@@ -10,6 +10,14 @@ import {
   toCanonicalBytes,
   type ScenarioRunResult
 } from '@oath-and-coin/content';
+import {
+  LOADING_SCREEN,
+  contractOfferScreenModel,
+  describeReadModel,
+  failedScreen,
+  readModelHash,
+  type ContractOfferScreenModel
+} from '@oath-and-coin/presentation';
 
 /**
  * Replays the frozen C# corpus against this port.
@@ -125,6 +133,7 @@ export function verifyEntry(
 
   failures.push(...compareManifest(entry, repositoryRoot));
   failures.push(...compareOutcomeKind(entry, result));
+  failures.push(...compareReadModel(entry, result));
 
   if (result.kind === 'ran' && result.contentRoot !== entry.inputs.content_root) {
     failures.push(
@@ -226,7 +235,16 @@ interface OracleEntry {
     readonly content_version: string | null;
     readonly manifest: RecordedManifest;
   };
-  readonly outcome: { readonly kind: string; readonly error_code: string | null };
+  readonly outcome: {
+    readonly kind: string;
+    readonly error_code: string | null;
+    readonly screen_state: string;
+  };
+  /**
+   * The screen the C# factory built, with its own SHA-256 alongside it. Every key of
+   * the projection plus `sha256` — which is *not* part of what was hashed.
+   */
+  readonly read_model: Record<string, unknown> & { readonly sha256: string };
   readonly draws: {
     readonly next_decision_ordinal_initial: string;
     readonly next_decision_ordinal_final: string;
@@ -394,6 +412,93 @@ function compareOutcomeKind(entry: OracleEntry, result: ScenarioRunResult): read
   }
 
   return failures;
+}
+
+/**
+ * The screen the corpus recorded, against the screen this port builds.
+ *
+ * This is the last zone the frozen corpus covered and parity did not. Until Task 11
+ * there was no read model in the new stack at all, so "54/54 reproduced" meant "by
+ * everything the domain and content layers produce" (`FULL_TYPESCRIPT_MIGRATION` §10.5)
+ * — the screen was outside it.
+ *
+ * Three separate comparisons, and each buys something the others do not.
+ *
+ * 1. **The entry against itself.** `read_model.sha256` is a statement about the object
+ *    it sits inside. If the two disagree, the entry cannot be an oracle for either, and
+ *    a port measured only against the hash would be measured against a number with
+ *    nothing behind it. The same discipline `compareInternalConsistency` applies to the
+ *    artifact, applied here for the reason §3.6 recorded: a test that compares hash to
+ *    hash agrees with the exporter in everything the exporter got wrong.
+ * 2. **This port's hash against the recorded one.** One number, computed from the
+ *    canonical projection with this repository's own SHA-256.
+ * 3. **The projections themselves, field for field.** A hash says *that* two screens
+ *    differ. Only the structures say *where* — and "where" is the whole difference
+ *    between a failing gate someone can act on and one they have to re-derive.
+ *
+ * Runs for every entry, including the ones that produced no artifact: `screen_loading`
+ * and `screen_error` have a recorded screen precisely because a failed run still has to
+ * show a player something.
+ */
+function compareReadModel(entry: OracleEntry, result: ScenarioRunResult): readonly string[] {
+  const failures: string[] = [];
+  const { sha256: recordedHash, ...recorded } = entry.read_model;
+
+  // The corpus hashed the projection *without* the hash it stores beside it. Recomputed
+  // here from the recorded object rather than trusted, so an entry that disagrees with
+  // itself is named as such instead of quietly deciding which half the port is measured
+  // against.
+  const recomputed = canonicalSha256(recorded as CanonicalValue);
+  if (recomputed !== recordedHash) {
+    failures.push(
+      `the corpus entry's read_model disagrees with itself: canonicalizing it without its own ` +
+        `sha256 gives ${recomputed}, but it records ${recordedHash}`
+    );
+  }
+
+  let model: ContractOfferScreenModel;
+  try {
+    model = screenFor(result);
+  } catch (cause) {
+    return [...failures, `building the screen for this entry threw: ${messageOf(cause)}`];
+  }
+
+  const screenState = model.state.toLowerCase();
+  if (screenState !== entry.outcome.screen_state) {
+    failures.push(`screen state is '${screenState}', corpus has '${entry.outcome.screen_state}'`);
+  }
+
+  const actualHash = readModelHash(model);
+  if (actualHash !== recordedHash) {
+    failures.push(`read_model sha256 differs: got ${actualHash}, corpus has ${recordedHash}`);
+  }
+
+  const difference = firstDifference(describeReadModel(model), recorded, '$.read_model');
+  if (difference !== null) {
+    failures.push(`read model differs: ${difference}`);
+  }
+
+  return failures;
+}
+
+/**
+ * The screen a run produces, by the same three-way split the application layer makes.
+ *
+ * `loading` is the one state no run computes — it is a fact about the scenario's
+ * manifest — so it comes from the single stated constant rather than being inferred
+ * from an absence of content, which would make it indistinguishable from `Empty`.
+ */
+function screenFor(result: ScenarioRunResult): ContractOfferScreenModel {
+  switch (result.kind) {
+    case 'loading':
+      return LOADING_SCREEN;
+    case 'failed':
+      return failedScreen(result.errorCode, result.errorDetail);
+    case 'ran':
+      return contractOfferScreenModel(result.outcome.finalState, result.outcome.steps);
+    default:
+      return result satisfies never;
+  }
 }
 
 /**

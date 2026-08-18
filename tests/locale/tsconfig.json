@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // These tests read the shipped catalogue and the shipped content tree from disk,
+    // which is the reason they are here rather than inside `packages/presentation`:
+    // that package has no Node types at all, on purpose.
+    "types": ["node"]
+  },
+  "include": ["*.test.ts"]
+}

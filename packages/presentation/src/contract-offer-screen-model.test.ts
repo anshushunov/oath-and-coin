@@ -1,0 +1,144 @@
+import { describe, expect, it } from 'vitest';
+
+import {
+  createContractOfferScreenModel,
+  type ContractLine,
+  type ContractOfferScreenModel,
+  type HeroCard
+} from './contract-offer-screen-model.ts';
+import { QualitativeGrade } from './qualitative-scale.ts';
+import { ScreenState } from './screen-state.ts';
+import { TITLE_KEY } from './keys.ts';
+
+const aContractLine: ContractLine = {
+  definition: 'core:escort_the_caravan',
+  displayNameKey: 'contract.core.escort_the_caravan.name',
+  payment: 40,
+  risk: QualitativeGrade.Moderate,
+  tagKeys: [],
+  requiredCrew: 2,
+  acceptedCount: 0
+};
+
+const aHeroCard: HeroCard = {
+  definition: 'core:bram',
+  displayNameKey: 'hero.core.bram.name',
+  greed: QualitativeGrade.Moderate,
+  caution: QualitativeGrade.Low,
+  pride: QualitativeGrade.Moderate,
+  principleKeys: [],
+  inclinationKeys: []
+};
+
+function aModel(overrides: Partial<ContractOfferScreenModel> = {}): ContractOfferScreenModel {
+  return {
+    state: ScreenState.Normal,
+    titleKey: TITLE_KEY,
+    contract: aContractLine,
+    roster: [aHeroCard],
+    responses: [],
+    errorCode: null,
+    errorDetail: null,
+    ...overrides
+  };
+}
+
+describe('the combinations a screen model refuses', () => {
+  it('accepts the five states with the fields each of them owns', () => {
+    expect(() => createContractOfferScreenModel(aModel())).not.toThrow();
+    expect(() =>
+      createContractOfferScreenModel(aModel({ state: ScreenState.Incomplete }))
+    ).not.toThrow();
+    expect(() =>
+      createContractOfferScreenModel(
+        aModel({ state: ScreenState.Loading, contract: null, roster: [] })
+      )
+    ).not.toThrow();
+    expect(() =>
+      createContractOfferScreenModel(
+        aModel({ state: ScreenState.Empty, contract: null, roster: [] })
+      )
+    ).not.toThrow();
+    expect(() =>
+      createContractOfferScreenModel(
+        aModel({
+          state: ScreenState.Error,
+          contract: null,
+          roster: [],
+          errorCode: 'CONTENT_ROOT_NOT_FOUND',
+          errorDetail: 'no such directory'
+        })
+      )
+    ).not.toThrow();
+  });
+
+  it('refuses a detail with no error to detail', () => {
+    expect(() => createContractOfferScreenModel(aModel({ errorDetail: 'orphan' }))).toThrow(
+      /orphaned string/u
+    );
+  });
+
+  it('refuses an Error screen with no code', () => {
+    expect(() =>
+      createContractOfferScreenModel(
+        aModel({ state: ScreenState.Error, contract: null, roster: [] })
+      )
+    ).toThrow(/errorCode must be set/u);
+  });
+
+  it.each([ScreenState.Loading, ScreenState.Empty, ScreenState.Incomplete, ScreenState.Normal])(
+    'refuses an error code on a %s screen',
+    (state) => {
+      const contract =
+        state === ScreenState.Loading || state === ScreenState.Empty ? null : aContractLine;
+      const roster = contract === null ? [] : [aHeroCard];
+
+      expect(() =>
+        createContractOfferScreenModel(
+          aModel({ state, contract, roster, errorCode: 'SCHEMA_INVALID', errorDetail: 'bad field' })
+        )
+      ).toThrow(/errorCode must be null/u);
+    }
+  );
+
+  it.each([ScreenState.Loading, ScreenState.Empty])(
+    'refuses a roster carried over onto a %s screen',
+    (state) => {
+      // The failure this is about: a screen with nothing to offer showing the roster of
+      // some earlier offer, which reads to a player as a live table.
+      expect(() => createContractOfferScreenModel(aModel({ state, contract: null }))).toThrow(
+        /must all be empty/u
+      );
+    }
+  );
+
+  it('refuses an Error screen carrying a contract', () => {
+    expect(() =>
+      createContractOfferScreenModel(
+        aModel({
+          state: ScreenState.Error,
+          roster: [],
+          errorCode: 'CONTENT_INVALID',
+          errorDetail: 'duplicate id'
+        })
+      )
+    ).toThrow(/must all be empty/u);
+  });
+
+  it.each([ScreenState.Incomplete, ScreenState.Normal])(
+    'refuses a %s screen with nothing on offer',
+    (state) => {
+      expect(() => createContractOfferScreenModel(aModel({ state, contract: null }))).toThrow(
+        /nothing to offer/u
+      );
+    }
+  );
+
+  it('refuses a state outside the five', () => {
+    // Reachable from JSON that crossed a process boundary, which is exactly where a
+    // sixth spelling would arrive from.
+    expect(() => createContractOfferScreenModel(aModel({ state: 'Blank' as never }))).toThrow(
+      /Unknown screen state/u
+    );
+  });
+});
