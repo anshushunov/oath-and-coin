@@ -1,0 +1,146 @@
+import { Application, Container, Graphics } from 'pixi.js';
+// Confusingly named: this module is what a page uses when unsafe-eval is *not*
+// allowed. PixiJS compiles its shader and uniform sync functions with `new Function`
+// by default, and `index.html` declares `script-src 'self'` because `ADR-010` §80
+// makes CSP part of the mandatory security boundary — so the default path is refused
+// and Pixi logs "Current environment does not allow unsafe-eval". Importing this
+// replaces the generated functions with polyfills that do the same work without eval.
+//
+// The alternative — adding `'unsafe-eval'` to the policy — would widen the boundary of
+// the packaged host for the sake of one dependency's code generation, which is the
+// trade `ADR-010` explicitly refuses.
+//
+// **This was invisible to every jsdom test.** All 65 of them were green while the page
+// in Chromium logged the error, which is §14.4's third measured lesson arriving on its
+// own: a claim about the bundle checked only in jsdom is a claim about the dev
+// transform.
+import 'pixi.js/unsafe-eval';
+
+import type { SceneDescription, SceneShape } from './scene-model.ts';
+
+/**
+ * The only module in this repository that knows PixiJS exists.
+ *
+ * It applies a {@link SceneDescription} and decides nothing: no layout, no ordering, no
+ * rule about which shape belongs on screen. Everything that could be wrong in a way
+ * worth testing was moved into `scene-model.ts`, which is a pure function and is tested
+ * as one.
+ *
+ * **This file is not tested in jsdom, on purpose.** jsdom has no WebGL, so the only test
+ * available there would be against a mock of `Application`, and a green test over a mock
+ * proves the mock behaves. What it would *not* prove is the one thing that can go wrong
+ * here — that a canvas comes up and something lands on it — and `FULL_TYPESCRIPT_MIGRATION`
+ * §14.4 already recorded the measured version of that trap: a mutant that stopped the
+ * application mounting the screen left all 45 jsdom checks green and reddened only the
+ * run in Chromium. So the check on this file is the browser evidence of Task 15, and
+ * nothing here pretends otherwise.
+ *
+ * The colours are the schematic palette `DEC-007` asks for until the vertical slice —
+ * a token, a marker, and the one distinction the scene draws. They are constants here
+ * rather than CSS custom properties because nothing in a canvas reads CSS.
+ */
+
+/** The scene's own background, so the canvas is never a hole in the page. */
+const BACKGROUND = 0x11131a;
+
+/** The offered contract. */
+const MARKER_FILL = 0xc8a04a;
+
+/** A hero who has answered, and one still to. */
+const TOKEN_ANSWERED = 0x4a7fc8;
+const TOKEN_WAITING = 0x3a3f4b;
+
+/** Drawn on every shape, so a token on the background still has an edge. */
+const OUTLINE = 0x8b93a7;
+const OUTLINE_WIDTH = 2;
+
+/** A mounted scene, and the two things its owner may do with it. */
+export interface PixiScene {
+  /** Draws a description, replacing whatever was drawn before. */
+  apply(description: SceneDescription): void;
+  /** Releases the renderer and its GPU resources. */
+  destroy(): void;
+}
+
+/**
+ * Brings up a renderer on `canvas` and draws `initial` onto it.
+ *
+ * Rejects rather than falling back when no renderer can be created. A scene that
+ * silently degraded to nothing would be indistinguishable from a scene that is empty
+ * because the model is, and Task 15's evidence is supposed to tell those apart.
+ */
+export async function mountPixiScene(
+  canvas: HTMLCanvasElement,
+  initial: SceneDescription
+): Promise<PixiScene> {
+  const application = new Application();
+
+  await application.init({
+    canvas,
+    width: initial.width,
+    height: initial.height,
+    background: BACKGROUND,
+    antialias: true,
+    // Nothing here animates: the scene is a projection of a model that does not move,
+    // so a ticker running every frame would spend a core redrawing an identical image.
+    // Each `apply` renders once, explicitly.
+    autoStart: false,
+    sharedTicker: false
+  });
+
+  // One layer of our own rather than drawing straight onto the stage, so `apply` can
+  // clear exactly what it drew without assuming it owns everything on the stage.
+  const layer = new Container();
+  application.stage.addChild(layer);
+
+  const scene: PixiScene = {
+    apply(description: SceneDescription): void {
+      application.renderer.resize(description.width, description.height);
+
+      // Destroyed rather than merely removed: a `Graphics` holds GPU buffers, and
+      // dropping the reference without destroying it leaks them for as long as the page
+      // lives.
+      for (const child of layer.removeChildren()) {
+        child.destroy();
+      }
+
+      for (const shape of description.shapes) {
+        layer.addChild(draw(shape));
+      }
+
+      application.render();
+    },
+
+    destroy(): void {
+      application.destroy(true, { children: true });
+    }
+  };
+
+  scene.apply(initial);
+
+  return scene;
+}
+
+/** One shape, at the position and size the description states and at no other. */
+function draw(shape: SceneShape): Graphics {
+  const graphics = new Graphics();
+
+  // The id, verbatim. Labelling the display object is what lets a browser-side check
+  // find a shape in the rendered tree instead of counting children in draw order.
+  graphics.label = shape.id;
+
+  graphics
+    .rect(shape.x, shape.y, shape.width, shape.height)
+    .fill(fillFor(shape))
+    .stroke({ color: OUTLINE, width: OUTLINE_WIDTH });
+
+  return graphics;
+}
+
+function fillFor(shape: SceneShape): number {
+  if (shape.kind === 'contract-marker') {
+    return MARKER_FILL;
+  }
+
+  return shape.answered ? TOKEN_ANSWERED : TOKEN_WAITING;
+}

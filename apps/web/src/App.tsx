@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { browserContentSource, browserLocaleCatalogue } from './content-source.ts';
 import { ContractOfferScreen } from './screens/contract-offer/contract-offer-screen.tsx';
 import { TextSource } from './text.tsx';
+import { WorldCanvas } from './world/world-canvas.tsx';
 
 /**
  * The browser build's root: the port of `Main._Ready` minus Godot.
@@ -62,6 +63,14 @@ export function App() {
       <TextSource catalogue={catalogue}>
         <ContractOfferScreen model={session.screen} />
       </TextSource>
+
+      {/*
+        The schematic world behind the screen (`DEC-007`, Task 14). Outside the
+        `TextSource` because it renders no text at all — a canvas has no text nodes, so
+        the rendered-UI hash collected from the screen above cannot see it either way,
+        and putting it under a text provider would suggest otherwise.
+      */}
+      <WorldCanvas model={session.screen} />
 
       {/*
         Not part of the screen, and deliberately after it: one fact worth reporting
