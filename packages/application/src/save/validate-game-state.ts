@@ -150,21 +150,14 @@ function checkResponseBookkeeping(state: GameState): void {
     perContract.set(event.heroId, event.kind === 'hero_accepted_contract');
   }
 
+  // Walking contracts rather than events covers both directions, and it covers them
+  // completely: an event naming a contract absent from `state.contracts` cannot reach
+  // here at all — `checkReferentialIntegrity` refuses it first — so every contract that
+  // appears in `respondedInHistory` is a contract this loop visits. A second loop over
+  // `respondedInHistory.keys()` asserting the same thing was written and then removed:
+  // no mutant could redden it, which is the definition of a check that is not one.
   for (const [contractId, contract] of state.contracts.entries()) {
     checkOneContract(contractId, contract, respondedInHistory.get(contractId) ?? new Map());
-  }
-
-  // A history event naming a contract that carries no responses at all would slip past
-  // the loop above, which walks contracts rather than events. It cannot dangle — that is
-  // `checkReferentialIntegrity`'s first check — so every contract named in history is in
-  // `state.contracts` and was therefore visited; this assertion is what says so out loud
-  // rather than leaving it to be re-derived.
-  for (const contractId of respondedInHistory.keys()) {
-    if (!state.contracts.has(contractId)) {
-      throw inconsistent(
-        `history names contract '${contractId}', but the save carries no such contract.`
-      );
-    }
   }
 }
 

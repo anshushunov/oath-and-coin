@@ -430,6 +430,7 @@ function aTamperedSave(mutate: (snapshot: RawSnapshot) => void): Uint8Array {
 interface RawSnapshot {
   metadata: Record<string, number | string>;
   contracts: {
+    key: string;
     value: { requiredCrew: number; status: string; respondedBy: number[]; acceptedBy: number[] };
   }[];
   appliedCommandIds: number[];
@@ -439,6 +440,7 @@ interface RawSnapshot {
     eventId: number;
     logicalTime: number;
     heroId: number;
+    contractId: string;
     causalTraceId: number | null;
   }[];
 }
@@ -556,6 +558,42 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
       'событие датировано позже, чем показывают часы кампании',
       (snapshot) => {
         snapshot.history[0]!.logicalTime = 9;
+      }
+    ],
+    [
+      'журнал не монотонен по логическому времени',
+      (snapshot) => {
+        // Needs two events, and two events that are otherwise perfectly consistent —
+        // otherwise the response bookkeeping refuses this file before the clock is ever
+        // looked at, and the case measures a check it does not name. So Bram declines
+        // the *second* contract as well: its `respondedBy` gets him, its `acceptedBy`
+        // does not, it stays `offered`, and a second trace is stored under the next free
+        // id. The only thing wrong with the result is that event 1 is dated before
+        // event 0.
+        const [first] = snapshot.history;
+        first!.logicalTime = 5;
+        snapshot.history = [
+          first!,
+          {
+            kind: 'hero_declined_contract',
+            eventId: 1,
+            logicalTime: 3,
+            causalTraceId: 1,
+            heroId: first!.heroId,
+            contractId: OTHER_CONTRACT
+          }
+        ];
+        snapshot.traces = [
+          ...snapshot.traces,
+          { key: 1, value: { ...snapshot.traces[0]!.value, traceId: 1 } }
+        ];
+        const other = snapshot.contracts.find((entry) => entry.key === OTHER_CONTRACT)!;
+        other.value.respondedBy = [first!.heroId];
+        snapshot.appliedCommandIds = [1, 2];
+        snapshot.metadata.nextEventId = 2;
+        snapshot.metadata.stateVersion = 2;
+        snapshot.metadata.nextTraceId = 2;
+        snapshot.metadata.logicalTime = 5;
       }
     ]
   ];
