@@ -33,11 +33,17 @@ import { DESKTOP_SAVE_SLOTS, type DesktopSaveSlot } from './contract';
  * UUID, so two writes never share a temporary file regardless of timing.
  *
  * **Writes to the same slot are also serialized**, through
- * {@link enqueueSlotWrite}. Unique temporary names alone stop corruption, but
- * two truly concurrent writes to one slot would still let an older write's
- * `rename` land after a newer one's — the caller that asked second would
- * silently lose. Serializing per slot makes call order and publish order the
- * same thing.
+ * {@link enqueueSlotWrite}, and this is not only about ordering. Unique
+ * temporary names stop the byte-mix corruption above, but external review
+ * measured a second, independent failure unique names do not touch: two
+ * `rename`s racing onto the *same target* — each from its own, uniquely
+ * named temporary file, no shared path anywhere — can still make Windows
+ * answer one of them with a raw `EPERM` (reproduced in 2 of 3 runs, via a
+ * probe of 5 concurrent writers × 25 rounds × 12 repetitions). Serializing
+ * per slot removes the race itself, not just its outcome: only one `rename`
+ * for a given slot is ever in flight, so there is nothing left to collide —
+ * and, as a consequence, call order and publish order become the same
+ * thing too.
  *
  * **The containing directory is deliberately never `fsync`ed.** Spike B
  * (design spec) measured `fsync` on a directory file descriptor failing with
@@ -87,15 +93,40 @@ export interface ReadHooks {
 }
 
 /**
- * The Windows error codes a read can transiently see when it overlaps a
- * `rename` in flight — measured to be worth naming rather than folded into a
- * generic retry-on-anything, because `ENOENT` (the file genuinely does not
- * exist) is handled separately, on purpose, as "no save here" rather than
- * retried.
+ * The Windows error codes a filesystem call can transiently see when it
+ * overlaps another process's `rename` in flight — measured (this module's
+ * header comment) to be worth naming rather than folded into a generic
+ * retry-on-anything, and worth retrying at all three call sites this module
+ * makes to the filesystem (`readFile`, `rename`, `readdir`), not only the
+ * one review first asked about. `ENOENT` is deliberately not here: for a
+ * read or a listing it means "no save here", handled separately, on
+ * purpose, as an answer rather than a retry candidate.
  */
-const TRANSIENT_READ_CODES: ReadonlySet<string> = new Set(['EPERM', 'EBUSY']);
-const READ_RETRY_ATTEMPTS = 5;
-const READ_RETRY_DELAY_MS = 10;
+const TRANSIENT_CODES: ReadonlySet<string> = new Set(['EPERM', 'EBUSY']);
+const TRANSIENT_RETRY_ATTEMPTS = 5;
+const TRANSIENT_RETRY_DELAY_MS = 10;
+
+/**
+ * Retries `attempt` while it keeps failing with one of {@link TRANSIENT_CODES},
+ * up to {@link TRANSIENT_RETRY_ATTEMPTS} times; anything else — a different
+ * error, or a transient one that never clears — is rethrown as-is. Shared by
+ * every filesystem call in this module that can see a transient failure
+ * (`readFile`, `rename`, `readdir`) so the retry policy is stated once
+ * rather than duplicated at each call site with its own copy to drift.
+ */
+async function retryTransient<T>(attempt: () => Promise<T>): Promise<T> {
+  for (let attemptNumber = 1; ; attemptNumber += 1) {
+    try {
+      return await attempt();
+    } catch (error) {
+      const transient = isErrnoException(error) && TRANSIENT_CODES.has(error.code ?? '');
+      if (!transient || attemptNumber >= TRANSIENT_RETRY_ATTEMPTS) {
+        throw error;
+      }
+      await delay(TRANSIENT_RETRY_DELAY_MS);
+    }
+  }
+}
 
 export async function readSaveFile(
   dir: string,
@@ -105,24 +136,17 @@ export async function readSaveFile(
   const readImpl = hooks.readFile ?? ((path: string) => readFile(path));
   const path = targetPath(dir, slot);
 
-  for (let attempt = 1; ; attempt += 1) {
-    try {
-      const buffer = await readImpl(path);
-      // A view over the buffer's own bytes, not a `Buffer` subclass instance:
-      // callers compare what they read against a plain `Uint8Array`, and a
-      // `Buffer`'s extra prototype is not part of what a save's bytes are.
-      return new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
-    } catch (error) {
-      if (isErrnoException(error) && error.code === 'ENOENT') {
-        return null;
-      }
-
-      const transient = isErrnoException(error) && TRANSIENT_READ_CODES.has(error.code ?? '');
-      if (!transient || attempt >= READ_RETRY_ATTEMPTS) {
-        throw error;
-      }
-      await delay(READ_RETRY_DELAY_MS);
+  try {
+    const buffer = await retryTransient(() => readImpl(path));
+    // A view over the buffer's own bytes, not a `Buffer` subclass instance:
+    // callers compare what they read against a plain `Uint8Array`, and a
+    // `Buffer`'s extra prototype is not part of what a save's bytes are.
+    return new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+  } catch (error) {
+    if (isErrnoException(error) && error.code === 'ENOENT') {
+      return null;
     }
+    throw error;
   }
 }
 
@@ -142,6 +166,15 @@ export interface WriteHooks {
    * never runs, and the slot's previous contents (if any) are untouched.
    */
   readonly beforeRename?: () => void | Promise<void>;
+
+  /**
+   * The same shape as {@link ReadHooks.readFile}, over `rename` instead: lets
+   * `save-store.test.ts` simulate the transient `EPERM`/`EBUSY` this module's
+   * header comment measured directly from two `rename`s racing onto the same
+   * target, without a real race. `fileSaveStore`'s own writes never supply
+   * this.
+   */
+  readonly rename?: (from: string, to: string) => Promise<void>;
 }
 
 /**
@@ -208,6 +241,7 @@ export async function writeSaveFileAtomically(
   await mkdir(dir, { recursive: true });
 
   const tmp = tempPath(dir, slot);
+  const renameImpl = hooks.rename ?? ((from: string, to: string) => rename(from, to));
   const handle = await open(tmp, 'w');
   try {
     await handle.writeFile(bytes);
@@ -220,7 +254,7 @@ export async function writeSaveFileAtomically(
 
   try {
     await hooks.beforeRename?.();
-    await rename(tmp, targetPath(dir, slot));
+    await retryTransient(() => renameImpl(tmp, targetPath(dir, slot)));
   } catch (error) {
     // Best-effort: the ordinary failure path (the hook throwing in a test, a
     // `rename` that fails) should not leave a temporary file behind for
@@ -232,10 +266,25 @@ export async function writeSaveFileAtomically(
   }
 }
 
-async function listSaveFiles(dir: string): Promise<readonly DesktopSaveSlot[]> {
+/**
+ * The same shape as {@link ReadHooks}, over `readdir` instead: lets
+ * `save-store.test.ts` simulate a transient `EPERM`/`EBUSY` from listing the
+ * save directory itself, without a real race. `fileSaveStore`'s own `list`
+ * never supplies this.
+ */
+export interface ListHooks {
+  readonly readdir?: (dir: string) => Promise<readonly string[]>;
+}
+
+export async function listSaveFiles(
+  dir: string,
+  hooks: ListHooks = {}
+): Promise<readonly DesktopSaveSlot[]> {
+  const readdirImpl = hooks.readdir ?? ((path: string) => readdir(path));
+
   let entries: readonly string[];
   try {
-    entries = await readdir(dir);
+    entries = await retryTransient(() => readdirImpl(dir));
   } catch (error) {
     if (isErrnoException(error) && error.code === 'ENOENT') {
       return [];

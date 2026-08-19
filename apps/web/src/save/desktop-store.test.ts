@@ -1,3 +1,4 @@
+import type { SaveStorePort } from '@oath-and-coin/application';
 import { SaveReadError } from '@oath-and-coin/content';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -125,30 +126,70 @@ describe('delegating to window.desktop', () => {
     await expect(store.list()).rejects.toThrow(/SAVE_STORAGE_UNAVAILABLE/u);
   });
 
-  it('does not repeat the underlying error message, which can carry a local filesystem path', async () => {
-    // A real rejection from `apps/desktop/src/save-store.ts` is a raw Node
-    // `fs` error, and those always embed the absolute path involved — here
-    // stood in for one that would spell out a Windows username under
-    // `AppData\Roaming`. This module must write its own description rather
-    // than echo it into whatever a screen shows for a refusal.
+  describe('none of the three wraps repeat the underlying error message', () => {
+    // Docblock claim, and previously proven for `read()` alone — external
+    // review pinned the gap directly: reintroducing the interpolation in
+    // `write()` left this file at 124/124 green, because nothing exercised
+    // that branch. Parametrized over all three methods so a future
+    // regression in any one of them is a red test, not a claim resting on a
+    // sample of one.
     const leakyMessage =
       "ENOENT: no such file or directory, open 'C:\\Users\\Alice\\AppData\\Roaming\\Oath and Coin\\saves\\slot-a.save'";
-    installFakeDesktopApi({
-      readSave: async () => {
-        throw new Error(leakyMessage);
+
+    const cases: ReadonlyArray<{
+      readonly label: string;
+      readonly install: () => void;
+      readonly invoke: (store: SaveStorePort) => Promise<unknown>;
+    }> = [
+      {
+        label: 'read()',
+        install: () =>
+          installFakeDesktopApi({
+            readSave: async () => {
+              throw new Error(leakyMessage);
+            }
+          }),
+        invoke: (store) => store.read('slot-a')
+      },
+      {
+        label: 'write()',
+        install: () =>
+          installFakeDesktopApi({
+            writeSave: async () => {
+              throw new Error(leakyMessage);
+            }
+          }),
+        invoke: (store) => store.write('slot-a', Uint8Array.of(1))
+      },
+      {
+        label: 'list()',
+        install: () =>
+          installFakeDesktopApi({
+            listSaves: async () => {
+              throw new Error(leakyMessage);
+            }
+          }),
+        invoke: (store) => store.list()
       }
-    });
-    const store = desktopSaveStore();
+    ];
 
-    let caught: unknown;
-    try {
-      await store.read('slot-a');
-    } catch (error) {
-      caught = error;
-    }
+    it.each(cases)(
+      '$label drops a message that could carry a local filesystem path',
+      async ({ install, invoke }) => {
+        install();
+        const store = desktopSaveStore();
 
-    expect(caught).toBeInstanceOf(Error);
-    expect((caught as Error).message).not.toContain('Alice');
-    expect((caught as Error).message).not.toContain('AppData');
+        let caught: unknown;
+        try {
+          await invoke(store);
+        } catch (error) {
+          caught = error;
+        }
+
+        expect(caught).toBeInstanceOf(Error);
+        expect((caught as Error).message).not.toContain('Alice');
+        expect((caught as Error).message).not.toContain('AppData');
+      }
+    );
   });
 });

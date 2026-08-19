@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, rename, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import {
   enqueueSlotWrite,
   fileSaveStore,
+  listSaveFiles,
   readSaveFile,
   writeSaveFileAtomically
 } from './save-store';
@@ -153,6 +154,42 @@ describe('writing a slot', () => {
     expect(entries.some((entry) => entry.includes('.tmp'))).toBe(false);
   });
 
+  it('retries a transient EPERM/EBUSY on rename before publishing', async () => {
+    // The module header comment records what this proves: two `rename`s onto
+    // the same target — no shared temporary file needed — can still make
+    // Windows answer one of them with a raw EPERM, measured directly by
+    // external review (2 of 3 runs of a 5-writer × 25-round × 12-repetition
+    // probe). This is that failure, simulated rather than raced.
+    const dir = await temporaryDirectory();
+    let attempts = 0;
+    const flakyRename = async (from: string, to: string): Promise<void> => {
+      attempts += 1;
+      if (attempts < 3) {
+        throw makeErrno('EPERM', 'operation not permitted');
+      }
+      await rename(from, to);
+    };
+
+    await writeSaveFileAtomically(dir, 'slot-a', bytesOf('ПЕРВОЕ'), { rename: flakyRename });
+
+    await expect(readSaveFile(dir, 'slot-a')).resolves.toEqual(bytesOf('ПЕРВОЕ'));
+    expect(attempts).toBe(3);
+  });
+
+  it('gives up and rethrows a persistent EBUSY on rename, and still cleans up its temporary file', async () => {
+    const dir = await temporaryDirectory();
+    const alwaysBusy = async (): Promise<void> => {
+      throw makeErrno('EBUSY', 'EBUSY: resource busy or locked');
+    };
+
+    await expect(
+      writeSaveFileAtomically(dir, 'slot-a', bytesOf('ПЕРВОЕ'), { rename: alwaysBusy })
+    ).rejects.toThrow(/EBUSY/u);
+
+    const entries = await readdir(dir);
+    expect(entries.some((entry) => entry.includes('.tmp'))).toBe(false);
+  });
+
   it('two concurrent writes to the same slot never publish a mix of both payloads', async () => {
     // External review reproduced real corruption from a version of this
     // module that used one fixed temporary filename per slot: 12 runs, two
@@ -256,5 +293,44 @@ describe('listing occupied slots', () => {
     await writeFile(join(dir, 'slot-z.save'), bytesOf('НЕ СЛОТ'));
 
     await expect(store.list()).resolves.toEqual(['slot-a']);
+  });
+
+  it('retries a transient EPERM/EBUSY on readdir before answering', async () => {
+    const dir = await temporaryDirectory();
+    const store = fileSaveStore(dir);
+    await store.write('slot-a', bytesOf('ПЕРВОЕ'));
+
+    let attempts = 0;
+    const flakyReaddir = async (path: string): Promise<readonly string[]> => {
+      attempts += 1;
+      if (attempts < 3) {
+        throw makeErrno('EPERM', 'operation not permitted');
+      }
+      return readdir(path);
+    };
+
+    await expect(listSaveFiles(dir, { readdir: flakyReaddir })).resolves.toEqual(['slot-a']);
+    expect(attempts).toBe(3);
+  });
+
+  it('gives up and rethrows a persistent EBUSY on readdir', async () => {
+    const dir = await temporaryDirectory();
+    const alwaysBusy = async (): Promise<readonly string[]> => {
+      throw makeErrno('EBUSY', 'EBUSY: resource busy or locked');
+    };
+
+    await expect(listSaveFiles(dir, { readdir: alwaysBusy })).rejects.toThrow(/EBUSY/u);
+  });
+
+  it('still answers an empty list for a genuine ENOENT directory, not a retry candidate', async () => {
+    const parent = await temporaryDirectory();
+    let calls = 0;
+    const missing = async (): Promise<readonly string[]> => {
+      calls += 1;
+      throw makeErrno('ENOENT', 'no such directory');
+    };
+
+    await expect(listSaveFiles(join(parent, 'nope'), { readdir: missing })).resolves.toEqual([]);
+    expect(calls).toBe(1);
   });
 });
