@@ -124,3 +124,11 @@ export {
   type ScenarioRunRequest,
   type ScenarioRunResult
 } from './scenarios/load-sequence.ts';
+
+export {
+  SAVE_ERROR_CODES,
+  SaveErrorCodes,
+  SaveReadError,
+  type SaveErrorCode
+} from './save/save-error-codes.ts';
+export { decodeSnapshot, encodeSnapshot } from './save/snapshot-codec.ts';
