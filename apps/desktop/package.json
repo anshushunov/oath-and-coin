@@ -4,9 +4,13 @@
   "private": true,
   "description": "Electron host — window, security boundary and the typed desktop API; no game rules (ADR-010, ADR-011)",
   "main": "dist/main.cjs",
+  "exports": {
+    "./contract": "./src/contract.ts"
+  },
   "scripts": {
     "build": "vite build --config vite.main.config.ts && vite build --config vite.preload.config.ts",
-    "package": "electron-builder --win --dir --config electron-builder.yml"
+    "package": "electron-builder --win --dir --config electron-builder.yml",
+    "test": "vitest run --root ../.. apps/desktop"
   },
   "dependencies": {
     "zod": "4.4.3"

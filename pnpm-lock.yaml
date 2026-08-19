@@ -145,6 +145,12 @@ importers:
 
   tests/architecture:
     devDependencies:
+      '@oath-and-coin/application':
+        specifier: workspace:*
+        version: link:../../packages/application
+      '@oath-and-coin/desktop':
+        specifier: workspace:*
+        version: link:../../apps/desktop
       typescript:
         specifier: 6.0.3
         version: 6.0.3

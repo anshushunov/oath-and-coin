@@ -11,8 +11,16 @@ import { z } from 'zod';
 
 /** Channels the main process answers. Anything else is rejected by name. */
 export const DESCRIBE_HOST_CHANNEL = 'desktop:describe-host';
+export const SAVE_READ_CHANNEL = 'desktop:save-read';
+export const SAVE_WRITE_CHANNEL = 'desktop:save-write';
+export const SAVE_LIST_CHANNEL = 'desktop:save-list';
 
-export const ALLOWED_CHANNELS = [DESCRIBE_HOST_CHANNEL] as const;
+export const ALLOWED_CHANNELS = [
+  DESCRIBE_HOST_CHANNEL,
+  SAVE_READ_CHANNEL,
+  SAVE_WRITE_CHANNEL,
+  SAVE_LIST_CHANNEL
+] as const;
 
 /**
  * `describeHost` takes no arguments. Stated as a schema rather than ignored:
@@ -30,6 +38,39 @@ export const describeHostResponse = z.object({
 });
 
 export type HostDescription = z.infer<typeof describeHostResponse>;
+
+/**
+ * The closed set of save slot names, declared a second time.
+ *
+ * `packages/application/src/save/slots.ts` already declares `SAVE_SLOTS`, and
+ * `apps/desktop` cannot import it: pulling in `@oath-and-coin/application`
+ * would drag content, simulation and presentation into `main.cjs`, and
+ * `ADR-010` keeps the host free of game rules. So the three names are stated
+ * here a second time, and `tests/architecture/save-slots-agreement.test.ts` is
+ * what keeps this list and `SAVE_SLOTS` from drifting apart silently — the
+ * same shape segment 4 used for `KNOWN_SCREEN_STATES` against `SCREEN_STATES`.
+ */
+export const DESKTOP_SAVE_SLOTS = ['slot-a', 'slot-b', 'slot-c'] as const;
+
+export type DesktopSaveSlot = (typeof DESKTOP_SAVE_SLOTS)[number];
+
+/**
+ * The slot name schema every save channel below validates its slot argument
+ * with. `z.enum(DESKTOP_SAVE_SLOTS)` rather than trusting the renderer's
+ * `DesktopSaveSlot` type: there is no type at the boundary between two
+ * processes, only bytes, so the main process checks membership in the closed
+ * set itself.
+ */
+const desktopSaveSlot = z.enum(DESKTOP_SAVE_SLOTS);
+
+export const saveReadRequest = z.tuple([desktopSaveSlot]);
+export const saveReadResponse = z.instanceof(Uint8Array).nullable();
+
+export const saveWriteRequest = z.tuple([desktopSaveSlot, z.instanceof(Uint8Array)]);
+export const saveWriteResponse = z.void();
+
+export const saveListRequest = z.tuple([]);
+export const saveListResponse = z.array(desktopSaveSlot);
 
 /**
  * The only URL schemes the host will hand to the operating system.

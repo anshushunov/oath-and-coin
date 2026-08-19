@@ -5,6 +5,8 @@
   "type": "module",
   "description": "Checks about the shape of the workspace itself — pins, gate coverage, dependency direction",
   "devDependencies": {
+    "@oath-and-coin/application": "workspace:*",
+    "@oath-and-coin/desktop": "workspace:*",
     "typescript": "6.0.3",
     "yaml": "2.9.0"
   }

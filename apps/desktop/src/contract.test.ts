@@ -1,6 +1,49 @@
 import { describe, expect, it } from 'vitest';
 
-import { mayOpenExternally } from './contract';
+import {
+  ALLOWED_CHANNELS,
+  DESKTOP_SAVE_SLOTS,
+  SAVE_LIST_CHANNEL,
+  SAVE_READ_CHANNEL,
+  SAVE_WRITE_CHANNEL,
+  mayOpenExternally,
+  saveListRequest,
+  saveReadRequest,
+  saveWriteRequest
+} from './contract';
+
+describe('DESKTOP_SAVE_SLOTS', () => {
+  it('names exactly the three slots the spec fixed, in that order', () => {
+    expect(DESKTOP_SAVE_SLOTS).toEqual(['slot-a', 'slot-b', 'slot-c']);
+  });
+});
+
+describe('the save channels', () => {
+  it('are all in the allowlist', () => {
+    expect(ALLOWED_CHANNELS).toEqual(
+      expect.arrayContaining([SAVE_READ_CHANNEL, SAVE_WRITE_CHANNEL, SAVE_LIST_CHANNEL])
+    );
+  });
+
+  it('checks a read request slot against the closed set, not merely its type', () => {
+    // The design intent brief step 6 states directly: the main process checks
+    // membership in `DESKTOP_SAVE_SLOTS` itself, because there is no type at
+    // the boundary between two processes — only whatever a renderer sends.
+    expect(() => saveReadRequest.parse(['slot-a'])).not.toThrow();
+    expect(() => saveReadRequest.parse(['not-a-real-slot'])).toThrow();
+  });
+
+  it('checks a write request slot the same way, alongside its bytes', () => {
+    expect(() => saveWriteRequest.parse(['slot-b', Uint8Array.of(1, 2, 3)])).not.toThrow();
+    expect(() => saveWriteRequest.parse(['not-a-real-slot', Uint8Array.of(1)])).toThrow();
+    expect(() => saveWriteRequest.parse(['slot-b', 'not bytes'])).toThrow();
+  });
+
+  it('a list request takes no arguments', () => {
+    expect(() => saveListRequest.parse([])).not.toThrow();
+    expect(() => saveListRequest.parse(['slot-a'])).toThrow();
+  });
+});
 
 /**
  * The predicate behind `setWindowOpenHandler`. Tested here rather than only
