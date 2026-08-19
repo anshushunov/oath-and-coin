@@ -99,6 +99,30 @@ describe('snapshot codec', () => {
     expect(() => decodeSnapshot(encoded)).toThrow(/SAVE_MALFORMED/u);
   });
 
+  it('отказывается читать след с магнитудой фактора больше достижимой в decide()', () => {
+    // 100 — PAYMENT_MAX/RISK_MAX, потолок MAX_FACTOR_MAGNITUDE. 101 — на единицу
+    // больше того, что `decide()` может когда-либо записать в след (§1.3 спеки:
+    // границы содержимого недостаточно, нужен ещё и потолок величины фактора).
+    const state = createInitialState(content, 7n, 'm1-decision/1');
+    const encoded = encodeSnapshot(state) as {
+      traces: { key: number; value: unknown }[];
+    };
+    encoded.traces.push({
+      key: 0,
+      value: {
+        traceId: 0,
+        positiveFactors: [
+          { reasonCode: 'payment_attractive', sourceEntity: 'core:bram', magnitude: 101 }
+        ],
+        negativeFactors: [],
+        blockedBy: [],
+        tieBreak: null
+      }
+    });
+
+    expect(() => decodeSnapshot(encoded)).toThrow(/SAVE_OUT_OF_BOUNDS/u);
+  });
+
   it('отказывается читать карту с двумя записями на один и тот же ключ', () => {
     const state = createInitialState(content, 7n, 'm1-decision/1');
     const encoded = encodeSnapshot(state) as { heroes: { key: number; value: unknown }[] };

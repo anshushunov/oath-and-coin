@@ -211,10 +211,37 @@ const traitRuleValueSchema = z.strictObject({
   weight: z.int().min(INCLINATION_WEIGHT_MIN).max(INCLINATION_WEIGHT_MAX)
 });
 
+/**
+ * Largest magnitude a single trace factor can carry (`contract-decision-rule.ts`'s
+ * `decide`). Every term divides by `TRAIT_SCALE` before it reaches a factor, and
+ * `TRAIT_MAX` equals `TRAIT_SCALE` (`bounds.ts`), so a term whose *other* operand
+ * is a content bound never exceeds that bound: `paymentPull` is capped by
+ * `PAYMENT_MAX`, `riskAversion` by `RISK_MAX`, and `insult` — `(risk − payment) *
+ * pride / TRAIT_SCALE` — by `RISK_MAX` too, since `payment ≥ PAYMENT_MIN = 0`. An
+ * inclination is capped by `INCLINATION_WEIGHT_MAX` (30), trust by `TRAIT_MAX`
+ * divided by the rule's own trust divisor (100 / 10 = 10), a bond by
+ * `RELATIONSHIP_WEIGHT_MAX` (20), and mood by the rule's own `MOOD_MAX` (5). The
+ * largest of these is `PAYMENT_MAX` — and `RISK_MAX`, the same number — 100.
+ *
+ * This is not merely a shape ceiling. `restoreDecidedSteps`
+ * (`packages/application/src/save/restore-steps.ts`) recomputes a decision's
+ * score as a plain `+`/`-` sum of factor magnitudes, while the engine that
+ * produced the real score wraps every partial sum through `toInt32`. Neither
+ * `bounds.ts` nor `limits.ts` alone stops a save from claiming a magnitude
+ * `decide()` could never produce — those bound a hero's or a contract's *fields*,
+ * not the arithmetic derived from them. Left unbounded, a tampered save could
+ * carry a magnitude large enough that a plain sum disagrees with what `toInt32`
+ * would have wrapped it to, handing the restored screen a score the engine can
+ * never produce. Bounding every factor at the true ceiling keeps the sum of up to
+ * `MAX_FACTORS_PER_TRACE_SIDE` of them nowhere near where a plain sum and a
+ * wrapped one could ever part ways.
+ */
+const MAX_FACTOR_MAGNITUDE = PAYMENT_MAX;
+
 const traceFactorSchema = z.strictObject({
   reasonCode: artifactSafeText,
   sourceEntity: contentId,
-  magnitude: z.int().min(0)
+  magnitude: z.int().min(0).max(MAX_FACTOR_MAGNITUDE)
 });
 
 const traceBlockSchema = z.strictObject({

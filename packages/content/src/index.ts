@@ -76,6 +76,8 @@ export {
 
 export { memoryFileSource, type ContentFileSource } from './file-source.ts';
 
+export { decodeUtf8OrThrow, encodeUtf8 } from './text-codec.ts';
+
 export { fileName, isUnder, joinPath, parentPath, toPosixPath } from './paths.ts';
 
 export { createInitialState } from './initial-state.ts';

@@ -14,7 +14,15 @@
 
 export type { ContentSourcePort } from './ports.ts';
 
+export {
+  SAVE_FORMAT_VERSION,
+  buildSave,
+  readSave,
+  saveChecksum,
+  type SaveDescriptor
+} from './save/envelope.ts';
 export { restoreDecidedSteps } from './save/restore-steps.ts';
+export { SAVE_SLOTS, type SaveSlot } from './save/slots.ts';
 
 export { screenFor, startSession, type SessionRequest, type SessionState } from './session.ts';
 
