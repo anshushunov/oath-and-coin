@@ -288,7 +288,7 @@ describe('the checks that have nowhere else to live', () => {
     {
       path: 'tests/locale/catalogue.test.ts',
       property:
-        'the shipped catalogue answers every key the presentation layer can produce, which needs both sides of a boundary neither side may cross'
+        'the two shipped catalogues answer every key the presentation and application layers can produce, each in exactly one of them, and content/locale/ru.json has not grown — which needs both sides of a boundary neither side may cross (ADR-012)'
     }
   ];
 

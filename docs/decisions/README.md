@@ -54,8 +54,11 @@ ADR-001-engine-and-language.md
 | [ADR-009](ADR-009-decision-contracts-and-content-v2.md) | Контракты решения и формат контента 2 | accepted |
 | [ADR-010](ADR-010-full-typescript-web-stack.md) | Полный переход на TypeScript web stack с Electron-хостом | accepted, область стоп-гейта сужена [ADR-011](ADR-011-electron-gate-without-steam.md) |
 | [ADR-011](ADR-011-electron-gate-without-steam.md) | Desktop-приложение без магазина; Task 4 проверяет Electron, а не Steam | accepted |
+| [ADR-012](ADR-012-interface-text-outside-content.md) | Тексты интерфейса живут вне `content/`, в каталоге `ui-text/` | accepted |
 
 `ADR-001` заменён `ADR-010`. Тело `ADR-001` и Godot-специфичный механизм `ADR-008` переписываются на этапе cutover, вместе с удалением кода, который они описывают ([`FULL_TYPESCRIPT_MIGRATION`](../production/FULL_TYPESCRIPT_MIGRATION.md), Task 19): до тех пор `ADR-001` читается как исторический контекст Gate 0, а действующим решением о движке и языке является `ADR-010`.
+
+`ADR-012` вводит названное исключение из `AGENTS.md` §6 («данные живут в `content/`») со сроком до Task 19; строка §6 при этом не переписывается, потому что исключение первое и временное.
 
 Зарезервированные номера: `ADR-006` — стратегия сохранений (Milestone 3). Номер `ADR-009` держали пустым под фиксированный симуляционный тик; тик отозван из Gate 0 и входит в постановку модели времени боя на старте Milestone 2, где получит свой номер, а `ADR-009` занят записью выше.
 

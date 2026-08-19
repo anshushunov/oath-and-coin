@@ -2,8 +2,13 @@ import { join, resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { ERROR_CODES, KNOWN_SCREEN_STATES } from '@oath-and-coin/content';
-import { loadContentSet, loadLocaleCatalogue } from '@oath-and-coin/content/node';
+import { ERROR_CODES, KNOWN_SCREEN_STATES, SAVE_ERROR_CODES } from '@oath-and-coin/content';
+import {
+  computeContentVersion,
+  loadContentSet,
+  loadLocaleCatalogue,
+  loadUiTextCatalogue
+} from '@oath-and-coin/content/node';
 import {
   ACTION_KEYS,
   FIELD_KEYS,
@@ -21,24 +26,48 @@ import {
 import { REASON_CODES } from '@oath-and-coin/simulation';
 
 /**
- * The completeness check that has nowhere else to live.
+ * The completeness check that has nowhere else to live, now holding two catalogues
+ * against one another as well as against the keys the code can produce.
  *
  * `presentation-depends-only-on-simulation` keeps the presentation layer away from
  * `packages/content`, so the layer that knows every key a screen can produce cannot see
- * the shipped catalogue, the shipped content or the list of stable error codes. This
- * member is allowed to see all four, and that is its whole reason for existing — the
- * segment plan §1.2 named the alternative and rejected it: copying the five error codes
- * into the presentation layer would be a second declaration of a closed set with
- * nothing to check it against.
+ * the shipped catalogue, the shipped content or the lists of stable error codes. This
+ * member is allowed to see all of them, and that is its whole reason for existing — the
+ * segment plan §1.2 named the alternative and rejected it: copying the error codes into
+ * the presentation layer would be a second declaration of a closed set with nothing to
+ * check it against.
  *
  * What it protects against is a screen showing an untranslated key to a player. The
  * failure is invisible to every other gate: the model is right, both hashes are right,
  * and the label reads `field.hero.greed`.
+ *
+ * `ADR-012` added the second catalogue and, with it, three things to check that a single
+ * catalogue did not need. A key must exist in **exactly one** of the two; no key may sit
+ * in both, because two declarations of one text on opposite sides of a boundary drift
+ * apart silently — the shape segment 4 closed for `KNOWN_SCREEN_STATES` against
+ * `SCREEN_STATES` a few lines below; and the content catalogue must not have grown at
+ * all, because every byte under `content/` is inside `content_version` and the frozen
+ * corpus pins that number for all 54 entries.
  */
 
 const repositoryRoot = resolve(import.meta.dirname, '..', '..');
-const catalogue = loadLocaleCatalogue(join(repositoryRoot, 'content', 'locale', 'ru.json'));
-const content = loadContentSet(join(repositoryRoot, 'content'));
+const shippedContent = join(repositoryRoot, 'content');
+
+const contentCatalogue = loadLocaleCatalogue(join(shippedContent, 'locale', 'ru.json'));
+const interfaceCatalogue = loadUiTextCatalogue(join(repositoryRoot, 'ui-text', 'ru.json'));
+const content = loadContentSet(shippedContent);
+
+/**
+ * The content version the frozen corpus recorded, and the number of keys the content
+ * catalogue held when `ADR-012` froze it.
+ *
+ * Both are assertions rather than observations. The version alone would not name what
+ * went wrong — a moved digest says "something under `content/` changed" — and the key
+ * count alone would miss an *edited* text. Together they say "the content catalogue is
+ * closed and nothing else in the tree moved either", which is the rule `ADR-012` set.
+ */
+const FROZEN_CONTENT_VERSION = '5d03734fd9c7abaa';
+const FROZEN_CONTENT_KEY_COUNT = 94;
 
 /** Every key the presentation layer can produce for the shipped content tree. */
 function everyKeyTheScreenCanShow(): readonly string[] {
@@ -64,16 +93,65 @@ function everyKeyTheScreenCanShow(): readonly string[] {
   ];
 }
 
-describe('the shipped catalogue', () => {
-  it('answers every key the contract-offer screen can produce', () => {
-    const missing = everyKeyTheScreenCanShow().filter((key) => catalogue.get(key) === undefined);
+/**
+ * Every key the application layer can produce.
+ *
+ * The save refusals: nine closed codes, each of which a player can be shown when a slot
+ * refuses to load. Derived from the engine-side list rather than typed again here, for
+ * the same reason `ERROR_CODES` is above — a tenth code must not be able to arrive
+ * unchecked against either catalogue.
+ */
+function everyKeyTheInterfaceCanShow(): readonly string[] {
+  return SAVE_ERROR_CODES.map(errorKey);
+}
 
-    expect(missing, `keys with no entry in content/locale/ru.json: ${missing.join(', ')}`).toEqual(
-      []
-    );
+function everyKeyEitherLayerCanShow(): readonly string[] {
+  return [...everyKeyTheScreenCanShow(), ...everyKeyTheInterfaceCanShow()];
+}
+
+/** Which of the two catalogues hold `key` — none, one, or (the failure) both. */
+function cataloguesHolding(key: string): readonly string[] {
+  return [
+    ...(contentCatalogue.get(key) === undefined ? [] : ['content/locale/ru.json']),
+    ...(interfaceCatalogue.get(key) === undefined ? [] : ['ui-text/ru.json'])
+  ];
+}
+
+function textFor(key: string): string {
+  return (contentCatalogue.get(key) ?? interfaceCatalogue.get(key) ?? '').trim();
+}
+
+describe('the two shipped catalogues', () => {
+  it('answer every key either layer can produce, and answer it from exactly one catalogue', () => {
+    const produced = everyKeyEitherLayerCanShow();
+    const missing = produced.filter((key) => cataloguesHolding(key).length === 0);
+    const doubled = produced.filter((key) => cataloguesHolding(key).length > 1);
+
+    expect(
+      missing,
+      `keys with no entry in either catalogue: ${missing.join(', ')}. A key the interface ` +
+        'invents belongs in ui-text/ru.json; content/locale/ru.json is frozen (ADR-012).'
+    ).toEqual([]);
+    expect(doubled, `keys answered by both catalogues at once: ${doubled.join(', ')}`).toEqual([]);
   });
 
-  it('answers each of them with text a person reads, not with a key of any kind', () => {
+  it('declare no key on both sides of the boundary', () => {
+    // Over the whole of both catalogues, not only over the keys some layer produces
+    // today: a doubled entry nothing reads yet is still two declarations of one text,
+    // and the day something reads it, which of the two it gets is decided by lookup
+    // order rather than by an author. The check above is the same claim narrowed to the
+    // keys something produces; this one is what catches a pair nothing reads yet.
+    const inBoth = contentCatalogue
+      .keys()
+      .filter((key) => interfaceCatalogue.get(key) !== undefined);
+
+    expect(
+      inBoth,
+      `declared in content/locale/ru.json and in ui-text/ru.json at once: ${inBoth.join(', ')}`
+    ).toEqual([]);
+  });
+
+  it('answer each key with text a person reads, not with a key of any kind', () => {
     // A catalogue that echoed its keys back would pass the completeness check above
     // while the screen showed `field.hero.greed` to a player.
     //
@@ -84,8 +162,8 @@ describe('the shipped catalogue', () => {
     // looks like one.
     const looksLikeAKey = /^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$/u;
 
-    for (const key of everyKeyTheScreenCanShow()) {
-      const text = (catalogue.get(key) ?? '').trim();
+    for (const key of everyKeyEitherLayerCanShow()) {
+      const text = textFor(key);
 
       expect(text, key).not.toBe('');
       expect(text, `'${key}' is answered with '${text}', which is itself a key`).not.toMatch(
@@ -94,7 +172,7 @@ describe('the shipped catalogue', () => {
     }
   });
 
-  it('names every contract and trait by the convention the screen rebuilds', () => {
+  it('name every contract and trait by the convention the screen rebuilds', () => {
     // The screen has no authored key for either — state carries neither — so it builds
     // one from the id. An author who spells `display_name_key` differently fails here
     // rather than shipping a key nobody translated.
@@ -105,6 +183,27 @@ describe('the shipped catalogue', () => {
     for (const trait of content.traits.values()) {
       expect(trait.displayNameKey).toBe(traitDisplayNameKey(trait.id));
     }
+  });
+});
+
+describe('the content tree the corpus is the oracle for', () => {
+  it('has not been added to, and neither has its catalogue', () => {
+    // The guard that reddens before parity does. `pnpm scenario:parity` catches the same
+    // edit, and catches it as 54 failed entries with a page of structural diffs; this is
+    // one line that names the cause. It is here rather than beside the digest because
+    // this is the file that knows why somebody would have been tempted: a new
+    // player-facing string, which now has somewhere else to go.
+    expect(
+      contentCatalogue.size,
+      'a key was added to content/locale/ru.json. New interface keys go to ui-text/ru.json ' +
+        '(ADR-012); content/locale/ru.json is frozen until Task 19 retires the corpus.'
+    ).toBe(FROZEN_CONTENT_KEY_COUNT);
+
+    expect(
+      computeContentVersion(shippedContent),
+      'something under content/ changed, so content_version moved and all 54 corpus entries ' +
+        'are about to fail parity. Interface text belongs in ui-text/ (ADR-012).'
+    ).toBe(FROZEN_CONTENT_VERSION);
   });
 });
 

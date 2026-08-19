@@ -18,6 +18,7 @@ import {
   loadScenarioManifest as loadScenarioManifestFrom,
   type ScenarioManifest
 } from '../scenarios/scenario-manifest.ts';
+import { loadUiTextCatalogue as loadUiTextCatalogueFrom } from '../ui-text/ui-text-catalogue.ts';
 import {
   validateContentTree as validateContentTreeFrom,
   validateContentTreeOrThrow as validateContentTreeOrThrowFrom,
@@ -107,6 +108,18 @@ export function validateContentTreeOrThrow(contentRoot: string): void {
  */
 export function loadLocaleCatalogue(path: string) {
   return loadLocaleCatalogueFrom(nodeFileSource(fsParentPath(path)), fsFileName(path));
+}
+
+/**
+ * One interface catalogue, named by its path — the same wrapper, for the catalogue that
+ * lives outside `content/` (`ADR-012`).
+ *
+ * Split the same way and for the same reason as {@link loadLocaleCatalogue}: the
+ * argument is a place on a disk, and a source-relative reading of an absolute path names
+ * a directory under whatever the process was started in.
+ */
+export function loadUiTextCatalogue(path: string) {
+  return loadUiTextCatalogueFrom(nodeFileSource(fsParentPath(path)), fsFileName(path));
 }
 
 /** One scenario manifest, named by its path. */

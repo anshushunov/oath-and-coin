@@ -135,3 +135,12 @@ export {
   type SaveErrorCode
 } from './save/save-error-codes.ts';
 export { decodeSnapshot, encodeSnapshot } from './save/snapshot-codec.ts';
+
+export {
+  UI_TEXT_ROOT,
+  UI_TEXT_SCHEMA_VERSION,
+  loadUiTextCatalogue,
+  uiTextCatalogueFile,
+  uiTextFileSchema,
+  type UiTextFile
+} from './ui-text/ui-text-catalogue.ts';
