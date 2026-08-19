@@ -1,0 +1,171 @@
+import { type SaveSlot, SAVE_SLOTS, type SaveStorePort } from '@oath-and-coin/application';
+import { SaveErrorCodes, SaveReadError } from '@oath-and-coin/content';
+
+/**
+ * The browser's `SaveStorePort` — one database, one object store, keyed by slot name
+ * (design spec §2.1: "атомарность даёт транзакция").
+ *
+ * **What jsdom can prove and what it cannot.** IndexedDB does not exist in either
+ * Vitest environment this workspace uses — checked directly before writing this file:
+ * `typeof globalThis.indexedDB` is `'undefined'` under both `environment: 'node'`
+ * (the workspace default) and `environment: 'jsdom'` (what `apps/web`'s DOM-dependent
+ * tests opt into per file). `indexeddb-store.test.ts` therefore proves two things with
+ * real behaviour — the "no `indexedDB` at all" refusal, exercised directly against
+ * this fact rather than a fake — and proves the rest (an empty slot answering `null`,
+ * `open` erroring or being blocked, a write transaction aborting) against hand-rolled
+ * doubles that implement only the slice of the IndexedDB event protocol this module
+ * drives. **Atomicity is not proven here.** A fake transaction's `oncomplete`/`onabort`
+ * is the test deciding the outcome in advance, not a real transaction interrupted
+ * mid-write; nothing in this package can show that a real, aborted `readwrite`
+ * transaction leaves a slot's previous bytes untouched. That is Task 16.8, step 6,
+ * against a live Chromium, interrupting a real transaction by monkey-patching
+ * `IDBObjectStore.prototype.put`.
+ *
+ * **Why the refusal never repeats `tx.error`.** Spike A (design spec §1.5) measured a
+ * live Chromium after an explicit `abort()`: `tx.error` is `null`. There is nothing in
+ * the transaction to quote, so every refusal below is `SaveErrorCodes.StorageUnavailable`
+ * with a message this module writes itself, never one built from `tx.error` or
+ * `request.error`.
+ */
+
+const DATABASE_NAME = 'oath-and-coin-saves';
+const DATABASE_VERSION = 1;
+const STORE_NAME = 'slots';
+
+/** Builds the browser's `SaveStorePort`, backed by IndexedDB. */
+export function createIndexedDbSaveStore(): SaveStorePort {
+  return {
+    read: (slot) => read(slot),
+    write: (slot, bytes) => write(slot, bytes),
+    list: () => list()
+  };
+}
+
+async function read(slot: SaveSlot): Promise<Uint8Array | null> {
+  const db = await openDatabase();
+  try {
+    return await new Promise<Uint8Array | null>((resolve, reject) => {
+      const request = db.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).get(slot);
+
+      request.onsuccess = () => {
+        const value = request.result as Uint8Array | undefined;
+        resolve(value === undefined ? null : value);
+      };
+      request.onerror = () => {
+        reject(storageUnavailable(`reading slot '${slot}' failed.`));
+      };
+    });
+  } finally {
+    db.close();
+  }
+}
+
+async function write(slot: SaveSlot, bytes: Uint8Array): Promise<void> {
+  const db = await openDatabase();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      // One `readwrite` transaction, and the slot's whole write happens inside it:
+      // the transaction is what makes this atomic, not the order these lines run
+      // in. `oncomplete`/`onabort` — not the `put` request's own `onsuccess` — is
+      // what this waits on, because a request can succeed and its transaction can
+      // still abort afterward (a later request in the same transaction failing, a
+      // quota error at commit time); only the transaction's own outcome is the
+      // one this port promises.
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+
+      tx.oncomplete = () => {
+        resolve();
+      };
+      tx.onabort = () => {
+        reject(storageUnavailable(`writing slot '${slot}' was aborted.`));
+      };
+      tx.onerror = () => {
+        reject(storageUnavailable(`writing slot '${slot}' failed.`));
+      };
+
+      tx.objectStore(STORE_NAME).put(bytes, slot);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+async function list(): Promise<readonly SaveSlot[]> {
+  const db = await openDatabase();
+  try {
+    const keys = await new Promise<readonly IDBValidKey[]>((resolve, reject) => {
+      const request = db.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).getAllKeys();
+
+      request.onsuccess = () => {
+        resolve(request.result);
+      };
+      request.onerror = () => {
+        reject(storageUnavailable('listing occupied slots failed.'));
+      };
+    });
+
+    return keys.filter(isSaveSlot);
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * A defensive filter, not a defect worked around: `write()` only ever keys a `put`
+ * by a `SaveSlot`, so every key this store itself produced already satisfies this.
+ * It stands here anyway because the object store's keys are not this module's alone
+ * to answer for — a fixture seeded directly for a test, or a database opened by an
+ * older build, is not something `list()` should hand a caller as if it were a
+ * `SaveSlot` without having checked.
+ */
+function isSaveSlot(key: IDBValidKey): key is SaveSlot {
+  return typeof key === 'string' && (SAVE_SLOTS as readonly string[]).includes(key);
+}
+
+function openDatabase(): Promise<IDBDatabase> {
+  if (typeof globalThis.indexedDB === 'undefined') {
+    return Promise.reject(
+      storageUnavailable("this environment's globalThis.indexedDB is not available.")
+    );
+  }
+
+  const factory = globalThis.indexedDB;
+
+  return new Promise((resolve, reject) => {
+    let request: IDBOpenDBRequest;
+    try {
+      request = factory.open(DATABASE_NAME, DATABASE_VERSION);
+    } catch (error) {
+      reject(
+        storageUnavailable(`indexedDB.open threw before returning a request: ${describe(error)}`)
+      );
+      return;
+    }
+
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME);
+      }
+    };
+    request.onsuccess = () => {
+      resolve(request.result);
+    };
+    request.onblocked = () => {
+      reject(
+        storageUnavailable('indexedDB.open is blocked by another open connection to this database.')
+      );
+    };
+    request.onerror = () => {
+      reject(storageUnavailable('indexedDB.open failed to open the save database.'));
+    };
+  });
+}
+
+function storageUnavailable(detail: string): SaveReadError {
+  return new SaveReadError(SaveErrorCodes.StorageUnavailable, detail);
+}
+
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}

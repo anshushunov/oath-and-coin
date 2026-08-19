@@ -12,7 +12,7 @@
  * `node:fs` here is a compiler error rather than a broken page.
  */
 
-export type { ContentSourcePort } from './ports.ts';
+export type { ContentSourcePort, SaveStorePort } from './ports.ts';
 
 export {
   SAVE_FORMAT_VERSION,
