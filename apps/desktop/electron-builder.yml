@@ -21,6 +21,17 @@ directories:
 # If something ever stops being bundled, this turns into a startup failure
 # rather than a silent fallback — and the packaged gate is what catches it, the
 # same way it caught "Cannot find module 'zod'" when Vite externalised it.
+#
+# `package.json` travels into the asar whatever this list says, and it travels
+# almost verbatim: electron-builder drops `scripts` and `devDependencies` and
+# keeps everything else. That makes the manifest a claim about the package's
+# own contents, and Task 17 measured it disagreeing with them — a `./contract`
+# subpath added in Task 16.6 for the two architecture tests pointed at
+# `./src/contract.ts`, which `dist/**` does not carry. The field is gone (the
+# tests name the source path directly) and
+# `tests/desktop/packaged-host.spec.ts` now resolves every path the packaged
+# manifest names from inside the running application, so the next such field
+# is caught by the gate rather than by a reader.
 files:
   - dist/**
   - '!node_modules/**'

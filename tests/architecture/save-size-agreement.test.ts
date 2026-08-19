@@ -1,5 +1,5 @@
 import { MAX_SAVE_BYTES } from '@oath-and-coin/application';
-import { MAX_SAVE_BYTES as DESKTOP_MAX_SAVE_BYTES } from '@oath-and-coin/desktop/contract';
+import { MAX_SAVE_BYTES as DESKTOP_MAX_SAVE_BYTES } from '@oath-and-coin/desktop/src/contract.ts';
 import { describe, expect, it } from 'vitest';
 
 /**
@@ -15,6 +15,10 @@ import { describe, expect, it } from 'vitest';
  * a browser and failed in Electron, and no test compared the two. The ceiling moved to
  * the application, where the port is; this is what keeps the host's second statement of
  * it from drifting, the same shape `DESKTOP_SAVE_SLOTS` is held to `SAVE_SLOTS`.
+ *
+ * The host's half is named by its source path for the reason
+ * `save-slots-agreement.test.ts` records: a `./contract` subpath in the host's
+ * manifest travels into `app.asar`, where `./src/contract.ts` does not exist.
  */
 describe('the desktop host and the application agree on the largest save', () => {
   it('states the same number of bytes', () => {
