@@ -30,22 +30,54 @@ describe('the screen a reloaded campaign draws', () => {
     const records = allCorpusRecords().filter((record) => record.final_state !== null);
     expect(records).toHaveLength(50);
 
+    let blockedSeen = 0;
+    let scoredSeen = 0;
+
     for (const record of records) {
       const outcome = runCorpusRecord(record);
       const reloaded = decodeSnapshot(
         JSON.parse(JSON.stringify(encodeSnapshot(outcome.finalState)))
       );
 
+      const steps = restoreDecidedSteps(reloaded);
+
+      for (const step of steps) {
+        const decision = step.decision;
+
+        if (decision === null) {
+          throw new Error(
+            `a step restored from '${record.scenario}'/seed-${record.seed} carries no decision, ` +
+              'but every event in the history of a campaign was produced by one'
+          );
+        }
+
+        // Счёт есть ровно тогда, когда красной линии не было — на решениях, которые
+        // корпус действительно записал, а не только на рукотворных. Без этой строки
+        // единственным сторожем правила оставался юнит-тест на выдуманной фикстуре:
+        // экран блокированного ответа счёта не показывает вовсе, поэтому хеш ниже нуль
+        // вместо `null` не видит.
+        const blocked = decision.trace.blockedBy.length > 0;
+        expect(decision.selectedScore === null).toBe(blocked);
+
+        if (blocked) {
+          blockedSeen += 1;
+        } else {
+          scoredSeen += 1;
+        }
+      }
+
       // Поля `focused_contract` в корпусе нет и появиться не может — он заморожен.
       // Ожидаемый фокус берётся из самой read model: это то, что экран показывал.
-      const model = contractOfferScreenModel(
-        reloaded,
-        restoreDecidedSteps(reloaded),
-        focusedContractOf(record)
-      );
+      const model = contractOfferScreenModel(reloaded, steps, focusedContractOf(record));
 
       expect(readModelHash(model)).toBe(record.read_model.sha256);
     }
+
+    // Обе стороны правила названы числами: набор, в котором блокированных решений не
+    // осталось бы, прошёл бы цикл выше целиком и молча — а именно блокированные решения
+    // эта проверка и стережёт.
+    expect(blockedSeen).toBe(10);
+    expect(scoredSeen).toBe(88);
   });
 
   it('согласуется с экраном живого прогона на тех же 50 записях', () => {

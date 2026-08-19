@@ -137,6 +137,14 @@ export function failedScreen(errorCode: string, errorDetail: string): ContractOf
  * named" is not the same question there as it is after a live run. Optional rather than
  * required: without it the rule above is exactly what it was, and every existing caller —
  * including corpus parity — keeps its own answer unchanged.
+ *
+ * **Nothing distinguishes the argument yet.** On the frozen corpus it is degenerate:
+ * measured over all 50 entries that reached a state, none has a rejected first step and
+ * none has a `read_model.contract` differing from the contract of its first applied step,
+ * so `tests/oracle/src/restored-read-model.test.ts` would pass with this parameter
+ * ignored. The check that tells the two rules apart needs a hand-made input and belongs
+ * to Task 16.8. Written down because segment 4 already paid for the opposite habit — a
+ * comment that declared a check to exist before it did.
  */
 export function contractOfferScreenModel(
   state: GameState,

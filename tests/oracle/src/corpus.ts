@@ -25,7 +25,10 @@ import { readCorpusIndex } from '@oath-and-coin/scenario-runner';
 
 const repoRoot = resolve(import.meta.dirname, '..', '..', '..');
 
-export const corpusRoot = join(repoRoot, 'migration', 'oracle', 'v1');
+// Not exported: `parity.test.ts`, `rng.test.ts` and `canonical.test.ts` each still
+// declare their own, and moving those three onto this one is not this task's change.
+// An export nobody imports reads as a contract that already has consumers.
+const corpusRoot = join(repoRoot, 'migration', 'oracle', 'v1');
 
 interface RawCommand {
   readonly command_id: number;

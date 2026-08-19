@@ -215,6 +215,28 @@ describe('the score equals its factors everywhere the loader admits', () => {
     }
   });
 
+  it('перебирает именно края диапазонов из bounds.ts, а не просто столько же точек', () => {
+    // Внешнее ревью вскрыло дыру мутантом: замена `edgesOf` на `[min + 1, mid, max - 1]`
+    // оставляла проверку выше зелёной, потому что и формула, и число 19683 считают
+    // количество точек, а не то, что среди них есть края. Тест, который не краснеет на
+    // подмене того самого свойства, ради которого написан, проверкой не считается —
+    // поэтому принадлежность краёв утверждается прямо.
+    expect(HERO_SCALES).toContain(TRAIT_MIN);
+    expect(HERO_SCALES).toContain(TRAIT_MAX);
+
+    expect(PAYMENTS).toContain(PAYMENT_MIN);
+    expect(PAYMENTS).toContain(PAYMENT_MAX);
+
+    expect(RISKS).toContain(RISK_MIN);
+    expect(RISKS).toContain(RISK_MAX);
+
+    expect(INCLINATION_WEIGHTS).toContain(INCLINATION_WEIGHT_MIN);
+    expect(INCLINATION_WEIGHTS).toContain(INCLINATION_WEIGHT_MAX);
+
+    expect(RELATIONSHIP_WEIGHTS).toContain(RELATIONSHIP_WEIGHT_MIN);
+    expect(RELATIONSHIP_WEIGHTS).toContain(RELATIONSHIP_WEIGHT_MAX);
+  });
+
   it('перебирает ровно те длины, которые разрешает limits.ts', () => {
     // Иначе «предельные длины» — это утверждение о фикстуре, а не о загрузчике: список
     // мог бы усохнуть до одной черты, и проверка выше осталась бы зелёной.

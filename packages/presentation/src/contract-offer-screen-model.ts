@@ -191,22 +191,6 @@ function requireNoContractContent(model: ContractOfferScreenModel): void {
 }
 
 /**
- * The minimal shape of a scenario step this package needs, declared here rather than
- * imported.
- *
- * `packages/content` owns `StepOutcome`, and `presentation-depends-only-on-simulation`
- * forbids importing it. The alternative — making the caller map a step onto some
- * presentation-owned type — would have moved a rule out of this layer: which steps
- * belong on this screen is decided by *which contract they answered*, and that filter
- * is the factory's business, not the caller's. A structural interface keeps the rule
- * here and costs no mapping at all: `readonly StepOutcome[]` is assignable to
- * `readonly DecidedStep[]` because the fields line up.
- *
- * What that trades away is named in the segment plan §1.1: the compiler checks the
- * shapes agree at the call site, not at the declaration. Both call sites — oracle
- * parity and the application session — are typed and inside the gate.
- */
-/**
  * Only what this layer reads off a decision. `DecisionResult` is assignable to it
  * structurally, so nothing maps.
  *
@@ -226,6 +210,22 @@ export interface DecidedOutcome {
   readonly trace: CausalTrace;
 }
 
+/**
+ * The minimal shape of a scenario step this package needs, declared here rather than
+ * imported.
+ *
+ * `packages/content` owns `StepOutcome`, and `presentation-depends-only-on-simulation`
+ * forbids importing it. The alternative — making the caller map a step onto some
+ * presentation-owned type — would have moved a rule out of this layer: which steps
+ * belong on this screen is decided by *which contract they answered*, and that filter
+ * is the factory's business, not the caller's. A structural interface keeps the rule
+ * here and costs no mapping at all: `readonly StepOutcome[]` is assignable to
+ * `readonly DecidedStep[]` because the fields line up.
+ *
+ * What that trades away is named in the segment plan §1.1: the compiler checks the
+ * shapes agree at the call site, not at the declaration. Both call sites — oracle
+ * parity and the application session — are typed and inside the gate.
+ */
 export interface DecidedStep {
   /**
    * Only the one field of the command this layer needs. `ScenarioCommand` itself is
