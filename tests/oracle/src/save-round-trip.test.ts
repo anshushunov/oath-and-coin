@@ -107,7 +107,13 @@ describe('continuing a run from a state that came back from a save', () => {
     const record = corpusRecord('mixed_gate_then_decisions', 7n);
     const { content, commands, seed } = inputsOf(record);
 
-    const k = Math.floor(commands.length / 2);
+    // Не `commands.length / 2`: у mixed_gate_then_decisions/seed-7 это дало бы
+    // k = 1, а там `draws.per_step[0].ordinal_after` в корпусе — "0". Счётчик
+    // розыгрышей в точке сохранения уже нулевой и без порчи, так что обнуление
+    // `nextDecisionOrdinal` кодеком там ненаблюдаемо — мутант шага 7 такую
+    // проверку не красит. `commands.length - 1` останавливается после второй
+    // команды, где `draws.per_step[1].ordinal_after` — "1".
+    const k = commands.length - 1;
     expect(k).toBeGreaterThan(0);
 
     const prefix = applyScenarioCommands(
@@ -115,22 +121,25 @@ describe('continuing a run from a state that came back from a save', () => {
       commands.slice(0, k)
     );
 
+    // Страж от слепого k: если фикстура сменится и точка сохранения снова
+    // окажется там, где ничего не разыграно, эта проверка укажет на это прямо,
+    // а не оставит мутанта на счётчик розыгрышей незамеченным молча.
+    expect(prefix.finalState.metadata.nextDecisionOrdinal).toBeGreaterThan(0n);
+
     const reloaded = decodeSnapshot(
       JSON.parse(JSON.stringify(encodeSnapshot(prefix.finalState)))
     );
 
     const continued = applyScenarioCommands(reloaded, commands.slice(k));
-    const full = runScenario(content, commands, seed);
 
-    // Хеш целого прогона сравнивать нельзя впрямую: шагов до k у продолжения нет,
-    // поэтому `continued.steps` короче, чем `full.steps`, и сравнение хешей двух
-    // целых `ScenarioOutcome` разошлось бы по числу шагов, а не по состоянию.
-    // Здесь шаги берутся у полного прогона (`full`), а его собственное финальное
-    // состояние подменяется финальным состоянием продолжения — совпадение хешей
-    // тогда проверяет именно состояние, ту же каноническую форму, что записана
-    // корпусом.
-    expect(artifactHash({ ...full, finalState: continued.finalState })).toBe(artifactHash(full));
-    expect(continued.finalState).toEqual(full.finalState);
+    // Шаги префикса и продолжения склеены в список, который дал бы целый прогон,
+    // и сверены с замороженным числом корпуса — не с текущей сборкой самой
+    // собой (как было раньше), и не только с финальным состоянием: непроверенным
+    // не остаётся ничего из того, что решил, скольким событиям привёл к и как
+    // объяснил продолженный прогон.
+    expect(
+      artifactHash({ steps: [...prefix.steps, ...continued.steps], finalState: continued.finalState })
+    ).toBe(record.canonical_sha256);
   });
 
   it('круг через сохранение сохраняет хеш артефакта на записях, у которых есть состояние', () => {
