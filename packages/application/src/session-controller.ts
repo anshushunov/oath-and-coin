@@ -30,12 +30,18 @@ import { createStore, type Store } from './store.ts';
  * store plus the three operations below, and this is the whole of the asynchrony the
  * segment introduces (design spec §4.2).
  *
- * **Nothing here throws at its caller.** A store's refusals arrive as codes
- * (`SaveErrorCodes`), a screen shows codes, and an exception is the one shape a screen
- * cannot show: it would leave a React event handler holding an error with nowhere to
- * put it, at which point each caller invents its own answer to a question this layer
- * has already answered. Every refusal below therefore lands in
- * {@link SessionState.saveFailure}.
+ * **No refusal of a store or of a file leaves here as an exception.** Those arrive as
+ * codes (`SaveErrorCodes`), a screen shows codes, and an exception is the one shape a
+ * screen cannot show: it would leave a React event handler holding an error with nowhere
+ * to put it, at which point each caller invents its own answer to a question this layer
+ * has already answered. Every such refusal lands in {@link SessionState.saveFailure}.
+ *
+ * The claim is deliberately not "nothing here throws". Three calls stand outside a
+ * `try` — `focusOf`'s `parseContentId`, `buildSave` and `checksumOf` — and each is this
+ * build's own code over data this build produced, so a throw from one is a defect rather
+ * than a refusal. Both `start`'s comment and `save`'s say the same thing about the same
+ * distinction: a defect belongs where its stack points, and dressing it as a save error
+ * would file it under the one thing that is provably not wrong.
  *
  * **This layer reads no clock and opens no file.** `now` is a dependency for the reason
  * `AGENTS.md` §6 gives — a save stamped from inside here would make its bytes a
@@ -106,13 +112,19 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
 
     // Deliberately not an `async` function, and the difference is visible exactly once:
     // when the run itself throws. `loadAndRunScenario` reports every failure it knows
-    // about as a `failed` result, so a throw from in here is a defect in this build —
-    // a scenario naming a hero the roster does not have, a trait the rules do not carry
-    // — and it surfaces synchronously at the call site, which is where React shows it
-    // today. An `async` wrapper would turn the same defect into a rejected promise that
-    // a caller writing `void controller.start()` never sees. The `Promise<void>` is what
-    // this is for: one shape for all three operations, and room for a start that one day
-    // has to wait for something.
+    // about as a `failed` result, so a throw from in here is a defect in this build — a
+    // scenario whose first command names a contract the content does not have, say — and
+    // it surfaces synchronously at the call site, which is where React shows it today.
+    // An `async` wrapper would turn the same defect into a rejected promise that a caller
+    // writing `void controller.start()` never sees.
+    //
+    // **Do not "tidy" this into an `async` method.** The property has a test with teeth:
+    // `session-controller.test.ts`'s "a run this build cannot make a screen out of"
+    // asserts a *synchronous* throw, and it is what reddens if the `async` is added back.
+    // A start that genuinely has to wait for something is a different function with a
+    // different contract, and its caller in `App.tsx` would have to grow a `.catch` in
+    // the same commit.
+
     start: () => {
       store.replace(startSession(deps.request));
       return Promise.resolve();
@@ -133,6 +145,16 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
  * a loading screen, a failed run, a campaign with nothing on offer — has nothing to put
  * in a file, and writing one anyway would replace a real save with a record of a run
  * that failed.
+ *
+ * **A campaign this build could not read back is not written at all.** `deps.expected` is
+ * what `load` refuses a foreign save by, and applying it to reading and not to writing
+ * left a real trap: a run against a fixture content root — `accept_by_payment`,
+ * `decline_by_comrade`, `zero_sum_tie` all have one — produces a campaign with a contract
+ * on screen and a `contentVersion` this build does not read under, so the save would go
+ * to disk, overwrite whatever was in the slot, and then be refused by this same build on
+ * the next load. The confirmation Task 16.8 puts in front of overwriting an occupied slot
+ * cannot help with that: the player would be confirming an exchange of a readable save
+ * for an unreadable one.
  */
 async function save(
   deps: SessionControllerDeps,
@@ -143,6 +165,12 @@ async function save(
   const focusedContract = focusOf(session);
 
   if (session.state === null || focusedContract === null) {
+    return;
+  }
+
+  const unwritable = refusalToWrite(slot, session.state.metadata, deps.expected);
+  if (unwritable !== null) {
+    record(store, slot, unwritable);
     return;
   }
 
@@ -159,11 +187,48 @@ async function save(
   try {
     await deps.saves.write(slot, bytes);
   } catch (cause) {
-    record(store, portFailure(slot, cause));
+    record(store, slot, portFailure(slot, cause));
     return;
   }
 
-  record(store, null, checksumOf(bytes));
+  record(store, slot, null, checksumOf(bytes));
+}
+
+/**
+ * Why this campaign may not be written, or `null` when it may.
+ *
+ * The same two comparisons `readSave` makes and in the same order, so that a save
+ * refused at write time is refused for the reason it would have been refused at read
+ * time — one rule, stated where the two sides of it can be compared, rather than a write
+ * check that drifts from the read one.
+ */
+function refusalToWrite(
+  slot: SaveSlot,
+  metadata: { readonly rulesetVersion: string; readonly contentVersion: string },
+  expected: SessionControllerDeps['expected']
+): SaveFailure | null {
+  if (metadata.rulesetVersion !== expected.rulesetVersion) {
+    return {
+      slot,
+      code: SaveErrorCodes.RulesetMismatch,
+      detail:
+        `this campaign runs under ruleset '${metadata.rulesetVersion}', not the running build's ` +
+        `'${expected.rulesetVersion}', so a save of it is one this build could not read back.`
+    };
+  }
+
+  if (metadata.contentVersion !== expected.contentVersion) {
+    return {
+      slot,
+      code: SaveErrorCodes.ContentMismatch,
+      detail:
+        `this campaign was built on content '${metadata.contentVersion}', not the running ` +
+        `build's '${expected.contentVersion}', so a save of it is one this build could not ` +
+        'read back.'
+    };
+  }
+
+  return null;
 }
 
 /**
@@ -183,7 +248,7 @@ async function load(
   try {
     bytes = await deps.saves.read(slot);
   } catch (cause) {
-    record(store, portFailure(slot, cause));
+    record(store, slot, portFailure(slot, cause));
     return;
   }
 
@@ -199,11 +264,14 @@ async function load(
   try {
     restored = restore(bytes, deps.expected);
   } catch (cause) {
-    record(store, fileFailure(slot, cause));
+    record(store, slot, fileFailure(slot, cause));
     return;
   }
 
-  store.replace(restored);
+  // A load replaces the whole session, and the one thing that does not belong to the
+  // session is a refusal recorded about a *different* slot: that slot is still
+  // unreadable, and the screen still owes the player that line.
+  store.replace({ ...restored, saveFailure: failureNotAbout(store.snapshot(), slot) });
 }
 
 function restore(bytes: Uint8Array, expected: SessionControllerDeps['expected']): SessionState {
@@ -225,15 +293,21 @@ function restore(bytes: Uint8Array, expected: SessionControllerDeps['expected'])
 }
 
 /**
- * Records the outcome of one slot operation against whatever the session is *now*.
+ * Records the outcome of one operation on `slot` against whatever the session is *now*.
  *
  * Re-read rather than closed over: a slot operation has a gap in it, and the session
  * can have moved during the gap — a second load finishing first, say. Writing a
  * remembered session back would undo that one, which is the class of bug an await is
  * for making visible.
+ *
+ * A success clears the refusal for *its own* slot and no other. There are three slots
+ * and one `saveFailure`, and a save to slot A that wiped the refusal recorded for slot
+ * C would take a line off the screen that is still true — slot C is still unreadable,
+ * and nothing about writing A found that out.
  */
 function record(
   store: Store<SessionState>,
+  slot: SaveSlot,
   failure: SaveFailure | null,
   savedStateHash?: string
 ): void {
@@ -242,8 +316,15 @@ function record(
   store.replace({
     ...session,
     savedStateHash: savedStateHash ?? session.savedStateHash,
-    saveFailure: failure
+    saveFailure: failure ?? failureNotAbout(session, slot)
   });
+}
+
+/** The session's refusal, unless it is the one about `slot` that the caller just settled. */
+function failureNotAbout(session: SessionState, slot: SaveSlot): SaveFailure | null {
+  const failure = session.saveFailure;
+
+  return failure === null || failure.slot === slot ? null : failure;
 }
 
 /** The contract the screen is showing, or `null` when it is showing none. */
@@ -268,12 +349,19 @@ function portFailure(slot: SaveSlot, cause: unknown): SaveFailure {
 /**
  * A refusal from the bytes, after the store has already handed them over.
  *
- * `readSave` reports every condition of the refusal table as a `SaveReadError`. The
- * fallback covers the one seam it deliberately leaves open: it checks history's
- * references into the roster and the trace table, and checks no hero's *traits* against
- * the rule table — so a save can decode, pass the envelope, and still be a campaign no
- * hero card can be built from. That is a file disagreeing with itself, which is what
- * `SAVE_INCONSISTENT` already names.
+ * `readSave` reports every condition of the refusal table as a `SaveReadError`, and the
+ * fallback is the second echelon behind it rather than the first line of defence. It was
+ * the first line for one seam — a hero holding a trait the rule table does not carry —
+ * and review of this task was right that a default is the wrong place for a condition:
+ * `checkReferentialIntegrity` names it now, beside the four references it already
+ * checked, so that refusal arrives here as a `SaveReadError` like every other.
+ *
+ * What is left for the fallback is the class the envelope cannot check from where it
+ * stands: a trace factor whose `sourceEntity` names a comrade absent from the roster.
+ * Which reason codes are comrade-sourced is `packages/presentation`'s vocabulary and not
+ * a fact the envelope has access to, so the screen factory is where that reference is
+ * resolved and where it throws. `SAVE_INCONSISTENT` is the honest code for it: the file
+ * disagrees with itself, which is exactly what it already names for a dangling reference.
  */
 function fileFailure(slot: SaveSlot, cause: unknown): SaveFailure {
   return failure(slot, cause, SaveErrorCodes.Inconsistent);

@@ -9,6 +9,7 @@ import {
   type ContentFileSource
 } from '@oath-and-coin/content';
 import { ScreenState, readModelHash } from '@oath-and-coin/presentation';
+import { ReasonCodes } from '@oath-and-coin/simulation';
 import { describe, expect, it } from 'vitest';
 
 import type { ContentSourcePort, SaveStorePort } from './ports.ts';
@@ -35,10 +36,12 @@ import {
  *   `core:archive_run` sorts before `core:escort`, so the contract a screen focuses is
  *   never the one the map's fallback would pick. Without that the round trip below
  *   would pass with the envelope's `focused_contract` thrown away (design spec §2.7);
- * - `readSave` checks history's references into the roster and the trace table, and
- *   checks no hero's *traits* against the rule table. That seam is what
- *   `withoutTraitRules` walks through, and it is how a save that decodes but cannot be
- *   turned into a screen is reachable at all.
+ * - `readSave` now checks a hero's traits against the rule table as well as history's
+ *   references (review of this task moved that condition into the envelope, where it
+ *   belongs), and it still cannot check which reason codes name a comrade — that
+ *   vocabulary is `packages/presentation`'s. `withGhostComrade` walks through the seam
+ *   that is left, and it is how a save that decodes but cannot be turned into a screen
+ *   is still reachable at all.
  */
 
 const BRAM = {
@@ -147,6 +150,28 @@ const rejectedScenario: ScenarioFixture = {
   }
 };
 
+/**
+ * A scenario whose first command names a contract the content does not carry.
+ *
+ * The engine refuses the command — there is nothing to offer — but the *step* is still
+ * recorded, so the screen factory reads a contract id off it that the campaign has no
+ * entry for and throws. That is a defect in a scenario file rather than one of the five
+ * error codes, which is exactly the shape `start` promises to surface synchronously.
+ */
+const unscreenableScenario: ScenarioFixture = {
+  manifest: { ...MANIFEST, expected_screen_state: 'normal' },
+  commands: {
+    commands: [
+      {
+        command_id: 1,
+        hero_index: 0,
+        contract: 'core:contract_nobody_authored',
+        expected_state_version: 0
+      }
+    ]
+  }
+};
+
 const failingScenario: ScenarioFixture = {
   manifest: {
     schema_version: 1,
@@ -247,20 +272,9 @@ function parseSave(bytes: Uint8Array): Record<string, unknown> {
   return JSON.parse(decodeUtf8OrThrow(bytes)) as Record<string, unknown>;
 }
 
-/**
- * The same save with an empty rule table, signed honestly.
- *
- * Bram holds `core:greedy`, so the campaign still decodes, still passes the envelope's
- * referential integrity — which looks at history, not at traits — and still cannot be
- * turned into a screen, because a hero card names every trait its hero holds.
- */
-function withoutTraitRules(bytes: Uint8Array): Uint8Array {
-  const file = parseSave(bytes);
-  const snapshot = file.snapshot as Record<string, unknown>;
-  const tampered: Record<string, unknown> = {
-    ...file,
-    snapshot: { ...snapshot, traitRules: [] }
-  };
+/** The same save with `snapshot` replaced, signed honestly — an honest resign. */
+function resigned(bytes: Uint8Array, snapshot: Record<string, unknown>): Uint8Array {
+  const tampered: Record<string, unknown> = { ...parseSave(bytes), snapshot };
   const { checksum: _checksum, created_at: createdAt, ...withoutChecksum } = tampered;
 
   return encodeUtf8(
@@ -270,6 +284,50 @@ function withoutTraitRules(bytes: Uint8Array): Uint8Array {
       checksum: saveChecksum(withoutChecksum)
     })
   );
+}
+
+interface RawFactor {
+  reasonCode: string;
+  sourceEntity: string;
+  magnitude: number;
+}
+
+/**
+ * The same save with every trace factor attributed to a comrade who is not in the roster.
+ *
+ * The one seam the envelope cannot close from where it stands: which reason codes name a
+ * comrade is `packages/presentation`'s vocabulary, so nothing below the screen factory
+ * can tell that `core:ghost` had to be a hero. The file decodes, passes referential
+ * integrity, and throws a plain `Error` out of `resolveSourceDisplayNameKey` — which is
+ * what the controller's second-echelon default is for.
+ *
+ * Every factor rather than the first: `rankReasons` shows at most three of them, chosen
+ * by magnitude, so tampering with one and hoping it is displayed would be a test that
+ * passes for a reason it does not state.
+ */
+function withGhostComrade(bytes: Uint8Array): Uint8Array {
+  const snapshot = parseSave(bytes).snapshot as Record<string, unknown>;
+  const traces = snapshot.traces as {
+    value: { positiveFactors: RawFactor[]; negativeFactors: RawFactor[] };
+  }[];
+
+  const haunt = (factor: RawFactor): RawFactor => ({
+    ...factor,
+    reasonCode: ReasonCodes.StandsWithComrade,
+    sourceEntity: 'core:ghost'
+  });
+
+  return resigned(bytes, {
+    ...snapshot,
+    traces: traces.map((trace) => ({
+      ...trace,
+      value: {
+        ...trace.value,
+        positiveFactors: trace.value.positiveFactors.map(haunt),
+        negativeFactors: trace.value.negativeFactors.map(haunt)
+      }
+    }))
+  });
 }
 
 describe('a controller before and after it starts', () => {
@@ -294,6 +352,20 @@ describe('a controller before and after it starts', () => {
 
     expect(seen).toEqual([ScreenState.Normal]);
     expect(controller.store.snapshot().state).not.toBeNull();
+  });
+});
+
+describe('a run this build cannot make a screen out of', () => {
+  it('throws where its stack points, synchronously, rather than into a lost promise', () => {
+    // The property `start` is a non-`async` function for. `loadAndRunScenario` reports
+    // every failure it knows about as a `failed` result, so a throw from in here is a
+    // defect in this build — and a defect has to land where a stack trace is still
+    // attached to it. As an `async` method the same throw becomes a rejected promise,
+    // and `App.tsx` writes `void controller.start()`, where a rejection is seen by
+    // nobody at all. This assertion is what reddens if the `async` is put back.
+    const { controller } = harness({ scenario: unscreenableScenario });
+
+    expect(() => controller.start()).toThrow(/no such contract/u);
   });
 });
 
@@ -431,6 +503,62 @@ describe('the versions this build reads saves under', () => {
     });
   });
 
+  it('refuse a campaign this build could not read back, before it is written', async () => {
+    // The trap review found: `expected` was applied to reading and not to writing. Five
+    // shipped scenarios run against a fixture content root, so this state is reachable
+    // by opening a URL — and the save would have gone to disk, overwritten whatever was
+    // in the slot, and then been refused by this same build on the next load. The
+    // confirmation Task 16.8 puts in front of an occupied slot cannot help: the player
+    // would be confirming an exchange of a readable save for an unreadable one.
+    const { controller, saves } = harness({
+      expected: { rulesetVersion: RULESET_VERSION, contentVersion: 'ffffffffffffffff' }
+    });
+    await controller.start();
+    expect(controller.store.snapshot().screen.contract).not.toBeNull();
+
+    await expect(controller.save('slot-a')).resolves.toBeUndefined();
+
+    expect(saves.slots.size).toBe(0);
+    expect(controller.store.snapshot().savedStateHash).toBeNull();
+    expect(controller.store.snapshot().saveFailure).toEqual({
+      slot: 'slot-a',
+      code: SaveErrorCodes.ContentMismatch,
+      detail: expect.stringContaining('could not read back')
+    });
+  });
+
+  it('refuse it for the ruleset first, as reading does', async () => {
+    // Same order as `readSave`'s, so that a save refused at write time is refused for
+    // the reason it would have been refused at read time. Both versions are wrong here,
+    // and the ruleset is what is named.
+    const { controller, saves } = harness({
+      expected: { rulesetVersion: 'm0-nothing/0', contentVersion: 'ffffffffffffffff' }
+    });
+    await controller.start();
+
+    await controller.save('slot-a');
+
+    expect(saves.slots.size).toBe(0);
+    expect(controller.store.snapshot().saveFailure?.code).toBe(SaveErrorCodes.RulesetMismatch);
+  });
+
+  it('do not overwrite a readable save with one this build could not read', async () => {
+    // The whole of why the check is before `buildSave` rather than after the write.
+    const written = harness();
+    await written.controller.start();
+    await written.controller.save('slot-a');
+    const readable = written.saves.slots.get('slot-a')!;
+
+    const foreign = harness({
+      saves: written.saves,
+      expected: { rulesetVersion: RULESET_VERSION, contentVersion: 'ffffffffffffffff' }
+    });
+    await foreign.controller.start();
+    await foreign.controller.save('slot-a');
+
+    expect(written.saves.slots.get('slot-a')).toBe(readable);
+  });
+
   it("refuses another build's ruleset the same way", async () => {
     const other = harness({
       saves: await storeHoldingASave(),
@@ -499,18 +627,116 @@ describe('a store that refuses', () => {
 
 describe('a slot holding a save this build cannot make a screen out of', () => {
   it('refuses it as an inconsistent file rather than throwing out of the controller', async () => {
+    // The second echelon, on the one input that still reaches it. A hero holding a trait
+    // the rule table does not carry used to land here too; review of this task moved
+    // that one into `checkReferentialIntegrity`, where it is a named condition rather
+    // than a default deciding what a stranger's exception meant.
     const { controller, saves } = harness();
     await controller.start();
     await controller.save('slot-a');
     const before = controller.store.snapshot();
-    saves.slots.set('slot-a', withoutTraitRules(saves.slots.get('slot-a')!));
+    saves.slots.set('slot-a', withGhostComrade(saves.slots.get('slot-a')!));
 
     await expect(controller.load('slot-a')).resolves.toBeUndefined();
 
     const after = controller.store.snapshot();
     expect(after.saveFailure?.code).toBe(SaveErrorCodes.Inconsistent);
-    expect(after.saveFailure?.detail).toContain('core:greedy');
+    expect(after.saveFailure?.detail).toContain('core:ghost');
     expect(after.state).toBe(before.state);
+  });
+
+  it('refuses a hero holding a trait the save carries no rule for, from the envelope', async () => {
+    // The same class, one layer lower now, and the code a player sees is the same one.
+    const { controller, saves } = harness();
+    await controller.start();
+    await controller.save('slot-a');
+    const snapshot = parseSave(saves.slots.get('slot-a')!).snapshot as Record<string, unknown>;
+    saves.slots.set(
+      'slot-a',
+      resigned(saves.slots.get('slot-a')!, { ...snapshot, traitRules: [] })
+    );
+
+    await controller.load('slot-a');
+
+    const failure = controller.store.snapshot().saveFailure;
+    expect(failure?.code).toBe(SaveErrorCodes.Inconsistent);
+    expect(failure?.detail).toContain('core:greedy');
+    // From the envelope, not from the screen factory three layers up: the message a
+    // player's refusal carries is the file's own, and `resolveTrait`'s talks about a
+    // content-loading bug.
+    expect(failure?.detail).toContain('the save carries no rule for it');
+  });
+});
+
+describe('a refusal recorded for one slot', () => {
+  /** A store that refuses `slot-c` and answers normally for everything else. */
+  function refusingOneSlot(): SaveStorePort & { readonly slots: Map<SaveSlot, Uint8Array> } {
+    const inner = fakeStore();
+
+    return {
+      slots: inner.slots,
+      read: (slot) =>
+        slot === 'slot-c'
+          ? Promise.reject(unavailable())
+          : Promise.resolve(inner.slots.get(slot) ?? null),
+      write: (slot, bytes) =>
+        slot === 'slot-c' ? Promise.reject(unavailable()) : inner.write(slot, bytes),
+      list: () => inner.list()
+    };
+  }
+
+  it('survives a successful save to another slot', async () => {
+    // There are three slots and one `saveFailure`. A save to slot A that cleared the
+    // refusal recorded for slot C would take a line off the slots screen that is still
+    // true — slot C is still unreadable, and nothing about writing A found that out.
+    const saves = refusingOneSlot();
+    const { controller } = harness({ saves });
+    await controller.start();
+    await controller.load('slot-c');
+    expect(controller.store.snapshot().saveFailure?.slot).toBe('slot-c');
+
+    await controller.save('slot-a');
+
+    expect(controller.store.snapshot().savedStateHash).not.toBeNull();
+    expect(controller.store.snapshot().saveFailure?.slot).toBe('slot-c');
+  });
+
+  it('survives a successful load of another slot', async () => {
+    const saves = refusingOneSlot();
+    const { controller } = harness({ saves });
+    await controller.start();
+    await controller.save('slot-a');
+    await controller.load('slot-c');
+    expect(controller.store.snapshot().saveFailure?.slot).toBe('slot-c');
+
+    await controller.load('slot-a');
+
+    expect(controller.store.snapshot().canonicalHash).toBeNull();
+    expect(controller.store.snapshot().saveFailure?.slot).toBe('slot-c');
+  });
+
+  it('is cleared by a success on the slot it was about', async () => {
+    // The other half of the same rule, and the reason it is not "never clear anything":
+    // a slot that has just been written successfully is not a slot with a refusal to
+    // report, and a stale line saying otherwise is the same defect in the other
+    // direction.
+    const inner = fakeStore();
+    const broken = { still: true };
+    const saves: SaveStorePort = {
+      read: (slot) => inner.read(slot),
+      write: (slot, bytes) =>
+        broken.still ? Promise.reject(unavailable()) : inner.write(slot, bytes),
+      list: () => inner.list()
+    };
+    const { controller } = harness({ saves });
+    await controller.start();
+    await controller.save('slot-b');
+    expect(controller.store.snapshot().saveFailure?.slot).toBe('slot-b');
+
+    broken.still = false;
+    await controller.save('slot-b');
+
+    expect(controller.store.snapshot().saveFailure).toBeNull();
   });
 });
 

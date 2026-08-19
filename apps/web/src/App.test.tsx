@@ -5,6 +5,7 @@ import {
   type SessionState,
   type Store
 } from '@oath-and-coin/application';
+import { RULESET_VERSION } from '@oath-and-coin/content';
 import { ScreenState } from '@oath-and-coin/presentation';
 import { act } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -197,6 +198,48 @@ describe('a page taken down while its session is still arriving', () => {
     // The run did land — otherwise this test would prove only that nothing happened.
     expect(gated.controller.store.snapshot().screen.state).toBe(ScreenState.Normal);
     expect(container.textContent).toBe('');
+  });
+});
+
+describe('the page after a save is loaded back', () => {
+  it('reports no run hash, as `null` and not as an empty string', async () => {
+    // `canonical_hash` is a hash of a whole run, a loaded session has no run, and this
+    // field is what oracle parity reads. Written `null`, never `''` and never `0`: the
+    // corpus records `null` for the two entries that produced no artifact, and a page
+    // that answered an empty string would compare unequal against the very absence it
+    // was reporting.
+    const slots = new Map<string, Uint8Array>();
+    const controller = createSessionController({
+      request: {
+        content: browserContentSource(),
+        scenario: 'screen_normal',
+        checkpoint: null,
+        seed: 424242n
+      },
+      saves: {
+        read: (slot) => Promise.resolve(slots.get(slot) ?? null),
+        write: (slot, bytes) => {
+          slots.set(slot, bytes);
+          return Promise.resolve();
+        },
+        list: () => Promise.resolve([])
+      },
+      now: () => '2026-08-19T09:41:00.000Z',
+      expected: { rulesetVersion: RULESET_VERSION, contentVersion: shippedContentVersion() }
+    });
+
+    const { container } = mount(<App createController={() => controller} />);
+    expect(reportIn(container).canonical_hash).toMatch(/^[0-9a-f]{64}$/u);
+
+    await act(async () => {
+      await controller.save('slot-a');
+      await controller.load('slot-a');
+    });
+
+    const report = reportIn(container);
+    expect(report.canonical_hash).toBeNull();
+    expect(report.saved_state_hash).toMatch(/^[0-9a-f]{64}$/u);
+    expect(report.screen_state).toBe(ScreenState.Normal);
   });
 });
 

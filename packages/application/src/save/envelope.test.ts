@@ -266,6 +266,26 @@ describe('referential integrity across the snapshot’s own maps', () => {
     expect(() => readSave(resign(file), versions)).toThrow(/SAVE_INCONSISTENT/u);
   });
 
+  it('отказывает, когда герой держит черту, для которой в снимке нет правила', () => {
+    // Ревью Task 16.7: `heroes[].traits` — ссылка того же класса, что уже закрытые,
+    // и она была единственной незакрытой. Экран называет каждую черту каждого героя
+    // (`resolveTrait` в фабрике модели), поэтому сохранение с висячей чертой доезжало
+    // до фабрики и падало там обычным `Error` — то есть отказ файла превращался в
+    // дефект сборки на три слоя выше. Здесь это условие, а не умолчание где-то ниже.
+    const decided = aDecidedState();
+    const versions = {
+      rulesetVersion: decided.metadata.rulesetVersion,
+      contentVersion: decided.metadata.contentVersion
+    };
+    const file = parseSave(
+      buildSave({ state: decided, focusedContract: FOCUSED_CONTRACT, createdAt: CREATED_AT })
+    );
+    const snapshot = file.snapshot as { heroes: { value: { traits: string[] } }[] };
+    snapshot.heroes[0]!.value.traits = ['core:trait_nobody_authored'];
+
+    expect(() => readSave(resign(file), versions)).toThrow(/SAVE_INCONSISTENT/u);
+  });
+
   it('отказывает, когда контракт называет отсутствующего героя в respondedBy', () => {
     const decided = aDecidedState();
     const versions = {

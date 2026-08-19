@@ -5,7 +5,7 @@ import {
 } from '@oath-and-coin/application';
 import { RULESET_VERSION } from '@oath-and-coin/content';
 import { readModelHash } from '@oath-and-coin/presentation';
-import { useEffect, useMemo, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 
 import {
   browserContentSource,
@@ -38,12 +38,12 @@ import { WorldCanvas } from './world/world-canvas.tsx';
  * desktop store answers across an IPC boundary — so the session became a value that
  * moves, and the page subscribes to it instead of computing it.
  *
- * **What that costs, and what it does not.** The page holds no state of its own: there
- * is no `useState` here, and everything on screen is a projection of one store snapshot.
- * That is what makes an answer landing after the page is gone harmless — React removes
- * the subscription at unmount, so a late write goes into a store nobody is reading, and
- * `App.test.tsx` unmounts mid-flight and checks both halves of that rather than
- * asserting it in a comment.
+ * **What that costs, and what it does not.** The page holds no state React renders from:
+ * the one `useState` here holds the controller and never the session, and everything on
+ * screen is a projection of one store snapshot. That is what makes an answer landing
+ * after the page is gone harmless — React removes the subscription at unmount, so a late
+ * write goes into a store nobody is reading, and `App.test.tsx` unmounts mid-flight and
+ * checks both halves of that rather than asserting it in a comment.
  */
 export function App({ createController = browserSessionController }: AppProps = {}) {
   // Once per mount rather than once per render: the session reads and validates the
@@ -51,7 +51,13 @@ export function App({ createController = browserSessionController }: AppProps = 
   // work again for every state change React ever makes.
   const run = useMemo(() => parseRunRequest(window.location.search), []);
   const catalogue = useMemo(() => browserLocaleCatalogue(run.locale), [run.locale]);
-  const controller = useMemo(() => createController(run), [createController, run]);
+  // `useState`, not `useMemo`, and the difference is the whole of what a session is.
+  // A memo is a cache React is allowed to drop; dropping this one would build a second
+  // controller with a second store, restart the run against it, and leave a `load()`
+  // already in flight to land in the store nobody is subscribed to any more — a player's
+  // load lost with nothing on screen to say so. A `useState` initializer runs once per
+  // mounted component and its value is state, not a cache.
+  const [controller] = useState(() => createController(run));
   const session = useSyncExternalStore(controller.store.subscribe, controller.store.snapshot);
 
   useEffect(() => {

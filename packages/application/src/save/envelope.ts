@@ -325,9 +325,9 @@ function requireMatch(value: unknown, pattern: RegExp, field: string): asserts v
  * The referential integrity `decodeSnapshot` deliberately leaves unchecked: a map's
  * own key-equals-identity is the codec's contract, but a *reference between* two maps
  * — an event's `heroId` or `contractId`, an event's `causalTraceId` pointing at a
- * trace, a contract's `respondedBy` or `acceptedBy` naming a hero — spans two of
- * `snapshot-codec.ts`'s independently-built maps, and nothing there checks across
- * that seam.
+ * trace, a contract's `respondedBy` or `acceptedBy` naming a hero, a hero's `traits`
+ * naming a rule — spans two of `snapshot-codec.ts`'s independently-built maps, and
+ * nothing there checks across that seam.
  *
  * This is the envelope's job rather than a second codec concern: a save is a
  * `GameState` plus the promise that *this* build can trust it, and a save whose event
@@ -358,6 +358,25 @@ function checkReferentialIntegrity(state: GameState): void {
         `history event ${String(event.eventId)} references causalTraceId ` +
           `${String(event.causalTraceId)}, but the save stores no trace under that id.`
       );
+    }
+  }
+
+  // A hero's traits against the rule table, which is the seam a screen walks through
+  // first and the one this check was missing. Every hero card names every trait its
+  // hero holds (`contract-offer-screen-model-factory.ts`'s `resolveTrait`), so a save
+  // whose roster holds a trait its own rule table does not carry is a save no screen
+  // can be built from — and without this it reached the factory, which threw a plain
+  // `Error` from three layers up rather than reporting a refusal a player can read.
+  // Named here as a condition rather than caught downstream as a default: the session
+  // controller's own fallback would have to decide whether a throw meant "the file is
+  // broken" or "this build is", and that is a question only the file can answer.
+  for (const [heroId, hero] of state.heroes.entries()) {
+    for (const traitId of hero.traits) {
+      if (!state.traitRules.has(traitId)) {
+        throw inconsistent(
+          `hero#${String(heroId)} holds trait '${traitId}', but the save carries no rule for it.`
+        );
+      }
     }
   }
 
