@@ -267,6 +267,105 @@ describe('referential integrity across the snapshot’s own maps', () => {
 
     expect(() => readSave(resign(file), versions)).toThrow(/SAVE_INCONSISTENT/u);
   });
+
+  it('отказывает, когда событие называет контракт, которого нет в снимке', () => {
+    // Ревью, раунд 1, находка 1: `event.contractId` — та же по форме ссылка, что
+    // `event.heroId` и `event.causalTraceId`, и `decodeSnapshot` её тоже не проверяет
+    // — `restoreDecidedSteps` кладёт её в `command.contract` без поиска, так что
+    // висячая ссылка доехала бы до экрана непойманной.
+    const decided = aDecidedState();
+    const versions = {
+      rulesetVersion: decided.metadata.rulesetVersion,
+      contentVersion: decided.metadata.contentVersion
+    };
+    const file = parseSave(
+      buildSave({ state: decided, focusedContract: FOCUSED_CONTRACT, createdAt: CREATED_AT })
+    );
+    const snapshot = file.snapshot as { history: { contractId: string }[] };
+    snapshot.history[0]!.contractId = 'core:contract_nobody_authored';
+
+    expect(() => readSave(resign(file), versions)).toThrow(/SAVE_INCONSISTENT/u);
+  });
+
+  it('отказывает, когда focused_contract называет контракт, которого нет в снимке', () => {
+    // Ревью, раунд 1, находка 1: `focused_contract` был проверен только регуляркой
+    // формы и уходил в дескриптор без сверки со `state.contracts` — а именно его
+    // `contractOfferScreenModel` получает третьим аргументом после перезагрузки.
+    const file = parseSave(aValidSave());
+    file.focused_contract = 'core:contract_nobody_authored';
+
+    expect(() => readSave(resign(file), expectedVersions)).toThrow(/SAVE_INCONSISTENT/u);
+  });
+});
+
+describe('checksum coverage for fields with no second line of defense', () => {
+  // `campaign_seed`, `logical_time`, `ruleset_version`, `content_version` и
+  // `save_schema_version` дублируются внутри снимка и ловятся ещё раз
+  // `requireDuplicateFieldsAgree`, даже если бы выпали из суммы. `focused_contract` и
+  // `snapshot` — нет: сумма для них единственная защита. Ревью, раунд 1, находка 3.
+
+  it('ловит непереподписанную подмену focused_contract', () => {
+    const file = parseSave(aValidSave());
+    file.focused_contract = 'core:someone_else'; // сумма НЕ пересчитывается
+    const bytes = encodeUtf8(JSON.stringify(file));
+
+    expect(() => readSave(bytes, expectedVersions)).toThrow(/SAVE_CHECKSUM_MISMATCH/u);
+  });
+
+  it('ловит непереподписанную правку внутри snapshot', () => {
+    const file = parseSave(aValidSave());
+    const snapshot = file.snapshot as { heroes: { value: { greed: number } }[] };
+    snapshot.heroes[0]!.value.greed = snapshot.heroes[0]!.value.greed + 1; // сумма НЕ пересчитывается
+    const bytes = encodeUtf8(JSON.stringify(file));
+
+    expect(() => readSave(bytes, expectedVersions)).toThrow(/SAVE_CHECKSUM_MISMATCH/u);
+  });
+});
+
+describe('форма конверта', () => {
+  it('отказывает файлу с лишним полем', () => {
+    // Ревью, раунд 1, находка 4: `requireEnvelopeShape` перечисляла обязательные
+    // поля и молчала про незнакомое десятое — переподписанный файл с лишним полем
+    // читался бы штатно.
+    const file = parseSave(aValidSave());
+    file.extra_field = 'nobody asked for this';
+
+    expect(() => readSave(resign(file), expectedVersions)).toThrow(/SAVE_MALFORMED/u);
+  });
+
+  it('отказывает JSON, который не объект, не притворяясь версией `undefined`', () => {
+    // Ревью, раунд 1, находка 5: посторонний JSON (число, строка, массив, `null`)
+    // раньше давал SAVE_FORMAT_UNSUPPORTED с текстом «version undefined» — значением
+    // поля, которого в этих байтах никогда не было.
+    let caught: unknown;
+    try {
+      readSave(encodeUtf8('42'), expectedVersions);
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).toMatch(/SAVE_MALFORMED/u);
+    expect((caught as Error).message).not.toMatch(/undefined/u);
+  });
+
+  it('отказывает на байтах, которые не являются валидным UTF-8', () => {
+    // Ревью, раунд 1, находка 6: ветка была живая (`decodeUtf8OrThrow`, `fatal:
+    // true`), но ни один тест её не проходил.
+    const invalidUtf8 = Uint8Array.of(0xff, 0xfe, 0x00, 0x00);
+
+    expect(() => readSave(invalidUtf8, expectedVersions)).toThrow(/SAVE_MALFORMED/u);
+  });
+
+  it('называет форму раньше суммы, когда сломаны обе', () => {
+    // Ревью, раунд 1, находка 7: пришпилены format_version → ruleset и checksum →
+    // ruleset; форма против суммы — нет.
+    const file = parseSave(aValidSave());
+    file.logical_time = 'not-a-number'; // ломает и форму, и (без переподписи) сумму
+    const bytes = encodeUtf8(JSON.stringify(file));
+
+    expect(() => readSave(bytes, expectedVersions)).toThrow(/SAVE_MALFORMED/u);
+  });
 });
 
 describe('SAVE_FORMAT_VERSION', () => {

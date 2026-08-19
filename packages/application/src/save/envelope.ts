@@ -74,6 +74,21 @@ interface RawEnvelope {
 const CAMPAIGN_SEED_PATTERN = /^(0|[1-9][0-9]{0,19})$/u;
 const CONTENT_ID_REGEX = new RegExp(CONTENT_ID_PATTERN);
 
+/** The envelope's closed field set — the hand-rolled equivalent of `z.strictObject`'s
+ * own refusal of an unrecognized key. */
+const ENVELOPE_FIELDS: readonly string[] = Object.freeze([
+  'format_version',
+  'save_schema_version',
+  'ruleset_version',
+  'content_version',
+  'campaign_seed',
+  'logical_time',
+  'focused_contract',
+  'snapshot',
+  'created_at',
+  'checksum'
+]);
+
 /** Builds a save file's bytes from a campaign and the contract its screen was showing. */
 export function buildSave(input: {
   readonly state: GameState;
@@ -164,12 +179,20 @@ export function readSave(
 
   requireDuplicateFieldsAgree(envelope, state);
 
+  const focusedContract = parseContentId(envelope.focused_contract);
+  if (!state.contracts.has(focusedContract)) {
+    throw inconsistent(
+      `envelope names focused_contract '${focusedContract}', but the save carries no such ` +
+        'contract.'
+    );
+  }
+
   return {
     state,
     descriptor: {
       createdAt,
       logicalTime: envelope.logical_time,
-      focusedContract: parseContentId(envelope.focused_contract)
+      focusedContract
     }
   };
 }
@@ -219,9 +242,21 @@ function parseSaveJson(bytes: Uint8Array): unknown {
  * step 6): a version this build does not recognize means the rest of the bytes were
  * written under rules this build does not have, so nothing about them can be said yet
  * — including whether their *shape* is wrong versus merely foreign.
+ *
+ * That "before confirmed to be an object" still splits into two different refusals,
+ * though: bytes that parsed to something with no fields at all — a bare number, a
+ * string, an array, `null` — are not "a foreign format_version", they are not an
+ * envelope in any sense this function can peek a field out of, and saying so as
+ * `SAVE_MALFORMED` is what stops a player reading "save format version undefined is
+ * not supported" — a real value (`undefined`) for a field that was never there to have
+ * one.
  */
 function requireSupportedFormatVersion(parsed: unknown): void {
-  const value = fieldOf(parsed, 'format_version');
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw malformed('the save is not a JSON object.');
+  }
+
+  const value = (parsed as Record<string, unknown>).format_version;
 
   if (value !== SAVE_FORMAT_VERSION) {
     throw new SaveReadError(
@@ -230,14 +265,6 @@ function requireSupportedFormatVersion(parsed: unknown): void {
         `${String(SAVE_FORMAT_VERSION)}.`
     );
   }
-}
-
-function fieldOf(value: unknown, key: string): unknown {
-  if (typeof value !== 'object' || value === null) {
-    return undefined;
-  }
-
-  return (value as Record<string, unknown>)[key];
 }
 
 /**
@@ -252,6 +279,11 @@ function requireEnvelopeShape(value: unknown): RawEnvelope {
   }
 
   const raw = value as Record<string, unknown>;
+
+  const unknownField = Object.keys(raw).find((key) => !ENVELOPE_FIELDS.includes(key));
+  if (unknownField !== undefined) {
+    throw malformed(`unrecognized field '${unknownField}'.`);
+  }
 
   requireInt(raw.format_version, 'format_version');
   requireInt(raw.save_schema_version, 'save_schema_version');
@@ -292,16 +324,18 @@ function requireMatch(value: unknown, pattern: RegExp, field: string): asserts v
 /**
  * The referential integrity `decodeSnapshot` deliberately leaves unchecked: a map's
  * own key-equals-identity is the codec's contract, but a *reference between* two maps
- * — an event's `causalTraceId` pointing at a trace, a contract's `respondedBy` or
- * `acceptedBy` naming a hero — spans two of `snapshot-codec.ts`'s independently-built
- * maps, and nothing there checks across that seam.
+ * — an event's `heroId` or `contractId`, an event's `causalTraceId` pointing at a
+ * trace, a contract's `respondedBy` or `acceptedBy` naming a hero — spans two of
+ * `snapshot-codec.ts`'s independently-built maps, and nothing there checks across
+ * that seam.
  *
  * This is the envelope's job rather than a second codec concern: a save is a
  * `GameState` plus the promise that *this* build can trust it, and a save whose event
- * log names a hero its own roster does not have is not a save this build can trust,
- * whatever `decodeSnapshot`'s per-map checks already passed. `SaveErrorCodes.Inconsistent`
- * is reused rather than a new code minted for it — a dangling reference is the same
- * kind of failure `decodeSnapshot` already reports under that code for a map's own key.
+ * log names a hero or a contract its own roster does not have is not a save this build
+ * can trust, whatever `decodeSnapshot`'s per-map checks already passed.
+ * `SaveErrorCodes.Inconsistent` is reused rather than a new code minted for it — a
+ * dangling reference is the same kind of failure `decodeSnapshot` already reports
+ * under that code for a map's own key.
  */
 function checkReferentialIntegrity(state: GameState): void {
   for (const event of state.history) {
@@ -309,6 +343,13 @@ function checkReferentialIntegrity(state: GameState): void {
       throw inconsistent(
         `history event ${String(event.eventId)} names hero#${String(event.heroId)}, but the ` +
           'save carries no such hero.'
+      );
+    }
+
+    if (!state.contracts.has(event.contractId)) {
+      throw inconsistent(
+        `history event ${String(event.eventId)} names contract '${event.contractId}', but the ` +
+          'save carries no such contract.'
       );
     }
 
