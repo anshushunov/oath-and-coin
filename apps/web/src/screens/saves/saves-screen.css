@@ -1,0 +1,67 @@
+/*
+ * The save-slots screen's own rules, in its own file: `styles.css` is the page — the
+ * grid, the scrolling region, the primitives every screen shares — and this is one
+ * screen's layout, imported by the component that needs it so that the two cannot drift
+ * apart by living in different places.
+ *
+ * It exists for the same reason `styles.css` does rather than to make the screen pretty
+ * (`DEC-007` puts target art at Milestone 4). Two rules carry the weight:
+ *
+ * - `.saves` is a scrolling region exactly as `.contract-offer` is, because Task 15's
+ *   reachability measurement is taken over the screen element and needs one box that
+ *   bounds the content and can be scrolled by a person;
+ * - a slot is a bordered block with its lines stacked, so that three slots read as three
+ *   things rather than as a run of sentences. Every gap here is a layout rule and never
+ *   a space inside a string: a screen may not compose player-facing text.
+ */
+
+.saves {
+  overflow: auto;
+  min-height: 0;
+  padding: 12px;
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+/* Title and state are direct children and inline by default; without this they render
+   as one word, which is the defect the contract screen's own frame caught. */
+.saves > .label {
+  display: block;
+}
+
+.saves > .label:first-child {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.saves > .label:nth-child(2) {
+  color: var(--ink-dim);
+}
+
+.saves > .slot {
+  margin: 12px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+}
+
+.saves .slot > .row + .row {
+  margin-top: 6px;
+}
+
+/* A refusal is the one thing on this screen a player has to notice, so it is the one
+   thing with a colour of its own. */
+.saves .refusal {
+  color: #f0a8a8;
+}
+
+/*
+ * A slot's own buttons sit on the surface colour rather than on the panel one, so that a
+ * control reads as a control against the block it is inside. The rest of a button's shape
+ * is `styles.css`'s, beside the screen link's: two stylesheets styling one kind of control
+ * differently is how a page ends up with two kinds of button nobody chose.
+ */
+.saves button {
+  background: var(--surface);
+}

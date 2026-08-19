@@ -1,15 +1,15 @@
-import {
-  SaveErrorCodes,
-  SaveReadError,
-  decodeUtf8OrThrow,
-  type SaveErrorCode
-} from '@oath-and-coin/content';
+import { SaveErrorCodes, decodeUtf8OrThrow, type SaveErrorCode } from '@oath-and-coin/content';
 import { LOADING_SCREEN, contractOfferScreenModel } from '@oath-and-coin/presentation';
 import { parseContentId, type ContentId } from '@oath-and-coin/simulation';
 
 import type { SaveStorePort } from './ports.ts';
 import { buildSave, readSave } from './save/envelope.ts';
 import { restoreDecidedSteps } from './save/restore-steps.ts';
+import {
+  describeSaveSlots,
+  saveErrorCodeOf,
+  type SaveSlotDescription
+} from './save/slot-descriptions.ts';
 import type { SaveSlot } from './save/slots.ts';
 import {
   startSession,
@@ -85,6 +85,17 @@ export interface SessionController {
   save(slot: SaveSlot): Promise<void>;
   /** Replaces the session with the campaign in `slot`, or records why it could not. */
   load(slot: SaveSlot): Promise<void>;
+  /**
+   * The three slots as the storage answers about them now, with whatever this session
+   * has since found out about one of them.
+   *
+   * Not on the store, and deliberately: a slot's contents belong to the storage rather
+   * than to the session, and two players' worth of tabs would be publishing into one
+   * another's `SessionState` if they were the same value. A screen asks this when it
+   * opens and again after every operation, which is also the only way it can be right —
+   * a save written by another tab moves the storage and notifies nothing.
+   */
+  slots(): Promise<readonly SaveSlotDescription[]>;
 }
 
 /**
@@ -131,8 +142,42 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
     },
 
     save: (slot) => save(deps, store, slot),
-    load: (slot) => load(deps, store, slot)
+    load: (slot) => load(deps, store, slot),
+    slots: () => slots(deps, store)
   };
+}
+
+/**
+ * The storage's answer about the three slots, with this session's own refusal laid over
+ * the one slot it is about.
+ *
+ * The overlay is the whole reason this is not `describeSaveSlots` called directly from a
+ * screen. A refused *write* leaves the storage exactly as it was — that is what the port
+ * promises — so the slot still lists, still reads and still describes perfectly, and a
+ * screen built from the storage alone would show the player a line saying nothing
+ * happened after a save that did not happen. The session is the only place that knows,
+ * and `saveFailure` is where it keeps it.
+ *
+ * The session is read *after* the storage has answered, for the reason {@link record}
+ * re-reads rather than closing over: there is a gap, and a save can have failed inside
+ * it. Reading first would answer with a session older than the storage.
+ */
+async function slots(
+  deps: SessionControllerDeps,
+  store: Store<SessionState>
+): Promise<readonly SaveSlotDescription[]> {
+  const described = await describeSaveSlots(deps.saves, deps.expected);
+  const failure = store.snapshot().saveFailure;
+
+  if (failure === null) {
+    return described;
+  }
+
+  // Only the slot it names. There are three slots and one `saveFailure`, and a refusal
+  // about slot A says nothing whatsoever about the other two.
+  return described.map((description) =>
+    description.slot === failure.slot ? { ...description, errorCode: failure.code } : description
+  );
 }
 
 /**
@@ -370,7 +415,10 @@ function fileFailure(slot: SaveSlot, cause: unknown): SaveFailure {
 function failure(slot: SaveSlot, cause: unknown, fallback: SaveErrorCode): SaveFailure {
   return {
     slot,
-    code: cause instanceof SaveReadError ? cause.code : fallback,
+    // Through the same one rule the slot descriptions read a code by, rather than a
+    // second `instanceof` written here: which exception carries a code this build named
+    // is one question, and two answers to it drift the day a third store appears.
+    code: saveErrorCodeOf(cause, fallback),
     detail: cause instanceof Error ? cause.message : String(cause)
   };
 }

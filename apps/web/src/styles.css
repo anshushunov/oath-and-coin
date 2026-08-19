@@ -74,10 +74,19 @@ body {
  * Recorded because the obvious mutant on this line is green and that reads as "the
  * check is broken" until someone works out why. The rule that actually bounds the screen
  * is the `overflow` below.
+ *
+ * The leading `auto` row is the screen link, and it arrived with the second screen (Task
+ * 16.8). Which row is flexible is not cosmetic and was measured both ways: with the link
+ * added and the rows left at three, the *link* took `minmax(0, 1fr)` and the screen fell
+ * into an `auto` row — so the screen sized itself to its own content instead of to the
+ * window, and the browser evidence recorded a 73px "viewport" on the states that hold
+ * three texts. Every assertion stayed green, because a box that is exactly as tall as its
+ * content neither overflows nor needs scrolling. The row order is what makes the
+ * reachability measurement about a window at all.
  */
 #root > main {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
   gap: 12px;
   height: 100%;
   padding: 12px;
@@ -192,13 +201,36 @@ canvas {
    * Smaller than the scene's own 640px, and that is the whole of the sizing decision:
    * the screen above is where a player reads, and at the scene's natural size it took
    * a third of an 800px window and left the roster 411px to scroll inside; at 420px it
-   * leaves 494. `DEC-007`
+   * leaves 452 — 494 until the screen link took a row of its own above the screen.
+   * `DEC-007`
    * puts the schematic world second to the information screen until Milestone 4.
    */
   max-width: 420px;
   height: auto;
   border: 1px solid var(--edge);
   border-radius: 6px;
+}
+
+/*
+ * The one link between the two screens (Task 16.8). Its own row above the screen rather
+ * than inside one of them: the rendered-UI hash is collected from the screen element, and
+ * a control that navigated *away* from a screen would otherwise be part of that screen's
+ * own evidence.
+ */
+nav {
+  display: flex;
+  gap: 8px;
+}
+
+nav button,
+.saves button {
+  padding: 4px 10px;
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
 }
 
 /* Diagnostics, not part of the screen: readable, and visibly not part of it. */

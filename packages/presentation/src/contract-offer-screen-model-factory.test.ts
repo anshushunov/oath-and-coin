@@ -92,6 +92,44 @@ describe('which contract the screen is about', () => {
     expect(contractOfferScreenModel(state, []).contract?.definition).toBe(ids.crypt);
   });
 
+  it('is the one the caller named, over the lexicographically first fallback', () => {
+    // The first of the two rules the third argument has to beat, and the one a session
+    // reopened from a save lands on whenever its history is empty: nothing was applied,
+    // so no step survives to name a contract, and without the focus the screen would
+    // show `core:cleanse_the_crypt` — a contract the player was never looking at.
+    const state = withContracts(aState(), [caravan, crypt]);
+
+    expect(contractOfferScreenModel(state, [], ids.caravan).contract?.definition).toBe(ids.caravan);
+  });
+
+  it('is the one the caller named, over the contract the first step answered', () => {
+    // The second rule, and the one the frozen corpus provably cannot distinguish:
+    // measured over all 50 entries that reached a state, none has a rejected first step
+    // and none has a `read_model.contract` differing from the contract of its first
+    // applied step (`contract-offer-screen-model-factory.ts`, and design spec §2.7).
+    //
+    // This is that missing input, hand-made. A rejected step produces no event, so it
+    // does not survive a save; the step that does survive answered a *different*
+    // contract, and only the envelope's `focused_contract` still knows which screen the
+    // player was on. The responses follow the focus rather than the step, which is the
+    // half a comparison of `contract.definition` alone would miss.
+    const state = withContracts(withHeroes(aState(), heroes(ids.bram, ids.doran)), [
+      caravan,
+      crypt
+    ]);
+    const steps = [aStep({ command: { contract: ids.crypt }, heroDefinition: ids.doran })];
+
+    const model = contractOfferScreenModel(state, steps, ids.caravan);
+
+    expect(model.contract?.definition).toBe(ids.caravan);
+    expect(model.responses).toEqual([]);
+
+    // Stated as the difference it makes, not only as the value it produces: without the
+    // third argument this same state and these same steps give the other screen, and a
+    // check that did not say so could pass with the argument ignored.
+    expect(contractOfferScreenModel(state, steps).contract?.definition).toBe(ids.crypt);
+  });
+
   it('leaves answers to another contract off this screen', () => {
     const state = withContracts(withHeroes(aState(), heroes(ids.bram, ids.doran)), [
       caravan,

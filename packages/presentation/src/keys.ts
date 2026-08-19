@@ -1,11 +1,11 @@
 /**
- * Every localization key this screen can produce, and nothing that resolves one.
+ * Every localization key the two screens can produce, and nothing that resolves one.
  *
  * `TDD` §11.1: no player-facing string is assembled in code and no raw identifier
  * reaches a label. This module is the whole vocabulary of keys the contract-offer
- * screen needs, so a caller never builds one by hand — the failure that rule exists
- * to prevent is a key spelled two ways in two places, where the catalogue has one of
- * them and the screen shows the other.
+ * screen and the save-slots screen need, so a caller never builds one by hand — the
+ * failure that rule exists to prevent is a key spelled two ways in two places, where
+ * the catalogue has one of them and the screen shows the other.
  *
  * One module rather than the C# original's eight files. That split followed C#'s
  * one-public-type-per-file convention, not a boundary: every builder here answers the
@@ -171,3 +171,129 @@ export const FieldKeys = Object.freeze({
  * list that could disagree with the first.
  */
 export const FIELD_KEYS: readonly string[] = Object.freeze(Object.values(FieldKeys));
+
+/** The save-slots screen's title. Its own key, not a second use of {@link TITLE_KEY}. */
+export const SAVES_TITLE_KEY = 'screen.saves.title';
+
+/**
+ * What the one link between the two screens is called, from each side.
+ *
+ * Two keys rather than one "switch screens", because what the button offers is different
+ * from each side and a text that covered both would name neither.
+ */
+export const ScreenLinkKeys = Object.freeze({
+  OpenSaves: 'screen.saves.open',
+  OpenContractOffer: 'screen.contract_offer.open'
+});
+
+export const SCREEN_LINK_KEYS: readonly string[] = Object.freeze(Object.values(ScreenLinkKeys));
+
+/**
+ * Which of the five shapes the slots screen is in — its own key per state, never
+ * {@link screenStateKey}'s.
+ *
+ * The five words are the same five and the sentences are not: `Incomplete` on the
+ * contract screen is a hero who has not answered yet, and here it is a slot that
+ * refused to be read. One key for both would force one text to describe both, and the
+ * text that does is the one that says nothing.
+ */
+export function saveSlotsStateKey(state: ScreenState): string {
+  return `screen.saves.state.${state.toLowerCase()}`;
+}
+
+export const SAVE_SLOTS_STATE_KEYS: readonly string[] = Object.freeze(
+  SCREEN_STATES.map(saveSlotsStateKey)
+);
+
+/**
+ * A slot's own name, its "save here" action and its "load this" action
+ * (`slot-a` → `save.slot.slot_a.name`).
+ *
+ * The hyphen becomes an underscore, the same substitution {@link actionKey} makes for a
+ * colon and for the same reason: a slot name is a wire identifier and a localization key
+ * is not. The catalogue's grammar admits `[a-z0-9_]` between dots and nothing else
+ * (`packages/content`'s `LOCALIZATION_KEY_PATTERN`, which this package may not import),
+ * so a key built with the hyphen left in is a key the loader refuses outright — which is
+ * how this was found rather than shipped.
+ *
+ * Three keys per slot rather than one name plus two shared verbs, because a shared
+ * verb would have to be composed with the name to say which slot it acts on — and
+ * composing player-facing text in code is what `TDD` §11.1 forbids. Three buttons all
+ * reading "Сохранить" is also the one thing a screen reader cannot tell apart.
+ *
+ * Built from the slot's own string by a fixed convention, the same way
+ * {@link contractDisplayNameKey} is: this layer is handed slot names and does not know
+ * the closed set they come from — `SAVE_SLOTS` is `packages/application`'s, which this
+ * package may not import — so the check that the catalogue answers all nine keys lives
+ * in `tests/locale`, which may see both sides.
+ */
+export function saveSlotDisplayNameKey(slot: string): string {
+  return `save.slot.${keySegment(slot)}.name`;
+}
+
+export function saveSlotSaveKey(slot: string): string {
+  return `save.slot.${keySegment(slot)}.save`;
+}
+
+export function saveSlotLoadKey(slot: string): string {
+  return `save.slot.${keySegment(slot)}.load`;
+}
+
+/** A slot name as one segment of a localization key: `slot-a` → `slot_a`. */
+function keySegment(slot: string): string {
+  return slot.replaceAll('-', '_');
+}
+
+/**
+ * What a slot line's status says, as one of three keys.
+ *
+ * Its own line rather than left implicit in which fields are populated: an empty slot
+ * would otherwise be a line with a name and nothing under it, which reads as a screen
+ * that failed to draw rather than as a slot a player may write to.
+ */
+export const SaveSlotStatusKeys = Object.freeze({
+  Empty: 'save.slot.status.empty',
+  Occupied: 'save.slot.status.occupied',
+  Unreadable: 'save.slot.status.unreadable'
+});
+
+export const SAVE_SLOT_STATUS_KEYS: readonly string[] = Object.freeze(
+  Object.values(SaveSlotStatusKeys)
+);
+
+/**
+ * The captions on the slots screen, for the same reason {@link FieldKeys} exists: the
+ * three facts a slot line shows literally are a timestamp, an integer and a contract,
+ * and a column of those three with nothing naming them is the defect external review
+ * found on the Godot frame.
+ *
+ * `created_at` is shown exactly as the file recorded it, ISO-8601, and is deliberately
+ * not formatted for a locale: `toLocaleString` answers differently per machine and per
+ * time zone, so a frame taken as evidence would stop being comparable with the next
+ * one taken anywhere else.
+ */
+export const SaveFieldKeys = Object.freeze({
+  SaveCreatedAt: 'field.save.created_at',
+  SaveLogicalTime: 'field.save.logical_time',
+  SaveContract: 'field.save.contract'
+});
+
+export const SAVE_FIELD_KEYS: readonly string[] = Object.freeze(Object.values(SaveFieldKeys));
+
+/**
+ * The confirmation in front of overwriting an occupied slot (design spec §3.1).
+ *
+ * Keys rather than model fields, and that is the one thing on this screen the model
+ * does not decide: whether a confirmation is currently being asked is interface state —
+ * it belongs to the moment between two clicks and to no slot's contents — so it lives
+ * where that moment does, in the component, and only its vocabulary is stated here.
+ */
+export const SaveOverwriteKeys = Object.freeze({
+  Question: 'save.overwrite.question',
+  Confirm: 'save.overwrite.confirm',
+  Cancel: 'save.overwrite.cancel'
+});
+
+export const SAVE_OVERWRITE_KEYS: readonly string[] = Object.freeze(
+  Object.values(SaveOverwriteKeys)
+);

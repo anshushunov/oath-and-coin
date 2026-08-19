@@ -30,7 +30,17 @@ export {
   FIELD_KEYS,
   FieldKeys,
   REASON_DIRECTION_KEYS,
+  SAVES_TITLE_KEY,
+  SAVE_FIELD_KEYS,
+  SAVE_OVERWRITE_KEYS,
+  SAVE_SLOTS_STATE_KEYS,
+  SAVE_SLOT_STATUS_KEYS,
+  SCREEN_LINK_KEYS,
   SCREEN_STATE_KEYS,
+  ScreenLinkKeys,
+  SaveFieldKeys,
+  SaveOverwriteKeys,
+  SaveSlotStatusKeys,
   TITLE_KEY,
   WAVERED_FALSE_KEY,
   WAVERED_KEYS,
@@ -39,6 +49,10 @@ export {
   contractDisplayNameKey,
   errorKey,
   reasonDirectionKey,
+  saveSlotDisplayNameKey,
+  saveSlotLoadKey,
+  saveSlotSaveKey,
+  saveSlotsStateKey,
   screenStateKey,
   tagKey,
   traitDisplayNameKey,
@@ -63,5 +77,14 @@ export {
   failedScreen,
   readModelHash
 } from './contract-offer-screen-model-factory.ts';
+
+export {
+  SAVE_SLOTS_LOADING_SCREEN,
+  createSaveSlotsScreenModel,
+  saveSlotsScreenModel,
+  type SaveSlotInput,
+  type SaveSlotLine,
+  type SaveSlotsScreenModel
+} from './save-slots-screen-model.ts';
 
 export { expectedSnapshot, snapshotHash } from './rendered-ui-snapshot.ts';

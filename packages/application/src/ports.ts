@@ -61,6 +61,8 @@ export interface ContentSourcePort {
  * with its descriptor builds that pair itself — `list()`'s slot beside `readSave`'s
  * result for that same slot's bytes — rather than this port returning two separately-
  * ordered arrays a caller would have to zip back together and trust stayed aligned.
+ * `save/slot-descriptions.ts` is that caller, and it is the only one: it matches by slot
+ * name and never by position, which is what the "no particular order" above is for.
  */
 export interface SaveStorePort {
   /** A slot's bytes, or `null` if it is empty. Throws if the store is unavailable. */

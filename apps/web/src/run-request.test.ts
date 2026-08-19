@@ -14,13 +14,30 @@ describe('the inputs a run declares', () => {
     expect(parseRunRequest('?')).toEqual(DEFAULT_RUN);
   });
 
-  it('reads all four inputs', () => {
-    expect(parseRunRequest('?scenario=screen_error&checkpoint=final&seed=7&locale=ru')).toEqual({
+  it('reads all five inputs', () => {
+    expect(
+      parseRunRequest('?scenario=screen_error&checkpoint=final&seed=7&locale=ru&screen=saves')
+    ).toEqual({
       scenario: 'screen_error',
       checkpoint: 'final',
       seed: 7n,
-      locale: 'ru'
+      locale: 'ru',
+      screen: 'saves'
     });
+  });
+
+  it('opens the contract offer when no screen is declared', () => {
+    // The page had one screen until Task 16.8, so the absence of this parameter has to
+    // keep meaning exactly what it meant: every URL already recorded in the corpus, in
+    // the browser evidence and in ADR-008's own examples names no screen at all.
+    expect(parseRunRequest('?scenario=screen_normal').screen).toBe('contract-offer');
+  });
+
+  it('refuses a screen nobody wrote', () => {
+    // The same rule as an unknown parameter and for the same reason: `?screen=slots`
+    // silently showing the contract offer would produce a frame, a report and a green
+    // verdict about a screen nobody asked for.
+    expect(() => parseRunRequest('?screen=slots')).toThrow(/Run parameter 'screen'/u);
   });
 
   it('takes the leading question mark or no leading question mark', () => {
@@ -57,19 +74,22 @@ describe('the inputs a run declares', () => {
     expect(() => parseRunRequest(search)).toThrow(/non-negative decimal integer/u);
   });
 
-  it.each(['scenario', 'checkpoint', 'seed', 'locale'])(
+  it.each(['scenario', 'checkpoint', 'seed', 'locale', 'screen'])(
     'refuses %s stated with no value',
     (name) => {
       expect(() => parseRunRequest(`?${name}=`)).toThrow(/stated with no value/u);
     }
   );
 
-  it.each(['scenario', 'checkpoint', 'seed', 'locale'])('refuses %s stated twice', (name) => {
-    // `?scenario=screen_error&scenario=screen_normal` runs `screen_error` under
-    // `URLSearchParams.get`, and would run `screen_normal` under any reader that takes
-    // the last value. The URL is ambiguous, so it is refused rather than resolved.
-    expect(() => parseRunRequest(`?${name}=a&${name}=b`)).toThrow(/stated 2 times/u);
-  });
+  it.each(['scenario', 'checkpoint', 'seed', 'locale', 'screen'])(
+    'refuses %s stated twice',
+    (name) => {
+      // `?scenario=screen_error&scenario=screen_normal` runs `screen_error` under
+      // `URLSearchParams.get`, and would run `screen_normal` under any reader that takes
+      // the last value. The URL is ambiguous, so it is refused rather than resolved.
+      expect(() => parseRunRequest(`?${name}=a&${name}=b`)).toThrow(/stated 2 times/u);
+    }
+  );
 
   it('refuses a parameter repeated with the same value', () => {
     // The ambiguity is in the URL rather than in the values: a reader still cannot tell

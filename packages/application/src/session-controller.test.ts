@@ -14,7 +14,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { ContentSourcePort, SaveStorePort } from './ports.ts';
 import { saveChecksum } from './save/envelope.ts';
-import type { SaveSlot } from './save/slots.ts';
+import { SAVE_SLOTS, type SaveSlot } from './save/slots.ts';
 import {
   createSessionController,
   type SessionController,
@@ -737,6 +737,77 @@ describe('a refusal recorded for one slot', () => {
     await controller.save('slot-b');
 
     expect(controller.store.snapshot().saveFailure).toBeNull();
+  });
+});
+
+describe('the three slots as the controller answers for them', () => {
+  it('describes what the storage holds, slot by slot', async () => {
+    const { controller } = harness();
+    await controller.start();
+    await controller.save('slot-b');
+
+    const described = await controller.slots();
+
+    expect(described.map((slot) => slot.slot)).toEqual([...SAVE_SLOTS]);
+    expect(described[1]).toEqual({
+      slot: 'slot-b',
+      createdAt: CREATED_AT,
+      // The fixture's one command decides an offer; logical time moves with the clock
+      // of the campaign, not with the number of commands, and this campaign is at zero.
+      logicalTime: 0,
+      focusedContract: 'core:escort',
+      errorCode: null
+    });
+    expect(described[0]?.createdAt).toBeNull();
+  });
+
+  it('carries a refused write on the slot it was about, over an intact campaign', async () => {
+    // The transition the design spec calls "отказ записи → слот остаётся прежним и это
+    // видно". The storage is untouched — that is what the port promises — so the slot
+    // still describes perfectly, and only the session knows the write did not happen.
+    // Without the overlay the screen would show a line that says nothing went wrong.
+    const inner = fakeStore();
+    const broken = { still: false };
+    const saves: SaveStorePort = {
+      read: (slot) => inner.read(slot),
+      write: (slot, bytes) =>
+        broken.still ? Promise.reject(unavailable()) : inner.write(slot, bytes),
+      list: () => inner.list()
+    };
+    const { controller } = harness({ saves });
+    await controller.start();
+    await controller.save('slot-a');
+
+    broken.still = true;
+    await controller.save('slot-a');
+
+    const [first, second, third] = await controller.slots();
+    expect(first?.errorCode).toBe(SaveErrorCodes.StorageUnavailable);
+    expect(first?.createdAt).toBe(CREATED_AT);
+    expect(first?.logicalTime).toBe(0);
+
+    // And nowhere else: one refusal is about one slot.
+    expect([second?.errorCode, third?.errorCode]).toEqual([null, null]);
+  });
+
+  it('carries no refusal once the slot it was about has been written', async () => {
+    const inner = fakeStore();
+    const broken = { still: true };
+    const saves: SaveStorePort = {
+      read: (slot) => inner.read(slot),
+      write: (slot, bytes) =>
+        broken.still ? Promise.reject(unavailable()) : inner.write(slot, bytes),
+      list: () => inner.list()
+    };
+    const { controller } = harness({ saves });
+    await controller.start();
+    await controller.save('slot-a');
+    expect((await controller.slots())[0]?.errorCode).toBe(SaveErrorCodes.StorageUnavailable);
+
+    broken.still = false;
+    await controller.save('slot-a');
+
+    expect((await controller.slots())[0]?.errorCode).toBeNull();
   });
 });
 

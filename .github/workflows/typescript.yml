@@ -138,6 +138,47 @@ jobs:
             echo
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
+      # The second screen's five states, listed here for the same reason the first five
+      # are: a state whose run stops producing evidence has to fail a stage, and the only
+      # place that can be noticed is a list of what was expected. Its own step and its own
+      # table because the two screens report different things — the slots screen has no
+      # corpus behind it, so there is no read-model hash to print, and it reports which of
+      # the five shapes the storage put it in instead.
+      - name: Summarise the save-slots evidence
+        if: always() && steps.e2e.outcome != 'skipped'
+        shell: bash
+        run: |
+          root=artifacts/browser-evidence/saves
+          expected="loading empty error incomplete normal"
+
+          missing=""
+          for state in $expected; do
+            [ -f "$root/$state/report.json" ] || missing="$missing $state"
+            [ -f "$root/$state/screenshot.png" ] || missing="$missing $state/frame"
+            [ -f "$root/$state/events.jsonl" ] || missing="$missing $state/events"
+          done
+
+          if [ -n "$missing" ]; then
+            echo "::error::The save-slots run produced no evidence for:$missing"
+            exit 1
+          fi
+
+          {
+            echo "### save-slots evidence"
+            echo
+            echo "| state | texts | content | viewport | reachable height | events |"
+            echo "|---|---|---|---|---|---|"
+            for state in $expected; do
+              jq -r '
+                "| \(.saves_screen_state) | \(.texts) "
+                + "| \(.layout.contentWidth)x\(.layout.contentHeight) "
+                + "| \(.layout.viewportWidth)x\(.layout.viewportHeight) "
+                + "| \(.layout.reachableHeight) | \(.events) |"
+              ' "$root/$state/report.json"
+            done
+            echo
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: Upload browser evidence
         if: always() && steps.e2e.outcome != 'skipped'
         uses: actions/upload-artifact@v4

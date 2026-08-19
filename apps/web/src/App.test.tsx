@@ -5,10 +5,10 @@ import {
   type SessionState,
   type Store
 } from '@oath-and-coin/application';
-import { RULESET_VERSION } from '@oath-and-coin/content';
+import { RULESET_VERSION, SaveErrorCodes, SaveReadError } from '@oath-and-coin/content';
 import { ScreenState } from '@oath-and-coin/presentation';
 import { act } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from './App.tsx';
 import { browserContentSource, shippedContentVersion } from './content-source.ts';
@@ -46,7 +46,9 @@ vi.mock('./world/world-canvas.tsx', () => ({
 }));
 
 interface PageReport {
+  readonly screen: string;
   readonly screen_state: string;
+  readonly saves_screen_state: string | null;
   readonly content_version: string | null;
   readonly canonical_hash: string | null;
   readonly saved_state_hash: string | null;
@@ -126,7 +128,8 @@ function gatedController(run: RunRequest): {
       store,
       start: () => started,
       save: (slot) => inner.save(slot),
-      load: (slot) => inner.load(slot)
+      load: (slot) => inner.load(slot),
+      slots: () => inner.slots()
     },
     subscribers: () => held.size,
     finish: async () => {
@@ -146,7 +149,8 @@ describe('the page while its session is still arriving', () => {
       scenario: 'screen_normal',
       checkpoint: null,
       seed: 424242n,
-      locale: 'ru'
+      locale: 'ru',
+      screen: 'contract-offer'
     });
     const { container } = mount(<App createController={() => gated.controller} />);
 
@@ -158,7 +162,8 @@ describe('the page while its session is still arriving', () => {
       scenario: 'screen_normal',
       checkpoint: null,
       seed: 424242n,
-      locale: 'ru'
+      locale: 'ru',
+      screen: 'contract-offer'
     });
     const { container } = mount(<App createController={() => gated.controller} />);
 
@@ -183,7 +188,8 @@ describe('a page taken down while its session is still arriving', () => {
       scenario: 'screen_normal',
       checkpoint: null,
       seed: 424242n,
-      locale: 'ru'
+      locale: 'ru',
+      screen: 'contract-offer'
     });
     const { container, unmount } = mount(<App createController={() => gated.controller} />);
     expect(gated.subscribers()).toBe(1);
@@ -243,6 +249,167 @@ describe('the page after a save is loaded back', () => {
   });
 });
 
+describe('the page on its slots screen', () => {
+  // The URL is real, so it has to be put back: jsdom keeps one location for the whole
+  // file, and a `?screen=saves` left behind would silently open every test below this
+  // one on the wrong screen — passing, and about something else.
+  afterEach(() => {
+    window.history.replaceState(null, '', '/');
+  });
+
+  /**
+   * A real controller over the real bundle, writing into a map.
+   *
+   * The store is a map rather than IndexedDB because neither Vitest environment has one
+   * (`indexeddb-store.ts` records the measurement), and what these tests are about is
+   * the *page's* four transitions — the store behind them is `indexeddb-store.test.ts`'s
+   * subject and the browser evidence's. `broken` is what makes the failed-write
+   * transition reachable at all: a map never refuses.
+   */
+  function controllerOver(
+    slots: Map<string, Uint8Array>,
+    broken: { write: boolean } = { write: false }
+  ): SessionController {
+    return createSessionController({
+      request: {
+        content: browserContentSource(),
+        scenario: 'screen_normal',
+        checkpoint: null,
+        seed: 424242n
+      },
+      saves: {
+        read: (slot) => Promise.resolve(slots.get(slot) ?? null),
+        write: (slot, bytes) => {
+          if (broken.write) {
+            return Promise.reject(
+              new SaveReadError(SaveErrorCodes.StorageUnavailable, 'the fixture store is closed.')
+            );
+          }
+
+          slots.set(slot, bytes);
+          return Promise.resolve();
+        },
+        list: () => Promise.resolve([...slots.keys()] as ('slot-a' | 'slot-b' | 'slot-c')[])
+      },
+      now: () => '2026-08-19T09:41:00.000Z',
+      expected: { rulesetVersion: RULESET_VERSION, contentVersion: shippedContentVersion() }
+    });
+  }
+
+  /** Opens the page on `?screen=saves` and waits for the first read of the storage. */
+  async function openSaves(controller: SessionController): Promise<HTMLElement> {
+    // The URL is the way in, because it is the way a run declares which screen it opened
+    // (`run-request.ts`). Set on the real location rather than through a prop: the page
+    // parses `window.location.search` once at mount, and a test that bypassed it would
+    // be exercising a path no browser takes.
+    window.history.replaceState(null, '', '/?screen=saves');
+
+    const container = render(<App createController={() => controller} />);
+    await settle();
+
+    return container;
+  }
+
+  /** Lets every promise the page started run out, and React finish with the results. */
+  async function settle(): Promise<void> {
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  }
+
+  async function click(container: HTMLElement, testId: string): Promise<void> {
+    const element = container.querySelector(`[data-testid="${testId}"]`);
+
+    if (!(element instanceof HTMLButtonElement)) {
+      throw new Error(`The page has no button at [data-testid="${testId}"].`);
+    }
+
+    await act(async () => {
+      element.click();
+    });
+    await settle();
+  }
+
+  function savesStateIn(container: HTMLElement): string | null {
+    return reportIn(container).saves_screen_state;
+  }
+
+  it('opens on the slots screen the URL declared, and says so in its report', async () => {
+    const container = await openSaves(controllerOver(new Map()));
+
+    expect(reportIn(container).screen).toBe('saves');
+    expect(savesStateIn(container)).toBe(ScreenState.Empty);
+    expect(container.querySelector('[data-testid="saves-screen"]')).not.toBeNull();
+    // And the contract screen is not also on the page: two screens at once would make
+    // the rendered-UI hash a hash of both.
+    expect(container.querySelector('[data-testid="contract-offer-screen"]')).toBeNull();
+  });
+
+  it('occupies an empty slot when it is saved into', async () => {
+    const stored = new Map<string, Uint8Array>();
+    const container = await openSaves(controllerOver(stored));
+
+    await click(container, 'slot-a-save');
+
+    expect(stored.has('slot-a')).toBe(true);
+    // The line re-read the storage rather than assuming: `Normal` is the model's answer
+    // about slots that hold campaigns, and it can only be reached by asking again.
+    expect(savesStateIn(container)).toBe(ScreenState.Normal);
+    expect(container.querySelector('[data-testid="slot-a-error"]')).toBeNull();
+  });
+
+  it('leaves for the contract screen when a slot loads', async () => {
+    const stored = new Map<string, Uint8Array>();
+    const controller = controllerOver(stored);
+    const container = await openSaves(controller);
+    await click(container, 'slot-a-save');
+
+    await click(container, 'slot-a-load');
+
+    expect(reportIn(container).screen).toBe('contract-offer');
+    expect(container.querySelector('[data-testid="contract-offer-screen"]')).not.toBeNull();
+    // The campaign on the page is the one out of the file: a load answers no run hash
+    // and does answer a save checksum (design spec §4.4).
+    expect(reportIn(container).canonical_hash).toBeNull();
+    expect(reportIn(container).saved_state_hash).toMatch(/^[0-9a-f]{64}$/u);
+  });
+
+  it('stays where it is and shows the refusal when a slot cannot be loaded', async () => {
+    // "отказ на месте, без ухода с экрана". A page that navigated first would drop the
+    // player onto the previous session's screen with the reason nowhere.
+    const stored = new Map<string, Uint8Array>([['slot-b', new Uint8Array([1, 2, 3])]]);
+    const container = await openSaves(controllerOver(stored));
+    expect(savesStateIn(container)).toBe(ScreenState.Incomplete);
+
+    await click(container, 'slot-b-load');
+
+    expect(reportIn(container).screen).toBe('saves');
+    expect(container.querySelector('[data-testid="slot-b-error"]')).not.toBeNull();
+  });
+
+  it('keeps the campaign a slot holds when the write over it is refused', async () => {
+    // The transition "отказ записи → слот остаётся прежним и это видно". The storage is
+    // untouched by a refused write — that is what the port promises — so the line must
+    // still describe what is in it, with the refusal beside it and not instead of it.
+    const stored = new Map<string, Uint8Array>();
+    const broken = { write: false };
+    const container = await openSaves(controllerOver(stored, broken));
+    await click(container, 'slot-a-save');
+    const written = stored.get('slot-a');
+
+    broken.write = true;
+    await click(container, 'slot-a-save');
+    await click(container, 'slot-a-confirm');
+
+    expect(stored.get('slot-a')).toBe(written);
+    expect(container.querySelector('[data-testid="slot-a-error"]')).not.toBeNull();
+    expect(container.textContent).toContain('2026-08-19T09:41:00.000Z');
+    expect(savesStateIn(container)).toBe(ScreenState.Incomplete);
+  });
+});
+
 describe('the page over its own composition root', () => {
   it('runs the scenario its URL declares, through the controller it builds itself', () => {
     // The one test of the default `createController`: everything else here hands the
@@ -251,6 +418,7 @@ describe('the page over its own composition root', () => {
     const container = render(<App />);
     const report = reportIn(container);
 
+    expect(report.screen).toBe('contract-offer');
     expect(report.screen_state).toBe(ScreenState.Normal);
     expect(report.canonical_hash).toMatch(/^[0-9a-f]{64}$/u);
     expect(report.saved_state_hash).toBeNull();

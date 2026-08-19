@@ -67,12 +67,16 @@ const CANVAS = 'world-canvas';
  *
  * `overflows` is stated per state because reachability is satisfied trivially by content
  * that fits, and three of these five states hold two or three texts and can never fill a
- * 1280x800 window. Measured at 1280x800: loading, empty and error are 494px tall inside a
- * 494px viewport; incomplete is 696 and normal is 1011. So the check is real on exactly
- * two of them, and saying which turns "the reachability check passed" into a claim with
- * a subject — a layout change that stops the roster overflowing would otherwise leave the
- * whole measurement green and meaningless, which is `FULL_TYPESCRIPT_MIGRATION` §14.3's
- * warning arriving from the other direction.
+ * 1280x800 window. Measured at 1280x800, from the `report.json` each state writes under
+ * `artifacts/browser-evidence`: loading, empty and error are 452px tall inside a 452px
+ * viewport; incomplete
+ * is 696 and normal is 1011. The viewport was 494 until Task 16.8 put the screen link
+ * above the screen.
+ *
+ * So the check is real on exactly two of them, and saying which turns "the reachability
+ * check passed" into a claim with a subject — a layout change that stops the roster
+ * overflowing would otherwise leave the whole measurement green and meaningless, which is
+ * `FULL_TYPESCRIPT_MIGRATION` §14.3's warning arriving from the other direction.
  *
  * It says nothing about the *horizontal* question, and that one is not exercised at all:
  * measured, no shipped state overflows 1280px sideways, so the width assertion below is a
@@ -169,7 +173,17 @@ const catalogue = new Map(
 test.beforeAll(() => {
   // Cleared once per run, so a state that stops producing evidence leaves an empty
   // directory rather than last run's screenshot under this run's name.
-  rmSync(EVIDENCE_ROOT, { recursive: true, force: true });
+  //
+  // This file's own five directories, never the whole evidence root, and that changed in
+  // Task 16.8 for a reason worth stating: `save-slots.spec.ts` writes under
+  // `browser-evidence/saves/`, Playwright runs the two files in parallel workers, and a
+  // blanket `rmSync` of the parent would delete the other suite's artifacts partway
+  // through its run — nondeterministically, and only ever in the direction of "the
+  // evidence is missing" long after the tests themselves were green.
+  for (const { scenario } of SCENARIOS) {
+    rmSync(join(EVIDENCE_ROOT, scenario), { recursive: true, force: true });
+  }
+
   mkdirSync(EVIDENCE_ROOT, { recursive: true });
 });
 

@@ -2,6 +2,7 @@ import { join, resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { SAVE_SLOTS } from '@oath-and-coin/application';
 import { ERROR_CODES, KNOWN_SCREEN_STATES, SAVE_ERROR_CODES } from '@oath-and-coin/content';
 import {
   computeContentVersion,
@@ -14,12 +15,21 @@ import {
   FIELD_KEYS,
   QUALITATIVE_KEYS,
   REASON_DIRECTION_KEYS,
+  SAVES_TITLE_KEY,
+  SAVE_FIELD_KEYS,
+  SAVE_OVERWRITE_KEYS,
+  SAVE_SLOTS_STATE_KEYS,
+  SAVE_SLOT_STATUS_KEYS,
+  SCREEN_LINK_KEYS,
   SCREEN_STATES,
   SCREEN_STATE_KEYS,
   TITLE_KEY,
   WAVERED_KEYS,
   contractDisplayNameKey,
   errorKey,
+  saveSlotDisplayNameKey,
+  saveSlotLoadKey,
+  saveSlotSaveKey,
   tagKey,
   traitDisplayNameKey
 } from '@oath-and-coin/presentation';
@@ -102,15 +112,34 @@ function everyKeyTheScreenCanShow(): readonly string[] {
 }
 
 /**
- * Every key the application layer can produce.
+ * Every key the interface itself can produce — the texts the screens invent rather than
+ * the ones content authors (`ADR-012`).
  *
  * The save refusals: nine closed codes, each of which a player can be shown when a slot
  * refuses to load. Derived from the engine-side list rather than typed again here, for
  * the same reason `ERROR_CODES` is above — a tenth code must not be able to arrive
  * unchecked against either catalogue.
+ *
+ * Then the save-slots screen (Task 16.8), whose per-slot keys are the one place this
+ * file needs both sides at once in a new way: `packages/presentation` builds a key from
+ * whatever slot name it is handed and cannot know the closed set they come from, because
+ * `SAVE_SLOTS` is `packages/application`'s. Neither package can state these nine keys on
+ * its own, so they are stated here — which is the same reason `errorKey` has no list
+ * beside it either.
  */
 function everyKeyTheInterfaceCanShow(): readonly string[] {
-  return SAVE_ERROR_CODES.map(errorKey);
+  return [
+    ...SAVE_ERROR_CODES.map(errorKey),
+    SAVES_TITLE_KEY,
+    ...SAVE_SLOTS_STATE_KEYS,
+    ...SAVE_SLOT_STATUS_KEYS,
+    ...SAVE_FIELD_KEYS,
+    ...SAVE_OVERWRITE_KEYS,
+    ...SCREEN_LINK_KEYS,
+    ...SAVE_SLOTS.map(saveSlotDisplayNameKey),
+    ...SAVE_SLOTS.map(saveSlotSaveKey),
+    ...SAVE_SLOTS.map(saveSlotLoadKey)
+  ];
 }
 
 function everyKeyEitherLayerCanShow(): readonly string[] {
@@ -141,6 +170,28 @@ describe('the two shipped catalogues', () => {
         'invents belongs in ui-text/ru.json; content/locale/ru.json is frozen (ADR-012).'
     ).toEqual([]);
     expect(doubled, `keys answered by both catalogues at once: ${doubled.join(', ')}`).toEqual([]);
+  });
+
+  it('answer nothing nobody asks for, on the side that has no other guard', () => {
+    // The asymmetry `ADR-012` left open and Task 16.8 closes. `content/locale/ru.json`
+    // is held closed by the two pins below — its size and `content_version` — so a key
+    // nobody produces cannot be added to it unnoticed. `ui-text/ru.json` had no such
+    // guard at all: it is outside `content_version` by design, which is the whole point
+    // of it, so until this check existed a key could be added, never produced by any
+    // code, and sit there being translated and reviewed for nothing.
+    //
+    // Stated as an exact equality rather than "no orphans", because both directions are
+    // failures worth naming: a key with no producer is dead text, and a producer with no
+    // key is a screen that throws on the first player who reaches it (the completeness
+    // check above says the same thing, and says it about both catalogues at once).
+    const produced = new Set(everyKeyTheInterfaceCanShow());
+    const orphans = interfaceCatalogue.keys().filter((key) => !produced.has(key));
+
+    expect(
+      orphans,
+      `declared in ui-text/ru.json and produced by nothing: ${orphans.join(', ')}. A key no code ` +
+        'builds is not an interface text, it is a leftover.'
+    ).toEqual([]);
   });
 
   it('declare no key on both sides of the boundary', () => {

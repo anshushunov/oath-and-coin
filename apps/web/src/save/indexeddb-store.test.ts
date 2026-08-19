@@ -34,9 +34,11 @@ import { createIndexedDbSaveStore } from './indexeddb-store.ts';
  * What is **not** proven here: atomicity. A fake transaction's `oncomplete`/`onabort`
  * is this test file deciding the outcome up front, not two writers racing and one
  * losing — nothing here can show that a real, interrupted `readwrite` transaction
- * leaves a slot's previous bytes intact. That is `tests/e2e/save-slots.spec.ts`, Task
- * 16.8 step 7, in a live Chromium, interrupting a real transaction by monkey-patching
- * `IDBObjectStore.prototype.put`.
+ * leaves a slot's previous bytes intact. That is `tests/e2e/save-slots.spec.ts`'s "a
+ * write that is interrupted halfway" (Task 16.8), which exists: in a live Chromium, with
+ * this store running exactly as it ships, `IDBObjectStore.prototype.put` is replaced so
+ * the transaction the store opened aborts itself after the write is queued, and the
+ * seeded save is read back byte for byte afterwards.
  */
 
 afterEach(() => {

@@ -190,6 +190,9 @@ importers:
 
   tests/locale:
     devDependencies:
+      '@oath-and-coin/application':
+        specifier: workspace:*
+        version: link:../../packages/application
       '@oath-and-coin/content':
         specifier: workspace:*
         version: link:../../packages/content

@@ -14,7 +14,7 @@ import {
 
 import { useText } from '../../text.tsx';
 
-import { Captioned, KeyList, Label } from './labels.tsx';
+import { Captioned, KeyList, Label } from '../labels.tsx';
 
 /**
  * The first product screen of the new stack: a rendering of one

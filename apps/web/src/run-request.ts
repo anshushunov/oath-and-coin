@@ -1,5 +1,5 @@
 /**
- * The four inputs a visual run declares about itself, read from the query string.
+ * The five inputs a visual run declares about itself, read from the query string.
  *
  * `ADR-008` gave a run four declared inputs — scenario, checkpoint, seed and locale —
  * and `ADR-010` §157 keeps that intention while dropping the Godot-specific mechanism:
@@ -22,7 +22,23 @@ export interface RunRequest {
   readonly checkpoint: string | null;
   readonly seed: bigint;
   readonly locale: string;
+  /**
+   * Which of the two screens this run opens on.
+   *
+   * The fifth input, and it is one for the same reason the other four are (design spec
+   * §3: "не роутер: прогон обязан уметь заявить свои входы"). The page now draws two
+   * screens, and a browser run that could not say which of them it was on would produce
+   * a frame and a report that a third party cannot place — which is the whole property
+   * `ADR-008` asked declared inputs for. It is not a router: there is no history entry,
+   * no path and no navigation, only a run stating what it opened.
+   */
+  readonly screen: ScreenName;
 }
+
+/** The two screens the page can open on. Anything else is a typo, not an extension. */
+export const SCREEN_NAMES = ['contract-offer', 'saves'] as const;
+
+export type ScreenName = (typeof SCREEN_NAMES)[number];
 
 /**
  * What a run means when it declares nothing.
@@ -37,11 +53,15 @@ export const DEFAULT_RUN: RunRequest = {
   scenario: 'screen_normal',
   checkpoint: null,
   seed: 424242n,
-  locale: 'ru'
+  locale: 'ru',
+  // The screen the page had before it had two. Every URL already written down — in the
+  // corpus, in the browser evidence, in `ADR-008`'s examples — names no screen at all,
+  // and each of them has to keep meaning what it meant.
+  screen: 'contract-offer'
 };
 
 /** The parameters a run may declare. Anything else is a mistake, not an extension. */
-const KNOWN_PARAMETERS = ['scenario', 'checkpoint', 'seed', 'locale'] as const;
+const KNOWN_PARAMETERS = ['scenario', 'checkpoint', 'seed', 'locale', 'screen'] as const;
 
 /**
  * Reads a run request out of `location.search`.
@@ -70,8 +90,32 @@ export function parseRunRequest(search: string): RunRequest {
     // name is what a checkpoint is.
     checkpoint: stated(parameters, 'checkpoint') ?? DEFAULT_RUN.checkpoint,
     seed: parseSeed(stated(parameters, 'seed')),
-    locale: stated(parameters, 'locale') ?? DEFAULT_RUN.locale
+    locale: stated(parameters, 'locale') ?? DEFAULT_RUN.locale,
+    screen: parseScreen(stated(parameters, 'screen'))
   };
+}
+
+/**
+ * The screen this run opens on, refused unless it is one of the two that exist.
+ *
+ * Refused rather than defaulted, for the reason the whole module exists: `?screen=slots`
+ * quietly showing the contract offer would produce a screenshot, an `events.jsonl` and a
+ * green verdict about a screen nobody asked for.
+ */
+function parseScreen(stated: string | null): ScreenName {
+  if (stated === null) {
+    return DEFAULT_RUN.screen;
+  }
+
+  if (!(SCREEN_NAMES as readonly string[]).includes(stated)) {
+    throw new Error(
+      `Run parameter 'screen' must be one of ${SCREEN_NAMES.join(', ')}, not '${stated}'. A run ` +
+        'that names a screen this build does not have is a run whose evidence is about some ' +
+        'other screen than the one its URL claims.'
+    );
+  }
+
+  return stated as ScreenName;
 }
 
 /** The value of a parameter, or `null` when it was not stated at all. */

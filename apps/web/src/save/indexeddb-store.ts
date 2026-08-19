@@ -18,9 +18,10 @@ import { SaveErrorCodes, SaveReadError } from '@oath-and-coin/content';
  * **Atomicity is not proven here.** A fake transaction's `oncomplete`/`onabort` is the
  * test deciding the outcome in advance, not a real transaction interrupted mid-write;
  * nothing in this package can show that a real, aborted `readwrite` transaction leaves
- * a slot's previous bytes untouched. That is `tests/e2e/save-slots.spec.ts`, Task 16.8
- * step 7, against a live Chromium, interrupting a real transaction by monkey-patching
- * `IDBObjectStore.prototype.put`.
+ * a slot's previous bytes untouched. That is `tests/e2e/save-slots.spec.ts`'s "a write
+ * that is interrupted halfway" (Task 16.8), which exists: against a live Chromium, with
+ * this module running exactly as it ships, and with `IDBObjectStore.prototype.put`
+ * replaced so that the transaction opened below aborts itself after the write is queued.
  *
  * **Why the refusal never repeats `tx.error`.** Spike A (design spec §1.5) measured a
  * live Chromium after an explicit `abort()`: `tx.error` is `null`. There is nothing in

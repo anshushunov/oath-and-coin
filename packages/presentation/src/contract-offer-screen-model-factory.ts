@@ -138,13 +138,18 @@ export function failedScreen(errorCode: string, errorDetail: string): ContractOf
  * required: without it the rule above is exactly what it was, and every existing caller —
  * including corpus parity — keeps its own answer unchanged.
  *
- * **Nothing distinguishes the argument yet.** On the frozen corpus it is degenerate:
- * measured over all 50 entries that reached a state, none has a rejected first step and
- * none has a `read_model.contract` differing from the contract of its first applied step,
- * so `tests/oracle/src/restored-read-model.test.ts` would pass with this parameter
- * ignored. The check that tells the two rules apart needs a hand-made input and belongs
- * to Task 16.8. Written down because segment 4 already paid for the opposite habit — a
- * comment that declared a check to exist before it did.
+ * **The corpus does not distinguish the argument, and two hand-made inputs do.** On the
+ * frozen corpus it is degenerate: measured over all 50 entries that reached a state, none
+ * has a rejected first step and none has a `read_model.contract` differing from the
+ * contract of its first applied step, so `tests/oracle/src/restored-read-model.test.ts`
+ * passes with this parameter ignored. The two cases that redden when it is ignored are
+ * `contract-offer-screen-model-factory.test.ts`'s "is the one the caller named, over the
+ * lexicographically first fallback" and "…over the contract the first step answered"
+ * (Task 16.8). The round trip through a real envelope is `session-controller.test.ts`'s
+ * "is the screen that was on it when the only step was rejected", which is what already
+ * held this argument up from one layer above, in another package's suite. Written down
+ * because segment 4 already paid for the opposite habit — a comment that declared a check
+ * to exist before it did.
  */
 export function contractOfferScreenModel(
   state: GameState,

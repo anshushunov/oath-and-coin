@@ -22,6 +22,11 @@ export {
   type SaveDescriptor
 } from './save/envelope.ts';
 export { restoreDecidedSteps } from './save/restore-steps.ts';
+export {
+  describeSaveSlots,
+  saveErrorCodeOf,
+  type SaveSlotDescription
+} from './save/slot-descriptions.ts';
 export { SAVE_SLOTS, type SaveSlot } from './save/slots.ts';
 
 export {

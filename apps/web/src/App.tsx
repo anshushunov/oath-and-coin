@@ -1,21 +1,32 @@
 import {
+  SAVE_SLOTS,
   createSessionController,
+  type SaveSlot,
+  type SaveSlotDescription,
   type SessionController,
   type SessionState
 } from '@oath-and-coin/application';
 import { RULESET_VERSION } from '@oath-and-coin/content';
-import { readModelHash } from '@oath-and-coin/presentation';
+import {
+  SAVE_SLOTS_LOADING_SCREEN,
+  ScreenLinkKeys,
+  readModelHash,
+  saveSlotsScreenModel,
+  type SaveSlotsScreenModel
+} from '@oath-and-coin/presentation';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 
 import {
   browserContentSource,
   browserLocaleCatalogue,
+  browserUiTextCatalogue,
   shippedContentVersion
 } from './content-source.ts';
-import { parseRunRequest, type RunRequest } from './run-request.ts';
+import { parseRunRequest, type RunRequest, type ScreenName } from './run-request.ts';
 import { chooseSaveStore } from './save/choose-store.ts';
 import { ContractOfferScreen } from './screens/contract-offer/contract-offer-screen.tsx';
-import { TextSource } from './text.tsx';
+import { SavesScreen } from './screens/saves/saves-screen.tsx';
+import { TextSource, useText } from './text.tsx';
 import { WorldCanvas } from './world/world-canvas.tsx';
 
 /**
@@ -27,30 +38,38 @@ import { WorldCanvas } from './world/world-canvas.tsx';
  * a second copy of it that agrees by construction.
  *
  * **The run declares its own inputs** (`ADR-008` through `ADR-010` §157): scenario,
- * checkpoint, seed and locale arrive from the query string, so two runs of this page are
- * comparable by reading their URLs rather than by inspecting the source it was built
- * from. Task 13 carried them as three constants and said so; this is where they move.
+ * checkpoint, seed, locale and — since Task 16.8 — which of the two screens it opens on
+ * arrive from the query string, so two runs of this page are comparable by reading their
+ * URLs rather than by inspecting the source it was built from. Task 13 carried them as
+ * three constants and said so; this is where they move.
  *
- * **The session arrives, it is not computed** (Task 16, design spec §4.2). Until this
+ * **The session arrives, it is not computed** (Task 16, design spec §4.2). Until that
  * task the whole of it was one `useMemo` during render, which was honest while a session
  * was a run and nothing else: content is in the bundle and a scenario is two files, so
  * the answer was already there. A save is not — IndexedDB answers through events and the
  * desktop store answers across an IPC boundary — so the session became a value that
  * moves, and the page subscribes to it instead of computing it.
  *
- * **What that costs, and what it does not.** The page holds no state React renders from:
- * the one `useState` here holds the controller and never the session, and everything on
- * screen is a projection of one store snapshot. That is what makes an answer landing
- * after the page is gone harmless — React removes the subscription at unmount, so a late
- * write goes into a store nobody is reading, and `App.test.tsx` unmounts mid-flight and
- * checks both halves of that rather than asserting it in a comment.
+ * **What the page does hold, since the slots screen arrived.** Two things, and neither is
+ * a copy of anything the session has: which of the two screens is open, and the last
+ * answer the storage gave about the three slots. The second is state rather than a memo
+ * for the same reason the controller is — it is an answer that arrived, not a value that
+ * can be recomputed — and it is *not* on the session store on purpose: a slot's contents
+ * belong to the storage, another tab can move them, and nothing notifies anybody. So the
+ * screen re-reads after every operation rather than trusting what it drew last.
+ *
+ * **What that costs, and what it does not.** Every asynchronous answer this page waits
+ * for is dropped if it arrives after the page is gone: React removes the store
+ * subscription at unmount, and the slot read below is guarded by its own effect cleanup.
+ * `App.test.tsx` unmounts mid-flight and checks both halves of that rather than asserting
+ * it in a comment.
  */
 export function App({ createController = browserSessionController }: AppProps = {}) {
   // Once per mount rather than once per render: the session reads and validates the
   // whole content tree, and a screen that recomputed it on every render would do that
   // work again for every state change React ever makes.
   const run = useMemo(() => parseRunRequest(window.location.search), []);
-  const catalogue = useMemo(() => browserLocaleCatalogue(run.locale), [run.locale]);
+  const catalogue = useMemo(() => browserCatalogue(run.locale), [run.locale]);
   // `useState`, not `useMemo`, and the difference is the whole of what a session is.
   // A memo is a cache React is allowed to drop; dropping this one would build a second
   // controller with a second store, restart the run against it, and leave a `load()`
@@ -59,6 +78,8 @@ export function App({ createController = browserSessionController }: AppProps = 
   // mounted component and its value is state, not a cache.
   const [controller] = useState(() => createController(run));
   const session = useSyncExternalStore(controller.store.subscribe, controller.store.snapshot);
+  const [screen, setScreen] = useState<ScreenName>(run.screen);
+  const slots = useSaveSlots(controller, screen === 'saves');
 
   useEffect(() => {
     // In an effect rather than in the memo above: `useMemo` may run during a render
@@ -72,7 +93,31 @@ export function App({ createController = browserSessionController }: AppProps = 
   return (
     <main data-testid="app-root">
       <TextSource catalogue={catalogue}>
-        <ContractOfferScreen model={session.screen} />
+        <ScreenLink screen={screen} onOpen={setScreen} />
+
+        {screen === 'saves' ? (
+          <SavesScreen
+            model={slots.model}
+            onSave={(slot) => {
+              // The controller records a refusal rather than throwing one, so there is
+              // nothing to catch here: what a failed write leaves behind is a code on
+              // the session, which the re-read below puts back on the slot's own line.
+              void controller.save(requireSaveSlot(slot)).then(slots.reread, slots.reread);
+            }}
+            onLoad={(slot) => {
+              openLoaded(
+                controller,
+                requireSaveSlot(slot),
+                () => {
+                  setScreen('contract-offer');
+                },
+                slots.reread
+              );
+            }}
+          />
+        ) : (
+          <ContractOfferScreen model={session.screen} />
+        )}
       </TextSource>
 
       {/*
@@ -80,6 +125,10 @@ export function App({ createController = browserSessionController }: AppProps = 
         `TextSource` because it renders no text at all — a canvas has no text nodes, so
         the rendered-UI hash collected from the screen above cannot see it either way,
         and putting it under a text provider would suggest otherwise.
+
+        Drawn on both screens, and from the same model: it is the campaign behind the
+        page rather than a decoration of one screen, and a canvas that blanked while the
+        player looked at the slots would be claiming the campaign went away.
       */}
       <WorldCanvas model={session.screen} />
 
@@ -94,7 +143,7 @@ export function App({ createController = browserSessionController }: AppProps = 
       */}
       <p data-testid="node-api-exposure">{describeNodeApiExposure()}</p>
 
-      <RunReport run={run} session={session} />
+      <RunReport run={run} session={session} screen={screen} slots={slots.model} />
     </main>
   );
 }
@@ -110,6 +159,125 @@ export interface AppProps {
    * ask of a controller it does not hold.
    */
   readonly createController?: (run: RunRequest) => SessionController;
+}
+
+/**
+ * The three slots as the storage last answered, and the way to ask again.
+ *
+ * Asked only while the slots screen is open (`active`), because the question costs a
+ * storage round trip and a contract screen shows none of it. Re-asked whenever
+ * {@link reread} is called rather than after a fixed delay: the moments the answer can
+ * have changed are exactly the operations this page performs, and each of them calls it.
+ *
+ * The cleanup is what makes a late answer harmless — a read that lands after the screen
+ * has closed or after a newer read was asked for is dropped rather than drawn.
+ */
+function useSaveSlots(
+  controller: SessionController,
+  active: boolean
+): { readonly model: SaveSlotsScreenModel; readonly reread: () => void } {
+  const [described, setDescribed] = useState<readonly SaveSlotDescription[] | null>(null);
+  const [asked, setAsked] = useState(0);
+
+  useEffect(() => {
+    if (!active) {
+      return;
+    }
+
+    let current = true;
+    void controller.slots().then((answer) => {
+      if (current) {
+        setDescribed(answer);
+      }
+    });
+
+    return () => {
+      current = false;
+    };
+  }, [controller, active, asked]);
+
+  return {
+    // The loading screen until the first answer arrives, and never a set of empty slots:
+    // "nothing has been read yet" and "all three slots are empty" are different claims,
+    // and only one of them is true before the storage has spoken.
+    model: described === null ? SAVE_SLOTS_LOADING_SCREEN : saveSlotsScreenModel(described),
+    reread: () => {
+      setAsked((count) => count + 1);
+    }
+  };
+}
+
+/**
+ * Loads `slot` and leaves the slots screen only if the campaign actually arrived.
+ *
+ * The refusal is shown in place (design spec §3.1: "попытка загрузить нечитаемый слот →
+ * отказ на месте, без ухода с экрана"), and the session is what says which happened: the
+ * controller reports every refusal as `saveFailure` on the slot it was about. A page that
+ * navigated first and asked afterwards would drop the player onto whatever screen the
+ * previous session was showing, with the reason nowhere.
+ */
+function openLoaded(
+  controller: SessionController,
+  slot: SaveSlot,
+  onLoaded: () => void,
+  onRefused: () => void
+): void {
+  void controller.load(slot).then(() => {
+    const failure = controller.store.snapshot().saveFailure;
+
+    if (failure !== null && failure.slot === slot) {
+      onRefused();
+      return;
+    }
+
+    onLoaded();
+  }, onRefused);
+}
+
+/** The one link between the two screens — the button design spec §3 asks for. */
+function ScreenLink({
+  screen,
+  onOpen
+}: {
+  readonly screen: ScreenName;
+  readonly onOpen: (screen: ScreenName) => void;
+}) {
+  const text = useText();
+  const saves = screen === 'saves';
+
+  return (
+    <nav data-testid="screen-link">
+      <button
+        type="button"
+        data-testid={saves ? 'open-contract-offer' : 'open-saves'}
+        onClick={() => {
+          onOpen(saves ? 'contract-offer' : 'saves');
+        }}
+      >
+        {text(saves ? ScreenLinkKeys.OpenContractOffer : ScreenLinkKeys.OpenSaves)}
+      </button>
+    </nav>
+  );
+}
+
+/**
+ * The slot name a screen handed back, as one of the three this build has.
+ *
+ * The screen model carries slot names as plain strings — `packages/presentation` may not
+ * import `SAVE_SLOTS` — so the string comes back untyped and is checked here rather than
+ * cast. A cast would let a typo in a model reach a store as a key nobody declared.
+ */
+function requireSaveSlot(name: string): SaveSlot {
+  const slot = SAVE_SLOTS.find((candidate) => candidate === name);
+
+  if (slot === undefined) {
+    throw new Error(
+      `'${name}' is not one of this build's save slots (${SAVE_SLOTS.join(', ')}). The slots ` +
+        'screen is built from those three and from nothing a player can type.'
+    );
+  }
+
+  return slot;
 }
 
 /**
@@ -140,6 +308,20 @@ function browserSessionController(run: RunRequest): SessionController {
 }
 
 /**
+ * Both catalogues as one lookup: the texts content authors and the texts the screens
+ * invent (`ADR-012`).
+ *
+ * Merged rather than threaded as two providers because a screen resolves one key at a
+ * time and does not know which side of the boundary a key came from — the contract
+ * screen's are content's, the slots screen's are both. The merge is only safe because no
+ * key may sit in both files, which is not an assumption: `tests/locale` asserts it over
+ * the whole of both catalogues, including keys nothing reads yet.
+ */
+function browserCatalogue(locale: string): ReadonlyMap<string, string> {
+  return new Map([...browserLocaleCatalogue(locale), ...browserUiTextCatalogue(locale)]);
+}
+
+/**
  * What this run says about itself, for the browser evidence to read.
  *
  * Deliberately only the facts the page is the sole source of — the inputs it parsed and
@@ -153,17 +335,37 @@ function browserSessionController(run: RunRequest): SessionController {
  * from the screen element specifically, and a diagnostic that sat inside it would put its
  * own JSON into that hash.
  */
-function RunReport({ run, session }: { readonly run: RunRequest; readonly session: SessionState }) {
+function RunReport({
+  run,
+  session,
+  screen,
+  slots
+}: {
+  readonly run: RunRequest;
+  readonly session: SessionState;
+  readonly screen: ScreenName;
+  readonly slots: SaveSlotsScreenModel;
+}) {
   const report = {
     scenario: run.scenario,
     checkpoint: run.checkpoint,
     seed: run.seed.toString(),
     locale: run.locale,
+    // Which screen the page is actually on, beside the four run inputs. Not read off
+    // `run.screen`: a load moves the player back to the contract offer, and a report
+    // that echoed the URL would describe the run that was asked for rather than the one
+    // the frame beside it shows.
+    screen,
     // Reported exactly as the presentation layer spells it. The corpus writes the same
     // states lower-cased, and the verdict lower-cases when it compares — which is where
     // the parity tool does it too. Translating here would put the same convention in two
     // places, and two places is where conventions drift.
     screen_state: session.screen.state,
+    // The slots screen's own state, and `null` when that screen is not the one on the
+    // page. Its own field rather than folded into `screen_state`: that one is a fact
+    // about the run, oracle parity reads it, and a run whose player happened to open the
+    // slots screen has not changed what its scenario produced.
+    saves_screen_state: screen === 'saves' ? slots.state : null,
     // Computed from the model this page is showing, by the same function the corpus is
     // measured with. What makes it evidence is that the verdict compares it against a
     // hash recomputed from the corpus entry rather than against anything this page says.
