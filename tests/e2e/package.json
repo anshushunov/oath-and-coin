@@ -5,6 +5,10 @@
   "type": "module",
   "description": "Browser evidence — Playwright runs against the built web app (ADR-010, Task 15)",
   "devDependencies": {
+    "@oath-and-coin/application": "workspace:*",
+    "@oath-and-coin/content": "workspace:*",
+    "@oath-and-coin/presentation": "workspace:*",
+    "@oath-and-coin/simulation": "workspace:*",
     "@playwright/test": "1.62.1",
     "typescript": "6.0.3"
   }

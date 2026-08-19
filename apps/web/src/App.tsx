@@ -1,9 +1,12 @@
-import { startSession } from '@oath-and-coin/application';
+import { startSession, type SessionState } from '@oath-and-coin/application';
+import { readModelHash } from '@oath-and-coin/presentation';
 import { useMemo } from 'react';
 
 import { browserContentSource, browserLocaleCatalogue } from './content-source.ts';
+import { parseRunRequest, type RunRequest } from './run-request.ts';
 import { ContractOfferScreen } from './screens/contract-offer/contract-offer-screen.tsx';
 import { TextSource } from './text.tsx';
+import { WorldCanvas } from './world/world-canvas.tsx';
 
 /**
  * The browser build's root: the port of `Main._Ready` minus Godot.
@@ -13,11 +16,10 @@ import { TextSource } from './text.tsx';
  * screen a player sees is produced by the same rule the frozen corpus measures,
  * rather than by a second copy of it that agrees by construction.
  *
- * **The run is fixed here, and that is Task 13's boundary rather than an oversight.**
- * `ADR-008` gives a visual run four declared inputs — scenario, checkpoint, seed and
- * locale — and Task 15 is where they arrive from the query string, together with the
- * evidence a run produces. Reading them here first would put the parsing in one task
- * and the thing that proves it works in another.
+ * **The run declares its own inputs** (`ADR-008` through `ADR-010` §157): scenario,
+ * checkpoint, seed and locale arrive from the query string, so two runs of this page are
+ * comparable by reading their URLs rather than by inspecting the source it was built
+ * from. Task 13 carried them as three constants and said so; this is where they move.
  *
  * There is no store yet either. `createStore` is written and tested and waits for
  * `useSyncExternalStore`, but nothing on this screen changes state: a session is
@@ -25,36 +27,21 @@ import { TextSource } from './text.tsx';
  * shape guessed before its first caller, which is the same reason `packages/application`
  * has one port rather than three.
  */
-
-/** The scenario the browser build shows until Task 15 lets a run declare its own. */
-const DEFAULT_SCENARIO = 'screen_normal';
-
-/**
- * The seed the scenario runner's CLI defaults to. The same one, so that what the page
- * shows can be reproduced from a command line without anyone having to know which
- * number the page picked.
- */
-const DEFAULT_SEED = 424242n;
-
-/** `project.godot` pinned the same one, and `content/locale/` ships only this catalogue. */
-const DEFAULT_LOCALE = 'ru';
-
 export function App() {
   // Once per mount rather than once per render: the session reads and validates the
   // whole content tree, and a screen that recomputed it on every render would do that
   // work again for every state change React ever makes.
-  const catalogue = useMemo(() => browserLocaleCatalogue(DEFAULT_LOCALE), []);
+  const run = useMemo(() => parseRunRequest(window.location.search), []);
+  const catalogue = useMemo(() => browserLocaleCatalogue(run.locale), [run.locale]);
   const session = useMemo(
     () =>
       startSession({
         content: browserContentSource(),
-        scenario: DEFAULT_SCENARIO,
-        // The manifest's last checkpoint. Naming one here would mean this file knew
-        // something about the scenario that the scenario already states.
-        checkpoint: null,
-        seed: DEFAULT_SEED
+        scenario: run.scenario,
+        checkpoint: run.checkpoint,
+        seed: run.seed
       }),
-    []
+    [run]
   );
 
   return (
@@ -62,6 +49,14 @@ export function App() {
       <TextSource catalogue={catalogue}>
         <ContractOfferScreen model={session.screen} />
       </TextSource>
+
+      {/*
+        The schematic world behind the screen (`DEC-007`, Task 14). Outside the
+        `TextSource` because it renders no text at all — a canvas has no text nodes, so
+        the rendered-UI hash collected from the screen above cannot see it either way,
+        and putting it under a text provider would suggest otherwise.
+      */}
+      <WorldCanvas model={session.screen} />
 
       {/*
         Not part of the screen, and deliberately after it: one fact worth reporting
@@ -73,7 +68,49 @@ export function App() {
         options back out of the code that set them.
       */}
       <p data-testid="node-api-exposure">{describeNodeApiExposure()}</p>
+
+      <RunReport run={run} session={session} />
     </main>
+  );
+}
+
+/**
+ * What this run says about itself, for the browser evidence to read.
+ *
+ * Deliberately only the facts the page is the sole source of — the inputs it parsed and
+ * the three identifiers the session produced. It does **not** report the rendered-UI
+ * hash: that one is about the markup, and a page computing a claim about its own markup
+ * is a page marking its own work. The end-to-end run collects the texts out of the DOM
+ * and hashes them itself, so the two sides of that comparison stay unrelated.
+ *
+ * Hidden rather than styled away, and outside `contract-offer-screen` rather than inside
+ * it: `FULL_TYPESCRIPT_MIGRATION` §14.3 recorded why the rendered-UI hash is collected
+ * from the screen element specifically, and a diagnostic that sat inside it would put its
+ * own JSON into that hash.
+ */
+function RunReport({ run, session }: { readonly run: RunRequest; readonly session: SessionState }) {
+  const report = {
+    scenario: run.scenario,
+    checkpoint: run.checkpoint,
+    seed: run.seed.toString(),
+    locale: run.locale,
+    // Reported exactly as the presentation layer spells it. The corpus writes the same
+    // states lower-cased, and the verdict lower-cases when it compares — which is where
+    // the parity tool does it too. Translating here would put the same convention in two
+    // places, and two places is where conventions drift.
+    screen_state: session.screen.state,
+    // Computed from the model this page is showing, by the same function the corpus is
+    // measured with. What makes it evidence is that the verdict compares it against a
+    // hash recomputed from the corpus entry rather than against anything this page says.
+    read_model_hash: readModelHash(session.screen),
+    content_version: session.contentVersion,
+    canonical_hash: session.canonicalHash
+  };
+
+  return (
+    <div hidden data-testid="run-report">
+      {JSON.stringify(report)}
+    </div>
   );
 }
 
