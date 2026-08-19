@@ -16,7 +16,13 @@ import {
 } from '@oath-and-coin/simulation';
 import { describe, expect, it } from 'vitest';
 
-import { SAVE_FORMAT_VERSION, buildSave, readSave, saveChecksum } from './envelope.ts';
+import {
+  MAX_SAVE_BYTES,
+  SAVE_FORMAT_VERSION,
+  buildSave,
+  readSave,
+  saveChecksum
+} from './envelope.ts';
 
 /**
  * The envelope: version, signature and refusal table (design spec §2.3-§2.4).
@@ -152,6 +158,68 @@ describe('reading back a save nobody tampered with', () => {
       logicalTime: state.metadata.logicalTime,
       focusedContract: FOCUSED_CONTRACT
     });
+  });
+});
+
+describe('запись отказывается произвести файл, который чтение отвергнет', () => {
+  // The domain half of this promise is exercised by the invariant table further down.
+  // These two are the other half — the snapshot's own contract, and the size ceiling —
+  // and both need a campaign the content loader can no longer build, since the loader
+  // now states the same limits. So the state is assembled directly: a real `GameState`
+  // with one field replaced, which is exactly what a defect in a future transition would
+  // hand `buildSave`.
+
+  it('когда снимок не проходит собственный контракт чтения', () => {
+    const base = aState();
+    const [id, hero] = base.heroes.entries()[0]!;
+    const tooLong = 'x'.repeat(300);
+
+    const withOverlongName: GameState = {
+      ...base,
+      heroes: base.heroes.set(id, { ...hero, displayNameKey: tooLong })
+    };
+
+    expect(() =>
+      buildSave({
+        state: withOverlongName,
+        focusedContract: FOCUSED_CONTRACT,
+        createdAt: CREATED_AT
+      })
+    ).toThrow(/SAVE_OUT_OF_BOUNDS/u);
+  });
+
+  it('когда файл вышел бы за потолок, который держит любое хранилище слотов', () => {
+    // `MAX_SAVE_BYTES` is a promise every store keeps (`save-store-contract.test.ts`
+    // measures both), and this is the promise on the producing side: what this build
+    // writes, a store may accept. Reached through `definition`, a content id, which
+    // neither the codec nor the content contracts bound by length — the file-size
+    // ceiling is what bounds it, and this is the check that says so.
+    const base = aState();
+    const [id, hero] = base.heroes.entries()[0]!;
+    const enormous = `core:${'a'.repeat(MAX_SAVE_BYTES + 16)}` as ContentId;
+
+    const withEnormousDefinition: GameState = {
+      ...base,
+      heroes: base.heroes.set(id, { ...hero, definition: enormous })
+    };
+
+    expect(() =>
+      buildSave({
+        state: withEnormousDefinition,
+        focusedContract: FOCUSED_CONTRACT,
+        createdAt: CREATED_AT
+      })
+    ).toThrow(new RegExp(`${MAX_SAVE_BYTES}-byte ceiling`, 'u'));
+  });
+
+  it('и когда фокусный контракт не принадлежит этой кампании', () => {
+    expect(() =>
+      buildSave({
+        state,
+        focusedContract: 'core:contract_nobody_authored' as ContentId,
+        createdAt: CREATED_AT
+      })
+    ).toThrow(/SAVE_INCONSISTENT/u);
   });
 });
 
