@@ -24,6 +24,18 @@ export {
 export { restoreDecidedSteps } from './save/restore-steps.ts';
 export { SAVE_SLOTS, type SaveSlot } from './save/slots.ts';
 
-export { screenFor, startSession, type SessionRequest, type SessionState } from './session.ts';
+export {
+  createSessionController,
+  type SessionController,
+  type SessionControllerDeps
+} from './session-controller.ts';
+
+export {
+  screenFor,
+  startSession,
+  type SaveFailure,
+  type SessionRequest,
+  type SessionState
+} from './session.ts';
 
 export { createStore, type Store } from './store.ts';

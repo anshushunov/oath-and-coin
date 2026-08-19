@@ -18,6 +18,13 @@ import { createRoot } from 'react-dom/client';
 /** React refuses to run `act` unless the environment says it is a test one. */
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+/** A mounted tree, and the one thing a test can do to it besides read it. */
+export interface Mounted {
+  readonly container: HTMLElement;
+  /** Unmounts the tree, flushing every effect cleanup React owes it. */
+  unmount(): void;
+}
+
 /**
  * Mounts `element` into a fresh container attached to the document and answers it.
  *
@@ -26,6 +33,19 @@ import { createRoot } from 'react-dom/client';
  * two the same shape here means the DOM these tests walk is the DOM a browser gets.
  */
 export function render(element: ReactNode): HTMLElement {
+  return mount(element).container;
+}
+
+/**
+ * The same mount, with the unmount kept.
+ *
+ * Almost every test here mounts and reads, which is what {@link render} is for. What
+ * needs this one is the question `render` cannot ask: what a component does when it is
+ * taken down while something it started is still in flight. That is a property of the
+ * cleanup React runs at unmount, and there is no way to observe a cleanup without being
+ * able to cause one.
+ */
+export function mount(element: ReactNode): Mounted {
   const container = document.createElement('div');
   document.body.append(container);
 
@@ -34,5 +54,12 @@ export function render(element: ReactNode): HTMLElement {
     root.render(element);
   });
 
-  return container;
+  return {
+    container,
+    unmount: () => {
+      act(() => {
+        root.unmount();
+      });
+    }
+  };
 }

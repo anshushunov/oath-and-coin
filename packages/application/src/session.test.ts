@@ -253,3 +253,38 @@ describe('the content version a session reports', () => {
     expect(session(ranScenario).canonicalHash).toMatch(/^[0-9a-f]{64}$/u);
   });
 });
+
+describe('the campaign a session carries', () => {
+  it('is the state the run ended on, not a projection of it', () => {
+    // Until Task 16 a session kept the screen and threw the campaign away, and a
+    // campaign is the whole of what a save file holds — there is nothing to write
+    // without it. The screen cannot stand in for it: it is a lossy projection by
+    // design, and `snapshot-codec.ts`'s own module comment says why (design spec §1.1).
+    const state = session(ranScenario).state;
+
+    expect(state).not.toBeNull();
+    expect(state?.history).toHaveLength(1);
+    expect(state?.metadata.contentVersion).toBe(computeContentVersion(contentTree()));
+  });
+
+  it('is absent exactly where the content version already is', () => {
+    for (const state of [session(loadingScenario, null), session(failingScenario, null)]) {
+      expect(state.state).toBeNull();
+      expect(state.contentVersion).toBeNull();
+    }
+  });
+});
+
+describe('what a fresh run says about saving', () => {
+  it('has no save behind it and no refusal in front of it', () => {
+    // Both `null` from a run rather than from a save: `savedStateHash` names the file
+    // this session was loaded from or last written to, and a run has written none.
+    // Reported as `null` rather than as an empty string for the reason the module
+    // comment gives about the other two — "no save" and "a save whose signature is the
+    // empty string" are different claims.
+    const state = session(ranScenario);
+
+    expect(state.savedStateHash).toBeNull();
+    expect(state.saveFailure).toBeNull();
+  });
+});

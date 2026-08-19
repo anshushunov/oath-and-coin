@@ -1,12 +1,19 @@
-import { artifactHash, loadAndRunScenario, type ScenarioRunResult } from '@oath-and-coin/content';
+import {
+  artifactHash,
+  loadAndRunScenario,
+  type SaveErrorCode,
+  type ScenarioRunResult
+} from '@oath-and-coin/content';
 import {
   LOADING_SCREEN,
   contractOfferScreenModel,
   failedScreen,
   type ContractOfferScreenModel
 } from '@oath-and-coin/presentation';
+import type { GameState } from '@oath-and-coin/simulation';
 
 import type { ContentSourcePort } from './ports.ts';
+import type { SaveSlot } from './save/slots.ts';
 
 /**
  * The load sequence turned into a screen — `game/app/Main.cs` without Godot.
@@ -29,18 +36,71 @@ export interface SessionRequest {
 }
 
 /**
- * Everything a screen needs, and the three facts a bug report needs beside it.
+ * One refusal from the save store, as a session reports it rather than as an exception.
  *
- * `contentVersion` and `canonicalHash` are `null` exactly when no run produced them —
- * a loading screen has read no content, a failed one produced no artifact. Reported as
- * `null` rather than as an empty string because "this run has no artifact" and "this
- * run has an artifact with no bytes" are different claims, and only one of them is ever
- * true.
+ * A refusal is something a player is shown — the slots screen turns {@link code} into a
+ * locale key (design spec §2.4) — so it has to be a value the screen can read, and a
+ * thrown `SaveReadError` is not: it would leave the session controller's caller holding
+ * an error with nowhere to put it, at which point every caller invents its own answer.
+ *
+ * {@link slot} is here because the code alone does not say which of the three slots
+ * refused, and the screen shows three lines. {@link detail} is for a human reading a
+ * console and is deliberately not hashed anywhere, for the same reason
+ * {@link SessionState.errorDetail} is not.
+ */
+export interface SaveFailure {
+  readonly slot: SaveSlot;
+  readonly code: SaveErrorCode;
+  readonly detail: string;
+}
+
+/**
+ * Everything a screen needs, the campaign behind it, and the facts a bug report needs
+ * beside both.
+ *
+ * `contentVersion`, `canonicalHash` and `state` are `null` exactly when no run produced
+ * them — a loading screen has read no content, a failed one produced neither an artifact
+ * nor a campaign. Reported as `null` rather than as an empty string because "this run has
+ * no artifact" and "this run has an artifact with no bytes" are different claims, and
+ * only one of them is ever true.
  */
 export interface SessionState {
   readonly screen: ContractOfferScreenModel;
   readonly contentVersion: string | null;
+  /**
+   * The artifact hash of the run behind this screen, or `null` when there was no run.
+   *
+   * `null` for a session obtained by loading a save, and that is a decision rather than
+   * an omission (design spec §4.4). This hash is computed over a whole `ScenarioOutcome`
+   * — rejected steps and entire commands included — and a save carries none of that: a
+   * refused command produces no event, so nothing about it survives in the campaign. A
+   * hash computed over the incomplete steps would still be 64 hex characters and would
+   * still be published by `RunReport`, where oracle parity reads it; it would simply be
+   * a different number claiming to be that one.
+   */
   readonly canonicalHash: string | null;
+  /**
+   * The campaign itself, or `null` where {@link contentVersion} already is.
+   *
+   * A session kept only the screen until Task 16, and a screen cannot be saved: it is a
+   * lossy projection of the campaign by design (design spec §1.1). Saving needs the
+   * campaign, so the campaign is what a session now carries — the screen beside it stays
+   * exactly what it was.
+   */
+  readonly state: GameState | null;
+  /**
+   * The checksum signing the save this session was loaded from or last written to, and
+   * `null` when neither has happened.
+   *
+   * The very number `saveChecksum` puts in the file, read back off it rather than
+   * recomputed by a second rule: the segment has one algorithm for signing a save, and a
+   * screen comparing "what is on screen" against "what is in the slot" has to be
+   * comparing the same one. Not named `snapshotHash`, which `packages/presentation`
+   * already exports for the hash of a set of rendered texts.
+   */
+  readonly savedStateHash: string | null;
+  /** The last refusal from the save store, or `null` when the last save or load worked. */
+  readonly saveFailure: SaveFailure | null;
   /**
    * The underlying failure message, kept beside the screen and never inside what gets
    * hashed.
@@ -68,6 +128,11 @@ export function startSession(request: SessionRequest): SessionState {
     contentVersion:
       result.kind === 'ran' ? result.outcome.finalState.metadata.contentVersion : null,
     canonicalHash: result.kind === 'ran' ? artifactHash(result.outcome) : null,
+    state: result.kind === 'ran' ? result.outcome.finalState : null,
+    // A run has written no save and been refused by no store: both are facts about a
+    // session's history with the slot store, and this session has none yet.
+    savedStateHash: null,
+    saveFailure: null,
     errorDetail: result.kind === 'failed' ? result.errorDetail : null
   };
 }

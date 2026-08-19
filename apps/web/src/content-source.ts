@@ -1,6 +1,7 @@
 import type { ContentSourcePort } from '@oath-and-coin/application';
 import {
   UI_TEXT_ROOT,
+  computeContentVersion,
   loadLocaleCatalogue,
   loadUiTextCatalogue,
   memoryFileSource,
@@ -158,6 +159,22 @@ export function browserContentSource(): ContentSourcePort {
     scenarios: requireRepositoryRoot(SCENARIO_ROOT),
     openContentRoot: (repositoryRelativePath) => openRepositoryRoot(repositoryRelativePath)
   };
+}
+
+/**
+ * What this build's shipped content digests to — the number a save is refused by when
+ * it names another one (design spec §2.4, `SAVE_CONTENT_MISMATCH`).
+ *
+ * Over `content/` specifically, not over whatever tree the running scenario decided on.
+ * A save is a campaign of *this build*, and a build is the tree it ships; a fixture root
+ * under `scenarios/fixtures/` is a tree a test invented, and a campaign built on one is
+ * not something this build can promise to read back. Computed through the same
+ * {@link computeContentVersion} the loader stamps into `GameMetadata`, so the two
+ * numbers are the same number for every run whose content root is the shipped one —
+ * which `App.test.tsx` checks rather than assumes.
+ */
+export function shippedContentVersion(): string {
+  return computeContentVersion(requireRepositoryRoot(SHIPPED_CONTENT_ROOT));
 }
 
 /**
