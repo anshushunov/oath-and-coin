@@ -1,4 +1,4 @@
-import type { ContentId, DecisionResult } from '@oath-and-coin/simulation';
+import type { CausalTrace, ContentId } from '@oath-and-coin/simulation';
 
 import type { QualitativeGrade } from './qualitative-scale.ts';
 import { ScreenState, type ReasonDirection } from './screen-state.ts';
@@ -206,6 +206,26 @@ function requireNoContractContent(model: ContractOfferScreenModel): void {
  * shapes agree at the call site, not at the declaration. Both call sites — oracle
  * parity and the application session — are typed and inside the gate.
  */
+/**
+ * Only what this layer reads off a decision. `DecisionResult` is assignable to it
+ * structurally, so nothing maps.
+ *
+ * The shape is needed because a decision rebuilt from a save knows the action, the score
+ * and the trace — and does not know `consideredActions`, which is on neither the event
+ * nor the trace. `DecisionResult` makes that field mandatory, so declaring the input as
+ * `DecisionResult` would leave every restorer with one honest option and one invented
+ * one. A required field nobody restoring can supply is an invitation to make it up.
+ *
+ * `selectedScore` stays nullable for the same reason `DecisionResult` keeps it nullable:
+ * a red line closes a decision before any score exists, and zero would read as consent
+ * (`TDD` §8).
+ */
+export interface DecidedOutcome {
+  readonly selectedAction: ContentId;
+  readonly selectedScore: number | null;
+  readonly trace: CausalTrace;
+}
+
 export interface DecidedStep {
   /**
    * Only the one field of the command this layer needs. `ScenarioCommand` itself is
@@ -214,6 +234,5 @@ export interface DecidedStep {
    */
   readonly command: { readonly contract: ContentId };
   readonly heroDefinition: ContentId | null;
-  /** The decision itself is a simulation type, so it crosses the boundary intact. */
-  readonly decision: DecisionResult | null;
+  readonly decision: DecidedOutcome | null;
 }

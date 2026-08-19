@@ -1,22 +1,14 @@
-import { readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
-
-import { parseContentId, type ContentId } from '@oath-and-coin/simulation';
 import {
   RULESET_VERSION,
   applyScenarioCommands,
   artifactHash,
   createInitialState,
   decodeSnapshot,
-  encodeSnapshot,
-  runScenario,
-  type ContentSet,
-  type ScenarioCommand,
-  type ScenarioOutcome
+  encodeSnapshot
 } from '@oath-and-coin/content';
-import { loadContentSet } from '@oath-and-coin/content/node';
-import { readCorpusIndex } from '@oath-and-coin/scenario-runner';
 import { describe, expect, it } from 'vitest';
+
+import { allCorpusRecords, corpusRecord, inputsOf, runCorpusRecord } from './corpus.ts';
 
 /**
  * A run continues from a state that came back from a save — the half of the round trip
@@ -28,79 +20,6 @@ import { describe, expect, it } from 'vitest';
  * then replaying the rest and comparing against a whole, uninterrupted run of the same
  * commands.
  */
-
-const repoRoot = resolve(import.meta.dirname, '..', '..', '..');
-const corpusRoot = join(repoRoot, 'migration', 'oracle', 'v1');
-
-interface RawCommand {
-  readonly command_id: number;
-  readonly hero_index: number;
-  readonly contract: string;
-  readonly expected_state_version: number;
-}
-
-/** The corpus entry's own JSON shape, read back only for the fields this file needs. */
-interface CorpusRecord {
-  readonly scenario: string;
-  readonly checkpoint: string;
-  readonly seed: string;
-  readonly canonical_sha256: string | null;
-  readonly final_state: unknown;
-  readonly inputs: {
-    readonly content_root: string;
-    readonly commands: readonly RawCommand[];
-  };
-}
-
-/** Every entry the manifest indexes, read from disk. */
-function allCorpusRecords(): readonly CorpusRecord[] {
-  const { entries } = readCorpusIndex(corpusRoot);
-  return entries.map(
-    (entry) => JSON.parse(readFileSync(join(corpusRoot, entry.path), 'utf8')) as CorpusRecord
-  );
-}
-
-/** The one entry for a scenario at a given seed. */
-function corpusRecord(scenario: string, seed: bigint): CorpusRecord {
-  const seedText = String(seed);
-  const record = allCorpusRecords().find(
-    (candidate) => candidate.scenario === scenario && candidate.seed === seedText
-  );
-
-  if (record === undefined) {
-    throw new Error(`no corpus entry for scenario '${scenario}' at seed ${seedText}`);
-  }
-
-  return record;
-}
-
-/**
- * The content, commands and seed a corpus record was produced from — everything
- * {@link applyScenarioCommands} and {@link createInitialState} need, read from
- * `record.inputs` rather than re-derived, so this file measures the port against what
- * the corpus recorded running, not against a second guess at it.
- */
-function inputsOf(record: CorpusRecord): {
-  readonly content: ContentSet;
-  readonly commands: readonly ScenarioCommand[];
-  readonly seed: bigint;
-} {
-  const content = loadContentSet(join(repoRoot, record.inputs.content_root));
-  const commands: readonly ScenarioCommand[] = record.inputs.commands.map((command) => ({
-    commandId: command.command_id,
-    heroIndex: command.hero_index,
-    contract: parseContentId(command.contract) as ContentId,
-    expectedStateVersion: command.expected_state_version
-  }));
-
-  return { content, commands, seed: BigInt(record.seed) };
-}
-
-/** Replays a corpus record's own inputs, whole, through the port. */
-function runCorpusRecord(record: CorpusRecord): ScenarioOutcome {
-  const { content, commands, seed } = inputsOf(record);
-  return runScenario(content, commands, seed);
-}
 
 describe('continuing a run from a state that came back from a save', () => {
   it('продолжение с загруженного состояния даёт замороженное финальное состояние', () => {
@@ -126,9 +45,7 @@ describe('continuing a run from a state that came back from a save', () => {
     // а не оставит мутанта на счётчик розыгрышей незамеченным молча.
     expect(prefix.finalState.metadata.nextDecisionOrdinal).toBeGreaterThan(0n);
 
-    const reloaded = decodeSnapshot(
-      JSON.parse(JSON.stringify(encodeSnapshot(prefix.finalState)))
-    );
+    const reloaded = decodeSnapshot(JSON.parse(JSON.stringify(encodeSnapshot(prefix.finalState))));
 
     const continued = applyScenarioCommands(reloaded, commands.slice(k));
 
@@ -138,7 +55,10 @@ describe('continuing a run from a state that came back from a save', () => {
     // не остаётся ничего из того, что решил, скольким событиям привёл к и как
     // объяснил продолженный прогон.
     expect(
-      artifactHash({ steps: [...prefix.steps, ...continued.steps], finalState: continued.finalState })
+      artifactHash({
+        steps: [...prefix.steps, ...continued.steps],
+        finalState: continued.finalState
+      })
     ).toBe(record.canonical_sha256);
   });
 
@@ -151,7 +71,9 @@ describe('continuing a run from a state that came back from a save', () => {
 
     for (const record of records) {
       const outcome = runCorpusRecord(record);
-      const reloaded = decodeSnapshot(JSON.parse(JSON.stringify(encodeSnapshot(outcome.finalState))));
+      const reloaded = decodeSnapshot(
+        JSON.parse(JSON.stringify(encodeSnapshot(outcome.finalState)))
+      );
 
       // Если кодек потерял поле, которое несёт артефакт, замороженное число
       // разойдётся. Это страж от расхождения двух проекций — вместо обещания,

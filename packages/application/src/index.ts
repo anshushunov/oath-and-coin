@@ -14,6 +14,8 @@
 
 export type { ContentSourcePort } from './ports.ts';
 
+export { restoreDecidedSteps } from './save/restore-steps.ts';
+
 export { screenFor, startSession, type SessionRequest, type SessionState } from './session.ts';
 
 export { createStore, type Store } from './store.ts';

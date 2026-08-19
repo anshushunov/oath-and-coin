@@ -49,6 +49,7 @@ export {
   createContractOfferScreenModel,
   type ContractLine,
   type ContractOfferScreenModel,
+  type DecidedOutcome,
   type DecidedStep,
   type HeroCard,
   type ReasonLine,
