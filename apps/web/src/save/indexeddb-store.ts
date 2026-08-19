@@ -12,13 +12,14 @@ import { SaveErrorCodes, SaveReadError } from '@oath-and-coin/content';
  * tests opt into per file). `indexeddb-store.test.ts` therefore proves two things with
  * real behaviour — the "no `indexedDB` at all" refusal, exercised directly against
  * this fact rather than a fake — and proves the rest (an empty slot answering `null`,
- * `open` erroring or being blocked, a write transaction aborting) against hand-rolled
- * doubles that implement only the slice of the IndexedDB event protocol this module
- * drives. **Atomicity is not proven here.** A fake transaction's `oncomplete`/`onabort`
- * is the test deciding the outcome in advance, not a real transaction interrupted
- * mid-write; nothing in this package can show that a real, aborted `readwrite`
- * transaction leaves a slot's previous bytes untouched. That is Task 16.8, step 6,
- * against a live Chromium, interrupting a real transaction by monkey-patching
+ * `open` erroring/blocked/throwing, a synchronous throw from `transaction`/`put`, a
+ * write transaction's `onerror` and `onabort`) against hand-rolled doubles that
+ * implement only the slice of the IndexedDB event protocol this module drives.
+ * **Atomicity is not proven here.** A fake transaction's `oncomplete`/`onabort` is the
+ * test deciding the outcome in advance, not a real transaction interrupted mid-write;
+ * nothing in this package can show that a real, aborted `readwrite` transaction leaves
+ * a slot's previous bytes untouched. That is `tests/e2e/save-slots.spec.ts`, Task 16.8
+ * step 7, against a live Chromium, interrupting a real transaction by monkey-patching
  * `IDBObjectStore.prototype.put`.
  *
  * **Why the refusal never repeats `tx.error`.** Spike A (design spec §1.5) measured a
@@ -26,6 +27,14 @@ import { SaveErrorCodes, SaveReadError } from '@oath-and-coin/content';
  * the transaction to quote, so every refusal below is `SaveErrorCodes.StorageUnavailable`
  * with a message this module writes itself, never one built from `tx.error` or
  * `request.error`.
+ *
+ * **Every IndexedDB call this module makes is guarded, not just `indexedDB.open`.**
+ * `db.transaction(...)`, `.objectStore(...)` and a request method (`get`/`put`/
+ * `getAllKeys`) are ordinary synchronous calls that can throw — a `NotFoundError` for
+ * a store that isn't there, an `InvalidStateError` for a transaction that already
+ * finished. A throw from inside a `new Promise` executor rejects with the raw
+ * exception, bypassing `storageUnavailable()` entirely; every such call below is
+ * wrapped in its own `try`/`catch` so that never happens.
  */
 
 const DATABASE_NAME = 'oath-and-coin-saves';
@@ -45,11 +54,32 @@ async function read(slot: SaveSlot): Promise<Uint8Array | null> {
   const db = await openDatabase();
   try {
     return await new Promise<Uint8Array | null>((resolve, reject) => {
-      const request = db.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).get(slot);
+      let request: IDBRequest;
+      try {
+        request = db.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).get(slot);
+      } catch (error) {
+        reject(storageUnavailable(`starting a read of slot '${slot}' failed: ${describe(error)}`));
+        return;
+      }
 
       request.onsuccess = () => {
-        const value = request.result as Uint8Array | undefined;
-        resolve(value === undefined ? null : value);
+        const value: unknown = request.result;
+        if (value === undefined) {
+          resolve(null);
+          return;
+        }
+        // A key check stands over `list()`'s output for the same reason this
+        // stands over a value: the object store's contents are not this
+        // module's alone to answer for. A fixture seeded directly for a test
+        // (Task 16.8 does exactly this) or a database opened by an older
+        // build could hold anything under a valid slot key, and casting it to
+        // `Uint8Array` without looking would hand a caller bytes that are not
+        // bytes.
+        if (!isSaveBytes(value)) {
+          reject(storageUnavailable(`slot '${slot}' holds a value that is not save bytes.`));
+          return;
+        }
+        resolve(value);
       };
       request.onerror = () => {
         reject(storageUnavailable(`reading slot '${slot}' failed.`));
@@ -64,26 +94,49 @@ async function write(slot: SaveSlot, bytes: Uint8Array): Promise<void> {
   const db = await openDatabase();
   try {
     await new Promise<void>((resolve, reject) => {
+      let tx: IDBTransaction;
+      try {
+        tx = db.transaction(STORE_NAME, 'readwrite');
+      } catch (error) {
+        reject(
+          storageUnavailable(
+            `starting a write transaction for slot '${slot}' failed: ${describe(error)}`
+          )
+        );
+        return;
+      }
+
       // One `readwrite` transaction, and the slot's whole write happens inside it:
       // the transaction is what makes this atomic, not the order these lines run
-      // in. `oncomplete`/`onabort` — not the `put` request's own `onsuccess` — is
-      // what this waits on, because a request can succeed and its transaction can
-      // still abort afterward (a later request in the same transaction failing, a
-      // quota error at commit time); only the transaction's own outcome is the
-      // one this port promises.
-      const tx = db.transaction(STORE_NAME, 'readwrite');
-
+      // in. `oncomplete`/`onabort`/`onerror` — not the `put` request's own
+      // `onsuccess` — is what this waits on, because a request can succeed and its
+      // transaction can still abort afterward (a later request in the same
+      // transaction failing, a quota error at commit time); only the
+      // transaction's own outcome is the one this port promises.
+      //
+      // `onerror` is not a defensive extra beside `onabort`: IndexedDB fires
+      // `error` on the transaction *before* it aborts, for an unhandled request
+      // error propagating up — that is the common case a failing `put` actually
+      // takes. An explicit `abort()` with no failing request is the narrower
+      // case, and fires only `onabort`. Both are wired, and because a settled
+      // promise ignores every later `resolve`/`reject` call, whichever the real
+      // browser fires first is the message this throws — no extra bookkeeping
+      // needed to prefer one over the other.
       tx.oncomplete = () => {
         resolve();
-      };
-      tx.onabort = () => {
-        reject(storageUnavailable(`writing slot '${slot}' was aborted.`));
       };
       tx.onerror = () => {
         reject(storageUnavailable(`writing slot '${slot}' failed.`));
       };
+      tx.onabort = () => {
+        reject(storageUnavailable(`writing slot '${slot}' was aborted.`));
+      };
 
-      tx.objectStore(STORE_NAME).put(bytes, slot);
+      try {
+        tx.objectStore(STORE_NAME).put(bytes, slot);
+      } catch (error) {
+        reject(storageUnavailable(`writing slot '${slot}' failed: ${describe(error)}`));
+      }
     });
   } finally {
     db.close();
@@ -94,7 +147,13 @@ async function list(): Promise<readonly SaveSlot[]> {
   const db = await openDatabase();
   try {
     const keys = await new Promise<readonly IDBValidKey[]>((resolve, reject) => {
-      const request = db.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).getAllKeys();
+      let request: IDBRequest<IDBValidKey[]>;
+      try {
+        request = db.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).getAllKeys();
+      } catch (error) {
+        reject(storageUnavailable(`starting a list of occupied slots failed: ${describe(error)}`));
+        return;
+      }
 
       request.onsuccess = () => {
         resolve(request.result);
@@ -122,6 +181,11 @@ function isSaveSlot(key: IDBValidKey): key is SaveSlot {
   return typeof key === 'string' && (SAVE_SLOTS as readonly string[]).includes(key);
 }
 
+/** The same defensive stance as {@link isSaveSlot}, over a slot's value rather than its key. */
+function isSaveBytes(value: unknown): value is Uint8Array {
+  return value instanceof Uint8Array;
+}
+
 function openDatabase(): Promise<IDBDatabase> {
   if (typeof globalThis.indexedDB === 'undefined') {
     return Promise.reject(
@@ -142,6 +206,14 @@ function openDatabase(): Promise<IDBDatabase> {
       return;
     }
 
+    // `onblocked` is not terminal: the connection blocking this `open` can still
+    // close on its own, letting this same request go on to fire `onsuccess`
+    // later. By then this promise has already rejected and its caller has moved
+    // on, so a database arriving after that is closed here rather than resolved
+    // into — leaving it open would hold every future `versionchange` hostage for
+    // good.
+    let settled = false;
+
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
@@ -149,14 +221,24 @@ function openDatabase(): Promise<IDBDatabase> {
       }
     };
     request.onsuccess = () => {
+      if (settled) {
+        request.result.close();
+        return;
+      }
+      settled = true;
       resolve(request.result);
     };
     request.onblocked = () => {
+      settled = true;
       reject(
         storageUnavailable('indexedDB.open is blocked by another open connection to this database.')
       );
     };
     request.onerror = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
       reject(storageUnavailable('indexedDB.open failed to open the save database.'));
     };
   });

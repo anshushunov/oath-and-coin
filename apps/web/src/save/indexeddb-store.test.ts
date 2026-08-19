@@ -18,21 +18,24 @@ import { createIndexedDbSaveStore } from './indexeddb-store.ts';
  *   `FakeObjectStore`, `FakeTransaction`, `FakeDatabase`) implement only the sliver of
  *   the IndexedDB event protocol `indexeddb-store.ts` actually drives — `open` and its
  *   `onupgradeneeded`/`onsuccess`/`onerror`/`onblocked`, a transaction's
- *   `oncomplete`/`onabort`/`onerror`, and a store's `get`/`put`/`getAllKeys`. They are
- *   hand-rolled test doubles, not a spec-compliant IndexedDB, and they prove how this
- *   module reacts to each event the real one can fire — not that the real one fires
- *   them the way these fakes choose to.
+ *   `oncomplete`/`onabort`/`onerror`, a store's `get`/`put`/`getAllKeys`, and a
+ *   synchronous throw from `transaction`/`objectStore`/`put`. They are hand-rolled
+ *   test doubles, not a spec-compliant IndexedDB, and they prove how this module
+ *   reacts to each event the real one can fire — not that the real one fires them the
+ *   way these fakes choose to.
  *
  * What is proven here: the shape of refusal when the store is unavailable (no
- * `indexedDB`, `open` erroring, `open` blocked, `open` throwing synchronously, a write
- * transaction aborting), and that reading an unoccupied slot answers `null` rather than
- * throwing.
+ * `indexedDB`, `open` erroring/blocked/throwing, a synchronous throw from
+ * `transaction`/`put`, a write transaction's `onerror` and `onabort`), that reading an
+ * unoccupied slot answers `null` rather than throwing, that a value under an occupied
+ * key that is not save bytes is refused rather than cast blindly, and that a
+ * connection arriving after `onblocked` already rejected is closed rather than leaked.
  *
  * What is **not** proven here: atomicity. A fake transaction's `oncomplete`/`onabort`
  * is this test file deciding the outcome up front, not two writers racing and one
  * losing — nothing here can show that a real, interrupted `readwrite` transaction
- * leaves a slot's previous bytes intact. That is Task 16.8, step 6, in a live
- * Chromium, interrupting a real transaction by monkey-patching
+ * leaves a slot's previous bytes intact. That is `tests/e2e/save-slots.spec.ts`, Task
+ * 16.8 step 7, in a live Chromium, interrupting a real transaction by monkey-patching
  * `IDBObjectStore.prototype.put`.
  */
 
@@ -55,25 +58,40 @@ class FakeRequest<T> {
   }
 }
 
+/** Everything about a fake's behaviour that varies from test to test, in one place. */
+interface FakeBehavior {
+  readonly writeOutcome: 'complete' | 'abort' | 'error-then-abort';
+  readonly readOutcome: 'success' | 'error';
+  readonly transactionThrows: boolean;
+  readonly putThrows: boolean;
+}
+
+const DEFAULT_BEHAVIOR: FakeBehavior = {
+  writeOutcome: 'complete',
+  readOutcome: 'success',
+  transactionThrows: false,
+  putThrows: false
+};
+
 class FakeObjectStore {
   private readonly values: Map<SaveSlot, Uint8Array>;
   private readonly onWrite: ((value: Uint8Array, key: SaveSlot) => void) | null;
-  private readonly readOutcome: 'success' | 'error';
+  private readonly behavior: FakeBehavior;
 
   constructor(
     values: Map<SaveSlot, Uint8Array>,
     onWrite: ((value: Uint8Array, key: SaveSlot) => void) | null,
-    readOutcome: 'success' | 'error'
+    behavior: FakeBehavior
   ) {
     this.values = values;
     this.onWrite = onWrite;
-    this.readOutcome = readOutcome;
+    this.behavior = behavior;
   }
 
   get(key: SaveSlot): FakeRequest<Uint8Array | undefined> {
     const request = new FakeRequest<Uint8Array | undefined>();
     queueMicrotask(() => {
-      if (this.readOutcome === 'error') {
+      if (this.behavior.readOutcome === 'error') {
         request.fail();
       } else {
         request.succeed(this.values.get(key));
@@ -83,6 +101,11 @@ class FakeObjectStore {
   }
 
   put(value: Uint8Array, key: SaveSlot): FakeRequest<SaveSlot> {
+    if (this.behavior.putThrows) {
+      // Real cause: `put` called after its transaction already finished
+      // (`InvalidStateError`), or a value that fails structured clone.
+      throw new DOMException("failed to execute 'put' on 'IDBObjectStore'", 'InvalidStateError');
+    }
     // A real store's `put` lands inside its transaction; whether the transaction
     // as a whole completes or aborts is `FakeTransaction`'s call, made below,
     // exactly like the real thing (spike A: `abort()` is the transaction's).
@@ -95,7 +118,7 @@ class FakeObjectStore {
   getAllKeys(): FakeRequest<readonly SaveSlot[]> {
     const request = new FakeRequest<readonly SaveSlot[]>();
     queueMicrotask(() => {
-      if (this.readOutcome === 'error') {
+      if (this.behavior.readOutcome === 'error') {
         request.fail();
       } else {
         request.succeed([...this.values.keys()]);
@@ -119,38 +142,42 @@ class FakeTransaction {
 
   private readonly values: Map<SaveSlot, Uint8Array>;
   private readonly writable: boolean;
-  private readonly writeOutcome: 'complete' | 'abort';
-  private readonly readOutcome: 'success' | 'error';
+  private readonly behavior: FakeBehavior;
 
   constructor(
     values: Map<SaveSlot, Uint8Array>,
     mode: 'readonly' | 'readwrite',
-    writeOutcome: 'complete' | 'abort',
-    readOutcome: 'success' | 'error'
+    behavior: FakeBehavior
   ) {
     this.values = values;
     this.writable = mode === 'readwrite';
-    this.writeOutcome = writeOutcome;
-    this.readOutcome = readOutcome;
+    this.behavior = behavior;
   }
 
   objectStore(): FakeObjectStore {
     return new FakeObjectStore(
       this.values,
       this.writable ? (value, key) => this.settleWrite(value, key) : null,
-      this.readOutcome
+      this.behavior
     );
   }
 
   private settleWrite(value: Uint8Array, key: SaveSlot): void {
     queueMicrotask(() => {
-      if (this.writeOutcome === 'complete') {
+      if (this.behavior.writeOutcome === 'complete') {
         // A real, committed transaction is what makes a put durable; an aborted
         // one leaves the store exactly as it was, which is why this only
         // happens on the 'complete' branch.
         this.values.set(key, value);
         this.oncomplete?.();
+      } else if (this.behavior.writeOutcome === 'abort') {
+        this.onabort?.();
       } else {
+        // IndexedDB fires `error` on the transaction *before* it aborts, for an
+        // unhandled request error propagating up — the common case, and the one
+        // `onabort` alone (the 'abort' outcome above, which models an explicit
+        // `abort()` call with no failing request) does not reproduce.
+        this.onerror?.();
         this.onabort?.();
       }
     });
@@ -159,19 +186,14 @@ class FakeTransaction {
 
 class FakeDatabase {
   readonly objectStoreNames = { contains: (): boolean => true };
+  closeCalls = 0;
 
   private readonly values: Map<SaveSlot, Uint8Array>;
-  private readonly writeOutcome: 'complete' | 'abort';
-  private readonly readOutcome: 'success' | 'error';
+  private readonly behavior: FakeBehavior;
 
-  constructor(
-    values: Map<SaveSlot, Uint8Array>,
-    writeOutcome: 'complete' | 'abort',
-    readOutcome: 'success' | 'error'
-  ) {
+  constructor(values: Map<SaveSlot, Uint8Array>, behavior: FakeBehavior) {
     this.values = values;
-    this.writeOutcome = writeOutcome;
-    this.readOutcome = readOutcome;
+    this.behavior = behavior;
   }
 
   createObjectStore(): void {
@@ -179,25 +201,48 @@ class FakeDatabase {
   }
 
   close(): void {
-    // Nothing held open by a fake.
+    this.closeCalls += 1;
   }
 
   transaction(_storeName: string, mode: 'readonly' | 'readwrite'): FakeTransaction {
-    return new FakeTransaction(this.values, mode, this.writeOutcome, this.readOutcome);
+    if (this.behavior.transactionThrows) {
+      // Real cause: the named object store doesn't exist, or the connection was
+      // closed after a `versionchange` completed elsewhere.
+      throw new DOMException("no such object store: 'slots'", 'NotFoundError');
+    }
+    return new FakeTransaction(this.values, mode, this.behavior);
   }
 }
 
-type OpenOutcome = 'success' | 'error' | 'blocked' | 'throw';
+type OpenOutcome = 'success' | 'error' | 'blocked' | 'blocked-then-success' | 'throw';
 
-function installFakeIndexedDb(options: {
-  readonly open: OpenOutcome;
-  readonly values?: Map<SaveSlot, Uint8Array>;
-  readonly writeOutcome?: 'complete' | 'abort';
-  readonly readOutcome?: 'success' | 'error';
-}): void {
+function installFakeIndexedDb(
+  options: {
+    readonly open: OpenOutcome;
+    readonly values?: Map<SaveSlot, Uint8Array>;
+  } & Partial<FakeBehavior>
+): { database: () => FakeDatabase | undefined } {
   const values = options.values ?? new Map<SaveSlot, Uint8Array>();
-  const writeOutcome = options.writeOutcome ?? 'complete';
-  const readOutcome = options.readOutcome ?? 'success';
+  const behavior: FakeBehavior = {
+    writeOutcome: options.writeOutcome ?? DEFAULT_BEHAVIOR.writeOutcome,
+    readOutcome: options.readOutcome ?? DEFAULT_BEHAVIOR.readOutcome,
+    transactionThrows: options.transactionThrows ?? DEFAULT_BEHAVIOR.transactionThrows,
+    putThrows: options.putThrows ?? DEFAULT_BEHAVIOR.putThrows
+  };
+
+  let lastDatabase: FakeDatabase | undefined;
+
+  const succeed = (request: {
+    result: FakeDatabase | undefined;
+    onupgradeneeded: (() => void) | null;
+    onsuccess: (() => void) | null;
+  }): void => {
+    const db = new FakeDatabase(values, behavior);
+    lastDatabase = db;
+    request.result = db;
+    request.onupgradeneeded?.();
+    request.onsuccess?.();
+  };
 
   const fakeFactory: Pick<IDBFactory, 'open'> = {
     open(): IDBOpenDBRequest {
@@ -222,9 +267,14 @@ function installFakeIndexedDb(options: {
           request.onblocked?.();
           return;
         }
-        request.result = new FakeDatabase(values, writeOutcome, readOutcome);
-        request.onupgradeneeded?.();
-        request.onsuccess?.();
+        if (options.open === 'blocked-then-success') {
+          // `onblocked` is not terminal (finding 3): the same request can still
+          // go on to fire `onsuccess` later, once whatever blocked it closes.
+          request.onblocked?.();
+          queueMicrotask(() => succeed(request));
+          return;
+        }
+        succeed(request);
       });
 
       return request as unknown as IDBOpenDBRequest;
@@ -232,6 +282,16 @@ function installFakeIndexedDb(options: {
   };
 
   (globalThis as { indexedDB?: IDBFactory }).indexedDB = fakeFactory as IDBFactory;
+
+  return { database: () => lastDatabase };
+}
+
+/** Lets every currently-queued microtask (including ones a fake schedules from
+ * inside another microtask, e.g. the deferred `onsuccess` after `onblocked`)
+ * run before the test inspects a side effect. A macrotask boundary, not another
+ * microtask, so it is guaranteed to run after the whole microtask queue drains. */
+async function flushMicrotasks(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 describe('when this environment has no indexedDB at all', () => {
@@ -257,9 +317,7 @@ describe('when this environment has no indexedDB at all', () => {
     // in `openDatabase` is a green mutant — the `try`/`catch` around `factory.open`
     // still turns the resulting `TypeError` (reading `.open` of `undefined`) into
     // the same `SAVE_STORAGE_UNAVAILABLE` code, just with a message that names a
-    // property read this module never chose to make part of its contract. Measured
-    // by hand: removing the early check left all eleven other tests in this file
-    // green.
+    // property read this module never chose to make part of its contract.
     const store = createIndexedDbSaveStore();
 
     await expect(store.read('slot-a')).rejects.toThrow(/globalThis\.indexedDB is not available/u);
@@ -285,6 +343,60 @@ describe('when indexedDB.open itself refuses', () => {
     installFakeIndexedDb({ open: 'throw' });
     const store = createIndexedDbSaveStore();
 
+    await expect(store.write('slot-a', Uint8Array.of(1))).rejects.toThrow(
+      /SAVE_STORAGE_UNAVAILABLE/u
+    );
+  });
+
+  it('closes a connection that arrives after `onblocked` already rejected, instead of leaking it', async () => {
+    const { database } = installFakeIndexedDb({ open: 'blocked-then-success' });
+    const store = createIndexedDbSaveStore();
+
+    await expect(store.read('slot-a')).rejects.toThrow(/SAVE_STORAGE_UNAVAILABLE/u);
+    await flushMicrotasks();
+
+    expect(database()?.closeCalls).toBe(1);
+  });
+});
+
+describe('when the database itself throws synchronously (a missing object store, a dead connection)', () => {
+  // Reproduces the shape review measured directly: a fake whose `db.transaction()`
+  // throws `DOMException('NotFoundError')` — what a real IndexedDB does for a
+  // missing store or a connection closed after `versionchange` — must not let that
+  // exception past `storageUnavailable()` in any of the three methods.
+  it('read() reports SAVE_STORAGE_UNAVAILABLE rather than the raw DOMException', async () => {
+    installFakeIndexedDb({ open: 'success', transactionThrows: true });
+    const store = createIndexedDbSaveStore();
+
+    await expect(store.read('slot-a')).rejects.toBeInstanceOf(SaveReadError);
+    await expect(store.read('slot-a')).rejects.toThrow(/SAVE_STORAGE_UNAVAILABLE/u);
+  });
+
+  it('write() reports SAVE_STORAGE_UNAVAILABLE rather than the raw DOMException', async () => {
+    installFakeIndexedDb({ open: 'success', transactionThrows: true });
+    const store = createIndexedDbSaveStore();
+
+    await expect(store.write('slot-a', Uint8Array.of(1))).rejects.toBeInstanceOf(SaveReadError);
+    await expect(store.write('slot-a', Uint8Array.of(1))).rejects.toThrow(
+      /SAVE_STORAGE_UNAVAILABLE/u
+    );
+  });
+
+  it('list() reports SAVE_STORAGE_UNAVAILABLE rather than the raw DOMException', async () => {
+    installFakeIndexedDb({ open: 'success', transactionThrows: true });
+    const store = createIndexedDbSaveStore();
+
+    await expect(store.list()).rejects.toBeInstanceOf(SaveReadError);
+    await expect(store.list()).rejects.toThrow(/SAVE_STORAGE_UNAVAILABLE/u);
+  });
+
+  it('write() also reports SAVE_STORAGE_UNAVAILABLE when the put call itself throws synchronously', async () => {
+    // A second, distinct call site inside write(): the transaction was created
+    // fine, but the `put` call on its object store is the one that throws.
+    installFakeIndexedDb({ open: 'success', putThrows: true });
+    const store = createIndexedDbSaveStore();
+
+    await expect(store.write('slot-a', Uint8Array.of(1))).rejects.toBeInstanceOf(SaveReadError);
     await expect(store.write('slot-a', Uint8Array.of(1))).rejects.toThrow(
       /SAVE_STORAGE_UNAVAILABLE/u
     );
@@ -317,6 +429,20 @@ describe('reading a slot', () => {
 
     await expect(store.read('slot-a')).rejects.toThrow(/SAVE_STORAGE_UNAVAILABLE/u);
   });
+
+  it('reports SAVE_STORAGE_UNAVAILABLE when the stored value under a real slot is not save bytes', async () => {
+    // The same defensive stance as the key filter in `list()` below, applied to
+    // a value: a fixture seeded directly for a test (Task 16.8 does this) could
+    // put anything under a valid key, and this module must not hand it back
+    // cast to `Uint8Array` without having checked.
+    installFakeIndexedDb({
+      open: 'success',
+      values: new Map([['slot-a', 'not bytes' as unknown as Uint8Array]])
+    });
+    const store = createIndexedDbSaveStore();
+
+    await expect(store.read('slot-a')).rejects.toThrow(/SAVE_STORAGE_UNAVAILABLE/u);
+  });
 });
 
 describe('list()', () => {
@@ -334,7 +460,13 @@ describe('list()', () => {
     });
     const store = createIndexedDbSaveStore();
 
-    await expect(store.list()).resolves.toEqual(['slot-b', 'slot-a']);
+    // Compared as a set, not pinned to this fake's insertion order: a real
+    // `getAllKeys()` answers keys in ascending order, which this fake's `Map`
+    // does not necessarily reproduce, and `SaveStorePort.list()`'s own doc
+    // comment states the order is unspecified.
+    const slots = await store.list();
+    expect(new Set(slots)).toEqual(new Set(['slot-b', 'slot-a']));
+    expect(slots).toHaveLength(2);
   });
 
   it('answers an empty list when every slot is empty', async () => {
@@ -382,6 +514,22 @@ describe('write()', () => {
 
     const failure = store.write('slot-a', Uint8Array.of(1));
     await expect(failure).rejects.toThrow(/SAVE_STORAGE_UNAVAILABLE/u);
+    await expect(failure).rejects.toThrow(/was aborted/u);
     await expect(failure).rejects.not.toThrow(/\bnull\b/u);
+  });
+
+  it("reports the transaction's own error, not the abort message, when both fire (real order: error before abort)", async () => {
+    // IndexedDB fires `error` on the transaction before it aborts for an
+    // unhandled request error — the common real-world case, unlike the explicit
+    // `abort()` the test above models. Both handlers reject, so whichever fires
+    // first is what a settled promise keeps; this pins that it is `onerror`'s
+    // message, not `onabort`'s.
+    installFakeIndexedDb({ open: 'success', writeOutcome: 'error-then-abort' });
+    const store = createIndexedDbSaveStore();
+
+    const failure = store.write('slot-a', Uint8Array.of(1));
+    await expect(failure).rejects.toThrow(/SAVE_STORAGE_UNAVAILABLE/u);
+    await expect(failure).rejects.toThrow(/writing slot 'slot-a' failed\./u);
+    await expect(failure).rejects.not.toThrow(/was aborted/u);
   });
 });

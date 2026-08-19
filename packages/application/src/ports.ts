@@ -69,6 +69,10 @@ export interface SaveStorePort {
   /** Replaces a slot's contents wholesale and atomically. */
   write(slot: SaveSlot, bytes: Uint8Array): Promise<void>;
 
-  /** Which slots are occupied. An empty slot is not an error. */
+  /**
+   * Which slots are occupied, in no particular order — a caller matching this
+   * against a fixed slot layout sorts or looks up by name rather than relying on
+   * the order this answers in. An empty slot is not an error.
+   */
   list(): Promise<readonly SaveSlot[]>;
 }
