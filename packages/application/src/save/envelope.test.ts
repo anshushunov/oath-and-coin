@@ -453,7 +453,13 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
   // producing two identical history records. Referential integrity said every id
   // existed; nothing said the relations between them held.
 
-  const cases: [string, (snapshot: RawSnapshot) => void][] = [
+  // Each case carries the fragment of the refusal it must produce, not merely the code.
+  // Without that, three of these checks are killed by a *neighbouring* check instead of
+  // their own — measured with mutants: dropping "acceptedBy is a subset of respondedBy"
+  // left every case green, because the history comparison two lines down refuses the
+  // same file for a different reason. A code alone cannot tell those apart; the message
+  // a player's refusal carries can, and it is the thing that names which rule was broken.
+  const cases: [string, (snapshot: RawSnapshot) => void, string][] = [
     [
       'ответ стёрт из контракта, а событие о нём осталось — файл из внешнего ревью',
       (snapshot) => {
@@ -461,21 +467,24 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
         contract.respondedBy = [];
         contract.acceptedBy = [];
         contract.status = 'offered';
-      }
+      },
+      'respondedBy does not carry that hero'
     ],
     [
       'герой в acceptedBy, но не в respondedBy',
       (snapshot) => {
         snapshot.contracts[0]!.value.respondedBy = [];
         snapshot.contracts[0]!.value.status = 'offered';
-      }
+      },
+      'in acceptedBy but not in respondedBy'
     ],
     [
       'история говорит «принял», контракт — «не в составе»',
       (snapshot) => {
         snapshot.contracts[0]!.value.acceptedBy = [];
         snapshot.contracts[0]!.value.status = 'offered';
-      }
+      },
+      'and the history disagree about'
     ],
     [
       'один герой отвечает на один контракт дважды',
@@ -485,7 +494,8 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
         snapshot.appliedCommandIds = [1, 2];
         snapshot.metadata.nextEventId = 2;
         snapshot.metadata.stateVersion = 2;
-      }
+      },
+      'more than once'
     ],
     [
       'respondedBy называет героя, о котором в истории ничего нет',
@@ -496,43 +506,50 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
         snapshot.metadata.nextEventId = 0;
         snapshot.metadata.stateVersion = 0;
         snapshot.metadata.nextTraceId = 0;
-      }
+      },
+      'the history carries no event of that hero answering it'
     ],
     [
       'состав набран, а контракт всё ещё предлагается',
       (snapshot) => {
         snapshot.contracts[0]!.value.status = 'offered';
-      }
+      },
+      'a contract is crewed exactly when its required crew has accepted'
     ],
     [
       'контракт закрыт составом, которого не хватает',
       (snapshot) => {
         snapshot.contracts[0]!.value.requiredCrew = 2;
-      }
+      },
+      'a contract is crewed exactly when its required crew has accepted'
     ],
     [
       'nextEventId не совпадает с длиной истории',
       (snapshot) => {
         snapshot.metadata.nextEventId = 7;
-      }
+      },
+      'the counter advances by one per appended event'
     ],
     [
       'stateVersion не совпадает с длиной истории',
       (snapshot) => {
         snapshot.metadata.stateVersion = 7;
-      }
+      },
+      'the version advances by one per campaign transition'
     ],
     [
       'применённых команд больше, чем событий',
       (snapshot) => {
         snapshot.appliedCommandIds = [1, 2];
-      }
+      },
+      'every applied command appends exactly one'
     ],
     [
       'nextTraceId не равен числу хранимых следов',
       (snapshot) => {
         snapshot.metadata.nextTraceId = 5;
-      }
+      },
+      'the counter is the next free id'
     ],
     [
       'следы пронумерованы не подряд',
@@ -543,7 +560,8 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
         snapshot.traces[0]!.key = 3;
         snapshot.traces[0]!.value.traceId = 3;
         snapshot.history[0]!.causalTraceId = 3;
-      }
+      },
+      'trace ids are dense and assigned in order'
     ],
     [
       'eventId не совпадает с местом события в журнале',
@@ -552,13 +570,15 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
         // history's length, so the only thing left to notice is that the one event in it
         // claims id 4.
         snapshot.history[0]!.eventId = 4;
-      }
+      },
+      'event ids are assigned in order'
     ],
     [
       'событие датировано позже, чем показывают часы кампании',
       (snapshot) => {
         snapshot.history[0]!.logicalTime = 9;
-      }
+      },
+      'it is never behind the log'
     ],
     [
       'журнал не монотонен по логическому времени',
@@ -594,15 +614,17 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
         snapshot.metadata.stateVersion = 2;
         snapshot.metadata.nextTraceId = 2;
         snapshot.metadata.logicalTime = 5;
-      }
+      },
+      'history is monotone in logical time'
     ]
   ];
 
-  it.each(cases)('отказывает при чтении: %s', (_name, mutate) => {
+  it.each(cases)('отказывает при чтении: %s', (_name, mutate, detail) => {
     expect(() => readSave(aTamperedSave(mutate), expectedVersions)).toThrow(/SAVE_INCONSISTENT/u);
+    expect(() => readSave(aTamperedSave(mutate), expectedVersions)).toThrow(detail);
   });
 
-  it.each(cases)('и отказывается ЗАПИСАТЬ то же самое: %s', (_name, mutate) => {
+  it.each(cases)('и отказывается ЗАПИСАТЬ то же самое: %s', (_name, mutate, detail) => {
     // The other half, and the half external review said was missing: a producer must not
     // be able to write what the reader refuses. The state is built by `decodeSnapshot`,
     // which deliberately checks shape and not domain — so this is a real `GameState`
@@ -617,7 +639,7 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
         focusedContract: FOCUSED_CONTRACT,
         createdAt: CREATED_AT
       })
-    ).toThrow(/SAVE_INCONSISTENT/u);
+    ).toThrow(detail);
   });
 
   it('принимает кампанию, которую движок действительно произвёл', () => {
