@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ALLOWED_CHANNELS,
   DESKTOP_SAVE_SLOTS,
+  MAX_SAVE_BYTES,
   SAVE_LIST_CHANNEL,
   SAVE_READ_CHANNEL,
   SAVE_WRITE_CHANNEL,
@@ -42,6 +43,11 @@ describe('the save channels', () => {
   it('a list request takes no arguments', () => {
     expect(() => saveListRequest.parse([])).not.toThrow();
     expect(() => saveListRequest.parse(['slot-a'])).toThrow();
+  });
+
+  it('refuses a write payload over MAX_SAVE_BYTES, and accepts one at the limit', () => {
+    expect(() => saveWriteRequest.parse(['slot-a', new Uint8Array(MAX_SAVE_BYTES)])).not.toThrow();
+    expect(() => saveWriteRequest.parse(['slot-a', new Uint8Array(MAX_SAVE_BYTES + 1)])).toThrow();
   });
 });
 

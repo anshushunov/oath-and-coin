@@ -124,4 +124,31 @@ describe('delegating to window.desktop', () => {
 
     await expect(store.list()).rejects.toThrow(/SAVE_STORAGE_UNAVAILABLE/u);
   });
+
+  it('does not repeat the underlying error message, which can carry a local filesystem path', async () => {
+    // A real rejection from `apps/desktop/src/save-store.ts` is a raw Node
+    // `fs` error, and those always embed the absolute path involved — here
+    // stood in for one that would spell out a Windows username under
+    // `AppData\Roaming`. This module must write its own description rather
+    // than echo it into whatever a screen shows for a refusal.
+    const leakyMessage =
+      "ENOENT: no such file or directory, open 'C:\\Users\\Alice\\AppData\\Roaming\\Oath and Coin\\saves\\slot-a.save'";
+    installFakeDesktopApi({
+      readSave: async () => {
+        throw new Error(leakyMessage);
+      }
+    });
+    const store = desktopSaveStore();
+
+    let caught: unknown;
+    try {
+      await store.read('slot-a');
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).not.toContain('Alice');
+    expect((caught as Error).message).not.toContain('AppData');
+  });
 });

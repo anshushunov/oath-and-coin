@@ -236,6 +236,7 @@ describe('the boundary rules that must exist', () => {
     'content-node-adapter-imports-only-its-package-and-node',
     'presentation-depends-only-on-simulation',
     'application-imports-only-the-three-layers-below-it',
+    'desktop-host-imports-only-its-own-package-node-and-electron',
     'not-to-dev-dep'
   ] as const;
 

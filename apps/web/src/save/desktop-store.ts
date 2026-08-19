@@ -21,6 +21,15 @@ import { SaveErrorCodes, SaveReadError } from '@oath-and-coin/content';
  * save-slots screen's point of view, "the desktop store could not be reached"
  * and "the browser store could not be reached" are the same kind of failure,
  * and there is no more specific code in the refusal table for either.
+ *
+ * **None of the three wraps repeat the underlying error's own message.** An
+ * IPC rejection from `apps/desktop/src/save-store.ts` carries a raw Node `fs`
+ * error, and that message always embeds the absolute path involved — under
+ * `AppData\Roaming`, which spells out the local Windows username. This module
+ * writes its own, fixed description instead, the same stance
+ * `indexeddb-store.ts` already takes toward `tx.error` (see that module's own
+ * comment): a message this module did not write itself is not one it repeats
+ * to whatever shows a screen's refusal text.
  */
 interface DesktopSaveApi {
   readSave(slot: SaveSlot): Promise<Uint8Array | null>;
@@ -40,30 +49,24 @@ export function desktopSaveStore(): SaveStorePort {
 async function read(slot: SaveSlot): Promise<Uint8Array | null> {
   try {
     return await desktopApi().readSave(slot);
-  } catch (error) {
-    throw storageUnavailable(
-      `reading slot '${slot}' through window.desktop failed: ${describe(error)}`
-    );
+  } catch {
+    throw storageUnavailable(`reading slot '${slot}' through window.desktop failed.`);
   }
 }
 
 async function write(slot: SaveSlot, bytes: Uint8Array): Promise<void> {
   try {
     await desktopApi().writeSave(slot, bytes);
-  } catch (error) {
-    throw storageUnavailable(
-      `writing slot '${slot}' through window.desktop failed: ${describe(error)}`
-    );
+  } catch {
+    throw storageUnavailable(`writing slot '${slot}' through window.desktop failed.`);
   }
 }
 
 async function list(): Promise<readonly SaveSlot[]> {
   try {
     return await desktopApi().listSaves();
-  } catch (error) {
-    throw storageUnavailable(
-      `listing occupied slots through window.desktop failed: ${describe(error)}`
-    );
+  } catch {
+    throw storageUnavailable('listing occupied slots through window.desktop failed.');
   }
 }
 
@@ -98,8 +101,4 @@ function isDesktopSaveApi(value: unknown): value is DesktopSaveApi {
 
 function storageUnavailable(detail: string): SaveReadError {
   return new SaveReadError(SaveErrorCodes.StorageUnavailable, detail);
-}
-
-function describe(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

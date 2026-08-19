@@ -1,4 +1,5 @@
-import { mkdir, open, readdir, readFile, rename } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { mkdir, open, readdir, readFile, rename, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { DESKTOP_SAVE_SLOTS, type DesktopSaveSlot } from './contract';
@@ -12,12 +13,31 @@ import { DESKTOP_SAVE_SLOTS, type DesktopSaveSlot } from './contract';
  * an imported type — the same shape `packages/presentation` already uses for
  * input from the layers above it.
  *
- * A slot lives as two files: `<slot>.save`, the file a reader sees, and
- * `<slot>.save.tmp`, the file a write lands in first. `write()` never opens
- * `<slot>.save` for writing — it writes the temporary file whole, `fsync`s
- * it, closes it, and only then `rename`s it over the target. `rename` on the
- * same filesystem is atomic, so a reader never observes a partially written
- * slot: it sees either the old file or the new one, never bytes in between.
+ * A slot lives as one file the reader sees, `<slot>.save`. `write()` never
+ * opens that file for writing: it writes a *uniquely named* temporary file
+ * whole, `fsync`s it, closes it, and only then `rename`s it over the target.
+ * `rename` on the same filesystem is atomic, so a reader never observes a
+ * partially written slot: it sees either the old file or the new one, never
+ * bytes in between.
+ *
+ * **The temporary file's name is unique per write, not per slot.** An
+ * external review of an earlier version of this module — which used a fixed
+ * `<slot>.save.tmp` name — reproduced real corruption from it directly: two
+ * concurrent writes to the same slot both `open(tmp,'w')` the *same* path,
+ * which truncates whatever the other write had already put there, and the
+ * measured outcome across 12 runs was 10 raw `ENOENT`s (the second `rename`
+ * finding its own temporary file already moved away by the first) and, twice,
+ * **a caller told "saved" while the file on disk held a byte-for-byte mix of
+ * both payloads** — exactly the corruption this module's docblock promises
+ * cannot happen. `tempPath` below now includes the process id and a random
+ * UUID, so two writes never share a temporary file regardless of timing.
+ *
+ * **Writes to the same slot are also serialized**, through
+ * {@link enqueueSlotWrite}. Unique temporary names alone stop corruption, but
+ * two truly concurrent writes to one slot would still let an older write's
+ * `rename` land after a newer one's — the caller that asked second would
+ * silently lose. Serializing per slot makes call order and publish order the
+ * same thing.
  *
  * **The containing directory is deliberately never `fsync`ed.** Spike B
  * (design spec) measured `fsync` on a directory file descriptor failing with
@@ -30,11 +50,13 @@ import { DESKTOP_SAVE_SLOTS, type DesktopSaveSlot } from './contract';
  * **A crash between the temporary file's `close` and its `rename` leaves the
  * temporary file on disk.** `list()` filters by the `.save` suffix rather
  * than reading the directory as-is, precisely so a leftover `.tmp` from an
- * interrupted write is never reported as an occupied slot.
+ * interrupted write is never reported as an occupied slot; `write()` also
+ * makes a best-effort attempt to delete its own temporary file if anything
+ * after it fails, so the ordinary failure path does not leave litter behind
+ * even though a hard crash still can.
  */
 
 const SAVE_FILE_SUFFIX = '.save';
-const TEMP_FILE_SUFFIX = '.save.tmp';
 
 export interface DesktopSaveStore {
   /** A slot's bytes, or `null` if it is empty. */
@@ -49,23 +71,58 @@ export interface DesktopSaveStore {
 export function fileSaveStore(dir: string): DesktopSaveStore {
   return {
     read: (slot) => readSaveFile(dir, slot),
-    write: (slot, bytes) => writeSaveFileAtomically(dir, slot, bytes),
+    write: (slot, bytes) => enqueueSlotWrite(dir, slot, bytes),
     list: () => listSaveFiles(dir)
   };
 }
 
-async function readSaveFile(dir: string, slot: DesktopSaveSlot): Promise<Uint8Array | null> {
-  try {
-    const buffer = await readFile(targetPath(dir, slot));
-    // A view over the buffer's own bytes, not a `Buffer` subclass instance:
-    // callers compare what they read against a plain `Uint8Array`, and a
-    // `Buffer`'s extra prototype is not part of what a save's bytes are.
-    return new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
-  } catch (error) {
-    if (isErrnoException(error) && error.code === 'ENOENT') {
-      return null;
+/**
+ * A test-only seam, the read-side equivalent of {@link WriteHooks}: lets
+ * `save-store.test.ts` simulate the transient `EPERM`/`EBUSY` a read can hit
+ * on Windows when it lands during another process's `rename`, without an
+ * actual race — nothing in `fileSaveStore` ever supplies this.
+ */
+export interface ReadHooks {
+  readonly readFile?: (path: string) => Promise<Buffer>;
+}
+
+/**
+ * The Windows error codes a read can transiently see when it overlaps a
+ * `rename` in flight — measured to be worth naming rather than folded into a
+ * generic retry-on-anything, because `ENOENT` (the file genuinely does not
+ * exist) is handled separately, on purpose, as "no save here" rather than
+ * retried.
+ */
+const TRANSIENT_READ_CODES: ReadonlySet<string> = new Set(['EPERM', 'EBUSY']);
+const READ_RETRY_ATTEMPTS = 5;
+const READ_RETRY_DELAY_MS = 10;
+
+export async function readSaveFile(
+  dir: string,
+  slot: DesktopSaveSlot,
+  hooks: ReadHooks = {}
+): Promise<Uint8Array | null> {
+  const readImpl = hooks.readFile ?? ((path: string) => readFile(path));
+  const path = targetPath(dir, slot);
+
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      const buffer = await readImpl(path);
+      // A view over the buffer's own bytes, not a `Buffer` subclass instance:
+      // callers compare what they read against a plain `Uint8Array`, and a
+      // `Buffer`'s extra prototype is not part of what a save's bytes are.
+      return new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+    } catch (error) {
+      if (isErrnoException(error) && error.code === 'ENOENT') {
+        return null;
+      }
+
+      const transient = isErrnoException(error) && TRANSIENT_READ_CODES.has(error.code ?? '');
+      if (!transient || attempt >= READ_RETRY_ATTEMPTS) {
+        throw error;
+      }
+      await delay(READ_RETRY_DELAY_MS);
     }
-    throw error;
   }
 }
 
@@ -88,11 +145,48 @@ export interface WriteHooks {
 }
 
 /**
+ * One promise chain per `(dir, slot)` pair, so that two writes to the same
+ * slot run one after the other rather than racing — see this module's
+ * header comment. Keyed on the pair rather than on `slot` alone because two
+ * `fileSaveStore` instances rooted at different directories (as the test
+ * suite's temporary directories are) must not serialize against each other.
+ */
+const slotWriteQueues = new Map<string, Promise<unknown>>();
+
+function enqueueSlotWrite(
+  dir: string,
+  slot: DesktopSaveSlot,
+  bytes: Uint8Array,
+  hooks: WriteHooks = {}
+): Promise<void> {
+  const key = `${dir} ${slot}`;
+  const previous = slotWriteQueues.get(key) ?? Promise.resolve();
+
+  // The queue itself must never stop just because one write in it failed —
+  // only that write's own caller should see the rejection. `.catch` here
+  // swallows a previous failure for the sake of *sequencing* the next write;
+  // `result` below is the promise this call's own caller receives, and it is
+  // never swallowed.
+  const result = previous
+    .catch(() => undefined)
+    .then(() => writeSaveFileAtomically(dir, slot, bytes, hooks));
+
+  slotWriteQueues.set(
+    key,
+    result.catch(() => undefined)
+  );
+
+  return result;
+}
+
+/**
  * Writes `bytes` under `slot`, atomically: `open(tmp,'w')` → `writeFile` →
  * `fsync(fd)` → `close` → `rename(tmp, target)` (design spec §2.1, brief step
  * 4). Exported, rather than kept private to {@link fileSaveStore}, only so
  * `save-store.test.ts` can pass {@link WriteHooks} — the production factory
- * above never does.
+ * above never does, and always goes through {@link enqueueSlotWrite} instead
+ * of calling this directly, so a test exercising this function alone is
+ * exercising one write in isolation rather than the serialization above it.
  */
 export async function writeSaveFileAtomically(
   dir: string,
@@ -116,9 +210,18 @@ export async function writeSaveFileAtomically(
     await handle.close();
   }
 
-  await hooks.beforeRename?.();
-
-  await rename(tmp, targetPath(dir, slot));
+  try {
+    await hooks.beforeRename?.();
+    await rename(tmp, targetPath(dir, slot));
+  } catch (error) {
+    // Best-effort: the ordinary failure path (the hook throwing in a test, a
+    // `rename` that fails) should not leave a temporary file behind for
+    // `list()` to have to filter out forever. A failure here — the file
+    // already gone, a second concurrent cleanup — is not this write's own
+    // failure and must not replace it.
+    await unlink(tmp).catch(() => undefined);
+    throw error;
+  }
 }
 
 async function listSaveFiles(dir: string): Promise<readonly DesktopSaveSlot[]> {
@@ -135,8 +238,9 @@ async function listSaveFiles(dir: string): Promise<readonly DesktopSaveSlot[]> {
   const slots: DesktopSaveSlot[] = [];
   for (const entry of entries) {
     if (!entry.endsWith(SAVE_FILE_SUFFIX)) {
-      // Skips `<slot>.save.tmp` — a crash-interrupted write's leftover — and
-      // anything else this store did not itself produce.
+      // Skips a leftover temporary file — its name never ends in `.save`,
+      // unique suffix or not — and anything else this store did not itself
+      // produce.
       continue;
     }
 
@@ -154,7 +258,10 @@ async function listSaveFiles(dir: string): Promise<readonly DesktopSaveSlot[]> {
  * an IndexedDB key: a file in this directory that this store did not itself
  * write — a fixture seeded directly for a test, a stray file a player placed
  * by hand — is not something `list()` should hand back as a slot without
- * having checked.
+ * having checked. `save-store.test.ts` proves this independently of the
+ * suffix filter above: a file named `slot-z.save` matches the suffix and
+ * still must not be reported, because `slot-z` is not in
+ * `DESKTOP_SAVE_SLOTS`.
  */
 function isDesktopSaveSlot(value: string): value is DesktopSaveSlot {
   return (DESKTOP_SAVE_SLOTS as readonly string[]).includes(value);
@@ -164,10 +271,22 @@ function targetPath(dir: string, slot: DesktopSaveSlot): string {
   return join(dir, `${slot}${SAVE_FILE_SUFFIX}`);
 }
 
+/**
+ * A name no other write, in this process or another, will ever also pick:
+ * this process's own pid plus a random UUID, alongside the slot for a
+ * human reading the directory. See this module's header comment for the
+ * corruption a shared, deterministic name produced under review.
+ */
 function tempPath(dir: string, slot: DesktopSaveSlot): string {
-  return join(dir, `${slot}${TEMP_FILE_SUFFIX}`);
+  return join(dir, `${slot}.${String(process.pid)}.${randomUUID()}${SAVE_FILE_SUFFIX}.tmp`);
 }
 
 function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && 'code' in error;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }

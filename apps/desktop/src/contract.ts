@@ -66,7 +66,26 @@ const desktopSaveSlot = z.enum(DESKTOP_SAVE_SLOTS);
 export const saveReadRequest = z.tuple([desktopSaveSlot]);
 export const saveReadResponse = z.instanceof(Uint8Array).nullable();
 
-export const saveWriteRequest = z.tuple([desktopSaveSlot, z.instanceof(Uint8Array)]);
+/**
+ * The upper bound on a save-write payload. The frozen scenario corpus's
+ * largest canonical snapshot — the whole state of a finished campaign — is
+ * about 11 KB (`scenarios/screen_incomplete.canonical.json`); a real
+ * campaign's history runs longer than any scripted scenario, but `write()`
+ * replaces a slot wholesale rather than appending, so nothing this build ever
+ * asks for is more than one campaign's worth of history at once. 8 MiB is a
+ * ceiling roughly three orders of magnitude above the largest measured
+ * snapshot: generous enough that no real campaign will approach it, and
+ * finite enough that an untrusted page cannot ask this process to write an
+ * unbounded amount to the data directory.
+ */
+export const MAX_SAVE_BYTES = 8 * 1024 * 1024;
+
+export const saveWriteRequest = z.tuple([
+  desktopSaveSlot,
+  z.instanceof(Uint8Array).refine((bytes) => bytes.length <= MAX_SAVE_BYTES, {
+    message: `save payload exceeds the ${String(MAX_SAVE_BYTES)}-byte limit.`
+  })
+]);
 export const saveWriteResponse = z.void();
 
 export const saveListRequest = z.tuple([]);

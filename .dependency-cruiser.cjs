@@ -203,6 +203,29 @@ module.exports = {
       }
     },
     {
+      name: 'desktop-host-imports-only-its-own-package-node-and-electron',
+      severity: 'error',
+      comment:
+        'ADR-010: "apps/desktop общается с приложением только через DesktopApi" — the main process must not be able to reach content, simulation or presentation at all, because none of `main.cjs`\'s job is game rules. External review of Task 16.6 proved this boundary had no rule behind it: an added relative import from `apps/desktop/src/save-store.ts` into `packages/application/src/index.ts` left `lint:deps` at "0 violations", red only by coincidence (`no-unresolvable`, until the day someone honestly declares the workspace dependency) rather than by a rule that means the boundary.',
+      // The same shape every absolute rule in this file already uses — what is
+      // allowed, not a list of forbidden neighbours (`simulation-depends-on-nothing`,
+      // `content-core-imports-only-simulation-and-zod`,
+      // `presentation-depends-only-on-simulation`,
+      // `application-imports-only-the-three-layers-below-it`): a list of forbidden
+      // packages is a list that misses whatever is invented next, including a
+      // relative path that walks around it.
+      //
+      // `dependencyTypesNot: ['core']` admits Node's own built-ins — `save-store.ts`
+      // legitimately opens files and reads `process.pid` — the same escape hatch
+      // `content-node-adapter-imports-only-its-package-and-node` already uses for the
+      // one place `packages/content` is allowed to touch a filesystem.
+      from: { path: '^apps/desktop/' },
+      to: {
+        pathNot: '^apps/desktop/|/node_modules/(zod|electron)/',
+        dependencyTypesNot: ['core']
+      }
+    },
+    {
       name: 'not-to-dev-dep',
       severity: 'error',
       comment:
