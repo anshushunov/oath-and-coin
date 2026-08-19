@@ -199,9 +199,15 @@ importers:
 
   tests/oracle:
     devDependencies:
+      '@oath-and-coin/application':
+        specifier: workspace:*
+        version: link:../../packages/application
       '@oath-and-coin/content':
         specifier: workspace:*
         version: link:../../packages/content
+      '@oath-and-coin/presentation':
+        specifier: workspace:*
+        version: link:../../packages/presentation
       '@oath-and-coin/scenario-runner':
         specifier: workspace:*
         version: link:../../tools/scenario-runner

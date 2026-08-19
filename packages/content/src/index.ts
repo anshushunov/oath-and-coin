@@ -104,6 +104,7 @@ export { commandsUpTo, resolveCheckpoint } from './scenarios/checkpoint-resolver
 export { resolveContentRoot } from './scenarios/content-root.ts';
 export {
   RULESET_VERSION,
+  applyScenarioCommands,
   runScenario,
   type ScenarioOutcome,
   type StepOutcome
