@@ -53,6 +53,20 @@ const CRYPT_FILE = {
   tags: []
 };
 
+/** A second, legitimate contract — needed so a `focused_contract` tamper test can name
+ * a contract that really exists in the save without being the signed one (review round
+ * 2: a nonexistent id is caught by referential integrity before the checksum is ever
+ * asked, which proves nothing about checksum coverage). */
+const CARAVAN_FILE = {
+  schema_version: 2,
+  id: 'core:escort_the_caravan',
+  display_name_key: 'contract.core.escort_the_caravan.name',
+  payment: 40,
+  risk: 20,
+  required_crew: 1,
+  tags: []
+};
+
 /** Unused by any hero here — `loadContentSet` still requires a `traits/` directory. */
 const GREEDY_FILE = {
   schema_version: 2,
@@ -67,6 +81,7 @@ const content = loadContentSet(
   memoryFileSource({
     'heroes/bram.json': JSON.stringify(BRAM_FILE),
     'contracts/crypt.json': JSON.stringify(CRYPT_FILE),
+    'contracts/caravan.json': JSON.stringify(CARAVAN_FILE),
     'traits/greedy.json': JSON.stringify(GREEDY_FILE)
   })
 );
@@ -93,7 +108,7 @@ function aDecidedState(): GameState {
 }
 
 const state = aState();
-const FOCUSED_CONTRACT = state.contracts.keys()[0] as ContentId;
+const [FOCUSED_CONTRACT, OTHER_CONTRACT] = state.contracts.keys() as [ContentId, ContentId];
 const CREATED_AT = '2026-08-19T00:00:00.000Z';
 
 const expectedVersions = {
@@ -305,8 +320,11 @@ describe('checksum coverage for fields with no second line of defense', () => {
   // `snapshot` — нет: сумма для них единственная защита. Ревью, раунд 1, находка 3.
 
   it('ловит непереподписанную подмену focused_contract', () => {
+    // Ревью, раунд 2: значение обязано быть законным по всем прочим проверкам —
+    // существующим контрактом, отличным от подписанного, — иначе первым отказывает
+    // не сумма, а проверка ссылочной целостности, и тест не измеряет то, что заявляет.
     const file = parseSave(aValidSave());
-    file.focused_contract = 'core:someone_else'; // сумма НЕ пересчитывается
+    file.focused_contract = OTHER_CONTRACT; // сумма НЕ пересчитывается
     const bytes = encodeUtf8(JSON.stringify(file));
 
     expect(() => readSave(bytes, expectedVersions)).toThrow(/SAVE_CHECKSUM_MISMATCH/u);
