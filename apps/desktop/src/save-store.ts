@@ -153,7 +153,15 @@ export interface WriteHooks {
  */
 const slotWriteQueues = new Map<string, Promise<unknown>>();
 
-function enqueueSlotWrite(
+/**
+ * Exported, unlike most of this module's internals, so `save-store.test.ts`
+ * can prove the serialization itself: called with {@link WriteHooks} on one
+ * write and not the other, it can force which write's disk work finishes
+ * first while still going through the same queue every real `write()` call
+ * does — `fileSaveStore`'s own `write` calls this with no hooks, exactly as
+ * it always has.
+ */
+export function enqueueSlotWrite(
   dir: string,
   slot: DesktopSaveSlot,
   bytes: Uint8Array,

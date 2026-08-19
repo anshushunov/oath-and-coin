@@ -4,7 +4,12 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { fileSaveStore, readSaveFile, writeSaveFileAtomically } from './save-store';
+import {
+  enqueueSlotWrite,
+  fileSaveStore,
+  readSaveFile,
+  writeSaveFileAtomically
+} from './save-store';
 
 /**
  * The provably-red tests this module exists for (brief step 3, plus the
@@ -170,6 +175,30 @@ describe('writing a slot', () => {
       isWhollyLong || isWhollyShort,
       `read back ${String(result?.length)} bytes matching neither payload whole`
     ).toBe(true);
+  });
+
+  it('publishes writes to the same slot in call order, even when the first write is the slower one', async () => {
+    // Distinct from the corruption test above: unique temporary filenames
+    // alone stop a byte mix, but without serialization a slower *first* call
+    // could still publish *after* a faster second call — the caller who
+    // asked second would silently lose. `enqueueSlotWrite` (not `store.write`,
+    // which hides the hook) lets this delay specifically the first call's
+    // publish, isolating the serialization from the no-shared-tmp-file fix
+    // next to it.
+    const dir = await temporaryDirectory();
+    const store = fileSaveStore(dir);
+
+    const first = enqueueSlotWrite(dir, 'slot-a', bytesOf('ПЕРВЫЙ ВЫЗОВ'), {
+      beforeRename: () => new Promise((resolve) => setTimeout(resolve, 30))
+    });
+    const second = enqueueSlotWrite(dir, 'slot-a', bytesOf('ВТОРОЙ ВЫЗОВ'));
+
+    await Promise.all([first, second]);
+
+    // Under serialization the second call's whole write does not even start
+    // until the first (including its 30 ms delay) has finished, so the
+    // second — called later — is deterministically what ends up on disk.
+    await expect(store.read('slot-a')).resolves.toEqual(bytesOf('ВТОРОЙ ВЫЗОВ'));
   });
 });
 
