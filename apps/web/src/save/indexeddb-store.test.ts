@@ -49,23 +49,36 @@ class FakeRequest<T> {
     this.result = result;
     this.onsuccess?.();
   }
+
+  fail(): void {
+    this.onerror?.();
+  }
 }
 
 class FakeObjectStore {
   private readonly values: Map<SaveSlot, Uint8Array>;
   private readonly onWrite: ((value: Uint8Array, key: SaveSlot) => void) | null;
+  private readonly readOutcome: 'success' | 'error';
 
   constructor(
     values: Map<SaveSlot, Uint8Array>,
-    onWrite: ((value: Uint8Array, key: SaveSlot) => void) | null
+    onWrite: ((value: Uint8Array, key: SaveSlot) => void) | null,
+    readOutcome: 'success' | 'error'
   ) {
     this.values = values;
     this.onWrite = onWrite;
+    this.readOutcome = readOutcome;
   }
 
   get(key: SaveSlot): FakeRequest<Uint8Array | undefined> {
     const request = new FakeRequest<Uint8Array | undefined>();
-    queueMicrotask(() => request.succeed(this.values.get(key)));
+    queueMicrotask(() => {
+      if (this.readOutcome === 'error') {
+        request.fail();
+      } else {
+        request.succeed(this.values.get(key));
+      }
+    });
     return request;
   }
 
@@ -81,7 +94,13 @@ class FakeObjectStore {
 
   getAllKeys(): FakeRequest<readonly SaveSlot[]> {
     const request = new FakeRequest<readonly SaveSlot[]>();
-    queueMicrotask(() => request.succeed([...this.values.keys()]));
+    queueMicrotask(() => {
+      if (this.readOutcome === 'error') {
+        request.fail();
+      } else {
+        request.succeed([...this.values.keys()]);
+      }
+    });
     return request;
   }
 }
@@ -101,21 +120,25 @@ class FakeTransaction {
   private readonly values: Map<SaveSlot, Uint8Array>;
   private readonly writable: boolean;
   private readonly writeOutcome: 'complete' | 'abort';
+  private readonly readOutcome: 'success' | 'error';
 
   constructor(
     values: Map<SaveSlot, Uint8Array>,
     mode: 'readonly' | 'readwrite',
-    writeOutcome: 'complete' | 'abort'
+    writeOutcome: 'complete' | 'abort',
+    readOutcome: 'success' | 'error'
   ) {
     this.values = values;
     this.writable = mode === 'readwrite';
     this.writeOutcome = writeOutcome;
+    this.readOutcome = readOutcome;
   }
 
   objectStore(): FakeObjectStore {
     return new FakeObjectStore(
       this.values,
-      this.writable ? (value, key) => this.settleWrite(value, key) : null
+      this.writable ? (value, key) => this.settleWrite(value, key) : null,
+      this.readOutcome
     );
   }
 
@@ -139,10 +162,16 @@ class FakeDatabase {
 
   private readonly values: Map<SaveSlot, Uint8Array>;
   private readonly writeOutcome: 'complete' | 'abort';
+  private readonly readOutcome: 'success' | 'error';
 
-  constructor(values: Map<SaveSlot, Uint8Array>, writeOutcome: 'complete' | 'abort') {
+  constructor(
+    values: Map<SaveSlot, Uint8Array>,
+    writeOutcome: 'complete' | 'abort',
+    readOutcome: 'success' | 'error'
+  ) {
     this.values = values;
     this.writeOutcome = writeOutcome;
+    this.readOutcome = readOutcome;
   }
 
   createObjectStore(): void {
@@ -154,7 +183,7 @@ class FakeDatabase {
   }
 
   transaction(_storeName: string, mode: 'readonly' | 'readwrite'): FakeTransaction {
-    return new FakeTransaction(this.values, mode, this.writeOutcome);
+    return new FakeTransaction(this.values, mode, this.writeOutcome, this.readOutcome);
   }
 }
 
@@ -164,9 +193,11 @@ function installFakeIndexedDb(options: {
   readonly open: OpenOutcome;
   readonly values?: Map<SaveSlot, Uint8Array>;
   readonly writeOutcome?: 'complete' | 'abort';
+  readonly readOutcome?: 'success' | 'error';
 }): void {
   const values = options.values ?? new Map<SaveSlot, Uint8Array>();
   const writeOutcome = options.writeOutcome ?? 'complete';
+  const readOutcome = options.readOutcome ?? 'success';
 
   const fakeFactory: Pick<IDBFactory, 'open'> = {
     open(): IDBOpenDBRequest {
@@ -191,7 +222,7 @@ function installFakeIndexedDb(options: {
           request.onblocked?.();
           return;
         }
-        request.result = new FakeDatabase(values, writeOutcome);
+        request.result = new FakeDatabase(values, writeOutcome, readOutcome);
         request.onupgradeneeded?.();
         request.onsuccess?.();
       });
@@ -218,6 +249,20 @@ describe('when this environment has no indexedDB at all', () => {
     const store = createIndexedDbSaveStore();
 
     await expect(store.read('slot-a')).rejects.toBeInstanceOf(SaveReadError);
+  });
+
+  it('names the missing global itself, rather than letting `factory.open` fail on it', async () => {
+    // Pins the specific message this branch produces, not just the code: without
+    // this, deleting the early `typeof globalThis.indexedDB === 'undefined'` check
+    // in `openDatabase` is a green mutant — the `try`/`catch` around `factory.open`
+    // still turns the resulting `TypeError` (reading `.open` of `undefined`) into
+    // the same `SAVE_STORAGE_UNAVAILABLE` code, just with a message that names a
+    // property read this module never chose to make part of its contract. Measured
+    // by hand: removing the early check left all eleven other tests in this file
+    // green.
+    const store = createIndexedDbSaveStore();
+
+    await expect(store.read('slot-a')).rejects.toThrow(/globalThis\.indexedDB is not available/u);
   });
 });
 
@@ -261,6 +306,17 @@ describe('reading a slot', () => {
 
     await expect(store.read('slot-a')).resolves.toEqual(bytes);
   });
+
+  it('reports SAVE_STORAGE_UNAVAILABLE when the database opens but the get request itself errors', async () => {
+    // Distinct from the `indexedDB.open` failures above: the database is open,
+    // the transaction started, and it is the `get` request specifically that
+    // fails (a real cause: the store was deleted from under an in-flight
+    // transaction). `read()`'s own `request.onerror` is what this pins.
+    installFakeIndexedDb({ open: 'success', readOutcome: 'error' });
+    const store = createIndexedDbSaveStore();
+
+    await expect(store.read('slot-a')).rejects.toThrow(/SAVE_STORAGE_UNAVAILABLE/u);
+  });
 });
 
 describe('list()', () => {
@@ -299,6 +355,13 @@ describe('list()', () => {
     for (const slot of slots) {
       expect(SAVE_SLOTS).toContain(slot);
     }
+  });
+
+  it('reports SAVE_STORAGE_UNAVAILABLE when the database opens but the getAllKeys request itself errors', async () => {
+    installFakeIndexedDb({ open: 'success', readOutcome: 'error' });
+    const store = createIndexedDbSaveStore();
+
+    await expect(store.list()).rejects.toThrow(/SAVE_STORAGE_UNAVAILABLE/u);
   });
 });
 
