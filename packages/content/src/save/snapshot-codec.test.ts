@@ -1,5 +1,6 @@
 import { join, resolve } from 'node:path';
 
+import { deepEqual, proposeContractToHero } from '@oath-and-coin/simulation';
 import { describe, expect, it } from 'vitest';
 
 import { createInitialState } from '../initial-state.ts';
@@ -50,5 +51,62 @@ describe('snapshot codec', () => {
     encoded.heroes[0]!.value.traits = Array.from({ length: 64 }, (_, i) => `trait:x${String(i)}`);
 
     expect(() => decodeSnapshot(encoded)).toThrow(/SAVE_OUT_OF_BOUNDS/u);
+  });
+
+  it('переживает состояние с решением: history, traces и appliedCommandIds непусты', () => {
+    // `createInitialState` в одиночку не исполняет ни `domainEventSchema`, ни
+    // `causalTraceValueSchema`, ни ветку `buildMap` для `traces` — все три пусты
+    // на старте. Одна применённая команда (принята она или отклонена — решение
+    // всё равно производит событие и след, `engine.ts`) заполняет их и делает
+    // `toEqual`/`deepEqual` первой проверкой, которую выброс поля целиком из
+    // `encodeSnapshot`/схемы не может пройти молча.
+    const base = createInitialState(content, 7n, 'm1-decision/1');
+    const [heroKey] = base.heroes.keys();
+    const [contractKey] = base.contracts.keys();
+    const result = proposeContractToHero(base, {
+      commandId: 1,
+      heroId: heroKey!,
+      contractId: contractKey!,
+      expectedStateVersion: base.metadata.stateVersion
+    });
+
+    expect(result.applied).toBe(true);
+    expect(result.state.history.length).toBeGreaterThan(0);
+    expect(result.state.traces.size).toBeGreaterThan(0);
+    expect(result.state.appliedCommandIds.size).toBeGreaterThan(0);
+
+    const decoded = decodeSnapshot(JSON.parse(JSON.stringify(encodeSnapshot(result.state))));
+
+    expect(deepEqual(decoded, result.state)).toBe(true);
+  });
+
+  it('отказывается читать снимок, чьи метаданные не проходят Zod', () => {
+    const state = createInitialState(content, 7n, 'm1-decision/1');
+    const encoded = encodeSnapshot(state) as { metadata: Record<string, unknown> };
+    encoded.metadata.logicalTime = 'nope';
+
+    expect(() => decodeSnapshot(encoded)).toThrow(/SAVE_MALFORMED/u);
+  });
+
+  it('отказывается читать имя героя вне artifact-safe алфавита', () => {
+    const state = createInitialState(content, 7n, 'm1-decision/1');
+    const encoded = encodeSnapshot(state) as { heroes: { value: { displayNameKey: string } }[] };
+    // Кириллица и `<>&` — ровно то множество, на котором C#-писатель и RFC 8785
+    // расходятся (`artifact-domain.ts`); значение сюда не пришло бы через
+    // content-контракт, но кодек читает файл, а не контракт.
+    encoded.heroes[0]!.value.displayNameKey = 'Имя <героя> & Co';
+
+    expect(() => decodeSnapshot(encoded)).toThrow(/SAVE_MALFORMED/u);
+  });
+
+  it('отказывается читать карту с двумя записями на один и тот же ключ', () => {
+    const state = createInitialState(content, 7n, 'm1-decision/1');
+    const encoded = encodeSnapshot(state) as { heroes: { key: number; value: unknown }[] };
+    // Оба совпадают со своим `id` по отдельности — проверка «ключ === id» из
+    // шага 6 их пропускает. Дубликат ловит только `SortedMap.from`, и он не
+    // должен просочиться плоским `Error` мимо контракта `decodeSnapshot`.
+    encoded.heroes.push({ ...encoded.heroes[0]! });
+
+    expect(() => decodeSnapshot(encoded)).toThrow(/SAVE_INCONSISTENT/u);
   });
 });

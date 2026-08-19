@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
 import {
+  ARTIFACT_SAFE_TEXT_PATTERN,
+  CONTENT_ID_PATTERN,
   ContractStatus,
   HERO_ID_MAX,
   HERO_ID_MIN,
@@ -99,15 +101,64 @@ const MAX_BLOCKS_PER_TRACE = 2 * MAX_TRAITS_PER_HERO;
  */
 const MAX_APPLIED_COMMANDS = 4 * 24;
 
+/**
+ * `respondedBy` and `acceptedBy` are both subsets of the campaign's own hero
+ * roster (`ContractState`'s own doc: "heroes who have already responded" /
+ * "accepted and joined the crew"), so neither can ever hold more entries than
+ * there are heroes. Today's content (`content/heroes`) has 6. Multiplied the
+ * same way {@link MAX_APPLIED_COMMANDS} is, for the same reason: a bound that
+ * moved every time a hero was added would defeat the point of being a ceiling
+ * rather than a mirror of content.
+ */
+const MAX_HEROES_PER_CONTRACT = 4 * 6;
+
 /** 64-битное значение десятичной строкой. */
 const uint64 = z
   .string()
   .regex(/^(0|[1-9][0-9]{0,19})$/u)
   .refine((s) => BigInt(s) <= UINT64_MAX, 'больше 2^64 − 1');
 
-const contentId = z.string().regex(/^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$/u);
+const contentId = z.string().regex(new RegExp(CONTENT_ID_PATTERN));
 
 const heroIdSchema = z.int().min(HERO_ID_MIN).max(HERO_ID_MAX);
+
+/**
+ * Longest artifact-safe string this codec accepts for any of the fields that
+ * reach a canonical determinism artifact without going through a content
+ * contract on the way in: a hero's `displayNameKey` (validated once, at
+ * content-load time, then carried unchanged for the rest of the campaign), the
+ * campaign's own `rulesetVersion`/`contentVersion` (strings a *tool* supplied —
+ * `createInitialState`'s own `requireArtifactSafeText` calls check them once,
+ * at construction, not again on every read), and a trace's `reasonCode`/
+ * `tieBreak` (drawn from the engine's closed `ReasonCodes` vocabulary). None of
+ * these is re-validated by anything between where it was first checked and
+ * where this codec reads a save back from an untrusted file — which is exactly
+ * the boundary `artifact-domain.ts`'s own comment describes as needing its own
+ * gate, not a trust in whatever produced the bytes.
+ *
+ * `256` is not derived from a real value the way {@link MAX_APPLIED_COMMANDS}
+ * is — nothing in this codebase states a length ceiling for these fields today;
+ * `requireArtifactSafeText` checks charset only. It is a generous, explicit cap
+ * far past the longest real value (`content_version` is exactly
+ * `CONTENT_VERSION_LENGTH` = 16 hex characters; the longest `ReasonCodes` entry,
+ * `hero.decision.stands_with_comrade`, is 34), so a legitimate value never
+ * brushes it while a save is still refused for claiming megabytes of text under
+ * one field (`TDD` §18).
+ */
+const MAX_ARTIFACT_SAFE_TEXT_LENGTH = 256;
+
+/**
+ * A regex, not `.refine(isArtifactSafeText)`: a regex failure carries Zod's own
+ * `invalid_format` issue code, which {@link classify} already treats as
+ * `Malformed` — a wrong character set is a shape problem, not a value out of
+ * range. A `refine` would report `custom`, the same code {@link uint64}'s own
+ * bound check uses, and conflate "this text has a Cyrillic letter in it" with
+ * "this number is bigger than 2^64 − 1" under one `OutOfBounds` verdict.
+ */
+const artifactSafeText = z
+  .string()
+  .max(MAX_ARTIFACT_SAFE_TEXT_LENGTH)
+  .regex(new RegExp(ARTIFACT_SAFE_TEXT_PATTERN));
 
 /**
  * Карта пишется парами, а не списком значений.
@@ -128,7 +179,7 @@ const relationshipsSchema = entries(
 const heroValueSchema = z.strictObject({
   id: heroIdSchema,
   definition: contentId,
-  displayNameKey: z.string(),
+  displayNameKey: artifactSafeText,
   greed: z.int().min(TRAIT_MIN).max(TRAIT_MAX),
   caution: z.int().min(TRAIT_MIN).max(TRAIT_MAX),
   pride: z.int().min(TRAIT_MIN).max(TRAIT_MAX),
@@ -149,8 +200,8 @@ const contractValueSchema = z.strictObject({
   requiredCrew: z.int().min(REQUIRED_CREW_MIN).max(REQUIRED_CREW_MAX),
   tags: z.array(contentId).max(MAX_TAGS_PER_CONTRACT),
   status: contractStatusSchema,
-  respondedBy: z.array(heroIdSchema),
-  acceptedBy: z.array(heroIdSchema)
+  respondedBy: z.array(heroIdSchema).max(MAX_HEROES_PER_CONTRACT),
+  acceptedBy: z.array(heroIdSchema).max(MAX_HEROES_PER_CONTRACT)
 });
 
 const traitRuleValueSchema = z.strictObject({
@@ -161,13 +212,13 @@ const traitRuleValueSchema = z.strictObject({
 });
 
 const traceFactorSchema = z.strictObject({
-  reasonCode: z.string(),
+  reasonCode: artifactSafeText,
   sourceEntity: contentId,
   magnitude: z.int().min(0)
 });
 
 const traceBlockSchema = z.strictObject({
-  reasonCode: z.string(),
+  reasonCode: artifactSafeText,
   sourceEntity: contentId
 });
 
@@ -176,7 +227,7 @@ const causalTraceValueSchema = z.strictObject({
   positiveFactors: z.array(traceFactorSchema).max(MAX_FACTORS_PER_TRACE_SIDE),
   negativeFactors: z.array(traceFactorSchema).max(MAX_FACTORS_PER_TRACE_SIDE),
   blockedBy: z.array(traceBlockSchema).max(MAX_BLOCKS_PER_TRACE),
-  tieBreak: z.string().nullable()
+  tieBreak: artifactSafeText.nullable()
 });
 
 const domainEventSchema = z.discriminatedUnion('kind', [
@@ -201,8 +252,8 @@ const domainEventSchema = z.discriminatedUnion('kind', [
 const snapshotSchema = z.strictObject({
   metadata: z.strictObject({
     saveSchemaVersion: z.int().min(0),
-    rulesetVersion: z.string(),
-    contentVersion: z.string(),
+    rulesetVersion: artifactSafeText,
+    contentVersion: artifactSafeText,
     campaignSeed: uint64,
     stateVersion: z.int().min(0),
     logicalTime: z.int().min(0),
@@ -214,7 +265,13 @@ const snapshotSchema = z.strictObject({
   contracts: entries(contentId, contractValueSchema),
   appliedCommandIds: z.array(z.int().min(0)).max(MAX_APPLIED_COMMANDS),
   traitRules: entries(contentId, traitRuleValueSchema),
-  traces: entries(z.int().min(0), causalTraceValueSchema),
+  // A trace is stored at most once per applied command: `withEvent` only ever
+  // adds a *new* trace id, never overwrites an existing one (`game-state.ts`).
+  // So `traces.size` can never exceed `appliedCommandIds.size`, which is
+  // already bounded by `MAX_APPLIED_COMMANDS` — reusing that ceiling here
+  // states the fact instead of leaving `traces` under `entries()`'s own
+  // generic 4096, a cap 40x looser than what this map can actually hold.
+  traces: entries(z.int().min(0), causalTraceValueSchema).max(MAX_APPLIED_COMMANDS),
   history: z.array(domainEventSchema).max(MAX_APPLIED_COMMANDS)
 });
 
@@ -460,7 +517,7 @@ function buildMap<K, RawKey, Raw, V>(
     return [id, toDomain(entry.value)] as const;
   });
 
-  return SortedMap.from(compare, pairs);
+  return fromEntriesOrInconsistent(compare, pairs);
 }
 
 /**
@@ -471,10 +528,33 @@ function buildMap<K, RawKey, Raw, V>(
 function buildRelationships(
   raw: readonly { key: string; value: number }[]
 ): SortedMap<ContentId, number> {
-  return SortedMap.from(
+  return fromEntriesOrInconsistent(
     compareContentIds,
     raw.map((entry) => [parseContentId(entry.key), entry.value] as const)
   );
+}
+
+/**
+ * `SortedMap.from` itself throws only for one reason — a repeated key, by its
+ * own doc comment — and a plain `Error` from it would break `decodeSnapshot`'s
+ * own `@throws {@link SaveReadError}` promise. Every pair reaching this function
+ * from {@link buildMap} already passed the key-equals-identity check there, so a
+ * throw here means two *different* entries agree on the same key (and, since
+ * each passed that check, on the same identity) — still a save that cannot be
+ * trusted to mean what its keys claim, so it is still `Inconsistent`.
+ */
+function fromEntriesOrInconsistent<K, V>(
+  compare: Comparator<K>,
+  pairs: readonly (readonly [K, V])[]
+): SortedMap<K, V> {
+  try {
+    return SortedMap.from(compare, pairs);
+  } catch (error) {
+    throw new SaveReadError(
+      SaveErrorCodes.Inconsistent,
+      error instanceof Error ? error.message : String(error)
+    );
+  }
 }
 
 function toTraceFactor(factor: RawFactor): TraceFactor {
