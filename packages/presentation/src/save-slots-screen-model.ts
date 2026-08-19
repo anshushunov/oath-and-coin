@@ -37,9 +37,13 @@ import { ScreenState } from './screen-state.ts';
  * for a reason worth stating: {@link errorCode} is not only "this file cannot be read".
  * It is also where a refused *write* lands, and a refused write changes nothing on the
  * storage — so a line can legitimately carry a full descriptor and a code together, and
- * the screen owes the player both. Which of the two put the code there is not a
- * distinction this layer can make, and it does not need to: it shows the campaign that
- * is there and the refusal that happened.
+ * the screen owes the player both.
+ *
+ * That combination is exactly what tells the two apart, and this layer does have to tell
+ * them apart: a code *with* a campaign is a slot that reads and refused a write, a code
+ * *without* one is a slot that cannot be read at all, and only the second is what
+ * `Incomplete` and `Error` are about (see {@link isUnreadable}). Nothing here needs to
+ * know which operation produced the code — the pair of fields says it.
  */
 export interface SaveSlotInput {
   readonly slot: string;
@@ -108,12 +112,17 @@ export const SAVE_SLOTS_LOADING_SCREEN: SaveSlotsScreenModel = Object.freeze({
  * The classification is the whole of this function, and each of the four rules is a
  * claim about what a player may do next:
  *
- * - every slot refused → `Error`. Three refusals at once is a storage that is gone,
- *   not three independent accidents, and a screen that called it `Incomplete` would be
- *   offering a slot to write into that cannot be written into either;
- * - some refused and some did not → `Incomplete`. The mixed set the design spec names;
- * - none refused and every slot is empty → `Empty`;
- * - none refused and something is there → `Normal`.
+ * - every slot unreadable → `Error`. Three slots refusing to be read at once is a storage
+ *   that is gone, not three independent accidents, and a screen that called it
+ *   `Incomplete` would be offering a slot to write into that cannot be written into
+ *   either;
+ * - some unreadable and some not → `Incomplete`. The mixed set the design spec names;
+ * - all readable and every slot empty → `Empty`;
+ * - all readable and something is there → `Normal`.
+ *
+ * "Unreadable" is not "carries a code" — see {@link isUnreadable}. A refused *write*
+ * leaves a code on a slot that still reads perfectly, and counting it here put the screen
+ * in `Incomplete` while all three slots were fine.
  *
  * `createdAt` is what says a slot holds a campaign, never `logicalTime`: a save taken
  * before anything happened has a logical time of zero, and a rule reading that as
