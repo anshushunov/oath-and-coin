@@ -40,6 +40,12 @@ const shippedContent = join(repoRoot, 'content');
 /**
  * The corpus records this as the content version of the shipped tree in all 54 entries,
  * so it is what both sources have to answer — not merely each other.
+ *
+ * The same hash is pinned a second time, in `tests/locale/catalogue.test.ts` as
+ * `FROZEN_CONTENT_VERSION`, where it states a different claim: that nothing has been
+ * added to `content/` since `ADR-012` moved interface text out of it. Two literals on
+ * purpose — neither file may own the other's claim — and Task 19 retires **both** when
+ * the corpus stops being the oracle.
  */
 const RECORDED_CONTENT_VERSION = '5d03734fd9c7abaa';
 

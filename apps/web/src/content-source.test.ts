@@ -1,9 +1,19 @@
-import { computeContentVersion, loadContentSet, resolveContentRoot } from '@oath-and-coin/content';
+import { resolve } from 'node:path';
+
+import {
+  SAVE_ERROR_CODES,
+  computeContentVersion,
+  loadContentSet,
+  resolveContentRoot
+} from '@oath-and-coin/content';
+import { loadUiTextCatalogue } from '@oath-and-coin/content/node';
+import { errorKey } from '@oath-and-coin/presentation';
 import { describe, expect, it } from 'vitest';
 
 import {
   browserContentSource,
   browserLocaleCatalogue,
+  browserUiTextCatalogue,
   openRepositoryRoot
 } from './content-source.ts';
 
@@ -218,5 +228,47 @@ describe('the locale catalogue read out of the bundle', () => {
     // fail to resolve one at a time, which reads as a broken screen rather than as a
     // missing translation file.
     expect(() => browserLocaleCatalogue('definitely-not-a-locale')).toThrow();
+  });
+});
+
+describe('the interface text catalogue read out of the bundle', () => {
+  /**
+   * `ADR-012` put this catalogue outside `content/` so that a new player-facing string
+   * would stop moving `content_version`. The cost of that move is a second tree the
+   * bundle has to be told about: `content/**` and `scenarios/**` were the whole glob,
+   * and a catalogue nobody added to it is a file the browser does not have.
+   *
+   * Wired and proven now rather than when the save screen needs it. Review of this task
+   * named why: with no consumer yet, a missing glob entry fails in the browser at
+   * runtime while `pnpm test`, `pnpm lint:deps` and `pnpm scenario:parity` all stay
+   * green — "measured is not enforced", and a paragraph in an ADR is not a mechanism.
+   */
+  it('answers a key for every save refusal the application can report', () => {
+    // Against the engine's own closed list, never against what another source in this
+    // process answers — the rule this file states at the top.
+    const catalogue = browserUiTextCatalogue('ru');
+    const missing = SAVE_ERROR_CODES.map(errorKey).filter(
+      (key) => catalogue.get(key) === undefined
+    );
+
+    expect(missing, `keys the bundle does not hold: ${missing.join(', ')}`).toEqual([]);
+  });
+
+  it('answers exactly what the Node loader answers for the same file', () => {
+    // The `source-agreement.test.ts` form, for the second tree: two implementations of
+    // one port over one file, compared key for key. A glob that dropped the file, or
+    // stripped its prefix wrongly, or handed the bundler's module object through as the
+    // bytes would part company here rather than on the first screen that resolves a key.
+    const fromBundle = browserUiTextCatalogue('ru');
+    const fromDisk = loadUiTextCatalogue(
+      resolve(import.meta.dirname, '..', '..', '..', 'ui-text', 'ru.json')
+    );
+
+    expect([...fromBundle.entries()].sort()).toEqual([...fromDisk.entries()].sort());
+    expect(fromBundle.size).toBeGreaterThan(0);
+  });
+
+  it('refuses a locale that is not shipped', () => {
+    expect(() => browserUiTextCatalogue('definitely-not-a-locale')).toThrow();
   });
 });

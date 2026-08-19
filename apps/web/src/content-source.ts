@@ -1,7 +1,10 @@
 import type { ContentSourcePort } from '@oath-and-coin/application';
 import {
+  UI_TEXT_ROOT,
   loadLocaleCatalogue,
+  loadUiTextCatalogue,
   memoryFileSource,
+  uiTextCatalogueFile,
   type ContentFileSource
 } from '@oath-and-coin/content';
 
@@ -41,7 +44,14 @@ import {
  * - `scenarios/*.canonical.json` is excluded because it is the oracle's recorded
  *   *output*, read by the parity tool and by nothing the game runs. It is also 137 KB
  *   of the 154 KB under `scenarios/`, so shipping it would nearly double the bundle to
- *   carry answers the browser never asks for.
+ *   carry answers the browser never asks for;
+ * - `ui-text/**` is the interface catalogue `ADR-012` deliberately placed *outside*
+ *   `content/`, so that a new player-facing string stops moving `content_version`. That
+ *   is exactly why it needs its own line here: it is the one tree the game reads that
+ *   the content pattern above cannot cover by construction. Left out, the file simply
+ *   is not in the bundle, and the failure lands on the first screen that resolves a
+ *   save-refusal key — with every gate in the workspace green, because nothing else
+ *   reads it through this source.
  *
  * The exclusion is anchored to the top level rather than written `**\/*.canonical.json`,
  * and external review of this task is why. Oracle outputs live beside their manifests
@@ -59,7 +69,12 @@ import {
  * something else — on one scenario, in the browser only.
  */
 const bundledFiles: Readonly<Record<string, unknown>> = import.meta.glob(
-  ['../../../content/**/*', '../../../scenarios/**/*', '!../../../scenarios/*.canonical.json'],
+  [
+    '../../../content/**/*',
+    '../../../scenarios/**/*',
+    '../../../ui-text/**/*',
+    '!../../../scenarios/*.canonical.json'
+  ],
   { query: '?raw', import: 'default', eager: true, exhaustive: true }
 );
 
@@ -169,11 +184,33 @@ export function browserLocaleCatalogue(locale: string): ReadonlyMap<string, stri
 }
 
 /**
+ * The interface catalogue for one locale — the texts the screens invent rather than the
+ * ones content authors (`ADR-012`).
+ *
+ * Read out of the bundle through the same loader and the same Zod contract Node reads it
+ * through, for the same reason {@link browserLocaleCatalogue} is: there is one reader of
+ * a catalogue file, so the browser cannot start accepting a file the CLI refuses.
+ *
+ * A missing catalogue throws, and here that is a build defect rather than a missing
+ * translation: this tree is not scenario-decided, it is what the glob above put in the
+ * bundle. Answered as a `ReadonlyMap` for the same reason as the other one — the sort
+ * order buys a lookup table nothing, and costs a type its consumers do not accept.
+ */
+export function browserUiTextCatalogue(locale: string): ReadonlyMap<string, string> {
+  const catalogue = loadUiTextCatalogue(
+    requireRepositoryRoot(UI_TEXT_ROOT),
+    uiTextCatalogueFile(locale)
+  );
+
+  return new Map(catalogue.entries());
+}
+
+/**
  * A root the bundle is required to hold.
  *
- * `content` and `scenarios` are not scenario-decided paths — they are what the build
- * put in the bundle. Their absence is a broken build, not a game state, and it is
- * worth a message that says so rather than a `CONTENT_ROOT_NOT_FOUND` screen blaming
+ * `content`, `scenarios` and `ui-text` are not scenario-decided paths — they are what
+ * the build put in the bundle. Their absence is a broken build, not a game state, and it
+ * is worth a message that says so rather than a `CONTENT_ROOT_NOT_FOUND` screen blaming
  * the scenario.
  */
 function requireRepositoryRoot(root: string): ContentFileSource {

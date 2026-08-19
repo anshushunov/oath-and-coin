@@ -65,6 +65,14 @@ const content = loadContentSet(shippedContent);
  * went wrong — a moved digest says "something under `content/` changed" — and the key
  * count alone would miss an *edited* text. Together they say "the content catalogue is
  * closed and nothing else in the tree moved either", which is the rule `ADR-012` set.
+ *
+ * `FROZEN_CONTENT_VERSION` is the **second** literal of this hash in the workspace:
+ * `packages/content/src/source-agreement.test.ts` holds it as `RECORDED_CONTENT_VERSION`,
+ * where it says something different — that the Node source and an in-memory one answer
+ * the same number. The two are not merged because neither file may own the other's
+ * claim, and a shared constant would put the pin in a place where deleting one test
+ * would quietly weaken the other. Task 19 retires **both**, not only this one; `ADR-012`
+ * records that.
  */
 const FROZEN_CONTENT_VERSION = '5d03734fd9c7abaa';
 const FROZEN_CONTENT_KEY_COUNT = 94;
