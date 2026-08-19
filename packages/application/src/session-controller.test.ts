@@ -13,7 +13,7 @@ import { ReasonCodes } from '@oath-and-coin/simulation';
 import { describe, expect, it } from 'vitest';
 
 import type { ContentSourcePort, SaveStorePort } from './ports.ts';
-import { saveChecksum, snapshotHash } from './save/envelope.ts';
+import { saveChecksum } from './save/envelope.ts';
 import { SAVE_SLOTS, type SaveSlot } from './save/slots.ts';
 import {
   createSessionController,
@@ -414,9 +414,11 @@ describe('the hash a session reports as its saved state', () => {
 
     const file = parseSave(saves.slots.get('slot-a')!);
 
-    expect(controller.store.snapshot().savedStateHash).toBe(
-      snapshotHash(controller.store.snapshot().state!)
-    );
+    // Against the snapshot *the file carries*, hashed by `saveChecksum` — the same
+    // canonical hash over whatever JSON value it is handed. Deliberately not against
+    // `snapshotHash(session.state)`, which would be the function under test compared
+    // with itself and would stay green for any projection it chose.
+    expect(controller.store.snapshot().savedStateHash).toBe(saveChecksum(file.snapshot));
     expect(controller.store.snapshot().savedStateHash).not.toBe(file.checksum);
   });
 
