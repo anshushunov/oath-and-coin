@@ -13,7 +13,7 @@ import { ReasonCodes } from '@oath-and-coin/simulation';
 import { describe, expect, it } from 'vitest';
 
 import type { ContentSourcePort, SaveStorePort } from './ports.ts';
-import { saveChecksum } from './save/envelope.ts';
+import { saveChecksum, snapshotHash } from './save/envelope.ts';
 import { SAVE_SLOTS, type SaveSlot } from './save/slots.ts';
 import {
   createSessionController,
@@ -272,17 +272,20 @@ function parseSave(bytes: Uint8Array): Record<string, unknown> {
   return JSON.parse(decodeUtf8OrThrow(bytes)) as Record<string, unknown>;
 }
 
-/** The same save with `snapshot` replaced, signed honestly — an honest resign. */
+/**
+ * The same save with `snapshot` replaced, signed honestly — an honest resign.
+ *
+ * `created_at` is inside the signed set, because since external review of Task 16 it is
+ * inside the signature (`envelope.ts`'s `saveChecksum`). A helper that kept excluding it
+ * would sign every fixture wrongly and every test below would report
+ * `SAVE_CHECKSUM_MISMATCH` instead of the refusal it is about.
+ */
 function resigned(bytes: Uint8Array, snapshot: Record<string, unknown>): Uint8Array {
   const tampered: Record<string, unknown> = { ...parseSave(bytes), snapshot };
-  const { checksum: _checksum, created_at: createdAt, ...withoutChecksum } = tampered;
+  const { checksum: _checksum, ...withoutChecksum } = tampered;
 
   return encodeUtf8(
-    JSON.stringify({
-      ...withoutChecksum,
-      created_at: createdAt,
-      checksum: saveChecksum(withoutChecksum)
-    })
+    JSON.stringify({ ...withoutChecksum, checksum: saveChecksum(withoutChecksum) })
   );
 }
 
@@ -397,27 +400,32 @@ describe('the hashes a loaded session reports', () => {
   });
 });
 
-describe('the checksum a session reports as its saved state', () => {
-  it('is the one signing the file, not a second hash of its own', async () => {
-    // The segment signs a save with exactly one algorithm. A controller computing its
-    // own would produce a number nothing in the file could be compared against, and the
-    // divergence would only show the day a screen tried to say "this slot holds what is
-    // on screen".
+describe('the hash a session reports as its saved state', () => {
+  it('is the campaign’s own hash, and not the signature on the file', async () => {
+    // Two questions, two numbers, since external review of Task 16 moved `created_at`
+    // inside the signature. `checksum` answers "has this file been edited since it was
+    // signed" and moves with the clock; `savedStateHash` answers "which campaign is
+    // this" and must not. A controller reporting the signature here would make "is this
+    // slot the campaign on screen" unanswerable the moment the same campaign was saved
+    // twice.
     const { controller, saves } = harness();
     await controller.start();
     await controller.save('slot-a');
 
     const file = parseSave(saves.slots.get('slot-a')!);
-    const { checksum: _checksum, created_at: _createdAt, ...signed } = file;
 
-    expect(controller.store.snapshot().savedStateHash).toBe(file.checksum);
-    expect(controller.store.snapshot().savedStateHash).toBe(saveChecksum(signed));
+    expect(controller.store.snapshot().savedStateHash).toBe(
+      snapshotHash(controller.store.snapshot().state!)
+    );
+    expect(controller.store.snapshot().savedStateHash).not.toBe(file.checksum);
   });
 
   it('does not move when only the moment of saving does', async () => {
-    // The checksum covers the campaign and not `created_at` (design spec §2.3), so
-    // saving one campaign twice signs it identically. A hash that moved with the clock
-    // would make "is this slot the campaign on screen" unanswerable.
+    // The campaign's hash covers the snapshot and nothing else, so saving one campaign
+    // twice answers identically here — while the file's own signature, which now covers
+    // `created_at`, answers differently. Both halves are asserted: without the second,
+    // a `snapshotHash` that quietly went back to hashing the whole envelope would still
+    // pass the first only if the clock were fixed, and it is not.
     const first = harness({ now: () => '2026-08-19T09:41:00.000Z' });
     await first.controller.start();
     await first.controller.save('slot-a');
@@ -432,20 +440,21 @@ describe('the checksum a session reports as its saved state', () => {
     expect(parseSave(second.saves.slots.get('slot-a')!).created_at).not.toBe(
       parseSave(first.saves.slots.get('slot-a')!).created_at
     );
+    expect(parseSave(second.saves.slots.get('slot-a')!).checksum).not.toBe(
+      parseSave(first.saves.slots.get('slot-a')!).checksum
+    );
   });
 
-  it("is the file's own checksum after a load, too", async () => {
-    const { controller, saves } = harness();
+  it('is the same number after a load as it was after the write', async () => {
+    const { controller } = harness();
     await controller.start();
     await controller.save('slot-a');
     const written = controller.store.snapshot().savedStateHash;
 
     await controller.load('slot-a');
 
+    expect(written).toMatch(/^[0-9a-f]{64}$/u);
     expect(controller.store.snapshot().savedStateHash).toBe(written);
-    expect(controller.store.snapshot().savedStateHash).toBe(
-      parseSave(saves.slots.get('slot-a')!).checksum
-    );
   });
 });
 

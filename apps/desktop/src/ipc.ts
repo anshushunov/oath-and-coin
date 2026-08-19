@@ -4,9 +4,13 @@ import {
   SAVE_READ_CHANNEL,
   SAVE_WRITE_CHANNEL,
   describeHostRequest,
+  describeHostResponse,
   saveListRequest,
+  saveListResponse,
   saveReadRequest,
+  saveReadResponse,
   saveWriteRequest,
+  saveWriteResponse,
   type HostDescription
 } from './contract';
 import type { DesktopSaveStore } from './save-store';
@@ -34,11 +38,24 @@ export interface IpcMainLike {
   handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void;
 }
 
-/** Registers every channel `apps/desktop` answers (`contract.ts`'s
+/**
+ * Registers every channel `apps/desktop` answers (`contract.ts`'s
  * `ALLOWED_CHANNELS`). `ipc.test.ts` checks the two lists against each other
  * from the outside — the allowlist and what this function actually
  * registers — because ADR-010 §80 asks for an allowlist that is one, not a
- * list beside the call sites that may or may not agree with them. */
+ * list beside the call sites that may or may not agree with them.
+ *
+ * **Both directions of every channel go through a schema, in this process.**
+ * `ADR-010` §80 asks for Zod on every payload on the main-process side, and
+ * until external review of Task 16 only the *requests* had it: `read` and
+ * `list` returned whatever the store handed back, `write` returned an
+ * unvalidated nothing, and `describeHostResponse` was applied inside `main.ts`
+ * — outside this registrar, so the injected `describeHost` every test uses went
+ * around it. `preload.ts` validates the replies too, and that does not satisfy
+ * the requirement: preload runs in the renderer's process, on the far side of
+ * the boundary the schema exists to guard, so a main process that answered
+ * nonsense would be relying on the untrusted side to notice.
+ */
 export function registerIpc(
   ipcMainLike: IpcMainLike,
   store: DesktopSaveStore,
@@ -49,21 +66,24 @@ export function registerIpc(
     // its arguments accepts anything, and the day it grows a parameter is the
     // day nobody remembers this was the unchecked one.
     describeHostRequest.parse(args);
-    return describeHost();
+    return describeHostResponse.parse(describeHost());
   });
 
   ipcMainLike.handle(SAVE_READ_CHANNEL, async (_event, ...args: unknown[]) => {
     const [slot] = saveReadRequest.parse(args);
-    return store.read(slot);
+    return saveReadResponse.parse(await store.read(slot));
   });
 
   ipcMainLike.handle(SAVE_WRITE_CHANNEL, async (_event, ...args: unknown[]) => {
     const [slot, bytes] = saveWriteRequest.parse(args);
-    await store.write(slot, bytes);
+    // The empty result is a result: `write` promises the renderer nothing came
+    // back, and a store that started answering something would be changing the
+    // channel's contract without the contract saying so.
+    return saveWriteResponse.parse(await store.write(slot, bytes));
   });
 
   ipcMainLike.handle(SAVE_LIST_CHANNEL, async (_event, ...args: unknown[]) => {
     saveListRequest.parse(args);
-    return store.list();
+    return saveListResponse.parse(await store.list());
   });
 }

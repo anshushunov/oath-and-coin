@@ -1,9 +1,9 @@
-import { SaveErrorCodes, decodeUtf8OrThrow, type SaveErrorCode } from '@oath-and-coin/content';
+import { SaveErrorCodes, SaveReadError, type SaveErrorCode } from '@oath-and-coin/content';
 import { LOADING_SCREEN, contractOfferScreenModel } from '@oath-and-coin/presentation';
 import { parseContentId, type ContentId } from '@oath-and-coin/simulation';
 
 import type { SaveStorePort } from './ports.ts';
-import { buildSave, readSave } from './save/envelope.ts';
+import { buildSave, readSave, snapshotHash } from './save/envelope.ts';
 import { restoreDecidedSteps } from './save/restore-steps.ts';
 import {
   describeSaveSlots,
@@ -36,12 +36,16 @@ import { createStore, type Store } from './store.ts';
  * to put it, at which point each caller invents its own answer to a question this layer
  * has already answered. Every such refusal lands in {@link SessionState.saveFailure}.
  *
- * The claim is deliberately not "nothing here throws". Three calls stand outside a
- * `try` — `focusOf`'s `parseContentId`, `buildSave` and `checksumOf` — and each is this
- * build's own code over data this build produced, so a throw from one is a defect rather
- * than a refusal. Both `start`'s comment and `save`'s say the same thing about the same
- * distinction: a defect belongs where its stack points, and dressing it as a save error
- * would file it under the one thing that is provably not wrong.
+ * The claim is deliberately not "nothing here throws". Two calls stand outside a `try` —
+ * `focusOf`'s `parseContentId` and `snapshotHash` — and each is this build's own code
+ * over data this build produced, so a throw from one is a defect rather than a refusal.
+ * `buildSave` used to stand there for the same reason and no longer can: since external
+ * review of Task 16 it *refuses* a campaign it cannot write readably, so `save` catches
+ * it, records a `SaveReadError` as a refusal, and rethrows anything else untouched. The
+ * distinction the paragraph draws is the same one; what enforces it moved from where the
+ * call sits to what it throws. Both `start`'s comment and `save`'s say the same thing:
+ * a defect belongs where its stack points, and dressing it as a save error would file it
+ * under the one thing that is provably not wrong.
  *
  * **This layer reads no clock and opens no file.** `now` is a dependency for the reason
  * `AGENTS.md` §6 gives — a save stamped from inside here would make its bytes a
@@ -219,15 +223,25 @@ async function save(
     return;
   }
 
-  // Outside the `try` on purpose: everything below the store is this build's own code
-  // over a campaign this build produced, so a throw from it is a defect and not a
-  // refusal, and labelling it with a store's error code would file it under the one
-  // thing that is provably not wrong.
-  const bytes = buildSave({
-    state: session.state,
-    focusedContract,
-    createdAt: deps.now()
-  });
+  // `buildSave` is the one call here that can refuse rather than merely fail, and the
+  // two are told apart by what it throws. It now applies every content check `readSave`
+  // applies (external review of Task 16: a producer must not be able to write what the
+  // reader rejects), so a `SaveReadError` from it is a *refusal* about this campaign and
+  // belongs on the screen beside the store's own refusals. Anything else out of it is
+  // still a defect in this build, and rethrowing it unchanged is what keeps a defect
+  // from being filed under a save error code — the distinction the paragraph in this
+  // module's header draws, now enforced by the type of the throw instead of by the call
+  // being outside a `try`.
+  let bytes: Uint8Array;
+  try {
+    bytes = buildSave({ state: session.state, focusedContract, createdAt: deps.now() });
+  } catch (cause) {
+    if (!(cause instanceof SaveReadError)) {
+      throw cause;
+    }
+    record(store, slot, fileFailure(slot, cause));
+    return;
+  }
 
   try {
     await deps.saves.write(slot, bytes);
@@ -236,7 +250,7 @@ async function save(
     return;
   }
 
-  record(store, slot, null, checksumOf(bytes));
+  record(store, slot, null, snapshotHash(session.state));
 }
 
 /**
@@ -331,7 +345,7 @@ function restore(bytes: Uint8Array, expected: SessionControllerDeps['expected'])
     contentVersion: state.metadata.contentVersion,
     canonicalHash: null,
     state,
-    savedStateHash: checksumOf(bytes),
+    savedStateHash: snapshotHash(state),
     saveFailure: null,
     errorDetail: null
   };
@@ -421,31 +435,4 @@ function failure(slot: SaveSlot, cause: unknown, fallback: SaveErrorCode): SaveF
     code: saveErrorCodeOf(cause, fallback),
     detail: cause instanceof Error ? cause.message : String(cause)
   };
-}
-
-/**
- * The checksum signing these bytes, read off the file rather than recomputed.
- *
- * `saveChecksum` is the segment's one algorithm for signing a save, and the value it
- * produced is already in the envelope — `buildSave` put it there and `readSave` has
- * checked it. Recomputing it here would mean restating the field set the signature
- * covers, and a second statement of that rule is a second answer to "what does this
- * signature cover" the day one of them is edited.
- *
- * Every caller hands this either bytes `buildSave` has just produced or bytes `readSave`
- * has just accepted, so the guard below is unreachable by construction; it is here
- * because "unreachable by construction" is a claim about today's two callers.
- */
-function checksumOf(bytes: Uint8Array): string {
-  const envelope = JSON.parse(decodeUtf8OrThrow(bytes)) as { readonly checksum?: unknown };
-
-  if (typeof envelope.checksum !== 'string') {
-    throw new Error(
-      'A save reached the session controller with no checksum on it, having been built or ' +
-        'accepted by an envelope that puts one on every file. That is a defect in this build, ' +
-        'not a save a player can do anything about.'
-    );
-  }
-
-  return envelope.checksum;
 }

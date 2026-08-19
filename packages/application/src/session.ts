@@ -89,14 +89,16 @@ export interface SessionState {
    */
   readonly state: GameState | null;
   /**
-   * The checksum signing the save this session was loaded from or last written to, and
-   * `null` when neither has happened.
+   * The hash of the campaign this session was loaded from or last wrote, and `null` when
+   * neither has happened.
    *
-   * The very number `saveChecksum` puts in the file, read back off it rather than
-   * recomputed by a second rule: the segment has one algorithm for signing a save, and a
-   * screen comparing "what is on screen" against "what is in the slot" has to be
-   * comparing the same one. Not named `snapshotHash`, which `packages/presentation`
-   * already exports for the hash of a set of rendered texts.
+   * `snapshotHash` — over the snapshot alone — and not the file's own `checksum`, which
+   * is what it was until external review of Task 16 moved `created_at` inside the
+   * signature. The question this field answers is "which campaign is this", so saving
+   * one unchanged campaign twice a minute apart has to answer the same value; the file's
+   * signature now answers a different question (has anything in this file been edited
+   * since it was signed) and deliberately moves with the clock. Two questions, two
+   * functions, both in `save/envelope.ts` beside each other.
    */
   readonly savedStateHash: string | null;
   /** The last refusal from the save store, or `null` when the last save or load worked. */

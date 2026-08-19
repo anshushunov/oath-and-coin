@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   ALLOWED_CHANNELS,
+  DESCRIBE_HOST_CHANNEL,
   SAVE_LIST_CHANNEL,
   SAVE_READ_CHANNEL,
   SAVE_WRITE_CHANNEL,
@@ -117,5 +118,75 @@ describe('registerIpc', () => {
 
     const listHandler = handlers.get(SAVE_LIST_CHANNEL);
     await expect(listHandler?.(undefined)).resolves.toEqual(['slot-a', 'slot-c']);
+  });
+});
+
+describe('what leaves the main process is checked in the main process', () => {
+  /**
+   * `ADR-010` §80 asks for Zod on every payload on the main-process side, and external
+   * review of Task 16 found it applied to requests only. `preload.ts` validates replies,
+   * but preload runs in the *renderer's* process — on the far side of the boundary — so
+   * a main process trusting it to notice is a main process that checks nothing.
+   *
+   * Each case below hands `registerIpc` a store (or a `describeHost`) that answers
+   * something outside its channel's response schema, and asserts the handler refuses
+   * rather than forwarding it. Types cannot express these answers, which is the point:
+   * `as never` is how a store from an older build, or a `describeHost` reading an
+   * Electron API that changed, reaches this code in practice.
+   */
+
+  it('the describe-host handler refuses a description missing a field', async () => {
+    const { ipcMainLike, handlers } = fakeIpcMain();
+    registerIpc(ipcMainLike, fakeStore(), () => ({ platform: 'win32' }) as never);
+
+    expect(() => handlers.get(DESCRIBE_HOST_CHANNEL)?.(undefined)).toThrow();
+  });
+
+  it('the describe-host handler refuses an empty platform', async () => {
+    const { ipcMainLike, handlers } = fakeIpcMain();
+    registerIpc(ipcMainLike, fakeStore(), () => ({
+      platform: '',
+      appVersion: '0.0.0',
+      packaged: false
+    }));
+
+    expect(() => handlers.get(DESCRIBE_HOST_CHANNEL)?.(undefined)).toThrow();
+  });
+
+  it('the save-read handler refuses bytes that are not bytes', async () => {
+    const { ipcMainLike, handlers } = fakeIpcMain();
+    registerIpc(
+      ipcMainLike,
+      fakeStore({ read: async () => 'oh no' as never }),
+      fakeHostDescription
+    );
+
+    await expect(handlers.get(SAVE_READ_CHANNEL)?.(undefined, 'slot-a')).rejects.toThrow();
+  });
+
+  it('the save-write handler refuses a store that answers something', async () => {
+    const { ipcMainLike, handlers } = fakeIpcMain();
+    registerIpc(
+      ipcMainLike,
+      fakeStore({ write: async () => 'written' as never }),
+      fakeHostDescription
+    );
+
+    await expect(
+      handlers.get(SAVE_WRITE_CHANNEL)?.(undefined, 'slot-a', Uint8Array.of(9))
+    ).rejects.toThrow();
+  });
+
+  it('the save-list handler refuses a slot name outside the closed set', async () => {
+    // The mirror of the request-side check three tests up: a slot name is a closed set in
+    // both directions, and a listing that named `../../slot-a` would put it on a screen.
+    const { ipcMainLike, handlers } = fakeIpcMain();
+    registerIpc(
+      ipcMainLike,
+      fakeStore({ list: async () => ['slot-a', '../../slot-a'] as never }),
+      fakeHostDescription
+    );
+
+    await expect(handlers.get(SAVE_LIST_CHANNEL)?.(undefined)).rejects.toThrow();
   });
 });

@@ -1,6 +1,8 @@
 import { type SaveSlot, type SaveStorePort } from '@oath-and-coin/application';
 import { SaveErrorCodes, SaveReadError } from '@oath-and-coin/content';
 
+import { requireStorableSize } from './save-size.ts';
+
 /**
  * The renderer's `SaveStorePort` for the desktop build — a thin, validating
  * wrapper over `window.desktop`, the surface `apps/desktop/src/preload.ts`
@@ -55,6 +57,13 @@ async function read(slot: SaveSlot): Promise<Uint8Array | null> {
 }
 
 async function write(slot: SaveSlot, bytes: Uint8Array): Promise<void> {
+  // The same ceiling the IndexedDB store applies, and applied here for a second reason
+  // beyond symmetry: past it, `apps/desktop`'s own Zod schema rejects the payload in the
+  // main process, and the rejection arrives back here as a bare IPC failure that the
+  // `catch` below would report as `SAVE_STORAGE_UNAVAILABLE` — the storage blamed for a
+  // payload's size. Refusing first gives the same `SAVE_OUT_OF_BOUNDS` a browser gives.
+  requireStorableSize(slot, bytes);
+
   try {
     await desktopApi().writeSave(slot, bytes);
   } catch {

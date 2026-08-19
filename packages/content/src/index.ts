@@ -30,6 +30,7 @@ export {
 } from './bounds.ts';
 
 export {
+  MAX_ARTIFACT_SAFE_TEXT_LENGTH,
   MAX_FILE_SIZE_BYTES,
   MAX_JSON_DEPTH,
   MAX_RELATIONSHIPS_PER_HERO,
@@ -134,7 +135,13 @@ export {
   SaveReadError,
   type SaveErrorCode
 } from './save/save-error-codes.ts';
-export { decodeSnapshot, encodeSnapshot } from './save/snapshot-codec.ts';
+export {
+  MAX_APPLIED_COMMANDS,
+  MAX_HEROES_PER_CONTRACT,
+  decodeSnapshot,
+  encodeSnapshot,
+  requireReadableSnapshot
+} from './save/snapshot-codec.ts';
 
 export {
   UI_TEXT_ROOT,

@@ -14,8 +14,11 @@ import {
   decodeSnapshot,
   decodeUtf8OrThrow,
   encodeSnapshot,
-  encodeUtf8
+  encodeUtf8,
+  requireReadableSnapshot
 } from '@oath-and-coin/content';
+
+import { validateGameState } from './validate-game-state.ts';
 
 /**
  * The save envelope: version, signature and refusal table (design spec §2.3-§2.4).
@@ -39,6 +42,46 @@ import {
 
 /** The save format version this build reads and writes. */
 export const SAVE_FORMAT_VERSION = 1;
+
+/**
+ * The largest save file this build produces or hands to a slot store, in bytes.
+ *
+ * **Declared here because the port is here.** It was declared only in
+ * `apps/desktop/src/contract.ts`, where the IPC boundary refused a larger payload, and
+ * external review of Task 16 measured the consequence: the IndexedDB store accepted any
+ * `Uint8Array` at all, so the same call succeeded in a browser and failed in Electron
+ * and no test compared the two. A limit that lives in one implementation is a limit the
+ * application does not have.
+ *
+ * The number is a ceiling on a whole campaign's state, not a guess about a file system:
+ * the frozen corpus's largest canonical snapshot — the whole state of a finished
+ * campaign — is about 11 KB (`scenarios/screen_incomplete.canonical.json`), and
+ * `write()` replaces a slot wholesale rather than appending, so nothing this build ever
+ * asks for is more than one campaign at once. 8 MiB is roughly three orders of
+ * magnitude above that: generous enough that no real campaign approaches it, finite
+ * enough that an untrusted page cannot ask a host process to write an unbounded amount
+ * into a data directory.
+ *
+ * Three places enforce it and none of them may drift: {@link buildSave} refuses to
+ * *produce* more, both `SaveStorePort` implementations import this constant and refuse
+ * to *store* more, and `apps/desktop/src/contract.ts` states the same number a second
+ * time because the host may not import this package at all — held to this one by
+ * `tests/architecture/save-size-agreement.test.ts`, the same shape `DESKTOP_SAVE_SLOTS`
+ * is held to `SAVE_SLOTS`.
+ */
+export const MAX_SAVE_BYTES = 8 * 1024 * 1024;
+
+/**
+ * `created_at` in the one spelling this build writes and accepts: RFC 3339 / ISO-8601,
+ * UTC, milliseconds, `Z` — exactly what `Date.prototype.toISOString` emits, which is
+ * what the composition root's `now` is.
+ *
+ * A pattern rather than "any string", because the field was validated as an arbitrary
+ * string and shown to a player. Its length is bounded by the pattern itself (24
+ * characters), which is the bound `TDD` §18 asks for on anything read off an untrusted
+ * file — there is no separate `.max()` to keep in step with it.
+ */
+const CREATED_AT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 
 /**
  * The facts a save-slot screen shows about one save without decoding the whole
@@ -89,7 +132,27 @@ const ENVELOPE_FIELDS: readonly string[] = Object.freeze([
   'checksum'
 ]);
 
-/** Builds a save file's bytes from a campaign and the contract its screen was showing. */
+/**
+ * Builds a save file's bytes from a campaign and the contract its screen was showing.
+ *
+ * **This build cannot write a file it would refuse to read.** Every check `readSave`
+ * makes about the *contents* — the snapshot's own contract, the campaign's own
+ * invariants, `focused_contract` naming a contract that exists, `created_at` in the one
+ * spelling this format has, the size ceiling — runs here first, over the same values,
+ * through the same functions. Not out of symmetry: external review of Task 16 found two
+ * places where a producer could emit what the reader rejects (a 257-character
+ * localization key the content loader accepted; nothing at all checking domain
+ * invariants on the way out), and the answer to "who owns that gap" is that there is no
+ * gap to own.
+ *
+ * The checks `readSave` makes about *versions* are deliberately not here: this function
+ * does not know what build is asking, which is the same reason `decodeSnapshot` does
+ * not. Refusing to overwrite a readable save with a foreign one is
+ * `session-controller.ts`'s `refusalToWrite`, before this is ever called.
+ *
+ * @throws {@link SaveReadError} — the same codes reading throws, because they name the
+ * same conditions.
+ */
 export function buildSave(input: {
   readonly state: GameState;
   readonly focusedContract: ContentId;
@@ -99,6 +162,19 @@ export function buildSave(input: {
   readonly createdAt: string;
 }): Uint8Array {
   const { state, focusedContract, createdAt } = input;
+
+  requireCanonicalCreatedAt(createdAt);
+  validateGameState(state);
+
+  if (!state.contracts.has(focusedContract)) {
+    throw inconsistent(
+      `a save was asked for with focused_contract '${focusedContract}', but the campaign carries ` +
+        'no such contract.'
+    );
+  }
+
+  const snapshot = encodeSnapshot(state);
+  requireReadableSnapshot(snapshot);
 
   const withoutChecksum = {
     format_version: SAVE_FORMAT_VERSION,
@@ -110,16 +186,25 @@ export function buildSave(input: {
     campaign_seed: String(state.metadata.campaignSeed),
     logical_time: state.metadata.logicalTime,
     focused_contract: focusedContract,
-    snapshot: encodeSnapshot(state)
+    snapshot,
+    // Inside the signature, and that is a decision reversed rather than an oversight
+    // carried forward — see {@link saveChecksum}.
+    created_at: createdAt
   };
 
-  const envelope = {
-    ...withoutChecksum,
-    created_at: createdAt,
-    checksum: saveChecksum(withoutChecksum)
-  };
+  const envelope = { ...withoutChecksum, checksum: saveChecksum(withoutChecksum) };
+  const bytes = encodeUtf8(JSON.stringify(envelope));
 
-  return encodeUtf8(JSON.stringify(envelope));
+  if (bytes.length > MAX_SAVE_BYTES) {
+    throw new SaveReadError(
+      SaveErrorCodes.OutOfBounds,
+      `this campaign encodes to ${String(bytes.length)} bytes, past the ` +
+        `${String(MAX_SAVE_BYTES)}-byte ceiling every slot store is held to; a file this build ` +
+        'produces but a store may refuse is not a file worth producing.'
+    );
+  }
+
+  return bytes;
 }
 
 /**
@@ -141,7 +226,7 @@ export function readSave(
 
   const envelope = requireEnvelopeShape(parsed);
 
-  const { checksum, created_at: createdAt, ...withoutChecksum } = envelope;
+  const { checksum, ...withoutChecksum } = envelope;
   if (saveChecksum(withoutChecksum) !== checksum) {
     throw new SaveReadError(
       SaveErrorCodes.ChecksumMismatch,
@@ -175,7 +260,7 @@ export function readSave(
 
   const state = decodeSnapshot(envelope.snapshot);
 
-  checkReferentialIntegrity(state);
+  validateGameState(state);
 
   requireDuplicateFieldsAgree(envelope, state);
 
@@ -190,7 +275,7 @@ export function readSave(
   return {
     state,
     descriptor: {
-      createdAt,
+      createdAt: envelope.created_at,
       logicalTime: envelope.logical_time,
       focusedContract
     }
@@ -198,10 +283,42 @@ export function readSave(
 }
 
 /**
+ * The campaign's own hash, over the snapshot and nothing else.
+ *
+ * Separate from {@link saveChecksum}, which signs a *file*, because the two answer
+ * different questions and stopped being able to share one number the moment
+ * `created_at` went inside the signature. This one answers "which campaign is this",
+ * and a screen comparing what is on screen against what is in a slot needs exactly
+ * that: saving one unchanged campaign twice, a minute apart, has to produce the same
+ * value here, and now produces two different signatures over there. Computed through
+ * `encodeSnapshot` — the same projection the file carries — so it is a hash of the
+ * campaign as this format states it, not of an in-memory shape that could drift from
+ * it.
+ */
+export function snapshotHash(state: GameState): string {
+  return canonicalSha256(encodeSnapshot(state) as CanonicalValue);
+}
+
+/**
  * The envelope's contents checksum — `canonicalSha256` over the canonical bytes of
- * every field the save carries except `created_at` and `checksum` itself (design spec
- * §2.3). The one algorithm the segment's saves are hashed with: Task 16.7 reuses this
- * function rather than restating the rule.
+ * every field the save carries except `checksum` itself. **`created_at` is inside it**,
+ * and that reverses what the design spec §2.3 wrote down.
+ *
+ * The spec excluded it to buy one property: saving the same campaign twice would sign
+ * identically, so "is this slot the campaign on screen" could be answered by comparing
+ * one number. External review of Task 16 priced the other side and it came out higher.
+ * A field excluded from the signature is a field nothing protects: `created_at` could be
+ * replaced with `not-a-date` in a file nobody re-signed, and the file still read back
+ * clean, still claimed integrity, and still reached the interface — while the refusal
+ * text this envelope shows for a broken signature says "the file was edited after it was
+ * signed", which that file now provably was and was not told. A save format that signs
+ * nine of its ten fields signs nothing about the tenth, and the tenth is the one a
+ * player reads off the slots screen.
+ *
+ * The property the exclusion bought is not lost, it moved: {@link snapshotHash} answers
+ * "which campaign is this" over the snapshot alone, which is what that question was
+ * always about. Two functions for two questions, rather than one number asked to be
+ * both a signature and an identity.
  *
  * `unknown` rather than a typed envelope: this function's whole job is to hash
  * whatever JSON-shaped value it is handed, the same way `snapshot-codec.ts`'s own
@@ -211,8 +328,8 @@ export function readSave(
  * read time and at write time share, so the two can never silently diverge on what
  * counts as coverable.
  */
-export function saveChecksum(envelopeWithoutCreatedAtAndChecksum: unknown): string {
-  return canonicalSha256(envelopeWithoutCreatedAtAndChecksum as CanonicalValue);
+export function saveChecksum(envelopeWithoutChecksum: unknown): string {
+  return canonicalSha256(envelopeWithoutChecksum as CanonicalValue);
 }
 
 function parseSaveJson(bytes: Uint8Array): unknown {
@@ -293,9 +410,38 @@ function requireEnvelopeShape(value: unknown): RawEnvelope {
   requireInt(raw.logical_time, 'logical_time');
   requireMatch(raw.focused_contract, CONTENT_ID_REGEX, 'focused_contract');
   requireString(raw.created_at, 'created_at');
+  requireCanonicalCreatedAt(raw.created_at);
   requireString(raw.checksum, 'checksum');
 
   return raw as unknown as RawEnvelope;
+}
+
+/**
+ * `created_at` in the one spelling this format has, at both ends: `buildSave` will not
+ * stamp anything else and `readSave` will not accept anything else.
+ *
+ * The pattern alone would accept `2026-13-45T99:99:99.999Z`, so the value is also put
+ * through a parse and required to come back out identical — which is what rules out a
+ * month 13, a 31st of February and a leap second at once, without this module owning a
+ * calendar. **`new Date(string)` is a parser, not a clock.** `AGENTS.md` §6 keeps this
+ * layer from *reading* the time (`Date.now()`, `new Date()` with no argument), which is
+ * why `createdAt` is a parameter at all; deciding whether a string somebody else handed
+ * over is a date is a different act, and it happens to the same value on both sides of
+ * the file.
+ */
+function requireCanonicalCreatedAt(value: string): void {
+  const parsed = CREATED_AT_PATTERN.test(value) ? new Date(value) : new Date(Number.NaN);
+
+  // `Number.isNaN(getTime())` before `toISOString()`, because `toISOString` on an
+  // invalid date throws a `RangeError` rather than answering — and a `RangeError` out of
+  // here would escape `readSave`'s own `@throws SaveReadError` promise on a file whose
+  // only fault is a 13th month.
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString() !== value) {
+    throw malformed(
+      `'created_at' must be an ISO-8601 instant in UTC with milliseconds, as in ` +
+        `'2026-08-19T09:41:00.000Z'; this save carries ${JSON.stringify(value)}.`
+    );
+  }
 }
 
 function malformed(detail: string): SaveReadError {
@@ -318,86 +464,6 @@ function requireMatch(value: unknown, pattern: RegExp, field: string): asserts v
   requireString(value, field);
   if (!pattern.test(value)) {
     throw malformed(`'${field}' does not have the shape this format expects.`);
-  }
-}
-
-/**
- * The referential integrity `decodeSnapshot` deliberately leaves unchecked: a map's
- * own key-equals-identity is the codec's contract, but a *reference between* two maps
- * — an event's `heroId` or `contractId`, an event's `causalTraceId` pointing at a
- * trace, a contract's `respondedBy` or `acceptedBy` naming a hero, a hero's `traits`
- * naming a rule — spans two of `snapshot-codec.ts`'s independently-built maps, and
- * nothing there checks across that seam.
- *
- * This is the envelope's job rather than a second codec concern: a save is a
- * `GameState` plus the promise that *this* build can trust it, and a save whose event
- * log names a hero or a contract its own roster does not have is not a save this build
- * can trust, whatever `decodeSnapshot`'s per-map checks already passed.
- * `SaveErrorCodes.Inconsistent` is reused rather than a new code minted for it — a
- * dangling reference is the same kind of failure `decodeSnapshot` already reports
- * under that code for a map's own key.
- */
-function checkReferentialIntegrity(state: GameState): void {
-  for (const event of state.history) {
-    if (!state.heroes.has(event.heroId)) {
-      throw inconsistent(
-        `history event ${String(event.eventId)} names hero#${String(event.heroId)}, but the ` +
-          'save carries no such hero.'
-      );
-    }
-
-    if (!state.contracts.has(event.contractId)) {
-      throw inconsistent(
-        `history event ${String(event.eventId)} names contract '${event.contractId}', but the ` +
-          'save carries no such contract.'
-      );
-    }
-
-    if (event.causalTraceId !== null && !state.traces.has(event.causalTraceId)) {
-      throw inconsistent(
-        `history event ${String(event.eventId)} references causalTraceId ` +
-          `${String(event.causalTraceId)}, but the save stores no trace under that id.`
-      );
-    }
-  }
-
-  // A hero's traits against the rule table, which is the seam a screen walks through
-  // first and the one this check was missing. Every hero card names every trait its
-  // hero holds (`contract-offer-screen-model-factory.ts`'s `resolveTrait`), so a save
-  // whose roster holds a trait its own rule table does not carry is a save no screen
-  // can be built from — and without this it reached the factory, which threw a plain
-  // `Error` from three layers up rather than reporting a refusal a player can read.
-  // Named here as a condition rather than caught downstream as a default: the session
-  // controller's own fallback would have to decide whether a throw meant "the file is
-  // broken" or "this build is", and that is a question only the file can answer.
-  for (const [heroId, hero] of state.heroes.entries()) {
-    for (const traitId of hero.traits) {
-      if (!state.traitRules.has(traitId)) {
-        throw inconsistent(
-          `hero#${String(heroId)} holds trait '${traitId}', but the save carries no rule for it.`
-        );
-      }
-    }
-  }
-
-  for (const [contractId, contract] of state.contracts.entries()) {
-    for (const heroId of contract.respondedBy.values()) {
-      if (!state.heroes.has(heroId)) {
-        throw inconsistent(
-          `contract '${contractId}' lists hero#${String(heroId)} in respondedBy, but the save ` +
-            'carries no such hero.'
-        );
-      }
-    }
-
-    for (const heroId of contract.acceptedBy.values()) {
-      if (!state.heroes.has(heroId)) {
-        throw inconsistent(
-          `contract '${contractId}' lists hero#${String(heroId)} in acceptedBy, but the save ` +
-            'carries no such hero.'
-        );
-      }
-    }
   }
 }
 

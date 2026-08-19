@@ -1,7 +1,9 @@
 import {
   RULESET_VERSION,
   createInitialState,
+  decodeSnapshot,
   decodeUtf8OrThrow,
+  encodeSnapshot,
   encodeUtf8,
   loadContentSet,
   memoryFileSource
@@ -124,11 +126,19 @@ function parseSave(bytes: Uint8Array): Record<string, unknown> {
   return JSON.parse(decodeUtf8OrThrow(bytes)) as Record<string, unknown>;
 }
 
-/** Recomputes the checksum for a mutated file and re-encodes it — an honest resign. */
+/**
+ * Recomputes the checksum for a mutated file and re-encodes it — an honest resign.
+ *
+ * `created_at` is inside the signed set. It was outside until external review of Task
+ * 16, and the whole point of the change is that a file which changes it without
+ * re-signing is now refused; a resign helper that still excluded it would sign every
+ * fixture below wrongly and every case would answer `SAVE_CHECKSUM_MISMATCH` instead of
+ * the refusal it is about.
+ */
 function resign(file: Record<string, unknown>): Uint8Array {
-  const { checksum: _checksum, created_at, ...withoutChecksum } = file;
+  const { checksum: _checksum, ...withoutChecksum } = file;
   return encodeUtf8(
-    JSON.stringify({ ...withoutChecksum, created_at, checksum: saveChecksum(withoutChecksum) })
+    JSON.stringify({ ...withoutChecksum, checksum: saveChecksum(withoutChecksum) })
   );
 }
 
@@ -333,6 +343,196 @@ describe('referential integrity across the snapshot’s own maps', () => {
   });
 });
 
+/**
+ * A snapshot with `mutate` applied, re-signed honestly, as bytes — the shape every
+ * domain-invariant case below shares. `aDecidedState()` is the campaign: Bram accepts
+ * `core:cleanse_the_crypt`, so `respondedBy`, `acceptedBy`, `history`, `traces`,
+ * `appliedCommandIds` and every counter are all non-empty and all agree.
+ */
+function aTamperedSave(mutate: (snapshot: RawSnapshot) => void): Uint8Array {
+  const decided = aDecidedState();
+  const file = parseSave(
+    buildSave({ state: decided, focusedContract: FOCUSED_CONTRACT, createdAt: CREATED_AT })
+  );
+  mutate(file.snapshot as RawSnapshot);
+
+  return resign(file);
+}
+
+interface RawSnapshot {
+  metadata: Record<string, number | string>;
+  contracts: {
+    value: { requiredCrew: number; status: string; respondedBy: number[]; acceptedBy: number[] };
+  }[];
+  appliedCommandIds: number[];
+  traces: { key: number; value: { traceId: number } }[];
+  history: {
+    kind: string;
+    eventId: number;
+    logicalTime: number;
+    heroId: number;
+    causalTraceId: number | null;
+  }[];
+}
+
+describe('the campaign’s own invariants, checked on the way in and on the way out', () => {
+  // External review of Task 16 reproduced the hole these close: a re-signed file whose
+  // history carried `hero_accepted_contract` while the contract's `respondedBy` and
+  // `acceptedBy` were emptied and its status put back to `offered` read back
+  // successfully — and the same hero then answered the same contract a second time,
+  // producing two identical history records. Referential integrity said every id
+  // existed; nothing said the relations between them held.
+
+  const cases: [string, (snapshot: RawSnapshot) => void][] = [
+    [
+      'ответ стёрт из контракта, а событие о нём осталось — файл из внешнего ревью',
+      (snapshot) => {
+        const contract = snapshot.contracts[0]!.value;
+        contract.respondedBy = [];
+        contract.acceptedBy = [];
+        contract.status = 'offered';
+      }
+    ],
+    [
+      'герой в acceptedBy, но не в respondedBy',
+      (snapshot) => {
+        snapshot.contracts[0]!.value.respondedBy = [];
+        snapshot.contracts[0]!.value.status = 'offered';
+      }
+    ],
+    [
+      'история говорит «принял», контракт — «не в составе»',
+      (snapshot) => {
+        snapshot.contracts[0]!.value.acceptedBy = [];
+        snapshot.contracts[0]!.value.status = 'offered';
+      }
+    ],
+    [
+      'один герой отвечает на один контракт дважды',
+      (snapshot) => {
+        const [first] = snapshot.history;
+        snapshot.history = [first!, { ...first!, eventId: 1 }];
+        snapshot.appliedCommandIds = [1, 2];
+        snapshot.metadata.nextEventId = 2;
+        snapshot.metadata.stateVersion = 2;
+      }
+    ],
+    [
+      'respondedBy называет героя, о котором в истории ничего нет',
+      (snapshot) => {
+        snapshot.history = [];
+        snapshot.appliedCommandIds = [];
+        snapshot.traces = [];
+        snapshot.metadata.nextEventId = 0;
+        snapshot.metadata.stateVersion = 0;
+        snapshot.metadata.nextTraceId = 0;
+      }
+    ],
+    [
+      'состав набран, а контракт всё ещё предлагается',
+      (snapshot) => {
+        snapshot.contracts[0]!.value.status = 'offered';
+      }
+    ],
+    [
+      'контракт закрыт составом, которого не хватает',
+      (snapshot) => {
+        snapshot.contracts[0]!.value.requiredCrew = 2;
+      }
+    ],
+    [
+      'nextEventId не совпадает с длиной истории',
+      (snapshot) => {
+        snapshot.metadata.nextEventId = 7;
+      }
+    ],
+    [
+      'stateVersion не совпадает с длиной истории',
+      (snapshot) => {
+        snapshot.metadata.stateVersion = 7;
+      }
+    ],
+    [
+      'применённых команд больше, чем событий',
+      (snapshot) => {
+        snapshot.appliedCommandIds = [1, 2];
+      }
+    ],
+    [
+      'nextTraceId не равен числу хранимых следов',
+      (snapshot) => {
+        snapshot.metadata.nextTraceId = 5;
+      }
+    ],
+    [
+      'следы пронумерованы не подряд',
+      (snapshot) => {
+        // `nextTraceId` deliberately left at 1, which is still `traces.size`: without
+        // that, the counter check above fires first and this case measures nothing about
+        // trace ids being dense.
+        snapshot.traces[0]!.key = 3;
+        snapshot.traces[0]!.value.traceId = 3;
+        snapshot.history[0]!.causalTraceId = 3;
+      }
+    ],
+    [
+      'eventId не совпадает с местом события в журнале',
+      (snapshot) => {
+        // Counters left alone for the same reason: `nextEventId` still equals the
+        // history's length, so the only thing left to notice is that the one event in it
+        // claims id 4.
+        snapshot.history[0]!.eventId = 4;
+      }
+    ],
+    [
+      'событие датировано позже, чем показывают часы кампании',
+      (snapshot) => {
+        snapshot.history[0]!.logicalTime = 9;
+      }
+    ]
+  ];
+
+  it.each(cases)('отказывает при чтении: %s', (_name, mutate) => {
+    expect(() => readSave(aTamperedSave(mutate), expectedVersions)).toThrow(/SAVE_INCONSISTENT/u);
+  });
+
+  it.each(cases)('и отказывается ЗАПИСАТЬ то же самое: %s', (_name, mutate) => {
+    // The other half, and the half external review said was missing: a producer must not
+    // be able to write what the reader refuses. The state is built by `decodeSnapshot`,
+    // which deliberately checks shape and not domain — so this is a real `GameState`
+    // carrying the same broken campaign, handed to `buildSave`.
+    const decided = aDecidedState();
+    const snapshot = JSON.parse(JSON.stringify(encodeSnapshot(decided))) as RawSnapshot;
+    mutate(snapshot);
+
+    expect(() =>
+      buildSave({
+        state: decodeSnapshot(snapshot),
+        focusedContract: FOCUSED_CONTRACT,
+        createdAt: CREATED_AT
+      })
+    ).toThrow(/SAVE_INCONSISTENT/u);
+  });
+
+  it('принимает кампанию, которую движок действительно произвёл', () => {
+    // The guard on the guards: every case above tampers with a save built from this same
+    // campaign, so if `validateGameState` refused everything the table would still be
+    // green and would prove nothing.
+    const decided = aDecidedState();
+    const versions = {
+      rulesetVersion: decided.metadata.rulesetVersion,
+      contentVersion: decided.metadata.contentVersion
+    };
+    const bytes = buildSave({
+      state: decided,
+      focusedContract: FOCUSED_CONTRACT,
+      createdAt: CREATED_AT
+    });
+
+    expect(deepEqual(readSave(bytes, versions).state, decided)).toBe(true);
+  });
+});
+
 describe('checksum coverage for fields with no second line of defense', () => {
   // `campaign_seed`, `logical_time`, `ruleset_version`, `content_version` и
   // `save_schema_version` дублируются внутри снимка и ловятся ещё раз
@@ -345,6 +545,19 @@ describe('checksum coverage for fields with no second line of defense', () => {
     // не сумма, а проверка ссылочной целостности, и тест не измеряет то, что заявляет.
     const file = parseSave(aValidSave());
     file.focused_contract = OTHER_CONTRACT; // сумма НЕ пересчитывается
+    const bytes = encodeUtf8(JSON.stringify(file));
+
+    expect(() => readSave(bytes, expectedVersions)).toThrow(/SAVE_CHECKSUM_MISMATCH/u);
+  });
+
+  it('ловит непереподписанную подмену created_at', () => {
+    // Внешнее ревью Task 16: `created_at` был исключён из суммы, проверялся как
+    // произвольная строка и доезжал до интерфейса — файл заявлял целостность и при
+    // этом был правлен после подписи. Значение здесь законное по форме (иначе первой
+    // отвечает проверка формы, а не сумма) и просто не то, которое подписано.
+    const file = parseSave(aValidSave());
+    expect(file.created_at).toBe(CREATED_AT);
+    file.created_at = '2031-01-01T00:00:00.000Z'; // сумма НЕ пересчитывается
     const bytes = encodeUtf8(JSON.stringify(file));
 
     expect(() => readSave(bytes, expectedVersions)).toThrow(/SAVE_CHECKSUM_MISMATCH/u);
@@ -403,6 +616,48 @@ describe('форма конверта', () => {
     const bytes = encodeUtf8(JSON.stringify(file));
 
     expect(() => readSave(bytes, expectedVersions)).toThrow(/SAVE_MALFORMED/u);
+  });
+});
+
+describe('created_at имеет ровно одну форму, и она проверяется с обеих сторон', () => {
+  // Оно писалось и читалось как произвольная строка. `not-a-date` доезжал до экрана
+  // слотов, где показывается игроку, а сумма его не покрывала — то есть файл заявлял
+  // целостность, будучи правленным после подписи.
+
+  const badForms = [
+    ['совсем не дата', 'not-a-date'],
+    ['без миллисекунд', '2026-08-19T09:41:00Z'],
+    ['со смещением вместо UTC', '2026-08-19T09:41:00.000+03:00'],
+    ['тринадцатый месяц', '2026-13-19T09:41:00.000Z'],
+    ['31 февраля', '2026-02-31T09:41:00.000Z'],
+    ['пустая строка', '']
+  ];
+
+  it.each(badForms)('чтение отказывает: %s', (_name, createdAt) => {
+    const file = parseSave(aValidSave());
+    file.created_at = createdAt;
+
+    expect(() => readSave(resign(file), expectedVersions)).toThrow(/SAVE_MALFORMED/u);
+  });
+
+  it.each(badForms)('запись отказывается ставить такой штамп: %s', (_name, createdAt) => {
+    expect(() => buildSave({ state, focusedContract: FOCUSED_CONTRACT, createdAt })).toThrow(
+      /SAVE_MALFORMED/u
+    );
+  });
+
+  it('принимает ровно то, что пишет `Date.prototype.toISOString`', () => {
+    // The composition root's `now` is `() => new Date().toISOString()` (`App.tsx`), so
+    // this is the one form that has to pass — asserted against the method itself rather
+    // than against a literal that could be typed to match a broken pattern.
+    const stamp = new Date(Date.UTC(2026, 7, 19, 9, 41, 0, 123)).toISOString();
+
+    expect(
+      readSave(
+        buildSave({ state, focusedContract: FOCUSED_CONTRACT, createdAt: stamp }),
+        expectedVersions
+      ).descriptor.createdAt
+    ).toBe(stamp);
   });
 });
 

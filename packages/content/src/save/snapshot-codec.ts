@@ -43,6 +43,7 @@ import {
   TRAIT_MIN
 } from '../bounds.ts';
 import {
+  MAX_ARTIFACT_SAFE_TEXT_LENGTH,
   MAX_RELATIONSHIPS_PER_HERO,
   MAX_TAGS_PER_CONTRACT,
   MAX_TRAITS_PER_HERO
@@ -99,7 +100,7 @@ const MAX_BLOCKS_PER_TRACE = 2 * MAX_TRAITS_PER_HERO;
  * to move every time content grows, while a save claiming an impossible campaign
  * length is still refused rather than allocated.
  */
-const MAX_APPLIED_COMMANDS = 4 * 24;
+export const MAX_APPLIED_COMMANDS = 4 * 24;
 
 /**
  * `respondedBy` and `acceptedBy` are both subsets of the campaign's own hero
@@ -109,8 +110,16 @@ const MAX_APPLIED_COMMANDS = 4 * 24;
  * same way {@link MAX_APPLIED_COMMANDS} is, for the same reason: a bound that
  * moved every time a hero was added would defeat the point of being a ceiling
  * rather than a mirror of content.
+ *
+ * Both ceilings are exported, and only so that
+ * `content-fits-the-save-ceilings.test.ts` can hold the *shipped tree* to them. They
+ * are derived from today's content volume, so content growing past them is the one way
+ * a legitimate campaign would start producing saves this build refuses — the same class
+ * of hole external review of Task 16 found on {@link MAX_ARTIFACT_SAFE_TEXT_LENGTH},
+ * closed the same way: by a check that reddens in CI rather than at a player's save
+ * button.
  */
-const MAX_HEROES_PER_CONTRACT = 4 * 6;
+export const MAX_HEROES_PER_CONTRACT = 4 * 6;
 
 /** 64-битное значение десятичной строкой. */
 const uint64 = z
@@ -123,31 +132,22 @@ const contentId = z.string().regex(new RegExp(CONTENT_ID_PATTERN));
 const heroIdSchema = z.int().min(HERO_ID_MIN).max(HERO_ID_MAX);
 
 /**
- * Longest artifact-safe string this codec accepts for any of the fields that
- * reach a canonical determinism artifact without going through a content
- * contract on the way in: a hero's `displayNameKey` (validated once, at
- * content-load time, then carried unchanged for the rest of the campaign), the
- * campaign's own `rulesetVersion`/`contentVersion` (strings a *tool* supplied —
- * `createInitialState`'s own `requireArtifactSafeText` calls check them once,
- * at construction, not again on every read), and a trace's `reasonCode`/
- * `tieBreak` (drawn from the engine's closed `ReasonCodes` vocabulary). None of
- * these is re-validated by anything between where it was first checked and
- * where this codec reads a save back from an untrusted file — which is exactly
- * the boundary `artifact-domain.ts`'s own comment describes as needing its own
- * gate, not a trust in whatever produced the bytes.
+ * The fields this ceiling covers are the ones that reach a canonical determinism
+ * artifact without going through a content contract on the way in: a hero's
+ * `displayNameKey` (validated once, at content-load time, then carried unchanged for
+ * the rest of the campaign), the campaign's own `rulesetVersion`/`contentVersion`
+ * (strings a *tool* supplied — `createInitialState`'s own checks look at them once, at
+ * construction, not again on every read), and a trace's `reasonCode`/`tieBreak` (drawn
+ * from the engine's closed `ReasonCodes` vocabulary). None of these is re-validated by
+ * anything between where it was first checked and where this codec reads a save back
+ * from an untrusted file — which is exactly the boundary `artifact-domain.ts`'s own
+ * comment describes as needing its own gate, not a trust in whatever produced the
+ * bytes.
  *
- * `256` is not derived from a real value the way {@link MAX_APPLIED_COMMANDS}
- * is — nothing in this codebase states a length ceiling for these fields today;
- * `requireArtifactSafeText` checks charset only. It is a generous, explicit cap
- * far past the longest real value (`content_version` is exactly
- * `CONTENT_VERSION_LENGTH` = 16 hex characters; the longest `ReasonCodes` entry,
- * `hero.decision.stands_with_comrade`, is 34), so a legitimate value never
- * brushes it while a save is still refused for claiming megabytes of text under
- * one field (`TDD` §18).
- */
-const MAX_ARTIFACT_SAFE_TEXT_LENGTH = 256;
-
-/**
+ * The number itself lives in `limits.ts` and is applied by `schemas.ts` too, so that
+ * this reader cannot refuse what that loader accepts; see that constant's own comment
+ * for the measured hole that moved it there.
+ *
  * A regex, not `.refine(isArtifactSafeText)`: a regex failure carries Zod's own
  * `invalid_format` issue code, which {@link classify} already treats as
  * `Malformed` — a wrong character set is a shape problem, not a value out of
@@ -310,6 +310,24 @@ type RawTrace = SnapshotShape['traces'][number]['value'];
 type RawFactor = RawTrace['positiveFactors'][number];
 type RawBlock = RawTrace['blockedBy'][number];
 type RawDomainEvent = SnapshotShape['history'][number];
+
+/**
+ * The snapshot {@link encodeSnapshot} produced, put through the reader's own contract
+ * before anybody writes it to a file. @throws {@link SaveReadError} — the same three
+ * codes {@link decodeSnapshot} throws, for the same three reasons.
+ *
+ * External review of Task 16 found the asymmetry this closes: the write path called
+ * `encodeSnapshot` and nothing else, so "this build can read back what it writes" was a
+ * property of two schemas agreeing rather than a property anything checked. It is a
+ * re-*decode*, not a second schema: whatever `decodeSnapshot` would refuse is what this
+ * refuses, because it is literally that function. The cost is decoding one campaign's
+ * worth of state per save — the largest canonical snapshot in the frozen corpus is
+ * about 11 KB — and the thing bought is that a producer cannot emit a file the reader
+ * rejects, whatever future field or ceiling one side grows without the other.
+ */
+export function requireReadableSnapshot(encoded: unknown): void {
+  decodeSnapshot(encoded);
+}
 
 /** The campaign snapshot's JSON shape, ready for `JSON.stringify`. */
 export function encodeSnapshot(state: GameState): unknown {

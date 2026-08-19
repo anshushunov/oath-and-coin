@@ -67,16 +67,32 @@ export const saveReadRequest = z.tuple([desktopSaveSlot]);
 export const saveReadResponse = z.instanceof(Uint8Array).nullable();
 
 /**
- * The upper bound on a save-write payload. The frozen scenario corpus's
- * largest canonical snapshot — the whole state of a finished campaign — is
- * about 11 KB (`scenarios/screen_incomplete.canonical.json`); a real
- * campaign's history runs longer than any scripted scenario, but `write()`
- * replaces a slot wholesale rather than appending, so nothing this build ever
- * asks for is more than one campaign's worth of history at once. 8 MiB is a
- * ceiling roughly three orders of magnitude above the largest measured
- * snapshot: generous enough that no real campaign will approach it, and
- * finite enough that an untrusted page cannot ask this process to write an
- * unbounded amount to the data directory.
+ * The upper bound on a save-write payload, **declared a second time** for the
+ * reason {@link DESKTOP_SAVE_SLOTS} is: `apps/desktop` may not import
+ * `@oath-and-coin/application`, and that is where the number belongs now.
+ *
+ * External review of Task 16 found it declared *only* here, which made it a
+ * property of one runtime rather than of the application: the browser's
+ * IndexedDB store accepted any `Uint8Array`, so the identical call succeeded in
+ * a browser and failed in Electron, and nothing compared the two. The ceiling
+ * now lives in `packages/application/src/save/envelope.ts` — `buildSave` will
+ * not produce more, and both `SaveStorePort` implementations import it and will
+ * not store more. `tests/architecture/save-size-agreement.test.ts` holds this
+ * literal to that one, the same shape the slot names are held.
+ *
+ * Why the host states it at all rather than trusting the renderer's check: the
+ * renderer is the untrusted side of this boundary. A limit only the caller
+ * applies is not a limit.
+ *
+ * The number itself: the frozen scenario corpus's largest canonical snapshot —
+ * the whole state of a finished campaign — is about 11 KB
+ * (`scenarios/screen_incomplete.canonical.json`); a real campaign's history runs
+ * longer than any scripted scenario, but `write()` replaces a slot wholesale
+ * rather than appending, so nothing this build ever asks for is more than one
+ * campaign's worth of history at once. 8 MiB is roughly three orders of
+ * magnitude above the largest measured snapshot: generous enough that no real
+ * campaign will approach it, and finite enough that an untrusted page cannot ask
+ * this process to write an unbounded amount to the data directory.
  */
 export const MAX_SAVE_BYTES = 8 * 1024 * 1024;
 

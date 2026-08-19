@@ -15,12 +15,15 @@
 export type { ContentSourcePort, SaveStorePort } from './ports.ts';
 
 export {
+  MAX_SAVE_BYTES,
   SAVE_FORMAT_VERSION,
   buildSave,
   readSave,
   saveChecksum,
+  snapshotHash,
   type SaveDescriptor
 } from './save/envelope.ts';
+export { validateGameState } from './save/validate-game-state.ts';
 export { restoreDecidedSteps } from './save/restore-steps.ts';
 export {
   describeSaveSlots,

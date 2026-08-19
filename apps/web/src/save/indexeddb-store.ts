@@ -1,5 +1,7 @@
-import { type SaveSlot, SAVE_SLOTS, type SaveStorePort } from '@oath-and-coin/application';
+import { SAVE_SLOTS, type SaveSlot, type SaveStorePort } from '@oath-and-coin/application';
 import { SaveErrorCodes, SaveReadError } from '@oath-and-coin/content';
+
+import { requireStorableSize } from './save-size.ts';
 
 /**
  * The browser's `SaveStorePort` — one database, one object store, keyed by slot name
@@ -92,6 +94,12 @@ async function read(slot: SaveSlot): Promise<Uint8Array | null> {
 }
 
 async function write(slot: SaveSlot, bytes: Uint8Array): Promise<void> {
+  // Before the database is even opened: the ceiling is a property of the port
+  // (`MAX_SAVE_BYTES` in `packages/application`), not of IndexedDB, and refusing here
+  // means the browser and the desktop host answer the same call the same way. See
+  // `save-size.ts` for the divergence external review measured.
+  requireStorableSize(slot, bytes);
+
   const db = await openDatabase();
   try {
     await new Promise<void>((resolve, reject) => {
