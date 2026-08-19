@@ -125,13 +125,14 @@ jobs:
           {
             echo "### browser evidence"
             echo
-            echo "| state | read model | rendered ui | content | viewport | reachable | events |"
-            echo "|---|---|---|---|---|---|---|"
+            echo "| state | read model | rendered ui | content | viewport | window | reachable | events |"
+            echo "|---|---|---|---|---|---|---|---|"
             for state in $expected; do
               jq -r '
                 "| \(.screen_state) | \(.read_model_hash[0:16]) | \(.rendered_ui_hash[0:16]) "
                 + "| \(.layout.contentWidth)x\(.layout.contentHeight) "
                 + "| \(.layout.viewportWidth)x\(.layout.viewportHeight) "
+                + "| \(.layout.windowHeight) "
                 + "| \(.layout.reachableWidth)x\(.layout.reachableHeight) | \(.events) |"
               ' "$root/$state/report.json"
             done
@@ -166,14 +167,15 @@ jobs:
           {
             echo "### save-slots evidence"
             echo
-            echo "| state | texts | content | viewport | reachable height | events |"
-            echo "|---|---|---|---|---|---|"
+            echo "| state | texts | content | viewport | window | reachable | events |"
+            echo "|---|---|---|---|---|---|---|"
             for state in $expected; do
               jq -r '
                 "| \(.saves_screen_state) | \(.texts) "
                 + "| \(.layout.contentWidth)x\(.layout.contentHeight) "
                 + "| \(.layout.viewportWidth)x\(.layout.viewportHeight) "
-                + "| \(.layout.reachableHeight) | \(.events) |"
+                + "| \(.layout.windowHeight) "
+                + "| \(.layout.reachableWidth)x\(.layout.reachableHeight) | \(.events) |"
               ' "$root/$state/report.json"
             done
             echo

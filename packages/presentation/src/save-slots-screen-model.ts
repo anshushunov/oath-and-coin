@@ -182,7 +182,7 @@ export function createSaveSlotsScreenModel(model: SaveSlotsScreenModel): SaveSlo
   }
 
   for (const line of model.slots) {
-    requireWholeDescriptor(line);
+    requireWholeLine(line);
   }
 
   const implied = stateOf(model.slots);
@@ -199,28 +199,65 @@ export function createSaveSlotsScreenModel(model: SaveSlotsScreenModel): SaveSlo
 }
 
 /**
- * The four descriptor fields arrive from one decoded save, so a line holding some of
+ * The three descriptor fields arrive from one decoded save, so a value holding some of
  * them lost the rest on the way.
  *
  * Left unchecked, the screen would show a save with a date and no contract — which is
  * indistinguishable, on the screen, from a save that was written that way.
+ *
+ * Two callers with two different shapes, so two entry points with exact types rather than
+ * one taking a union of both with the contract field optional on either side. That union
+ * was the first spelling and review was right about it: it typechecked against
+ * {@link SaveSlotLine}, which has no `focusedContract` at all, so the rule held by
+ * accident of `??` rather than by the compiler agreeing the field exists.
  */
-function requireWholeDescriptor(line: {
-  readonly slot: string;
-  readonly createdAt: string | null;
-  readonly logicalTime: number | null;
-  readonly contractDisplayNameKey?: string | null;
-  readonly focusedContract?: ContentId | null;
-}): void {
-  const contract = line.contractDisplayNameKey ?? line.focusedContract ?? null;
-  const present = [line.createdAt, line.logicalTime, contract].filter((field) => field !== null);
+function requireWholeInput(input: SaveSlotInput): void {
+  requireDescriptorTogether(input.slot, input.createdAt, input.logicalTime, input.focusedContract);
+}
+
+function requireWholeLine(line: SaveSlotLine): void {
+  requireDescriptorTogether(
+    line.slot,
+    line.createdAt,
+    line.logicalTime,
+    line.contractDisplayNameKey
+  );
+}
+
+function requireDescriptorTogether(
+  slot: string,
+  createdAt: string | null,
+  logicalTime: number | null,
+  contract: ContentId | string | null
+): void {
+  const present = [createdAt, logicalTime, contract].filter((field) => field !== null);
 
   if (present.length !== 0 && present.length !== 3) {
     throw new Error(
-      `Slot '${line.slot}' carries part of a descriptor: createdAt, logicalTime and the focused ` +
+      `Slot '${slot}' carries part of a descriptor: createdAt, logicalTime and the focused ` +
         'contract come out of one save together and go on the screen together.'
     );
   }
+}
+
+/**
+ * Which of the four shapes a set of read slots is, decided by how many of them are
+ * **unreadable** — never by how many carry a code.
+ *
+ * The two are not the same set, and the difference is one slot: a write that was refused
+ * leaves a code on a slot whose campaign is intact and loadable. Counting that slot as a
+ * refusal put the screen in `Incomplete` while all three slots read perfectly, which
+ * contradicts what `Incomplete` means (design spec §3.2: "часть слотов читается, часть
+ * нет") and told the player something untrue about their storage. The refusal itself does
+ * not go anywhere — it stays on its own slot's line, which is where it belongs.
+ *
+ * So "unreadable" is the same predicate {@link statusKeyOf} shows: a code and no campaign.
+ */
+function isUnreadable(line: {
+  readonly createdAt: string | null;
+  readonly errorCode: string | null;
+}): boolean {
+  return line.createdAt === null && line.errorCode !== null;
 }
 
 function stateOf(
@@ -229,13 +266,13 @@ function stateOf(
     readonly errorCode: string | null;
   }[]
 ): ScreenState {
-  const refused = lines.filter((line) => line.errorCode !== null).length;
+  const unreadable = lines.filter(isUnreadable).length;
 
-  if (refused === lines.length) {
+  if (unreadable === lines.length) {
     return ScreenState.Error;
   }
 
-  if (refused > 0) {
+  if (unreadable > 0) {
     return ScreenState.Incomplete;
   }
 
@@ -243,7 +280,7 @@ function stateOf(
 }
 
 function toLine(input: SaveSlotInput): SaveSlotLine {
-  requireWholeDescriptor(input);
+  requireWholeInput(input);
 
   return {
     slot: input.slot,
@@ -269,9 +306,9 @@ function toLine(input: SaveSlotInput): SaveSlotLine {
  * player the opposite of what the port promises.
  */
 function statusKeyOf(input: SaveSlotInput): string {
-  if (input.createdAt !== null) {
-    return SaveSlotStatusKeys.Occupied;
+  if (isUnreadable(input)) {
+    return SaveSlotStatusKeys.Unreadable;
   }
 
-  return input.errorCode === null ? SaveSlotStatusKeys.Empty : SaveSlotStatusKeys.Unreadable;
+  return input.createdAt === null ? SaveSlotStatusKeys.Empty : SaveSlotStatusKeys.Occupied;
 }

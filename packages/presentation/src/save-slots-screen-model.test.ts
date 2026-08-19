@@ -146,6 +146,46 @@ describe('a slot whose last write was refused', () => {
     expect(line.contractDisplayNameKey).toBe(contractDisplayNameKey(ids.caravan));
     expect(line.errorCode).toBe('SAVE_STORAGE_UNAVAILABLE');
     expect(line.statusKey).toBe(SaveSlotStatusKeys.Occupied);
+  });
+
+  it('does not make the screen claim a slot could not be read', () => {
+    // The distinction review found and this test now holds: `Incomplete` means "часть
+    // слотов читается, часть нет", and all three of these read perfectly — one of them
+    // simply refused a *write*. The state is a fact about reading the storage; the
+    // refusal stays on its own line, where the assertion above keeps it.
+    const model = saveSlotsScreenModel([
+      { ...anOccupied('slot-a'), errorCode: 'SAVE_STORAGE_UNAVAILABLE' },
+      anEmpty('slot-b'),
+      anEmpty('slot-c')
+    ]);
+
+    expect(model.state).toBe(ScreenState.Normal);
+    expect(lineFor(model, 'slot-a').errorCode).toBe('SAVE_STORAGE_UNAVAILABLE');
+  });
+
+  it('does not turn an all-refused storage into Error when the slots are readable', () => {
+    // The other end of the same rule, and the one a "count the codes" version gets
+    // wrong in the loud direction: three intact campaigns whose writes were all refused
+    // is not a storage that is gone, and a screen saying so would tell the player their
+    // three saves are unreachable while every one of them loads.
+    const model = saveSlotsScreenModel([
+      { ...anOccupied('slot-a'), errorCode: 'SAVE_STORAGE_UNAVAILABLE' },
+      { ...anOccupied('slot-b'), errorCode: 'SAVE_STORAGE_UNAVAILABLE' },
+      { ...anOccupied('slot-c'), errorCode: 'SAVE_STORAGE_UNAVAILABLE' }
+    ]);
+
+    expect(model.state).toBe(ScreenState.Normal);
+  });
+
+  it('is Incomplete beside a slot that genuinely cannot be read', () => {
+    // And the state does move when a slot really is unreadable, so the rule above is
+    // "count the unreadable ones" rather than "never count anything".
+    const model = saveSlotsScreenModel([
+      { ...anOccupied('slot-a'), errorCode: 'SAVE_STORAGE_UNAVAILABLE' },
+      anUnreadable('slot-b'),
+      anEmpty('slot-c')
+    ]);
+
     expect(model.state).toBe(ScreenState.Incomplete);
   });
 });

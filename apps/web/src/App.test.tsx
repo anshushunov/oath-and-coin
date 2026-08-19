@@ -406,7 +406,10 @@ describe('the page on its slots screen', () => {
     expect(stored.get('slot-a')).toBe(written);
     expect(container.querySelector('[data-testid="slot-a-error"]')).not.toBeNull();
     expect(container.textContent).toContain('2026-08-19T09:41:00.000Z');
-    expect(savesStateIn(container)).toBe(ScreenState.Incomplete);
+    // And the screen still says the storage reads: `Incomplete` is about slots that
+    // cannot be read, and this one reads — it refused a write. The refusal is on its own
+    // line, which the assertion above holds.
+    expect(savesStateIn(container)).toBe(ScreenState.Normal);
   });
 });
 

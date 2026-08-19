@@ -24,7 +24,20 @@ export default defineConfig({
     screenshot: 'only-on-failure'
   },
 
-  projects: [{ name: 'chromium', use: devices['Desktop Chrome'] }],
+  // The viewport is restated *after* the device, and that is a repair rather than a
+  // flourish. A project's `use` merges over the top-level one, and
+  // `devices['Desktop Chrome']` carries its own `viewport` of 1280x720 — so the 800 stated
+  // above had never been in effect, and every reachability measurement in this repository
+  // had been taken at 1280x720 while the record, the comments and `ADR-010`'s Definition
+  // of Done all said 800. Found by Task 16.8 round 2, which started recording
+  // `document.documentElement.clientHeight` beside the box being measured and read 720
+  // back out of the artifact.
+  projects: [
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } }
+    }
+  ],
 
   webServer: {
     // Built output, not the dev server. The dev server rewrites modules,

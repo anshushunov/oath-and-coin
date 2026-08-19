@@ -12,6 +12,8 @@ import {
 import { parseContentId } from '@oath-and-coin/simulation';
 import { expect, test, type ConsoleMessage, type Page, type Request } from '@playwright/test';
 
+import { expectWindowBoundedScreen, measureLayout } from './layout.ts';
+
 /**
  * The save-slots screen in a live Chromium: five states, five artifacts, and the two
  * things no test below a browser can say anything about.
@@ -188,9 +190,9 @@ function screenTexts(state: string, lines: readonly (readonly string[])[]): read
  * with no record of whether it overflows turns "the content is reachable" into a claim
  * with no subject. All five are `false` here, and that is the honest answer rather than
  * an omission — measured at 1280x800 from the `report.json` each state writes, all five
- * report 452px of content inside a 452px viewport: the box is stretched to the window and
- * every state's content is shorter than it, so **this screen does not exercise
- * reachability at all**. Named rather than counted as
+ * report 532px of content inside a 532px box: the box is stretched to the window and every
+ * state's content is shorter than it, so **this screen does not exercise reachability at
+ * all**. Named rather than counted as
  * covered, on the same terms as the contract screen's horizontal assertion. The layout
  * that would trip it is a fourth slot or a much longer translation, and neither is in
  * this suite.
@@ -287,7 +289,7 @@ test.describe('the save-slots screen, in a browser', () => {
         (await page.getByTestId('run-report').textContent()) ?? ''
       ) as PageReport;
       const renderedTexts = await collectRenderedTexts(page);
-      const layout = await measureLayout(page);
+      const layout = await measureLayout(page, SCREEN);
 
       const directory = join(EVIDENCE_ROOT, run.state.toLowerCase());
       mkdirSync(directory, { recursive: true });
@@ -326,6 +328,11 @@ test.describe('the save-slots screen, in a browser', () => {
       // The run behind the screen is untouched by which screen is open: a player looking
       // at their slots has not changed what the scenario produced.
       expect(reported.screen_state).toBe('Normal');
+
+      // Before the two below, and for the reason `layout.ts` records: they compare content
+      // against a box, and a box sized by its own content satisfies them whatever the
+      // layout does.
+      await expectWindowBoundedScreen(page, SCREEN, layout);
 
       expect(
         layout.contentHeight > layout.viewportHeight,
@@ -382,15 +389,6 @@ interface PageReport {
   readonly screen: string;
   readonly screen_state: string;
   readonly saves_screen_state: string | null;
-}
-
-/** The four numbers `ScreenLayoutMeasurement` carried, for the screen this suite is about. */
-interface LayoutMeasurement {
-  readonly contentHeight: number;
-  readonly reachableHeight: number;
-  readonly viewportHeight: number;
-  readonly contentWidth: number;
-  readonly viewportWidth: number;
 }
 
 /**
@@ -658,33 +656,5 @@ async function collectRenderedTexts(page: Page): Promise<readonly string[]> {
     }
 
     return texts;
-  }, SCREEN);
-}
-
-/**
- * How big the screen's content is and how much of it a person at this window can get to.
- *
- * The wheel-based measurement `contract-offer.spec.ts` documents at length is not
- * repeated here, and the reason is stated rather than assumed: this screen holds three
- * slots and never overflows, so there is nothing to scroll to and a wheel would measure
- * zero either way. What is worth measuring is the pair of numbers that says the question
- * was not asked — which is exactly what `overflows: false` above claims and what this
- * report records.
- */
-async function measureLayout(page: Page): Promise<LayoutMeasurement> {
-  return page.evaluate((testId: string) => {
-    const element = document.querySelector(`[data-testid="${testId}"]`);
-
-    if (element === null) {
-      throw new Error(`The page has no [data-testid="${testId}"] to measure.`);
-    }
-
-    return {
-      contentHeight: element.scrollHeight,
-      reachableHeight: element.clientHeight,
-      viewportHeight: element.clientHeight,
-      contentWidth: element.scrollWidth,
-      viewportWidth: element.clientWidth
-    };
   }, SCREEN);
 }
