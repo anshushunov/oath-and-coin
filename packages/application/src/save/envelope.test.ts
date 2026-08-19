@@ -310,104 +310,109 @@ it('называет отказ суммы раньше отказа верси�
 
 describe('referential integrity across the snapshot’s own maps', () => {
   // `decodeSnapshot` checks a map's own key against its value's identity, but not a
-  // *reference between* two maps — an event's `causalTraceId`, a contract's
-  // `respondedBy`/`acceptedBy` — because that reference spans two independently-built
-  // maps. `readSave` closes that gap once the whole state exists to check it against.
+  // *reference between* two maps — an event's `heroId`/`contractId`/`causalTraceId`, a
+  // hero's `traits`, a contract's `respondedBy`/`acceptedBy` — because that reference
+  // spans two independently-built maps. `validateGameState` closes that gap once the
+  // whole state exists to check it against.
+  //
+  // **Every case names the fragment of its own refusal.** These six conditions share
+  // the code `SAVE_INCONSISTENT` with fourteen others, and round 2 of the seam review
+  // measured what the code alone was worth here: with `/SAVE_INCONSISTENT/` and nothing
+  // more, three of them were killed by a *neighbouring* rule — a dangling `heroId` in
+  // the history, a dangling `contractId`, and an unknown hero in `respondedBy` all end
+  // up refused by "this contract lists a hero the history never records answering",
+  // which is a different rule catching a different thing that happens to be true of the
+  // same file. A sixth condition — an unknown hero in `acceptedBy` — had no test at all
+  // and was masked by its neighbour two lines above it even without a mutant.
 
-  it('отказывает, когда событие ссылается на несуществующий след', () => {
-    const decided = aDecidedState();
-    const versions = {
-      rulesetVersion: decided.metadata.rulesetVersion,
-      contentVersion: decided.metadata.contentVersion
-    };
-    const file = parseSave(
-      buildSave({ state: decided, focusedContract: FOCUSED_CONTRACT, createdAt: CREATED_AT })
-    );
-    const snapshot = file.snapshot as { history: { causalTraceId: number | null }[] };
-    snapshot.history[0]!.causalTraceId = 9999;
+  const referentialCases: [string, (snapshot: RawSnapshot) => void, string][] = [
+    [
+      'событие ссылается на несуществующий след',
+      (snapshot) => {
+        snapshot.history[0]!.causalTraceId = 9999;
+      },
+      'references causalTraceId 9999'
+    ],
+    [
+      'событие называет героя, которого нет в составе',
+      (snapshot) => {
+        snapshot.history[0]!.heroId = 999;
+      },
+      'names hero#999'
+    ],
+    [
+      'событие называет контракт, которого нет в снимке',
+      (snapshot) => {
+        // Ревью Task 16.4, раунд 1: `event.contractId` — та же по форме ссылка, что
+        // `heroId` и `causalTraceId`; `restoreDecidedSteps` кладёт её в
+        // `command.contract` без поиска, так что висячая доехала бы до экрана.
+        snapshot.history[0]!.contractId = 'core:contract_nobody_authored';
+      },
+      "names contract 'core:contract_nobody_authored'"
+    ],
+    [
+      'герой держит черту, для которой в снимке нет правила',
+      (snapshot) => {
+        // Ревью Task 16.7: экран называет каждую черту каждого героя (`resolveTrait` в
+        // фабрике модели), поэтому сохранение с висячей чертой доезжало до фабрики и
+        // падало там обычным `Error` — отказ файла превращался в дефект сборки на три
+        // слоя выше. Здесь это условие, а не умолчание где-то ниже.
+        snapshot.heroes[0]!.value.traits = ['core:trait_nobody_authored'];
+      },
+      'the save carries no rule for it'
+    ],
+    [
+      'контракт называет отсутствующего героя в respondedBy',
+      (snapshot) => {
+        snapshot.contracts[0]!.value.respondedBy = [
+          ...snapshot.contracts[0]!.value.respondedBy,
+          999
+        ];
+      },
+      'in respondedBy, but the save carries no such hero'
+    ],
+    [
+      'контракт называет отсутствующего героя в acceptedBy',
+      (snapshot) => {
+        // `respondedBy` намеренно НЕ трогается: добавь 999 в оба множества — и первой
+        // отвечает проверка `respondedBy` двумя строками выше, а эта не измеряется
+        // вовсе. Ровно так она и оставалась непокрытой до второго раунда ревью на шве.
+        snapshot.contracts[0]!.value.acceptedBy = [...snapshot.contracts[0]!.value.acceptedBy, 999];
+      },
+      'in acceptedBy, but the save carries no such hero'
+    ]
+  ];
 
-    expect(() => readSave(resign(file), versions)).toThrow(/SAVE_INCONSISTENT/u);
+  it.each(referentialCases)('отказывает, когда %s', (_name, mutate, detail) => {
+    expect(() => readSave(aTamperedSave(mutate), expectedVersions)).toThrow(/SAVE_INCONSISTENT/u);
+    expect(() => readSave(aTamperedSave(mutate), expectedVersions)).toThrow(detail);
   });
 
-  it('отказывает, когда событие называет героя, которого нет в составе', () => {
+  it.each(referentialCases)('и отказывается ЗАПИСАТЬ то же самое: %s', (_name, mutate, detail) => {
     const decided = aDecidedState();
-    const versions = {
-      rulesetVersion: decided.metadata.rulesetVersion,
-      contentVersion: decided.metadata.contentVersion
-    };
-    const file = parseSave(
-      buildSave({ state: decided, focusedContract: FOCUSED_CONTRACT, createdAt: CREATED_AT })
-    );
-    const snapshot = file.snapshot as { history: { heroId: number }[] };
-    snapshot.history[0]!.heroId = 999;
+    const snapshot = JSON.parse(JSON.stringify(encodeSnapshot(decided))) as RawSnapshot;
+    mutate(snapshot);
 
-    expect(() => readSave(resign(file), versions)).toThrow(/SAVE_INCONSISTENT/u);
-  });
-
-  it('отказывает, когда герой держит черту, для которой в снимке нет правила', () => {
-    // Ревью Task 16.7: `heroes[].traits` — ссылка того же класса, что уже закрытые,
-    // и она была единственной незакрытой. Экран называет каждую черту каждого героя
-    // (`resolveTrait` в фабрике модели), поэтому сохранение с висячей чертой доезжало
-    // до фабрики и падало там обычным `Error` — то есть отказ файла превращался в
-    // дефект сборки на три слоя выше. Здесь это условие, а не умолчание где-то ниже.
-    const decided = aDecidedState();
-    const versions = {
-      rulesetVersion: decided.metadata.rulesetVersion,
-      contentVersion: decided.metadata.contentVersion
-    };
-    const file = parseSave(
-      buildSave({ state: decided, focusedContract: FOCUSED_CONTRACT, createdAt: CREATED_AT })
-    );
-    const snapshot = file.snapshot as { heroes: { value: { traits: string[] } }[] };
-    snapshot.heroes[0]!.value.traits = ['core:trait_nobody_authored'];
-
-    expect(() => readSave(resign(file), versions)).toThrow(/SAVE_INCONSISTENT/u);
-  });
-
-  it('отказывает, когда контракт называет отсутствующего героя в respondedBy', () => {
-    const decided = aDecidedState();
-    const versions = {
-      rulesetVersion: decided.metadata.rulesetVersion,
-      contentVersion: decided.metadata.contentVersion
-    };
-    const file = parseSave(
-      buildSave({ state: decided, focusedContract: FOCUSED_CONTRACT, createdAt: CREATED_AT })
-    );
-    const snapshot = file.snapshot as {
-      contracts: { value: { respondedBy: number[] } }[];
-    };
-    snapshot.contracts[0]!.value.respondedBy = [...snapshot.contracts[0]!.value.respondedBy, 999];
-
-    expect(() => readSave(resign(file), versions)).toThrow(/SAVE_INCONSISTENT/u);
-  });
-
-  it('отказывает, когда событие называет контракт, которого нет в снимке', () => {
-    // Ревью, раунд 1, находка 1: `event.contractId` — та же по форме ссылка, что
-    // `event.heroId` и `event.causalTraceId`, и `decodeSnapshot` её тоже не проверяет
-    // — `restoreDecidedSteps` кладёт её в `command.contract` без поиска, так что
-    // висячая ссылка доехала бы до экрана непойманной.
-    const decided = aDecidedState();
-    const versions = {
-      rulesetVersion: decided.metadata.rulesetVersion,
-      contentVersion: decided.metadata.contentVersion
-    };
-    const file = parseSave(
-      buildSave({ state: decided, focusedContract: FOCUSED_CONTRACT, createdAt: CREATED_AT })
-    );
-    const snapshot = file.snapshot as { history: { contractId: string }[] };
-    snapshot.history[0]!.contractId = 'core:contract_nobody_authored';
-
-    expect(() => readSave(resign(file), versions)).toThrow(/SAVE_INCONSISTENT/u);
+    expect(() =>
+      buildSave({
+        state: decodeSnapshot(snapshot),
+        focusedContract: FOCUSED_CONTRACT,
+        createdAt: CREATED_AT
+      })
+    ).toThrow(detail);
   });
 
   it('отказывает, когда focused_contract называет контракт, которого нет в снимке', () => {
-    // Ревью, раунд 1, находка 1: `focused_contract` был проверен только регуляркой
-    // формы и уходил в дескриптор без сверки со `state.contracts` — а именно его
+    // Ревью Task 16.4, раунд 1: `focused_contract` был проверен только регуляркой формы
+    // и уходил в дескриптор без сверки со `state.contracts` — а именно его
     // `contractOfferScreenModel` получает третьим аргументом после перезагрузки.
     const file = parseSave(aValidSave());
     file.focused_contract = 'core:contract_nobody_authored';
 
     expect(() => readSave(resign(file), expectedVersions)).toThrow(/SAVE_INCONSISTENT/u);
+    expect(() => readSave(resign(file), expectedVersions)).toThrow(
+      "envelope names focused_contract 'core:contract_nobody_authored'"
+    );
   });
 });
 
@@ -429,6 +434,7 @@ function aTamperedSave(mutate: (snapshot: RawSnapshot) => void): Uint8Array {
 
 interface RawSnapshot {
   metadata: Record<string, number | string>;
+  heroes: { value: { traits: string[] } }[];
   contracts: {
     key: string;
     value: { requiredCrew: number; status: string; respondedBy: number[]; acceptedBy: number[] };

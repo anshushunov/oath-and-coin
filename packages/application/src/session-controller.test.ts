@@ -400,6 +400,99 @@ describe('the hashes a loaded session reports', () => {
   });
 });
 
+describe('отказ файла против дефекта сборки, на пути записи', () => {
+  /**
+   * Round 2 of the seam review measured that this distinction was held by a comment and
+   * by nothing else: three mutants on `save`'s `catch` were green. The distinction is
+   * real and it is the module's own header claim — a refusal is a code on a screen, a
+   * defect belongs where its stack points — so it needs checks, not a paragraph.
+   *
+   * The three mutants these cover:
+   *
+   * 1. drop `if (!(cause instanceof SaveReadError)) throw cause` — a defect would be
+   *    dressed as a save error and the player would be told the file was inconsistent
+   *    about a build that is broken;
+   * 2. record a fixed code instead of `cause.code` — every refusal would arrive under
+   *    one label whatever `buildSave` actually said;
+   * 3. put `buildSave` back outside the `try` — a refusal would leave `save()` as a
+   *    rejected promise, which is precisely the shape the module says a screen cannot
+   *    show.
+   */
+
+  it('несёт код, который назвал сам buildSave, а не заранее выбранный', async () => {
+    // A stamp `buildSave` will not put on a file. It is not a store failure, not a
+    // version mismatch, and not `SAVE_INCONSISTENT` either — so a `catch` reporting any
+    // fixed code would answer this wrongly.
+    const { controller, saves } = harness({ now: () => 'not-a-date' });
+    await controller.start();
+
+    await expect(controller.save('slot-a')).resolves.toBeUndefined();
+
+    expect(controller.store.snapshot().saveFailure).toEqual({
+      slot: 'slot-a',
+      code: SaveErrorCodes.Malformed,
+      detail: expect.stringContaining("'created_at' must be an ISO-8601 instant")
+    });
+    // Ничего не записано и хеш кампании не сдвинулся: отказ записи оставляет слот и
+    // сессию ровно там, где они были.
+    expect(saves.slots.size).toBe(0);
+    expect(controller.store.snapshot().savedStateHash).toBeNull();
+  });
+
+  it('и код отказа кампании — тоже его, а не умолчание', async () => {
+    // The other code `buildSave` can answer with, so that a `catch` hard-wired to
+    // `SAVE_MALFORMED` fails as loudly as one hard-wired to `SAVE_INCONSISTENT`.
+    const { controller, saves } = harness();
+    await controller.start();
+    const session = controller.store.snapshot();
+    const state = session.state!;
+    controller.store.replace({
+      ...session,
+      // A campaign the engine could not have produced: the counters no longer match the
+      // history. `buildSave` refuses it rather than writing a file this same build would
+      // refuse to read.
+      state: { ...state, metadata: { ...state.metadata, stateVersion: 99 } }
+    });
+
+    await expect(controller.save('slot-a')).resolves.toBeUndefined();
+
+    expect(controller.store.snapshot().saveFailure?.code).toBe(SaveErrorCodes.Inconsistent);
+    expect(controller.store.snapshot().saveFailure?.detail).toContain('stateVersion is 99');
+    expect(saves.slots.size).toBe(0);
+  });
+
+  it('а дефект сборки выходит наружу как есть, не превращаясь в отказ файла', async () => {
+    // The half a `catch` is most tempting to swallow. `heroes` is not a `SortedMap` here,
+    // so `validateGameState` throws a `TypeError` from inside this build's own code over
+    // this build's own data — which is a defect, not something a player can do anything
+    // about, and filing it under a save error code would put it under the one thing that
+    // is provably not wrong.
+    const { controller, saves } = harness();
+    await controller.start();
+    const session = controller.store.snapshot();
+    controller.store.replace({
+      ...session,
+      state: { ...session.state!, heroes: {} as never }
+    });
+
+    await expect(controller.save('slot-a')).rejects.toBeInstanceOf(TypeError);
+
+    expect(controller.store.snapshot().saveFailure).toBeNull();
+    expect(saves.slots.size).toBe(0);
+  });
+
+  it('а SaveReadError из хранилища по-прежнему отказ, а не дефект', async () => {
+    // The neighbouring path, so that "rethrow what is not a SaveReadError" cannot be
+    // satisfied by rethrowing everything.
+    const { controller } = harness({ saves: refusingStore(unavailable) });
+    await controller.start();
+
+    await expect(controller.save('slot-a')).resolves.toBeUndefined();
+
+    expect(controller.store.snapshot().saveFailure?.code).toBe(SaveErrorCodes.StorageUnavailable);
+  });
+});
+
 describe('the hash a session reports as its saved state', () => {
   it('is the campaign’s own hash, and not the signature on the file', async () => {
     // Two questions, two numbers, since external review of Task 16 moved `created_at`

@@ -231,7 +231,10 @@ async function save(
   // still a defect in this build, and rethrowing it unchanged is what keeps a defect
   // from being filed under a save error code — the distinction the paragraph in this
   // module's header draws, now enforced by the type of the throw instead of by the call
-  // being outside a `try`.
+  // being outside a `try`. Round 2 of the seam review was right that "enforced by the
+  // type" was a statement about the code and not a guarantee: three mutants on these
+  // lines were green. `session-controller.test.ts`'s "отказ файла против дефекта
+  // сборки" is what holds them now.
   let bytes: Uint8Array;
   try {
     bytes = buildSave({ state: session.state, focusedContract, createdAt: deps.now() });
@@ -239,7 +242,15 @@ async function save(
     if (!(cause instanceof SaveReadError)) {
       throw cause;
     }
-    record(store, slot, fileFailure(slot, cause));
+
+    // `cause.code`, not `saveErrorCodeOf(cause, fallback)`: the line above has already
+    // established what this is, so there is nothing left for a fallback to answer.
+    // `fileFailure` stood here and `portFailure` would have behaved identically — the
+    // only thing the two disagree about is a fallback that cannot be reached on this
+    // path, which is why a mutant swapping one for the other stayed green and could
+    // never have done otherwise. Removed rather than covered: an equivalent mutant is a
+    // sign of dead code, not of a missing test.
+    record(store, slot, { slot, code: cause.code, detail: cause.message });
     return;
   }
 
@@ -406,14 +417,20 @@ function portFailure(slot: SaveSlot, cause: unknown): SaveFailure {
 }
 
 /**
- * A refusal from the bytes, after the store has already handed them over.
+ * A refusal from the bytes, after the store has already handed them over — **the read
+ * path only.**
+ *
+ * `save` briefly used this for a `buildSave` refusal too, and that was wrong twice over:
+ * there are no bytes at that point, and the fallback below is unreachable there because
+ * the throw has already been narrowed to a `SaveReadError`. That call records
+ * `cause.code` directly now; this function is `load`'s alone again.
  *
  * `readSave` reports every condition of the refusal table as a `SaveReadError`, and the
  * fallback is the second echelon behind it rather than the first line of defence. It was
  * the first line for one seam — a hero holding a trait the rule table does not carry —
  * and review of this task was right that a default is the wrong place for a condition:
- * `checkReferentialIntegrity` names it now, beside the four references it already
- * checked, so that refusal arrives here as a `SaveReadError` like every other.
+ * `validateGameState` names it now, beside the five references it already checked, so
+ * that refusal arrives here as a `SaveReadError` like every other.
  *
  * What is left for the fallback is the class the envelope cannot check from where it
  * stands: a trace factor whose `sourceEntity` names a comrade absent from the roster.

@@ -178,6 +178,16 @@ function checkOneContract(
   for (const heroId of contract.respondedBy.values()) {
     const accepted = answeredInHistory.get(heroId);
 
+    // **This branch adds no refusing power, and that is deliberate rather than
+    // unnoticed.** Delete it and the same file is still refused, one line down:
+    // `undefined !== contract.acceptedBy.has(heroId)` is true whichever way the
+    // membership goes, so the comparison below already covers "there is no event at
+    // all". What is lost by deleting it is the *message* — the reader would be told the
+    // history and the contract disagree about what the hero decided, when in fact the
+    // history says nothing about this hero at all. Measured in round 2 of the seam
+    // review: with the case asserting only the code, removing this stayed green. The
+    // message is what is under test now (`envelope.test.ts` asserts this fragment), so
+    // this is a check on the diagnosis rather than on the verdict.
     if (accepted === undefined) {
       throw inconsistent(
         `contract '${contractId}' lists hero#${String(heroId)} in respondedBy, but the history ` +
