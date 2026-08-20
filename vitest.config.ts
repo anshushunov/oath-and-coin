@@ -23,6 +23,35 @@ export default defineConfig({
 
     // The default reporter prints nothing about a run that collected no test
     // files, and "0 tests passed" is not a passing gate.
-    passWithNoTests: false
+    passWithNoTests: false,
+
+    // Every run leaves a machine-readable record of itself, and this is here
+    // for one specific unsolved thing.
+    //
+    // Task 16.3 saw a red twice on a cold machine — `content` 1 failed of 207
+    // at transform 49.2 s, then the whole workspace 1 failed of 866 at
+    // transform 68.9 s — and **the message was not captured either time**. Nine
+    // later runs, warm and cache-cleared alike, were green, so there is nothing
+    // to reproduce and nothing to diagnose: an intermittent failure whose text
+    // nobody has is indistinguishable from a slow test, a worker that died, and
+    // a real defect that appears once a day.
+    //
+    // The tempting cure is `testTimeout`, and it is forbidden until the message
+    // exists (AGENTS.md §8). If the cause is not a timeout, raising one hides a
+    // live defect behind a green gate — which is the one outcome worse than the
+    // flake.
+    //
+    // So: the *next* red writes itself down, wherever it happens. `json`
+    // carries each failure's own message and stack; the console log the CI step
+    // tees beside it carries what the json reporter cannot — a worker that
+    // exited, an unhandled rejection outside any test, and the transform and
+    // import timings that were the only thing the two observations had in
+    // common. Both are uploaded by the release gate with `if: always()`.
+    //
+    // One fixed filename, deliberately. `pnpm verify` chains `test` and
+    // `test:scenario` with `&&`, so the second only runs when the first passed:
+    // the file that survives a failed run is always the failing one's.
+    reporters: ['default', 'json'],
+    outputFile: { json: 'artifacts/vitest/results.json' }
   }
 });

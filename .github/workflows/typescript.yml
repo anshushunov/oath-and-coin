@@ -212,6 +212,160 @@ jobs:
           path: artifacts/decision-benchmark/
           if-no-files-found: error
 
+  # The release gate: the three commands that have to answer before a branch is
+  # merged, in one job, in the order a reader of a red X would want them.
+  #
+  # It is not a rerun of `checks` above with a shorter name. `checks` reports
+  # ten separate stages, which is what a developer watching a push wants; this
+  # job runs the single command a developer types locally, so that "green here"
+  # and "green on my machine" are the same sentence rather than two lists that
+  # have to be compared by eye. A stage that fell out of `pnpm verify` fails
+  # here and passes there, which is exactly the disagreement worth catching.
+  #
+  # Three steps and not one, because they are three different verdicts:
+  # "the TypeScript stack is sound", "nothing unreviewed reaches a player at
+  # runtime", "the .NET stack the migration has not cut over from yet is still
+  # green". Merging them into one shell line would report all three as the
+  # first one that failed.
+  #
+  # **Why the desktop gate is not here.** `pnpm test:desktop` needs an Electron
+  # binary, a Windows host and — measured in Task 18 — the machine's real user
+  # data directory for its read-only launch, which makes it a machine-wide
+  # singleton: of four concurrent runs on one workstation exactly one passed,
+  # the other three died on `electron.launch` with Playwright's generic "Target
+  # page, context or browser has been closed". It therefore keeps the job below,
+  # on its own runner. The RSS budget was suspected of the same flakiness and
+  # measured innocent: twelve runs — five solo, three overlapping pairs, one
+  # four-way, one beside a full `pnpm verify` — reported 413.8 to 420.5 MiB
+  # against the 500 MiB budget, and concurrency moved that number by under
+  # 3 MiB.
+  release-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          # The same pin `dotnet.yml` uses, and for its reason: global.json sets
+          # rollForward: disable, so a runner with only a newer SDK fails to
+          # build rather than building with an unpinned toolchain.
+          dotnet-version: 8.0.424
+
+      - name: Enable the pinned package manager
+        run: corepack enable
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Install the browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      # Teed into a file, and that is this step's second job.
+      #
+      # Task 16.3 watched a red appear twice on a cold machine and lose its own
+      # message both times; nine warm runs never reproduced it, and AGENTS.md §8
+      # forbids silencing it with a timeout while nobody knows what it said.
+      # A CI runner is the first place cold runs are real rather than simulated,
+      # so the first red here has to survive the job that produced it. The log
+      # catches what the json reporter cannot — a worker that exited, a
+      # rejection outside any test, and the transform/import timings that were
+      # the only thing the two observations had in common.
+      #
+      # `shell: bash` on purpose: GitHub runs it as `bash -eo pipefail`, so the
+      # step still fails when `pnpm verify` does rather than reporting `tee`'s
+      # exit code.
+      - name: Release gate — pnpm verify
+        id: verify
+        shell: bash
+        run: |
+          mkdir -p artifacts/release-gate
+          pnpm verify 2>&1 | tee artifacts/release-gate/verify.log
+
+      - name: Release gate — runtime dependency audit
+        id: audit
+        shell: bash
+        run: |
+          mkdir -p artifacts/release-gate
+          node scripts/audit-runtime-dependencies.mjs 2>&1 | tee artifacts/release-gate/audit.log
+
+      # The other stack, still live until cutover (Task 19). Not `--no-build`:
+      # this job never ran `dotnet build`, and a `-c Release` test run builds
+      # what it needs. It is deliberately the last of the three — it is the
+      # slowest and the least likely to be what a TypeScript branch broke.
+      - name: Release gate — dotnet test
+        id: dotnet
+        shell: bash
+        run: |
+          mkdir -p artifacts/release-gate
+          dotnet test OathAndCoin.sln -c Release 2>&1 | tee artifacts/release-gate/dotnet.log
+
+      # The two numbers this job publishes and gates on neither. The bundle is
+      # already on disk — `pnpm verify` ends with a production build — so only
+      # the decision benchmark has to be run.
+      - name: Measure the decision path
+        if: always() && steps.verify.outcome == 'success'
+        run: pnpm bench:decision
+
+      # `always()`, with no `if-no-files-found: error`: the whole point is the
+      # run that failed, and a job that died in `Install` has nothing to publish
+      # and should not be failed twice for it.
+      - name: Upload the release gate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-gate-evidence
+          path: |
+            artifacts/release-gate/
+            artifacts/vitest/
+            artifacts/runtime-audit/
+            artifacts/decision-benchmark/
+          if-no-files-found: warn
+
+      # Measurements, published with no threshold attached, and the absence of a
+      # threshold is the decision rather than an omission. A bundle size or a
+      # p50 invented here would either never go red or go red on runner noise,
+      # and a gate nobody trusts is worse than a number nobody gated. The
+      # decision benchmark in `checks` above carries the same reservation for
+      # the same reason; when the battle scene arrives and needs a latency
+      # budget, it will come with a decision record rather than with a guess.
+      - name: Summarise what was measured, without gating on it
+        if: always() && steps.verify.outcome != 'skipped'
+        shell: bash
+        run: |
+          {
+            echo "### release gate"
+            echo
+            echo "| measurement | value |"
+            echo "|---|---|"
+
+            bundle=$(find apps/web/dist/assets -name '*.js' -printf '%s\n' 2>/dev/null |
+              awk '{ total += $1 } END { print total + 0 }')
+            echo "| browser bundle, js bytes | $bundle |"
+
+            report=artifacts/decision-benchmark/report.json
+            if [ -f "$report" ]; then
+              echo "| decide, p50 ms | $(jq -r '.decide.p50_ms' "$report") |"
+              echo "| proposeContractToHero, p50 ms | $(jq -r '.propose_contract_to_hero.p50_ms' "$report") |"
+            fi
+
+            if [ -f artifacts/runtime-audit/report.json ]; then
+              echo "| runtime packages reachable | $(jq -r '.closure | length' artifacts/runtime-audit/report.json) |"
+            fi
+
+            if [ -f artifacts/vitest/results.json ]; then
+              echo "| vitest, passed/total | $(jq -r '"\(.numPassedTests)/\(.numTotalTests)"' artifacts/vitest/results.json) |"
+            fi
+
+            echo
+            echo "No threshold is attached to any of these. See the step's comment."
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
   # The Task 4 gate, on the only OS it means anything on. Its own job because
   # a Windows runner is several times slower to provision than the Linux one
   # above, and nothing in `checks` should wait behind it.
