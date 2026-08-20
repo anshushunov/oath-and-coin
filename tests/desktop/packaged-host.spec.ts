@@ -117,12 +117,30 @@ const PROBE_SLOT = 'slot-c';
  * repository root passed it and the recursive delete would have taken the
  * working tree.
  *
+ * **And creating it is not enough on its own.** `mkdtempSync` on the right of a
+ * `let` says something about one line; it says nothing about the value the
+ * variable holds when `afterAll` deletes it recursively. Review of Task 17
+ * demonstrated exactly that against the first version of this: four real
+ * directories erased — a short 8.3 name, a `\\?\` path, a lower-cased path, a
+ * copy of the working tree — each time at 14 checks of 14 green, by assigning
+ * the variable. So creation now leaves {@link GATE_DIRECTORY_MARKER} behind,
+ * and the delete is conditioned on finding it.
+ *
  * Enumerating spellings is a losing game — the next one gets invented for us.
  * `mkdtempSync` returns a directory that did not exist a moment ago, so it is
  * nobody else's by construction, and the value it returns is the only thing
  * `afterAll` removes. There is no path to guard, so there is no guard.
  */
 let scratchUserDataDirectory = '';
+
+/**
+ * The file this gate writes into the directory it creates, and the only thing
+ * that lets it delete that directory again.
+ *
+ * Not in `saves/`, so the host's `list()` never sees it, and named after the
+ * gate so that a human finding one in `%TEMP%` knows what left it.
+ */
+const GATE_DIRECTORY_MARKER = '.oath-and-coin-gate-directory';
 
 /**
  * All 256 byte values. A save is bytes, and a probe of printable ASCII would
@@ -800,6 +818,20 @@ test.describe('packaged desktop host', () => {
     // exist a moment ago.
     scratchUserDataDirectory = mkdtempSync(join(tmpdir(), 'oath-and-coin-gate-'));
 
+    // And the creation leaves evidence, because "this path was created here" is
+    // otherwise a property of the line above and of nothing else: the variable
+    // is a `let`, and `afterAll` deletes whatever is in it recursively. Review
+    // of Task 17 erased four different real directories that way — a short 8.3
+    // name, a `\\?\` path, a lower-cased path, a copy of the working tree —
+    // every time at 14 checks of 14 green, by putting another value in the
+    // variable. The marker is what `afterAll` requires before deleting, so a
+    // reassigned variable meets a refusal instead of a recursive delete.
+    writeFileSync(
+      join(scratchUserDataDirectory, GATE_DIRECTORY_MARKER),
+      `Written by tests/desktop/packaged-host.spec.ts when it created this directory. Its presence is what allows the gate to delete this directory again; without it the gate refuses, because a directory it did not create is somebody else's.\n`,
+      'utf8'
+    );
+
     app = await electron.launch({
       executablePath: executable,
       args: [`--user-data-dir=${scratchUserDataDirectory}`]
@@ -812,14 +844,39 @@ test.describe('packaged desktop host', () => {
     // `Cannot read properties of undefined (reading 'close')` puts a second,
     // empty error in the log directly under the one that was written to be
     // read.
+    //
+    // Closing first, and closing even when the run failed: the application
+    // holds files in the directory below, and on Windows a delete over a live
+    // process answers `EPERM`.
     if (app !== undefined) {
       await app.close();
     }
 
-    // Exactly what `mkdtempSync` returned, and nothing else. This is the whole
-    // of the gate's deletion: it removes the directory it made.
-    if (scratchUserDataDirectory !== '') {
+    if (scratchUserDataDirectory === '') {
+      return;
+    }
+
+    // The deletion is conditioned on the evidence creation left, not on the
+    // value in the variable. A path that does not carry the marker was not
+    // made by this run, and nothing here may remove it.
+    if (!existsSync(join(scratchUserDataDirectory, GATE_DIRECTORY_MARKER))) {
+      throw new Error(
+        `Refusing to delete ${scratchUserDataDirectory}: it does not carry ${GATE_DIRECTORY_MARKER}, the file this gate writes into the directory it creates. Only a directory this run made may be removed here, and this one was not.`
+      );
+    }
+
+    try {
       rmSync(scratchUserDataDirectory, { recursive: true, force: true });
+    } catch (cause) {
+      // A process still holding files in there — the application, or one left
+      // by an earlier run that was killed. Reported rather than retried: what
+      // is left behind is a directory under `tmpdir()`, and a delete that
+      // fights a live process is how a gate starts killing things it did not
+      // start.
+      throw new Error(
+        `Could not remove ${scratchUserDataDirectory}. A process is most likely still holding files in it — an "Oath and Coin.exe" left by a run that was killed will do this. The directory is under the system temporary directory and can be removed by hand.`,
+        { cause }
+      );
     }
   });
 
