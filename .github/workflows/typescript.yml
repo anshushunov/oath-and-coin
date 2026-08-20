@@ -317,11 +317,19 @@ jobs:
   # singleton: of four concurrent runs on one workstation exactly one passed,
   # the other three died on `electron.launch` with Playwright's generic "Target
   # page, context or browser has been closed". It therefore keeps the job below,
-  # on its own runner. The RSS budget was suspected of the same flakiness and
-  # measured innocent: twelve runs — five solo, three overlapping pairs, one
-  # four-way, one beside a full `pnpm verify` — reported 413.8 to 420.5 MiB
-  # against the 500 MiB budget, and concurrency moved that number by under
-  # 3 MiB.
+  # on its own runner.
+  #
+  # The RSS budget was suspected of the same flakiness and is **not** closed. Every
+  # measurement of it — Task 18's twelve and segment review's further six, taken with
+  # `pnpm test:desktop` and read from `artifacts/electron-spike/gate-report.json`'s
+  # `rssBytes` — reports 413.3 to 420.5 MiB against the 500 MiB budget, and overlapping
+  # runs move that by a few MiB rather than past it. Task 17's single 516.5 MiB is not
+  # among them and has not been reproduced. It is also not refuted, and the reason it
+  # cannot be refuted by more of the same measurement is structural: only the run that
+  # wins the single-instance lock ever writes a report, so every one of the eighteen
+  # numbers is one instance, and no number exists for the second. The open risk is
+  # recorded in §19.4 of `docs/production/FULL_TYPESCRIPT_MIGRATION.md`, together with
+  # what would settle it.
   release-gate:
     runs-on: ubuntu-latest
     timeout-minutes: 25
