@@ -118,6 +118,27 @@ const PROBE_BYTES = Array.from({ length: 256 }, (_unused, value) => value);
  */
 const PROBE_SHA256 = createHash('sha256').update(Buffer.from(PROBE_BYTES)).digest('hex');
 
+/**
+ * A second payload, for the one thing a single write cannot show: that writing
+ * a slot that already holds a save *replaces* it.
+ *
+ * Shorter as well as different, and that is the point of the length: a store
+ * that appended, or that replaced the leading bytes and left the tail, would
+ * produce a file this digest does not match while a same-length payload might
+ * still be read back whole by a reader that stops at the expected length.
+ *
+ * Until round 3 the packaged build said nothing about this, and it said nothing
+ * for a bad reason: the claim used to arrive as a side effect of borrowing an
+ * occupied slot from a player. Borrowing is gone; the claim is cheap to make
+ * honestly, in a directory of this gate's own, and review of Task 17 was right
+ * that round 3 gave it away for nothing.
+ */
+const SECOND_PROBE_BYTES = PROBE_BYTES.slice(0, 100).reverse();
+
+const SECOND_PROBE_SHA256 = createHash('sha256')
+  .update(Buffer.from(SECOND_PROBE_BYTES))
+  .digest('hex');
+
 interface ProcessMetric {
   type: string;
   sandboxed: boolean | undefined;
@@ -586,29 +607,34 @@ async function readPageExposure(app: ElectronApplication): Promise<PageExposure>
  * survivable; three rounds of review found three different ways it lost a
  * save. The apparatus is gone, and so is every window it had.
  */
-async function probeSaveRoundTrip(app: ElectronApplication): Promise<{
-  roundTrip: SaveRoundTrip;
-  strayFilesInRepository: string[];
-}> {
-  // Checked here, and not only by the test that reports it: a test can say the
-  // override failed, but only this can stop the write that would then land in
-  // a player's directory. Tests are not run in a guaranteed order and a
-  // reported failure does not prevent the next one.
+/**
+ * Refuses to write unless the application under test is on this gate's own
+ * data directory.
+ *
+ * Checked here, and not only by the test that reports it: a test can say the
+ * override failed, but only this can stop the write that would then land in a
+ * player's directory. Tests are not run in a guaranteed order, and a reported
+ * failure does not prevent the next one.
+ */
+async function requireScratchDataDirectory(app: ElectronApplication): Promise<void> {
   const inUse = await readUserDataPath(app);
   if (inUse !== scratchUserDataDirectory) {
     throw new Error(
       `The application under test is using ${inUse} as its data directory, not ${scratchUserDataDirectory}. Refusing to write a probe save: without the override this writes into a real player's slot, which is the defect three rounds of review of Task 17 were about.`
     );
   }
+}
 
+/** Writes `hex` into the probe slot through the bridge and reads it back. */
+async function writeAndReadBack(app: ElectronApplication, hex: string): Promise<string> {
+  await requireScratchDataDirectory(app);
   const page = await app.firstWindow();
-  const wrote = toHex(PROBE_BYTES);
 
-  const readBack = await page.evaluate(
-    async ({ slot, hex }) => {
+  return page.evaluate(
+    async ({ slot, payload }) => {
       const api = (window as unknown as { desktop: DesktopBridge }).desktop;
       const bytes = new Uint8Array(
-        (hex.match(/../g) ?? []).map((pair) => Number.parseInt(pair, 16))
+        (payload.match(/../g) ?? []).map((pair) => Number.parseInt(pair, 16))
       );
       await api.writeSave(slot, bytes);
       const back = await api.readSave(slot);
@@ -616,9 +642,16 @@ async function probeSaveRoundTrip(app: ElectronApplication): Promise<{
         ? ''
         : [...back].map((byte) => byte.toString(16).padStart(2, '0')).join('');
     },
-    { slot: PROBE_SLOT, hex: wrote }
+    { slot: PROBE_SLOT, payload: hex }
   );
+}
 
+async function probeSaveRoundTrip(app: ElectronApplication): Promise<{
+  roundTrip: SaveRoundTrip;
+  strayFilesInRepository: string[];
+}> {
+  const wrote = toHex(PROBE_BYTES);
+  const readBack = await writeAndReadBack(app, wrote);
   const strayFilesInRepository = findSaveFilesInRepository();
   const written = await mainProcess(app, { kind: 'measure-save', slot: PROBE_SLOT });
 
@@ -711,11 +744,43 @@ test.describe('packaged desktop host', () => {
     // is closed before the real one starts, and it writes no save: the whole
     // reason this gate has two launches is that the run which *writes* must
     // not be pointed at that directory.
-    const asShipped = await electron.launch({ executablePath: executable });
+    //
+    // The `catch` is about a diagnosis, not about a recovery. `main.ts` takes a
+    // single-instance lock, and that lock is per data directory — so if a copy
+    // of the game is already running, or if two gate runs overlap, this launch
+    // quits immediately and Playwright reports `WebSocket error: read
+    // ECONNRESET`, which names neither the cause nor the fix. Measured by
+    // review of Task 17.
+    let asShipped: ElectronApplication;
+    try {
+      asShipped = await electron.launch({ executablePath: executable });
+    } catch (cause) {
+      throw new Error(
+        'Could not launch the packaged application to read its data directory. The most likely cause is the single-instance lock in main.ts: a copy of the game already running, or a second run of this gate, makes this launch quit before Playwright can attach — which surfaces as "WebSocket error: read ECONNRESET". Close the other instance and run again.',
+        { cause }
+      );
+    }
     try {
       shippedUserDataPath = await readUserDataPath(asShipped);
     } finally {
       await asShipped.close();
+    }
+
+    // BEFORE the delete, not after. `rmSync(..., { recursive: true })` on a
+    // fixed, predictable path is the same shape as the three windows three
+    // rounds of review closed, and the only thing standing between it and a
+    // real directory is that the path is this one. Review of Task 17 found the
+    // check for that living in a test — that is, running after the delete had
+    // already happened. It runs here now, and it refuses rather than reports.
+    if (
+      scratchUserDataDirectory === shippedUserDataPath ||
+      shippedUserDataPath.startsWith(`${scratchUserDataDirectory}${sep}`) ||
+      scratchUserDataDirectory.startsWith(`${shippedUserDataPath}${sep}`) ||
+      scratchUserDataDirectory.startsWith(`${repoRoot}${sep}`)
+    ) {
+      throw new Error(
+        `Refusing to erase ${scratchUserDataDirectory}: it is the application's own data directory (${shippedUserDataPath}), contains it, or lies inside this repository. This gate deletes that path on every run, so it may only ever be a directory of the gate's own.`
+      );
     }
 
     // Cleared here rather than in `afterAll`: a failed run leaves its files to
@@ -833,6 +898,31 @@ test.describe('packaged desktop host', () => {
 
     // And the negative half: nothing of the sort appeared in the working tree.
     expect(strayFilesInRepository).toEqual([]);
+  });
+
+  test('a second save replaces the first in the same slot', async () => {
+    expect(hostSaveListBroken, 'this test must run before the host refusal probe').toBe(false);
+
+    // The claim `write()` makes in its own doc comment — "replaces a slot's
+    // contents wholesale" — on the packaged build. Everything below the host
+    // proves it against doubles or a browser; here it goes through
+    // `contextBridge`, the main process's schemas, the temporary file and the
+    // `rename`, twice.
+    const first = toHex(PROBE_BYTES);
+    const second = toHex(SECOND_PROBE_BYTES);
+
+    // Not vacuous, and this is the assertion that says so: with two equal
+    // payloads the check below would pass against a host that ignored the
+    // second write entirely.
+    expect(second).not.toBe(first);
+
+    expect(await writeAndReadBack(app, first)).toBe(first);
+    expect(await writeAndReadBack(app, second)).toBe(second);
+
+    // Read from the file rather than from the bridge, so a reader that stopped
+    // at the expected length would not hide a tail the first payload left.
+    const written = await mainProcess(app, { kind: 'measure-save', slot: PROBE_SLOT });
+    expect(written.sha256).toBe(SECOND_PROBE_SHA256);
   });
 
   test('the packaged renderer is the browser build this tree produced', async () => {
