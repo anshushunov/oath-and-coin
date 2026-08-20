@@ -17,10 +17,21 @@ import { fileURLToPath } from 'node:url';
  * gate that stops at the first disagreement hides how much else is wrong:
  *
  * 1. **Every external runtime dependency is written down here, with a reason, against
- *    the members that may declare it.** The allowlist is the review §125 asks for,
- *    turned into something that fails a build. A dependency that arrives without an
- *    entry is not refused because it is dangerous — it is refused because nobody said
- *    anything about it.
+ *    the members that may declare it — and nothing is written down that nobody
+ *    declares.** The allowlist is the review §125 asks for, turned into something that
+ *    fails a build. A dependency that arrives without an entry is not refused because it
+ *    is dangerous — it is refused because nobody said anything about it.
+ *
+ *    Both directions, and the second one was missing until external review of segment 5
+ *    asked for it. Checking only "declared implies allowed" leaves the permission list
+ *    open to being widened *in advance*: an entry for a package nothing declares, or a
+ *    member added to an existing entry's `members`, passes an audit that only ever reads
+ *    this file to answer questions about manifests. The dependency added afterwards then
+ *    needs no edit here, no sentence, and no second look — the review §125 asks for
+ *    happens in the diff that adds the permission, and a permission granted for nothing
+ *    is a diff nobody reads twice. The transitive list has had a staleness check since it
+ *    was written (property 3's second loop); the direct one is where a permission
+ *    actually costs something, and it had none.
  * 2. **Every one of them is pinned to exactly the version this file records.** The
  *    workspace suite already refuses a range (`tests/architecture/workspace.test.ts`,
  *    "every dependency of every member is pinned to an exact version"); what is new
@@ -224,6 +235,48 @@ for (const { member, section, name, range } of declared) {
     failures.push(
       `[1] ${name} is allowed in ${entry.members.join(', ')} and ${member} is not one of them. ` +
         'Widening it is an edit to this file, with a sentence saying why that layer ships it.'
+    );
+  }
+}
+
+// ------------------------------------------------- property 1, the other way
+
+/** Which members actually declare each external package, as the manifests have it. */
+const declaringMembers = new Map();
+for (const { member, name } of declared) {
+  const members = declaringMembers.get(name) ?? new Set();
+  members.add(member);
+  declaringMembers.set(name, members);
+}
+
+for (const [name, entry] of Object.entries(ALLOWED_DIRECT)) {
+  if (!Array.isArray(entry.members) || entry.members.length === 0) {
+    failures.push(
+      `[1] ${name} is allowed here against no member at all. "zod is allowed" and "zod is ` +
+        'allowed in the content layer" are different statements and only the second one is a ' +
+        'review; an empty list is the first one written in the shape of the second.'
+    );
+    continue;
+  }
+
+  const declaringHere = declaringMembers.get(name);
+
+  if (declaringHere === undefined) {
+    failures.push(
+      `[1] ${name} is allowed here and declared by no member. A permission granted before the ` +
+        'dependency arrives is a permission granted with nothing to review; the manifest change ' +
+        'that then adds it needs no edit to this file and gets no second look.'
+    );
+    continue;
+  }
+
+  const unused = entry.members.filter((member) => !declaringHere.has(member));
+  if (unused.length > 0) {
+    failures.push(
+      `[1] ${name} is allowed in ${unused.join(', ')}, which ${unused.length === 1 ? 'does' : 'do'} ` +
+        `not declare it — it is declared by ${[...declaringHere].sort().join(', ')}. Widening ` +
+        'the list ahead of the manifest is how a layer acquires a dependency without anybody ' +
+        'saying why that layer ships it.'
     );
   }
 }
