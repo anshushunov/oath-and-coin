@@ -530,6 +530,13 @@ async function prepareSaveProbe(app: ElectronApplication): Promise<ProbeGround> 
       // wins — the interrupted run is finished here rather than left as a file
       // nobody knows what to do with. Without this the recovery the backup
       // exists for would be manual, which is a promise about a person.
+      //
+      // **Verified live, held by no check.** The state it repairs is one a
+      // green run cannot arrange: it exists only after a previous run was
+      // killed. It was tested by hand — a save directory holding only
+      // `slot-c.save.gate-backup` and no slot came out of a run holding the
+      // slot with exactly those bytes (§18.4) — and that is a measurement, not
+      // a mechanism. Named here rather than left to look covered.
       if (exists(staleBackup)) {
         renameSync(staleBackup, path);
       }
