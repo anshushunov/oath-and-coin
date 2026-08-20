@@ -36,26 +36,61 @@ export default defineConfig({
     // nobody has is indistinguishable from a slow test, a worker that died, and
     // a real defect that appears once a day.
     //
-    // The tempting cure is `testTimeout`, and it is forbidden until the message
-    // exists (AGENTS.md §8). If the cause is not a timeout, raising one hides a
+    // The tempting cure is `testTimeout`, and it was forbidden until the message
+    // existed (AGENTS.md §8). If the cause is not a timeout, raising one hides a
     // live defect behind a green gate — which is the one outcome worse than the
     // flake.
+    //
+    // The message now exists (below) and the cause **is** the timeout: the two
+    // full-corpus tests run at 2.0–4.3 s against a 5000 ms default even on green
+    // runs — one green run measured 4339 ms, 661 ms of margin — and cross it when
+    // transform and import go slow. Still not raised here, and deliberately: the
+    // ruling that parked this was taken above this task, the evidence that
+    // discharges it is three days newer than the ruling, and a branch that cannot
+    // be pushed cannot show the new setting behaving on a cold runner. The
+    // measurement is handed up with a recommendation instead of a setting nobody
+    // watched work.
     //
     // So: the *next* red writes itself down, wherever it happens. `json`
     // carries each failure's own message and stack; the console log the CI step
     // tees beside it carries what the json reporter cannot — a worker that
     // exited, an unhandled rejection outside any test, and the transform and
     // import timings that were the only thing the two observations had in
-    // common. Both are uploaded by the release gate with `if: always()`.
+    // common.
     //
-    // One fixed filename, deliberately. `pnpm verify` chains `test` and
-    // `test:scenario` with `&&`, so the second only runs when the first passed:
-    // the file that survives a failed run is always the failing one's.
+    // **It caught it, and neither half would have been enough.** The red
+    // appeared during Task 18's own review round and both files were kept:
     //
-    // The price, stated because it is easy to misread: after a *green* chain the
-    // file describes `test:scenario` alone — 149 tests on the first CI run, not
-    // the 1151 of the full suite. It is a record of the last run, not a total,
-    // and the job summary says so.
+    //   tests/oracle/parity.test.ts  … reproduces all 54 …          duration 5101 ms
+    //   tools/scenario-runner/src/cli.test.ts … 54 of 54 …          duration 9094 ms
+    //   Duration 22.79s (transform 73.42s, import 116.57s, tests 66.76s)
+    //   console: "Error: Test timed out in 5000ms."
+    //
+    // In the json report the `failureMessages` of a timed-out test is the literal
+    // string `STACK_TRACE_ERROR` and nothing else — the reporter does not carry
+    // that text. What names the cause there is `duration`, sitting just past the
+    // 5000 ms default. The sentence itself only exists in the teed console log.
+    // So: read `duration` in the json, read the message in the log, and do not
+    // expect either to be sufficient on its own.
+    //
+    // Both are uploaded by the release gate with `if: always()`, and the
+    // `checks` job uploads this file on its own — `pnpm test` runs there too, on
+    // every push, which is where a cold red is most likely to appear first.
+    //
+    // One fixed filename, and what that is and is not worth:
+    //
+    // - Inside `pnpm verify` it is exactly right. The chain runs `test` and then
+    //   `test:scenario` joined by `&&`, so the second starts only if the first
+    //   passed, and the file left behind by a failed chain is the failing run's.
+    // - Between separate invocations it is not. An ad-hoc `vitest run <file>`
+    //   after a failed `pnpm test` overwrites the report of the run worth
+    //   keeping, and nothing warns. On CI that cannot happen — each job runs one
+    //   chain and uploads before anything else runs — but on a workstation the
+    //   first thing an investigator does is re-run a subset, and that is the
+    //   moment the evidence is lost. Copy the file before narrowing the run.
+    // - After a *green* chain it describes `test:scenario` alone — 149 tests on
+    //   the first CI run, not the 1151 of the full suite. A record of the last
+    //   run, not a total, and the job summary says so.
     reporters: ['default', 'json'],
     outputFile: { json: 'artifacts/vitest/results.json' }
   }

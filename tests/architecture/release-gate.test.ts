@@ -79,10 +79,19 @@ describe('the release gate is one job with three verdicts', () => {
 
   it('runs all three of them', () => {
     for (const { command, verdict } of REQUIRED_COMMANDS) {
+      // Bounded on both sides rather than as a bare substring. A step runs
+      // `pnpm verify 2>&1 | tee …`, so an exact match is impossible, but an
+      // unbounded `toContain` would also accept a hypothetical `pnpm verify:fast`
+      // — the same mistake this file made about `pnpm test` and `pnpm test:scenario`
+      // and that review measured (see the stage list below).
+      const word = new RegExp(
+        `(^|\\s)${command.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}(\\s|$)`,
+        'mu'
+      );
       expect(
         commands,
         `${JOB_NAME} no longer runs \`${command}\`, so nothing answers whether ${verdict}`
-      ).toContain(command);
+      ).toMatch(word);
     }
   });
 
@@ -140,10 +149,38 @@ describe('pnpm verify is the whole of the local gate', () => {
 
   const verify = rootManifest.scripts?.verify ?? '';
 
+  /**
+   * The chain, taken apart into the stages it actually runs.
+   *
+   * The first version of this check asked `verify.toContain('pnpm ' + stage)`,
+   * and review measured what that is worth: `pnpm lint` is a substring of
+   * `pnpm lint:deps` and `pnpm test` is a substring of `pnpm test:scenario`, so
+   * deleting `pnpm test` — the stage carrying 1151 of the gate's tests — from
+   * the chain left this file reporting `6 passed (6)`. A check written against
+   * exactly that failure could not see it. Two of ten stages could vanish in
+   * silence.
+   *
+   * Splitting on `&&` and trimming is enough because that is the whole grammar
+   * of this script; anything richer would be a shell to parse, and a `verify`
+   * that needed one would be the defect.
+   */
+  const stages = verify
+    .split('&&')
+    .map((stage) => stage.trim())
+    .filter((stage) => stage !== '');
+
   it('chains every stage it is composed of', () => {
     for (const stage of REQUIRED_STAGES) {
-      expect(verify, `pnpm verify no longer runs \`pnpm ${stage}\``).toContain(`pnpm ${stage}`);
+      expect(stages, `pnpm verify no longer runs \`pnpm ${stage}\``).toContain(`pnpm ${stage}`);
     }
+  });
+
+  it('runs each of them exactly once', () => {
+    // A stage duplicated by a bad merge doubles the slowest gate in the
+    // repository and reads as a slow runner rather than as a diff.
+    const duplicated = stages.filter((stage, index) => stages.indexOf(stage) !== index);
+
+    expect([...new Set(duplicated)], 'pnpm verify repeats a stage').toEqual([]);
   });
 
   it('leaves the two commands that need a desktop out of it', () => {
@@ -151,6 +188,11 @@ describe('pnpm verify is the whole of the local gate', () => {
     // independently: someone folding `test:desktop` into `verify` would break
     // every contributor without a packaged build, and the workflow check above
     // would still pass.
+    //
+    // Substring on the whole script, deliberately, and the asymmetry with the
+    // parsed list above is the point: for what must be PRESENT an exact stage is
+    // stricter, and for what must be ABSENT a substring is stricter — it also
+    // catches `pnpm test:desktop --grep x`, which no exact match would.
     for (const stage of ['package:desktop', 'test:desktop']) {
       expect(
         verify,

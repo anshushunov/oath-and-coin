@@ -265,26 +265,43 @@ describe('gate coverage', () => {
   });
 
   it('nothing that ships imports a package its member does not depend on at runtime', () => {
-    // `.dependency-cruiser.cjs` states this as `not-to-dev-dep`, and under this
-    // workspace's layout that rule cannot fire. Measured while proving the
-    // `lint:deps` stage of `pnpm verify` reddens: adding
-    // `import { defineConfig } from 'vitest/config'` — a root devDependency —
-    // to `apps/web/src/rendered-texts.ts` left `pnpm verify` fully green, 14
-    // e2e tests and all. The reason is in the tool's own JSON output: the edge
-    // comes back as
+    // The second statement of `not-to-dev-dep` (`.dependency-cruiser.cjs`), and
+    // it covers the two cases that rule is blind to rather than replacing it.
+    // Both rule and check are load-bearing; `REQUIRED_RULES` above names the
+    // pairing so that neither is deleted as a duplicate of the other.
     //
-    //   vitest/config -> node_modules/.pnpm/vitest@…/node_modules/vitest/config.d.ts
-    //   dependencyTypes ["npm-no-pkg","import"]
+    // **The rule works.** An earlier version of this comment said it could never
+    // fire under pnpm's layout, and external review refuted that by measurement:
+    // `import { JSDOM } from 'jsdom'` in `apps/web/src/rendered-texts.ts` gives
     //
-    // pnpm resolves every package through `.pnpm`, the real path has no
-    // manifest that declares it, so the type is `npm-no-pkg` and never
-    // `npm-dev`. `preserveSymlinks: true` restores the classification and
-    // breaks the layer rules instead — with it, `packages/content` importing
-    // `packages/simulation` resolves as
-    // `packages/content/node_modules/@oath-and-coin/simulation/…` and eleven
-    // real modules are reported as violations. So the rule is not repaired
-    // where it lives; the property is stated here, where the member's own
-    // manifest is in hand.
+    //   error not-to-dev-dep: apps/web/src/rendered-texts.ts →
+    //     node_modules/.pnpm/jsdom@30.0.1…/node_modules/jsdom/lib/api.js
+    //
+    // because `jsdom` is a devDependency of `apps/web` itself, and the edge is
+    // classified `["npm-dev","import"]`. The wrong diagnosis is recorded here on
+    // purpose: it was about to send the next reader to delete a live rule.
+    //
+    // **What it is actually blind to**, measured the same way, one edge at a time
+    // from `depcruise --output-type json`:
+    //
+    //   jsdom          (devDependency of apps/web)   ["npm-dev","import"]     caught
+    //   vitest/config  (devDependency of the ROOT)   ["npm-no-pkg","import"]  missed
+    //   vite           (devDependency of apps/web)   no edge in the graph at all
+    //
+    // dependency-cruiser classifies an edge against the manifest of the member
+    // it starts in. A package that member declares is `npm-dev` and is refused;
+    // a package declared only by the root workspace manifest is in no manifest
+    // it consults, so it is `npm-no-pkg` — not a section it checks — and passes.
+    // The `vite` case is worse than a misclassification: the edge does not enter
+    // the graph, `no-unresolvable` says nothing either, and `206 modules, 681
+    // dependencies` is reported with and without the import.
+    //
+    // A member's own manifest answers all three, which is why the property is
+    // restated here rather than repaired there. (`preserveSymlinks: true` was
+    // tried and is not the repair: it makes `packages/content` importing
+    // `packages/simulation` resolve as
+    // `packages/content/node_modules/@oath-and-coin/simulation/…` and reports
+    // eleven real modules as violations.)
     //
     // Deliberately not a list of forbidden package names — that is the shape
     // this repository has had to repair three times. Every bare specifier must
@@ -300,6 +317,60 @@ describe('gate coverage', () => {
     function packageOf(specifier: string): string {
       const parts = specifier.split('/');
       return specifier.startsWith('@') ? parts.slice(0, 2).join('/') : (parts[0] ?? specifier);
+    }
+
+    /**
+     * The specifiers this file imports for types only, and never for a value.
+     *
+     * "Never" is what makes it safe to subtract: one `import type { A } from 'x'`
+     * beside one `import { b } from 'x'` leaves `x` present at runtime, so the
+     * package counts as a value import and stays under the rule. Both the
+     * declaration form (`import type … from`) and the per-specifier form
+     * (`import { type A } from`) are type-only; a declaration with no clause at
+     * all — `import 'x'` for its side effects — is emphatically a value import.
+     */
+    function typeOnlySpecifiers(text: string, file: string): ReadonlySet<string> {
+      const source = ts.createSourceFile(
+        file,
+        text,
+        ts.ScriptTarget.Latest,
+        // Parent pointers are not needed and cost time on every file in the tree.
+        false,
+        file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS
+      );
+
+      const seen = new Map<string, boolean>();
+
+      const record = (specifier: string, typeOnly: boolean): void => {
+        seen.set(specifier, (seen.get(specifier) ?? true) && typeOnly);
+      };
+
+      for (const statement of source.statements) {
+        if (ts.isImportDeclaration(statement)) {
+          if (!ts.isStringLiteral(statement.moduleSpecifier)) {
+            continue;
+          }
+          const clause = statement.importClause;
+          const typeOnly =
+            clause !== undefined &&
+            (clause.isTypeOnly ||
+              (clause.name === undefined &&
+                clause.namedBindings !== undefined &&
+                ts.isNamedImports(clause.namedBindings) &&
+                clause.namedBindings.elements.every((element) => element.isTypeOnly)));
+          record(statement.moduleSpecifier.text, typeOnly);
+          continue;
+        }
+        if (
+          ts.isExportDeclaration(statement) &&
+          statement.moduleSpecifier !== undefined &&
+          ts.isStringLiteral(statement.moduleSpecifier)
+        ) {
+          record(statement.moduleSpecifier.text, statement.isTypeOnly);
+        }
+      }
+
+      return new Set([...seen].filter(([, typeOnly]) => typeOnly).map(([specifier]) => specifier));
     }
 
     const skipped = new Set(['node_modules', 'dist', 'build', 'artifacts']);
@@ -339,10 +410,21 @@ describe('gate coverage', () => {
         // text: it sees `import`, `import type`, `export … from`, `require`
         // and dynamic `import()` alike, and it does not see any of them inside
         // a comment or a string literal.
-        const scanned = ts.preProcessFile(readTextFile(file), true, true);
+        const text = readTextFile(file);
+        const scanned = ts.preProcessFile(text, true, true);
+        // `dependencyTypesNot: ['type-only']`, which `not-to-dev-dep` has and
+        // the first version of this check silently dropped — a behaviour change
+        // nobody decided, found in review. A type-only import is erased by the
+        // compiler and cannot be present at runtime, so it is not what either
+        // statement of this property is about. `preProcessFile` does not
+        // distinguish the two, so they are collected separately and subtracted.
+        const erased = typeOnlySpecifiers(text, file);
 
         for (const { fileName: specifier } of scanned.importedFiles) {
           if (specifier.startsWith('.') || specifier.startsWith('node:')) {
+            continue;
+          }
+          if (erased.has(specifier)) {
             continue;
           }
           const name = packageOf(specifier);
@@ -414,6 +496,12 @@ describe('the boundary rules that must exist', () => {
     'presentation-depends-only-on-simulation',
     'application-imports-only-the-three-layers-below-it',
     'desktop-host-imports-only-its-own-package-node-and-electron',
+    // Paired with "nothing that ships imports a package its member does not
+    // depend on at runtime" below, and neither is a duplicate of the other:
+    // the rule catches a devDependency the member itself declares, the check
+    // catches one declared only by the root and one whose edge dependency-cruiser
+    // never puts in the graph. Measured, both directions — see that test's
+    // comment. Deleting either as redundant loses half the property.
     'not-to-dev-dep'
   ] as const;
 

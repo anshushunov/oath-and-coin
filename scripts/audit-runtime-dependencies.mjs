@@ -258,19 +258,27 @@ const closure = new Map();
 const queue = declared.map(({ name, directory, member }) => ({
   name,
   from: directory,
-  broughtBy: member
+  broughtBy: member,
+  // A member's own declaration must resolve: this repository wrote it, and a
+  // package named there and absent from disk means the install is half done and
+  // the whole audit is over a tree that says nothing.
+  mustResolve: true
 }));
 const directlyDeclared = new Set(declared.map(({ name }) => name));
 
 while (queue.length > 0) {
-  const { name, from, broughtBy } = queue.shift();
+  const { name, from, broughtBy, mustResolve } = queue.shift();
   const manifestPath = locateManifest(name, from);
 
   if (manifestPath === null) {
-    failures.push(
-      `[3] ${name}, reached via ${broughtBy}, is declared and not installed. Run ` +
-        '`pnpm install --frozen-lockfile`; an audit over a half-installed tree says nothing.'
-    );
+    if (mustResolve) {
+      failures.push(
+        `[3] ${name}, reached via ${broughtBy}, is declared and not installed. Run ` +
+          '`pnpm install --frozen-lockfile`; an audit over a half-installed tree says nothing.'
+      );
+    }
+    // An optional or peer dependency that is genuinely absent is not in the
+    // runtime tree, which is the honest answer rather than a failure.
     continue;
   }
 
@@ -288,9 +296,21 @@ while (queue.length > 0) {
   });
 
   const nextDirectory = dirname(manifestPath);
-  for (const section of ['dependencies', 'optionalDependencies']) {
+  // `peerDependencies` as well, and it is not paranoia: `pnpm-lock.yaml` records
+  // `autoInstallPeers: true`, so a peer nothing else satisfies is installed and
+  // ships like any other package while appearing in no `dependencies` anywhere.
+  // Review named this as invisible today and it is — adding the section changes
+  // nothing on this tree, still 16 packages, because `react-dom`'s only peer is
+  // `react` and that is already a root. A section that costs nothing now and
+  // catches a whole class later is worth the line.
+  for (const section of ['dependencies', 'optionalDependencies', 'peerDependencies']) {
     for (const dependency of Object.keys(manifest[section] ?? {})) {
-      queue.push({ name: dependency, from: nextDirectory, broughtBy: `${broughtBy} > ${name}` });
+      queue.push({
+        name: dependency,
+        from: nextDirectory,
+        broughtBy: `${broughtBy} > ${name}`,
+        mustResolve: section === 'dependencies'
+      });
     }
   }
 }

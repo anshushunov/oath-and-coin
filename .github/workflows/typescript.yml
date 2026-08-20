@@ -103,6 +103,27 @@ jobs:
       #
       # This is a new CI check, so AGENTS.md §8 requires a mutant on it, and the journal
       # records which branch reddened it.
+      #
+      # KEPT AS IT IS, and the decision is written down because Task 18 removed the
+      # same shape one job below and review asked whether it belongs here too.
+      #
+      # It looks identical — a step that fails a second time after an earlier step
+      # already failed — and it is not the same thing. The `release-gate` step this
+      # was compared with publishes measurements with no threshold, where a missing
+      # number on a failed run is the expected state and failing on it added a red
+      # that said nothing. This step is the gate on evidence being *produced*: a
+      # suite that quietly stopped writing reports has to fail somewhere, and this
+      # is the only place that can notice.
+      #
+      # The residue is real and is named rather than fixed: when `pnpm test:e2e`
+      # fails after writing two of the five states, this step also fails, and its
+      # message ("produced no evidence for: …") reads as "the suite stopped writing
+      # reports" when the truth is "the suite stopped". Making it a notice when
+      # `steps.e2e.outcome == 'failure'` and an error when e2e passed would separate
+      # the two — that is the shape to take when someone next touches it. Not taken
+      # here: it changes what a gate does, and the branch cannot be pushed from this
+      # task, so it could not be shown red on CI. An unproven change to a gate is
+      # worse than a named limit.
       - name: Summarise the browser evidence
         if: always() && steps.e2e.outcome != 'skipped'
         shell: bash
@@ -145,6 +166,9 @@ jobs:
       # table because the two screens report different things — the slots screen has no
       # corpus behind it, so there is no read-model hash to print, and it reports which of
       # the five shapes the storage put it in instead.
+      #
+      # Same decision, same residue, same reason as the step above — it is the second
+      # of the two, and naming only one of a pair is how a class gets half-fixed.
       - name: Summarise the save-slots evidence
         if: always() && steps.e2e.outcome != 'skipped'
         shell: bash
@@ -180,6 +204,30 @@ jobs:
             done
             echo
           } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # The vitest report of whatever ran here, on its own and under a bare
+      # `always()`. It is not folded into the upload below, and that is the whole
+      # point of it existing separately.
+      #
+      # Task 18 put the capture of the unexplained intermittent red into the
+      # `release-gate` job and review measured where the red will actually happen:
+      # `pnpm test` runs in *this* job too, on every push, and every upload here is
+      # gated on `steps.e2e.outcome != 'skipped'`. A red `pnpm test` fails the job
+      # before `Install the browser`, so `e2e` never runs, `skipped` is exactly what
+      # its outcome is, and both uploads are skipped with it — the failing run's
+      # `results.json` goes nowhere. The mechanism was in the job where the flake had
+      # not been seen and missing from the one where it was.
+      #
+      # `if-no-files-found: warn`, unlike the evidence upload below: a job that died
+      # in `Install` never reached vitest, and failing it twice for that would be the
+      # second-red-that-says-nothing this workflow already carries one note about.
+      - name: Upload the vitest report, whatever happened
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checks-vitest-report
+          path: artifacts/vitest/
+          if-no-files-found: warn
 
       - name: Upload browser evidence
         if: always() && steps.e2e.outcome != 'skipped'
@@ -221,6 +269,17 @@ jobs:
   # and "green on my machine" are the same sentence rather than two lists that
   # have to be compared by eye. A stage that fell out of `pnpm verify` fails
   # here and passes there, which is exactly the disagreement worth catching.
+  #
+  # **The cost, named rather than left to be discovered.** This job re-runs every
+  # stage `checks` already ran, and `dotnet test` on top, on every push — roughly
+  # 2.5 minutes of runner beside the 1.5 that `checks` costs, and the .NET half is
+  # also run by `dotnet.yml`. That is deliberate and it is not free: the duplication
+  # is what buys the disagreement check above ("green here" vs "green on my
+  # machine"), and it is the first thing to reconsider if push traffic makes runner
+  # time matter. The cheaper shapes both give something up — `needs: checks` makes
+  # the gate serial and roughly doubles wall clock, and restricting this job to
+  # pull requests leaves the mutant branches AGENTS.md §8 asks for unobserved, which
+  # is exactly what the `on:` block at the top of this file exists to prevent.
   #
   # Three steps and not one, because they are three different verdicts:
   # "the TypeScript stack is sound", "nothing unreviewed reaches a player at
