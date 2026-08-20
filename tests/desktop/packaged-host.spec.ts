@@ -978,11 +978,12 @@ test.describe('packaged desktop host', () => {
     expect(evidence.packagedBytes).toBeGreaterThan(0);
 
     // The RSS budget stands, and the measurement fits it: Task 4 observed
-    // 328.8 MiB, Task 17 observed 409-413 MiB across its runs and its review's,
+    // 328.8 MiB, Task 17 observed 409-418 MiB across its runs and its review's,
     // all against 500 MB. A range rather than a number because this one is read
     // from four live processes and moves between runs — the first range written
-    // here was 409-411 and the reviewer's own run came back 412.4, which is the
-    // point; the exact value of the run that wrote the report is in the report.
+    // here was 409-411, the reviewer's own run came back 412.4, and widening it
+    // once was not enough either, which is the point; the exact value of the
+    // run that wrote the report is in the report.
     // This is a real gate — a leak or a second renderer would show up here, and
     // the ~80 MiB the game itself costs is exactly the kind of movement it
     // exists to keep visible.
