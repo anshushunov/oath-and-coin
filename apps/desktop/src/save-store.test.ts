@@ -1,8 +1,9 @@
-import { mkdtemp, readdir, rename, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { mkdtemp, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 
 import {
   enqueueSlotWrite,
@@ -24,9 +25,56 @@ import {
  * raw. Everything else here is the ordinary shape of the port.
  */
 
+/**
+ * Every directory this file made, in creation order, and the only list the
+ * teardown below deletes from.
+ *
+ * Until Task 18 this file created around two dozen directories per run and
+ * removed none of them; the workstation it was written on had accumulated
+ * 2658 of them (7.4 MiB) by the end of the segment. That is not merely untidy:
+ * a leak of this shape is the standing argument for going back to one fixed
+ * path swept clean at startup, and Task 17 spent six review rounds and three
+ * data-loss windows removing exactly that construction from the packaged gate.
+ *
+ * So the cure keeps `mkdtemp` and takes the same shape Task 17 arrived at: a
+ * path that is *created* rather than computed cannot be anyone else's, and the
+ * teardown removes the values `mkdtemp` returned rather than everything
+ * matching a prefix. `rm -rf` over `tmpdir()/oath-and-coin-save-store-*` would
+ * be one line shorter and would delete a concurrent run's directories with it.
+ *
+ * **The limit, stated as a limit.** This defends against a leak, not against an
+ * edit. `push` here is the only writer, but nothing enforces that; an edit that
+ * pushed some other path into this array would have it deleted recursively, and
+ * no mechanism inside a test file goes further than saying so.
+ */
+const createdDirectories: string[] = [];
+
 async function temporaryDirectory(): Promise<string> {
-  return mkdtemp(join(tmpdir(), 'oath-and-coin-save-store-'));
+  const directory = await mkdtemp(join(tmpdir(), 'oath-and-coin-save-store-'));
+  createdDirectories.push(directory);
+  return directory;
 }
+
+afterAll(async () => {
+  const survivors: string[] = [];
+
+  for (const directory of createdDirectories) {
+    await rm(directory, { recursive: true, force: true });
+    if (existsSync(directory)) {
+      survivors.push(directory);
+    }
+  }
+
+  // Not decoration. A teardown that silently stopped deleting is invisible —
+  // the suite still passes and the directories pile up in a place nobody
+  // looks, which is how the 2658 got there. This is the check that reddens on
+  // that, and it reddens on a directory a live handle keeps alive too, which
+  // is worth hearing about rather than swallowing.
+  expect(
+    survivors,
+    `${String(survivors.length)} of ${String(createdDirectories.length)} temporary directories survived teardown`
+  ).toEqual([]);
+});
 
 function bytesOf(text: string): Uint8Array {
   return new TextEncoder().encode(text);
