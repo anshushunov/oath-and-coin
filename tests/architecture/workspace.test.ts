@@ -264,6 +264,108 @@ describe('gate coverage', () => {
     }
   });
 
+  it('nothing that ships imports a package its member does not depend on at runtime', () => {
+    // `.dependency-cruiser.cjs` states this as `not-to-dev-dep`, and under this
+    // workspace's layout that rule cannot fire. Measured while proving the
+    // `lint:deps` stage of `pnpm verify` reddens: adding
+    // `import { defineConfig } from 'vitest/config'` — a root devDependency —
+    // to `apps/web/src/rendered-texts.ts` left `pnpm verify` fully green, 14
+    // e2e tests and all. The reason is in the tool's own JSON output: the edge
+    // comes back as
+    //
+    //   vitest/config -> node_modules/.pnpm/vitest@…/node_modules/vitest/config.d.ts
+    //   dependencyTypes ["npm-no-pkg","import"]
+    //
+    // pnpm resolves every package through `.pnpm`, the real path has no
+    // manifest that declares it, so the type is `npm-no-pkg` and never
+    // `npm-dev`. `preserveSymlinks: true` restores the classification and
+    // breaks the layer rules instead — with it, `packages/content` importing
+    // `packages/simulation` resolves as
+    // `packages/content/node_modules/@oath-and-coin/simulation/…` and eleven
+    // real modules are reported as violations. So the rule is not repaired
+    // where it lives; the property is stated here, where the member's own
+    // manifest is in hand.
+    //
+    // Deliberately not a list of forbidden package names — that is the shape
+    // this repository has had to repair three times. Every bare specifier must
+    // be *permitted*, and the permission is the member's own `dependencies`.
+    const shipping = /^(apps|packages|tools)\//;
+    const testFile = /\.(test|spec)\.tsx?$/;
+    // The same files `.dependency-cruiser.cjs` excludes, and for its reason:
+    // build configuration is not shipped, and it imports the bundler by
+    // definition.
+    const buildConfig = /(^|\/)(vite\.[^/]*|(vitest|playwright)\.[^/]*config)\.ts$/;
+
+    /** `@scope/name/deep/path` -> `@scope/name`; `name/deep` -> `name`. */
+    function packageOf(specifier: string): string {
+      const parts = specifier.split('/');
+      return specifier.startsWith('@') ? parts.slice(0, 2).join('/') : (parts[0] ?? specifier);
+    }
+
+    const skipped = new Set(['node_modules', 'dist', 'build', 'artifacts']);
+
+    function sourceFiles(directory: string, found: string[] = []): string[] {
+      for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        if (entry.isDirectory()) {
+          if (!skipped.has(entry.name)) {
+            sourceFiles(join(directory, entry.name), found);
+          }
+          continue;
+        }
+        if (/\.tsx?$/.test(entry.name) && !entry.name.endsWith('.d.ts')) {
+          found.push(join(directory, entry.name));
+        }
+      }
+      return found;
+    }
+
+    const violations: string[] = [];
+
+    for (const member of members) {
+      if (!shipping.test(member.directory)) {
+        continue;
+      }
+
+      const runtime = new Set(Object.keys(member.manifest.dependencies ?? {}));
+      const directory = join(repoRoot, ...member.directory.split('/'));
+
+      for (const file of sourceFiles(directory)) {
+        const relativePath = relative(repoRoot, file).split(sep).join(posix.sep);
+        if (testFile.test(relativePath) || buildConfig.test(relativePath)) {
+          continue;
+        }
+
+        // TypeScript's own scanner rather than a regular expression over the
+        // text: it sees `import`, `import type`, `export … from`, `require`
+        // and dynamic `import()` alike, and it does not see any of them inside
+        // a comment or a string literal.
+        const scanned = ts.preProcessFile(readTextFile(file), true, true);
+
+        for (const { fileName: specifier } of scanned.importedFiles) {
+          if (specifier.startsWith('.') || specifier.startsWith('node:')) {
+            continue;
+          }
+          const name = packageOf(specifier);
+          // Electron is the one honest exception and it is the same one
+          // `.dependency-cruiser.cjs` writes down: the host imports it, the
+          // runtime provides it, and it is never installed beside the packaged
+          // application — which is precisely why it is a devDependency.
+          if (name === 'electron') {
+            continue;
+          }
+          if (!runtime.has(name)) {
+            violations.push(`${relativePath} imports ${name}, which ${member.directory} does not`);
+          }
+        }
+      }
+    }
+
+    expect(
+      [...new Set(violations)].sort(),
+      'shipping code may import only what its own manifest lists under `dependencies`'
+    ).toEqual([]);
+  });
+
   it('every member extends the shared compiler options', () => {
     for (const member of members) {
       const tsconfig = JSON.parse(
