@@ -2,6 +2,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join, posix, relative, resolve, sep } from 'node:path';
 
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 
@@ -166,6 +167,80 @@ describe('gate coverage', () => {
     const referenced = (solution.references ?? []).map((reference) => reference.path);
 
     expect([...referenced].sort()).toEqual([...declaredMemberDirectories].sort());
+  });
+
+  it("every .ts and .tsx file of every member is inside that member's own include", () => {
+    // The other half of the check above, and until Task 18 it was missing. A
+    // member can be listed in the root solution — so `tsc --build` opens its
+    // project — and still leave most of its own tree unchecked, because what
+    // `tsc` compiles is the project's `include`, not its directory. Both
+    // `tests/architecture` (`["src", "*.test.ts"]`) and `tests/locale`
+    // (`["*.test.ts"]`) match only the top level: a test added in a
+    // subdirectory of either is collected by vitest, runs, and is never
+    // typechecked by anything. Named as a repo-level hole during Task 16.2 and
+    // carried here.
+    //
+    // The membership question is answered by the compiler rather than by a
+    // glob matcher written here. tsconfig's `include` has its own semantics —
+    // a bare `src` means the directory recursively, `*.test.ts` does not cross
+    // a directory boundary, `**/*` does, and `exclude` and `files` interact
+    // with all of it — and a second implementation of those rules in this file
+    // would be a check on this file's opinion, not on what `pnpm typecheck`
+    // does. `parseJsonConfigFileContent` returns the exact file list `tsc`
+    // would compile.
+    const skipped = new Set([
+      'node_modules',
+      'dist',
+      'build',
+      'artifacts',
+      'playwright-report',
+      'test-results'
+    ]);
+
+    function sourceFiles(directory: string, found: string[] = []): string[] {
+      for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        if (entry.isDirectory()) {
+          if (!skipped.has(entry.name)) {
+            sourceFiles(join(directory, entry.name), found);
+          }
+          continue;
+        }
+        // Declaration files are excluded on purpose: an ambient `.d.ts` is
+        // pulled in by reference rather than by `include`, so requiring one to
+        // be listed would fail on a file that is in fact checked.
+        if (/\.tsx?$/.test(entry.name) && !entry.name.endsWith('.d.ts')) {
+          found.push(join(directory, entry.name));
+        }
+      }
+      return found;
+    }
+
+    const escaped: string[] = [];
+
+    for (const member of members) {
+      const directory = join(repoRoot, ...member.directory.split('/'));
+      const configPath = join(directory, 'tsconfig.json');
+
+      const { config, error } = ts.readConfigFile(configPath, ts.sys.readFile);
+      expect(error, `${member.directory}/tsconfig.json could not be read`).toBeUndefined();
+
+      const parsed = ts.parseJsonConfigFileContent(config, ts.sys, directory);
+      // Windows hands the same file back under more than one spelling — drive
+      // letter case above all — so the comparison is made on a normalised
+      // form rather than on whatever each side happened to produce.
+      const compiled = new Set(parsed.fileNames.map((file) => resolve(file).toLowerCase()));
+
+      for (const file of sourceFiles(directory)) {
+        if (!compiled.has(resolve(file).toLowerCase())) {
+          escaped.push(relative(repoRoot, file).split(sep).join(posix.sep));
+        }
+      }
+    }
+
+    expect(
+      escaped.sort(),
+      'these files are in a member that `tsc --build` opens, and in no project it compiles'
+    ).toEqual([]);
   });
 
   it('every member is inside the dependency-boundary gate', () => {
