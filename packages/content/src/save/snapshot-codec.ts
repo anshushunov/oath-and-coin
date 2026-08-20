@@ -2,12 +2,15 @@ import { z } from 'zod';
 
 import {
   ARTIFACT_SAFE_TEXT_PATTERN,
+  BLOCK_REASON_CODES,
   CONTENT_ID_PATTERN,
   ContractStatus,
+  FACTOR_REASON_CODES,
   HERO_ID_MAX,
   HERO_ID_MIN,
   SortedMap,
   SortedSet,
+  TIE_BREAK_REASON_CODES,
   UINT64_MAX,
   compareContentIds,
   compareHeroIds,
@@ -238,14 +241,43 @@ const traitRuleValueSchema = z.strictObject({
  */
 const MAX_FACTOR_MAGNITUDE = PAYMENT_MAX;
 
+/**
+ * The three reason-code fields, each closed on the set of codes the engine can actually
+ * put in that position (`reason-codes.ts`: `FACTOR_REASON_CODES`, `BLOCK_REASON_CODES`,
+ * `TIE_BREAK_REASON_CODES`).
+ *
+ * All three read `artifactSafeText` before segment 5's external review, which is a shape
+ * and a length and not a vocabulary — so a code of the right *form* that named nothing was
+ * accepted. Measured on this build: a save carrying
+ * `hero.decision.unknown_but_well_shaped` as a positive factor, honestly re-signed, passed
+ * `readSave`, `restoreDecidedSteps` and the screen model, and died in the strict text
+ * catalogue, where a missing key is a defect of the build rather than a refusal of the
+ * file. A reason code *is* a localization key (`vocabulary.test.ts`), the engine's
+ * dictionary is closed, and this is the boundary where an untrusted file is held to it.
+ *
+ * Deliberately not `artifactSafeText` *and* the enum: every member of these sets is
+ * already held to `isArtifactSafeText` by `vocabulary.test.ts`, so the length and the
+ * character class are properties of the set itself, and restating them here would be a
+ * second guard on a value that can only be one of eleven literals.
+ *
+ * A `z.enum` rather than a `.refine`: an unrecognized member of a closed set reports
+ * `invalid_value`, which {@link classify} treats as `Malformed` — the same verdict the
+ * character-class regex gets, and the right one. A code that names nothing is a shape
+ * problem, not a value out of range; `custom` would have filed it under `OutOfBounds`
+ * beside "this magnitude is bigger than `decide()` can produce".
+ */
+const factorReasonCode = z.enum(FACTOR_REASON_CODES);
+const blockReasonCode = z.enum(BLOCK_REASON_CODES);
+const tieBreakReasonCode = z.enum(TIE_BREAK_REASON_CODES);
+
 const traceFactorSchema = z.strictObject({
-  reasonCode: artifactSafeText,
+  reasonCode: factorReasonCode,
   sourceEntity: contentId,
   magnitude: z.int().min(0).max(MAX_FACTOR_MAGNITUDE)
 });
 
 const traceBlockSchema = z.strictObject({
-  reasonCode: artifactSafeText,
+  reasonCode: blockReasonCode,
   sourceEntity: contentId
 });
 
@@ -254,7 +286,7 @@ const causalTraceValueSchema = z.strictObject({
   positiveFactors: z.array(traceFactorSchema).max(MAX_FACTORS_PER_TRACE_SIDE),
   negativeFactors: z.array(traceFactorSchema).max(MAX_FACTORS_PER_TRACE_SIDE),
   blockedBy: z.array(traceBlockSchema).max(MAX_BLOCKS_PER_TRACE),
-  tieBreak: artifactSafeText.nullable()
+  tieBreak: tieBreakReasonCode.nullable()
 });
 
 const domainEventSchema = z.discriminatedUnion('kind', [

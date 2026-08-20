@@ -1,6 +1,6 @@
 import { join, resolve } from 'node:path';
 
-import { deepEqual, proposeContractToHero } from '@oath-and-coin/simulation';
+import { ReasonCodes, deepEqual, proposeContractToHero } from '@oath-and-coin/simulation';
 import { describe, expect, it } from 'vitest';
 
 import { createInitialState } from '../initial-state.ts';
@@ -112,7 +112,17 @@ describe('snapshot codec', () => {
       value: {
         traceId: 0,
         positiveFactors: [
-          { reasonCode: 'payment_attractive', sourceEntity: 'core:bram', magnitude: 101 }
+          {
+            // A code from the engine's own vocabulary, and it has to be: the field is
+            // closed on `FACTOR_REASON_CODES`, so the `payment_attractive` this fixture
+            // used to carry — right namespace missing, in no dictionary at all — now
+            // reports its own `invalid_value` beside the magnitude's `too_big`, and the
+            // pair classifies as `SAVE_MALFORMED`. The test would still have been red for
+            // *a* reason while measuring nothing about the ceiling it names.
+            reasonCode: ReasonCodes.PaymentAttractive,
+            sourceEntity: 'core:bram',
+            magnitude: 101
+          }
         ],
         negativeFactors: [],
         blockedBy: [],
@@ -132,5 +142,112 @@ describe('snapshot codec', () => {
     encoded.heroes.push({ ...encoded.heroes[0]! });
 
     expect(() => decodeSnapshot(encoded)).toThrow(/SAVE_INCONSISTENT/u);
+  });
+});
+
+describe('коды причин в следе замкнуты на словарь движка, а не на форму строки', () => {
+  // External review of segment 5. All three fields were validated as `artifactSafeText` —
+  // a length and a character class — while `reason-codes.ts` states the vocabulary is
+  // closed. Measured on this build: `hero.decision.unknown_but_well_shaped` in a positive
+  // factor, honestly re-signed, passed `readSave`, step restoration and the screen model,
+  // and reached the strict text catalogue, which throws on a key it does not hold. The
+  // file broke nothing the format checked and killed the screen three layers later.
+  //
+  // The wrong-role cases matter as much as the unknown-code ones, and only a *split*
+  // vocabulary catches them: `principle_forbids` names a red line, which
+  // `createDecisionResult` requires to come with a `null` score, so a save that files it
+  // as a positive factor claims a hero was attracted by a taboo — with a magnitude on
+  // something the rule states has none. One combined set would have read that file back
+  // without a word.
+
+  /** A snapshot with one trace, built from `trace`. `createInitialState` produces none,
+   * so this is the whole trace map. */
+  function aSnapshotWithTrace(trace: Record<string, unknown>): unknown {
+    const state = createInitialState(content, 7n, 'm1-decision/1');
+    const encoded = encodeSnapshot(state) as { traces: { key: number; value: unknown }[] };
+    encoded.traces.push({ key: 0, value: { traceId: 0, ...trace } });
+
+    return encoded;
+  }
+
+  const aFactor = (reasonCode: string) => ({
+    reasonCode,
+    sourceEntity: 'core:bram',
+    magnitude: 3
+  });
+  const aBlock = (reasonCode: string) => ({ reasonCode, sourceEntity: 'core:bram' });
+
+  const legitimate = {
+    positiveFactors: [aFactor(ReasonCodes.PaymentAttractive)],
+    negativeFactors: [aFactor(ReasonCodes.RiskTooHigh)],
+    blockedBy: [] as unknown[],
+    tieBreak: null as string | null
+  };
+
+  const UNKNOWN = 'hero.decision.unknown_but_well_shaped';
+
+  const cases: [string, Record<string, unknown>, string][] = [
+    [
+      'неизвестный код в положительном факторе',
+      { ...legitimate, positiveFactors: [aFactor(UNKNOWN)] },
+      'positiveFactors.0.reasonCode'
+    ],
+    [
+      'неизвестный код в отрицательном факторе',
+      { ...legitimate, negativeFactors: [aFactor(UNKNOWN)] },
+      'negativeFactors.0.reasonCode'
+    ],
+    [
+      'код блокировки, поданный как фактор',
+      { ...legitimate, positiveFactors: [aFactor(ReasonCodes.PrincipleForbids)] },
+      'positiveFactors.0.reasonCode'
+    ],
+    [
+      'код развязки ничьей, поданный как фактор',
+      { ...legitimate, negativeFactors: [aFactor(ReasonCodes.NoReasonToRefuse)] },
+      'negativeFactors.0.reasonCode'
+    ],
+    [
+      'неизвестный код в блокировке',
+      { ...legitimate, blockedBy: [aBlock(UNKNOWN)] },
+      'blockedBy.0.reasonCode'
+    ],
+    [
+      'код фактора, поданный как блокировка',
+      { ...legitimate, blockedBy: [aBlock(ReasonCodes.RiskTooHigh)] },
+      'blockedBy.0.reasonCode'
+    ],
+    ['неизвестный код в развязке ничьей', { ...legitimate, tieBreak: UNKNOWN }, 'tieBreak'],
+    [
+      'код фактора, поданный как развязка ничьей',
+      { ...legitimate, tieBreak: ReasonCodes.PaymentAttractive },
+      'tieBreak'
+    ]
+  ];
+
+  it.each(cases)('отказывает: %s', (_name, trace, field) => {
+    // Каждый случай называет СВОЁ поле: без этого мутант, снимающий замыкание с одного
+    // из трёх, оставался бы зелёным за счёт соседнего — ровно та форма, которую второй
+    // раунд ревью на шве вычистил в `validate-game-state.ts`.
+    expect(() => decodeSnapshot(aSnapshotWithTrace(trace))).toThrow(/SAVE_MALFORMED/u);
+    expect(() => decodeSnapshot(aSnapshotWithTrace(trace))).toThrow(field);
+  });
+
+  it('и принимает след, у которого каждый код стоит в своей роли', () => {
+    // Страж над стражами: восемь отказов выше ничего не стоят, если бы схема отвергала
+    // всякий след вообще.
+    const decoded = decodeSnapshot(
+      aSnapshotWithTrace({
+        ...legitimate,
+        blockedBy: [aBlock(ReasonCodes.PrincipleForbids)],
+        tieBreak: ReasonCodes.NoReasonToRefuse
+      })
+    );
+
+    expect(decoded.traces.get(0)?.positiveFactors[0]?.reasonCode).toBe(
+      ReasonCodes.PaymentAttractive
+    );
+    expect(decoded.traces.get(0)?.blockedBy[0]?.reasonCode).toBe(ReasonCodes.PrincipleForbids);
+    expect(decoded.traces.get(0)?.tieBreak).toBe(ReasonCodes.NoReasonToRefuse);
   });
 });
