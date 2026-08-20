@@ -358,8 +358,14 @@ jobs:
               echo "| runtime packages reachable | $(jq -r '.closure | length' artifacts/runtime-audit/report.json) |"
             fi
 
+            # The LAST vitest run of the chain, not the sum of both. `pnpm verify`
+            # runs `test` and then `test:scenario`, and they write one file: on a
+            # green run the second overwrites the first, and on a red one the file
+            # is the failing run's, which is the case this artifact exists for.
+            # Labelled rather than summed, because a total nobody can trace back to
+            # a command is the kind of number AGENTS.md §11 refuses.
             if [ -f artifacts/vitest/results.json ]; then
-              echo "| vitest, passed/total | $(jq -r '"\(.numPassedTests)/\(.numTotalTests)"' artifacts/vitest/results.json) |"
+              echo "| vitest, last run of the chain, passed/total | $(jq -r '"\(.numPassedTests)/\(.numTotalTests)"' artifacts/vitest/results.json) |"
             fi
 
             echo

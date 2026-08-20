@@ -51,6 +51,11 @@ export default defineConfig({
     // One fixed filename, deliberately. `pnpm verify` chains `test` and
     // `test:scenario` with `&&`, so the second only runs when the first passed:
     // the file that survives a failed run is always the failing one's.
+    //
+    // The price, stated because it is easy to misread: after a *green* chain the
+    // file describes `test:scenario` alone — 149 tests on the first CI run, not
+    // the 1151 of the full suite. It is a record of the last run, not a total,
+    // and the job summary says so.
     reporters: ['default', 'json'],
     outputFile: { json: 'artifacts/vitest/results.json' }
   }
