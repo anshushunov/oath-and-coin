@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
+  mkdtempSync,
   readFileSync,
   readdirSync,
   rmSync,
@@ -95,21 +96,33 @@ const PROBE_SLOT = 'slot-c';
 
 /**
  * Where the application under test keeps its data for the duration of the
- * gate. Outside the repository on purpose: `findSaveFilesInRepository` would
+ * gate — **created by this gate, not computed by it**, and therefore the only
+ * directory it ever deletes.
+ *
+ * Outside the repository as a consequence of living under `tmpdir()`, which
+ * also matters for a second reason: `findSaveFilesInRepository` would
  * otherwise find this gate's own probe and report it as a save escaping into
  * the source tree, which is the very thing that check is for.
  *
- * Cleared before the launch rather than after it, so a failed run leaves its
- * files to be looked at and the next run still starts from nothing.
+ * **Why `mkdtemp` and not a fixed path with a guard.** The previous version
+ * computed `tmpdir()/oath-and-coin-packaged-gate` and defended it with a
+ * predicate: refuse if the path is the application's own directory, contains
+ * it, is contained by it, or lies inside the repository. The predicate compares
+ * strings, and one directory on Windows has many names — a short 8.3 form
+ * (`OATHAN~1`), any other casing of the drive or of the whole path, a `\\?\`
+ * device path, an administrative share. Review of Task 17 made the gate erase a
+ * player's real data directory, with a save in it, at 14 checks out of 14
+ * green, by naming the same directory differently; and the repository branch of
+ * the predicate had no equality case at all, so a path *equal to* the
+ * repository root passed it and the recursive delete would have taken the
+ * working tree.
  *
- * `resolve` around a value that is already absolute is not decoration. The
- * guard in `beforeAll` refuses a path inside this repository, and it compares
- * strings; a drive-relative path like `C:some\dir` is not inside the repository
- * *as a string* and resolves into it as a path. Found by running this file's own
- * mutant with a mangled literal, which created — and would have deleted — a
- * directory in the working tree while the guard read it as harmless.
+ * Enumerating spellings is a losing game — the next one gets invented for us.
+ * `mkdtempSync` returns a directory that did not exist a moment ago, so it is
+ * nobody else's by construction, and the value it returns is the only thing
+ * `afterAll` removes. There is no path to guard, so there is no guard.
  */
-const scratchUserDataDirectory = resolve(join(tmpdir(), 'oath-and-coin-packaged-gate'));
+let scratchUserDataDirectory = '';
 
 /**
  * All 256 byte values. A save is bytes, and a probe of printable ASCII would
@@ -762,10 +775,19 @@ test.describe('packaged desktop host', () => {
     try {
       asShipped = await electron.launch({ executablePath: executable });
     } catch (cause) {
-      throw new Error(
-        'Could not launch the packaged application to read its data directory. The most likely cause is the single-instance lock in main.ts: a copy of the game already running, or a second run of this gate, makes this launch quit before Playwright can attach — which surfaces as "WebSocket error: read ECONNRESET". Close the other instance and run again.',
-        { cause }
-      );
+      // Only when it *is* the lock. Review of Task 17 measured a corrupted
+      // `app.asar` producing this same rewrite, with the real reason visible
+      // only inside `cause` — a message that explains the wrong thing is worse
+      // than the raw one. The lock says `WebSocket error: read ECONNRESET`
+      // because the application quits before Playwright can attach; anything
+      // else goes up untouched.
+      if (cause instanceof Error && cause.message.includes('read ECONNRESET')) {
+        throw new Error(
+          'Could not launch the packaged application to read its data directory. Playwright reports "WebSocket error: read ECONNRESET", which for this application means the single-instance lock in main.ts: a copy of the game already running, or a second run of this gate, makes this launch quit before Playwright can attach. Close the other instance and run again.',
+          { cause }
+        );
+      }
+      throw cause;
     }
     try {
       shippedUserDataPath = await readUserDataPath(asShipped);
@@ -773,26 +795,10 @@ test.describe('packaged desktop host', () => {
       await asShipped.close();
     }
 
-    // BEFORE the delete, not after. `rmSync(..., { recursive: true })` on a
-    // fixed, predictable path is the same shape as the three windows three
-    // rounds of review closed, and the only thing standing between it and a
-    // real directory is that the path is this one. Review of Task 17 found the
-    // check for that living in a test — that is, running after the delete had
-    // already happened. It runs here now, and it refuses rather than reports.
-    if (
-      scratchUserDataDirectory === shippedUserDataPath ||
-      shippedUserDataPath.startsWith(`${scratchUserDataDirectory}${sep}`) ||
-      scratchUserDataDirectory.startsWith(`${shippedUserDataPath}${sep}`) ||
-      scratchUserDataDirectory.startsWith(`${repoRoot}${sep}`)
-    ) {
-      throw new Error(
-        `Refusing to erase ${scratchUserDataDirectory}: it is the application's own data directory (${shippedUserDataPath}), contains it, or lies inside this repository. This gate deletes that path on every run, so it may only ever be a directory of the gate's own.`
-      );
-    }
-
-    // Cleared here rather than in `afterAll`: a failed run leaves its files to
-    // be looked at, and the next run still starts from nothing.
-    rmSync(scratchUserDataDirectory, { recursive: true, force: true });
+    // Created, not computed — see the doc comment on the variable. Nothing is
+    // deleted here because there is nothing here yet: this directory did not
+    // exist a moment ago.
+    scratchUserDataDirectory = mkdtempSync(join(tmpdir(), 'oath-and-coin-gate-'));
 
     app = await electron.launch({
       executablePath: executable,
@@ -801,7 +807,20 @@ test.describe('packaged desktop host', () => {
   });
 
   test.afterAll(async () => {
-    await app.close();
+    // Both guarded, and for the same reason: a `beforeAll` that threw leaves
+    // one or both unset, and an `afterAll` that then throws
+    // `Cannot read properties of undefined (reading 'close')` puts a second,
+    // empty error in the log directly under the one that was written to be
+    // read.
+    if (app !== undefined) {
+      await app.close();
+    }
+
+    // Exactly what `mkdtempSync` returned, and nothing else. This is the whole
+    // of the gate's deletion: it removes the directory it made.
+    if (scratchUserDataDirectory !== '') {
+      rmSync(scratchUserDataDirectory, { recursive: true, force: true });
+    }
   });
 
   test('the packaged window shows the browser build', async () => {
@@ -874,14 +893,17 @@ test.describe('packaged desktop host', () => {
     expect(shippedUserDataPath).not.toContain('@oath-and-coin');
   });
 
-  test('the run that writes uses a data directory of the gate’s own', async () => {
-    // The mechanism behind every claim in this file about not touching a
-    // player's saves. If the switch stopped taking effect — a rename in
-    // Electron, a typo, a build that parses arguments differently — the probe
-    // below would go straight into the real directory, and every check would
-    // stay green while doing it. That is what this refuses to allow silently.
+  test('the run that writes uses the data directory this gate created', async () => {
+    // That the switch took effect, which is all this needs to say now. It used
+    // to carry the safety of the delete as well, and that was the wrong place
+    // for it: the delete is safe because the gate removes the directory it
+    // made, not because a check somewhere agreed the path looked unfamiliar.
+    //
+    // What it still buys: if `--user-data-dir` stopped taking effect — a rename
+    // in Electron, a typo, a build that parses arguments differently — the
+    // probe below would go into the player's real directory, and this is what
+    // says so out loud.
     expect(await readUserDataPath(app)).toBe(scratchUserDataDirectory);
-    expect(scratchUserDataDirectory.startsWith(repoRoot)).toBe(false);
     expect(shippedUserDataPath).not.toBe(scratchUserDataDirectory);
   });
 
