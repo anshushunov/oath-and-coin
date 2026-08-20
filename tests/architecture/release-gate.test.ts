@@ -32,8 +32,17 @@ import { parse as parseYaml } from 'yaml';
 
 const repoRoot = resolve(import.meta.dirname, '..', '..');
 
+interface Step {
+  readonly name?: string;
+  readonly run?: string;
+  readonly uses?: string;
+  readonly shell?: string;
+  readonly if?: string;
+  readonly with?: { readonly path?: string; readonly name?: string };
+}
+
 interface Workflow {
-  readonly jobs?: Readonly<Record<string, { readonly steps?: readonly { run?: string }[] }>>;
+  readonly jobs?: Readonly<Record<string, { readonly steps?: readonly Step[] }>>;
 }
 
 const workflow = parseYaml(
@@ -112,8 +121,8 @@ describe('the release gate is one job with three verdicts', () => {
     // worth explaining. The intermittent red Task 16.3 saw twice and could not
     // name is the reason this is asserted rather than left to review.
     const upload = (job?.steps ?? []).find(
-      (step) => (step as { uses?: string }).uses?.startsWith('actions/upload-artifact') === true
-    ) as { if?: string; with?: { path?: string } } | undefined;
+      (step) => step.uses?.startsWith('actions/upload-artifact') === true
+    );
 
     expect(upload, `${JOB_NAME} uploads nothing`).toBeDefined();
     expect(upload?.if, 'the upload must not be conditional on the gate having passed').toContain(
@@ -126,6 +135,88 @@ describe('the release gate is one job with three verdicts', () => {
       ).toContain(directory);
     }
   });
+});
+
+/**
+ * The capture of an unexplained red, in every job that runs the suite.
+ *
+ * This exists because the mechanism was deleted and nothing noticed. Review
+ * removed the `checks` upload step outright and the suite reported `26 passed`:
+ * a mechanism whose whole purpose is to stop "a disappearance nothing reports"
+ * was itself a disappearance nothing reported. The `release-gate` upload had an
+ * assertion; its twin did not.
+ *
+ * Both halves are required of both jobs, and neither is sufficient alone:
+ *
+ * - the **json report** carries `duration` and a stack whose frames include the
+ *   test's own file and line, but a timed-out test's `failureMessages` is
+ *   `Error: STACK_TRACE_ERROR` plus that stack — the sentence is not in it, and
+ *   for a timed-out *hook* the report carries nothing at all (`message: ""`,
+ *   `failureMessages: []`, `duration: undefined`, the test merely `skipped`);
+ * - the **teed console log** carries the sentence — "Test timed out in 30000ms",
+ *   "Hook timed out in 10000ms" — and the transform/import timings that were the
+ *   only thing the two lost observations of Task 16.3 had in common.
+ */
+describe('every job that runs the suite keeps the evidence of a red one', () => {
+  const CAPTURE = [
+    { job: 'checks', command: 'pnpm test', log: 'artifacts/checks/' },
+    { job: 'release-gate', command: 'pnpm verify', log: 'artifacts/release-gate/' }
+  ] as const;
+
+  for (const { job: jobName, command, log } of CAPTURE) {
+    const steps = workflow.jobs?.[jobName]?.steps ?? [];
+
+    it(`${jobName} duplicates the console output of \`${command}\` into ${log}`, () => {
+      const teeing = steps.find(
+        (step) =>
+          step.run !== undefined && step.run.includes(command) && step.run.includes(`tee ${log}`)
+      );
+
+      expect(
+        teeing,
+        `${jobName} runs \`${command}\` without teeing it into ${log}; a hook timeout there would be a red whose message exists nowhere`
+      ).toBeDefined();
+
+      // Without this the step runs under GitHub's default `bash -e {0}`, which
+      // has no `pipefail`: the pipeline would report `tee`'s exit code and the
+      // step would pass over a failing suite. A capture that silences the gate
+      // it captures is worse than no capture.
+      expect(
+        teeing?.shell,
+        `the teeing step in ${jobName} must declare \`shell: bash\` or the pipe swallows the exit code`
+      ).toBe('bash');
+    });
+
+    it(`${jobName} uploads both halves unconditionally`, () => {
+      const upload = steps.find(
+        (step) =>
+          step.uses?.startsWith('actions/upload-artifact') === true &&
+          (step.with?.path ?? '').includes('artifacts/vitest/')
+      );
+
+      expect(
+        upload,
+        `${jobName} has no upload carrying artifacts/vitest/; the report of a failed run goes nowhere`
+      ).toBeDefined();
+
+      // A bare `always()`. Every other upload in this workflow is guarded on some
+      // earlier step's outcome, and that is precisely how the `checks` job came to
+      // drop this evidence: a red `pnpm test` never reaches `pnpm test:e2e`, so
+      // `steps.e2e.outcome` is `skipped` and every upload gated on it is skipped
+      // with it — on the one run worth keeping.
+      expect(
+        upload?.if?.replace(/\s/gu, ''),
+        `the upload in ${jobName} must not depend on an earlier step's outcome`
+      ).toBe('always()');
+
+      for (const directory of ['artifacts/vitest/', log]) {
+        expect(
+          upload?.with?.path ?? '',
+          `${directory} is half of the diagnosis and ${jobName} does not publish it`
+        ).toContain(directory);
+      }
+    });
+  }
 });
 
 describe('pnpm verify is the whole of the local gate', () => {

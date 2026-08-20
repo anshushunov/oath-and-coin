@@ -61,12 +61,19 @@ export default defineConfig({
     //   Duration 22.79s (transform 73.42s, import 116.57s, tests 66.76s)
     //   console: "Error: Test timed out in 5000ms."
     //
-    // In the json report the `failureMessages` of a timed-out test is the literal
-    // string `STACK_TRACE_ERROR` and nothing else — the reporter does not carry
-    // that text. What names the cause there is `duration`, sitting just past the
-    // 5000 ms default. The sentence itself only exists in the teed console log.
-    // So: read `duration` in the json, read the message in the log, and do not
-    // expect either to be sufficient on its own.
+    // In the json report a timed-out test's `failureMessages` is
+    // `Error: STACK_TRACE_ERROR` followed by a stack — the sentence "Test timed
+    // out in …" is not in it, but the stack does carry a frame naming the test's
+    // own file and line, so the report names the *place* even though it does not
+    // name the cause. What names the cause there is `duration`, sitting just past
+    // the limit. The sentence itself exists only in the teed console log.
+    //
+    // For a timed-out **hook** the json carries nothing usable at all: the file
+    // is `status: "failed"` with `message: ""`, the test is `skipped`,
+    // `duration: undefined`, `failureMessages: []`. Both jobs that run this suite
+    // therefore tee their console output into a file and upload it beside the
+    // json — see `tests/architecture/release-gate.test.ts`, which refuses a
+    // workflow that drops either half.
     //
     // Both are uploaded by the release gate with `if: always()`, and the
     // `checks` job uploads this file on its own — `pnpm test` runs there too, on
@@ -99,11 +106,19 @@ export default defineConfig({
     //   green but loaded        2011–4339 ms  (Task 18, three runs)
     //   over the 5000 ms limit  5055–9094 ms  (Task 18, three runs, six tests)
     //
-    // The multiplier, not guessed: the same machine's `transform` phase moved
-    // between 3.13 s on a warm run and 73.42 s on the run that failed, a factor
-    // of about 20. Applied to the heaviest warm measurement — 1.3 s × 20 ≈ 26 s —
-    // and rounded up to 30 s. It is also 3.3× the worst duration ever observed
-    // here (9094 ms), so the envelope has room without being open-ended.
+    // The multiplier comes from the tests' own degradation, measured end to end:
+    // the same corpus-parity work took 593 ms at its fastest and 9094 ms at its
+    // slowest, a factor of about 15. Applied to the heaviest warm measurement —
+    // 1.3 s × 15 ≈ 20 s — and set to 30 s, which is that with half again on top
+    // and 3.3× the worst duration ever observed here.
+    //
+    // Deliberately *not* derived from the `transform` phase, although that gives
+    // the same answer (3.13 s → 73.42 s, a factor of about 20, and 1.3 s × 20 ≈
+    // 26 s). Carrying a ratio across from build time to run time is an argument
+    // by analogy, and this file refuses one three paragraphs down for
+    // `hookTimeout`; taking it here and refusing it there would be inconsistent.
+    // The transform figure stands as corroboration — two independent measures of
+    // the same machine landing within 20 % of each other — and not as the reason.
     //
     // Why the default was wrong rather than the tests being slow: at 5000 ms the
     // margin on a *green* run was measured at 661 ms. A limit a passing run
@@ -121,10 +136,17 @@ export default defineConfig({
     // bigger number. Both were run as mutants after this was committed.
     //
     // `hookTimeout` is deliberately NOT raised alongside it. The default is
-    // 10000 ms and the same 20× argument would apply to a slow `beforeAll` — but
-    // no hook has ever been observed timing out here, and a second number chosen
-    // by analogy rather than by measurement is the invented threshold this
-    // repository refuses elsewhere. It waits for its own observation.
+    // 10000 ms and the same degradation argument would apply to a slow
+    // `beforeAll` — but no hook has ever been observed timing out here, and a
+    // second number chosen by analogy rather than by measurement is the invented
+    // threshold this repository refuses elsewhere. It waits for its own
+    // observation.
+    //
+    // What that costs, now that it is known rather than assumed: a hook timeout
+    // is the one failure this suite can produce that leaves *nothing* in the json
+    // report. Waiting for the observation is only defensible because the console
+    // log is now teed and uploaded in both jobs; before that fix, this paragraph
+    // was promising a capture that would not have happened.
     testTimeout: 30_000
   }
 });

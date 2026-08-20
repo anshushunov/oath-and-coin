@@ -293,8 +293,11 @@ describe('gate coverage', () => {
     // a package declared only by the root workspace manifest is in no manifest
     // it consults, so it is `npm-no-pkg` — not a section it checks — and passes.
     // The `vite` case is worse than a misclassification: the edge does not enter
-    // the graph, `no-unresolvable` says nothing either, and `206 modules, 681
-    // dependencies` is reported with and without the import.
+    // the graph and `no-unresolvable` says nothing either — the module and
+    // dependency counts `depcruise` reports are identical with the import and
+    // without it. (The counts themselves are not quoted here: they were `206` and
+    // `681` when this was measured and are `208` and `686` now, because this task
+    // added files. What holds is that the two runs agree, not what they agree on.)
     //
     // A member's own manifest answers all three, which is why the property is
     // restated here rather than repaired there. (`preserveSymlinks: true` was

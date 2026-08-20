@@ -82,8 +82,26 @@ jobs:
       - name: Dependency boundaries
         run: pnpm lint:deps
 
+      # Teed into a file for the same reason the release gate's step is, and the
+      # reason is sharper than it was there.
+      #
+      # The json reporter does not record hooks at all. Measured: a `beforeAll`
+      # that times out leaves the file `status: "failed"` with `message: ""`, the
+      # test `skipped`, `duration: undefined` and `failureMessages: []`. The
+      # number and the sentence — "Hook timed out in 10000ms" — exist only on the
+      # console. Without this line a hook timeout in the job that runs on every
+      # push is a red with the message nowhere, which is exactly the debt Task 18
+      # was given, reappearing one step to the left.
+      #
+      # `shell: bash` is load-bearing, not decoration. GitHub's default for `run:`
+      # is `bash -e {0}` with **no** `pipefail`, so `pnpm test | tee` would report
+      # tee's exit code and the step would pass over a failing suite. `shell: bash`
+      # is `bash --noprofile --norc -eo pipefail {0}`.
       - name: Test
-        run: pnpm test
+        shell: bash
+        run: |
+          mkdir -p artifacts/checks
+          pnpm test 2>&1 | tee artifacts/checks/test.log
 
       # Playwright's browsers are not in the lockfile — they are binaries the
       # tool downloads — so the version installed here is the one pinned by
@@ -226,7 +244,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: checks-vitest-report
-          path: artifacts/vitest/
+          # Both halves, because neither names a failure on its own: the json
+          # carries `duration` and a stack that points at the test file, the log
+          # carries the sentence — and for a *hook* timeout the json carries
+          # nothing at all.
+          path: |
+            artifacts/vitest/
+            artifacts/checks/
           if-no-files-found: warn
 
       - name: Upload browser evidence
