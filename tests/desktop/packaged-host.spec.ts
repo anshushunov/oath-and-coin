@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
@@ -141,6 +141,23 @@ let scratchUserDataDirectory = '';
  * gate so that a human finding one in `%TEMP%` knows what left it.
  */
 const GATE_DIRECTORY_MARKER = '.oath-and-coin-gate-directory';
+
+/**
+ * A value this run invents and nobody else has, written into the marker and
+ * required back out of it before anything is deleted.
+ *
+ * **Presence of the marker is not enough, measured.** The first version of this
+ * mechanism deleted a directory whose marker merely existed, and an earlier,
+ * mis-ordered mutant of this very file had planted one in the application's
+ * real data directory. The next run then found the marker, deleted the whole
+ * directory, and stayed green — the mechanism did exactly what it was written
+ * to do, and what it was written to do was too weak: a marker from any run
+ * unlocked any directory forever.
+ *
+ * With a token, the evidence has to have been made by *this* run. A marker left
+ * anywhere by anything else carries a different one and unlocks nothing.
+ */
+const gateDirectoryToken = randomUUID();
 
 /**
  * All 256 byte values. A save is bytes, and a probe of printable ASCII would
@@ -825,10 +842,12 @@ test.describe('packaged desktop host', () => {
     // name, a `\\?\` path, a lower-cased path, a copy of the working tree —
     // every time at 14 checks of 14 green, by putting another value in the
     // variable. The marker is what `afterAll` requires before deleting, so a
-    // reassigned variable meets a refusal instead of a recursive delete.
+    // reassigned variable meets a refusal instead of a recursive delete — and
+    // what it requires is this run's own token, for the reason recorded on
+    // `gateDirectoryToken`.
     writeFileSync(
       join(scratchUserDataDirectory, GATE_DIRECTORY_MARKER),
-      `Written by tests/desktop/packaged-host.spec.ts when it created this directory. Its presence is what allows the gate to delete this directory again; without it the gate refuses, because a directory it did not create is somebody else's.\n`,
+      gateDirectoryToken,
       'utf8'
     );
 
@@ -857,11 +876,13 @@ test.describe('packaged desktop host', () => {
     }
 
     // The deletion is conditioned on the evidence creation left, not on the
-    // value in the variable. A path that does not carry the marker was not
-    // made by this run, and nothing here may remove it.
-    if (!existsSync(join(scratchUserDataDirectory, GATE_DIRECTORY_MARKER))) {
+    // value in the variable — and on evidence *this run* left, not any run.
+    // See `gateDirectoryToken` for the measurement that made the difference.
+    const marker = join(scratchUserDataDirectory, GATE_DIRECTORY_MARKER);
+    const token = existsSync(marker) ? readFileSync(marker, 'utf8') : null;
+    if (token !== gateDirectoryToken) {
       throw new Error(
-        `Refusing to delete ${scratchUserDataDirectory}: it does not carry ${GATE_DIRECTORY_MARKER}, the file this gate writes into the directory it creates. Only a directory this run made may be removed here, and this one was not.`
+        `Refusing to delete ${scratchUserDataDirectory}: ${GATE_DIRECTORY_MARKER} there does not carry this run's token${token === null ? ' (the file is not there at all)' : ''}. Only the directory this run created may be removed here, and this is not it.`
       );
     }
 
