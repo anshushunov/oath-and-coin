@@ -344,6 +344,7 @@ jobs:
         run: corepack enable
 
       - name: Install
+        id: install
         run: pnpm install --frozen-lockfile
 
       - name: Install the browser
@@ -370,8 +371,28 @@ jobs:
           mkdir -p artifacts/release-gate
           pnpm verify 2>&1 | tee artifacts/release-gate/verify.log
 
+      # **Three verdicts, and now three that are actually taken.** The comment above
+      # this job has always called them independent — "the TypeScript stack is
+      # sound", "nothing unreviewed reaches a player at runtime", "the .NET stack is
+      # still green" — and external review of segment 5 measured that they were not:
+      # steps run fail-fast by default, so a red `pnpm verify` skipped both of the
+      # others and the job reported one verdict out of three. A branch that broke the
+      # audit *and* a lint rule was told about the lint rule, fixed it, pushed, and
+      # heard about the audit on the next run. The architecture test next door checked
+      # that the three commands were present and could not see the difference between
+      # a list of steps and a list of verdicts.
+      #
+      # `!cancelled()` rather than `always()`: a cancelled run — the `concurrency`
+      # block at the top of this file cancels superseded pushes — should stop, not
+      # spend two more minutes on `dotnet test`. The job still goes red if any of the
+      # three fails, because a failed step fails its job whatever later steps do.
+      #
+      # Gated on `install` and not on the verdict before it, which is the difference
+      # that makes them independent. A tree with no `node_modules` cannot answer any
+      # of the three, and a second red about that would say nothing about the first.
       - name: Release gate — runtime dependency audit
         id: audit
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         shell: bash
         run: |
           mkdir -p artifacts/release-gate
@@ -381,8 +402,14 @@ jobs:
       # this job never ran `dotnet build`, and a `-c Release` test run builds
       # what it needs. It is deliberately the last of the three — it is the
       # slowest and the least likely to be what a TypeScript branch broke.
+      #
+      # `dotnet test` needs no `pnpm install`, and it is gated on it anyway: an
+      # install that failed means the checkout or the toolchain is broken, and this
+      # job's three verdicts are about a tree, not about three unrelated questions
+      # that happen to share a runner.
       - name: Release gate — dotnet test
         id: dotnet
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         shell: bash
         run: |
           mkdir -p artifacts/release-gate
@@ -492,8 +519,38 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
+      # Teed, and the reason is the failure this job could not report. External
+      # review of segment 5: when `pnpm package:desktop` fails, `Desktop gate` is
+      # skipped by GitHub's default, `steps.gate.outcome` is `skipped`, and every
+      # step below — both summaries and the evidence upload — is guarded on that
+      # outcome and skipped with it. A packaging flake, which is exactly the class
+      # this job exists to catch, left no artifact at all and nothing to read but
+      # the run log of a job somebody has to remember to open.
+      #
+      # `shell: bash` for the reason the `checks` job carries a paragraph about:
+      # GitHub's default `run:` on Windows is PowerShell, and its bash is
+      # `bash --noprofile --norc -eo pipefail {0}` — without it the pipe reports
+      # tee's exit code and a failed packaging would pass this step.
       - name: Package the desktop host
-        run: pnpm package:desktop
+        id: package
+        shell: bash
+        run: |
+          mkdir -p artifacts/desktop-package
+          pnpm package:desktop 2>&1 | tee artifacts/desktop-package/package.log
+
+      # A bare `always()`, unlike every other upload in this job, and that is the
+      # whole point of it being its own step: it is the one publication that must
+      # survive the step above failing. `warn` rather than `error`, because a job
+      # that died in `Install` never reached packaging and failing it twice for
+      # that is the second-red-that-says-nothing this workflow already carries a
+      # note about.
+      - name: Upload the packaging log, whatever happened
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-package-log
+          path: artifacts/desktop-package/
+          if-no-files-found: warn
 
       - name: Desktop gate
         id: gate
@@ -502,13 +559,32 @@ jobs:
       # The gate's numbers — installed size, RSS per process, what the page
       # could reach — live in this file and nowhere else (AGENTS.md §11: a
       # number is published by the run that produced it, never retyped).
+      #
+      # A missing report after a **green** gate is an error rather than a notice,
+      # and that is the second half of the same review finding. The suite writes
+      # `gate-report.json` and then asserts an object it still holds in memory, so
+      # deleting the write left Playwright green; this step answered with a
+      # `::warning::` and `exit 0`, and the evidence upload below found the two
+      # other directories in its path and succeeded on them. Three mechanisms in a
+      # row, and the obligatory artifact of the packaged build could vanish through
+      # all of them. The suite now reads its own report back (`packaged-host.spec.ts`)
+      # and this step refuses to call the run summarised when there is nothing to
+      # summarise.
+      #
+      # Still a notice when the gate itself failed: a suite that died before the
+      # last test legitimately has no report, and a second red about the missing
+      # file would say nothing about the first.
       - name: Summarise the gate
         if: always() && steps.gate.outcome != 'skipped'
         shell: bash
         run: |
           report=artifacts/electron-spike/gate-report.json
           if [ ! -f "$report" ]; then
-            echo "::warning::The gate produced no report."
+            if [ "${{ steps.gate.outcome }}" = "success" ]; then
+              echo "::error::The desktop gate passed and produced no report. The report is the only evidence this job publishes about the packaged build."
+              exit 1
+            fi
+            echo "::warning::The gate failed before it wrote a report."
             exit 0
           fi
           jq -r '
@@ -520,6 +596,26 @@ jobs:
             "- page reached: \(.pageExposure.desktopApiKeys | join(",")) (ipcRenderer=\(.pageExposure.ipcRendererReachable) require=\(.pageExposure.requireReachable))",
             ""
           ' "$report" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # The obligatory artifact, on its own, with nothing else in its path.
+      #
+      # It is not folded into the upload below and that separation is the finding:
+      # `if-no-files-found: error` over three paths passes as long as *one* of them
+      # matched, and the other two — the Playwright report and results directories —
+      # are written by every run. So the one file this job exists to produce could be
+      # absent while its upload stayed green. A path with one entry is the only shape
+      # in which `error` means what it says.
+      #
+      # Guarded on the gate having passed, for the same reason the summary above
+      # downgrades to a notice: a suite that died before its last test has no report
+      # to publish, and the bundle below still carries whatever it did leave behind.
+      - name: Upload the gate report
+        if: always() && steps.gate.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-gate-report
+          path: artifacts/electron-spike/gate-report.json
+          if-no-files-found: error
 
       - name: Upload the gate evidence
         if: always() && steps.gate.outcome != 'skipped'

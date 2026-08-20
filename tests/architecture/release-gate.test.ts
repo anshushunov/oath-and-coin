@@ -34,11 +34,16 @@ const repoRoot = resolve(import.meta.dirname, '..', '..');
 
 interface Step {
   readonly name?: string;
+  readonly id?: string;
   readonly run?: string;
   readonly uses?: string;
   readonly shell?: string;
   readonly if?: string;
-  readonly with?: { readonly path?: string; readonly name?: string };
+  readonly with?: {
+    readonly path?: string;
+    readonly name?: string;
+    readonly 'if-no-files-found'?: string;
+  };
 }
 
 interface Workflow {
@@ -53,6 +58,32 @@ const rootManifest = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'ut
   scripts?: Readonly<Record<string, string>>;
 };
 
+/**
+ * The three commands the gate before a merge is composed of, each with what its
+ * absence would cost. Spelled as the exact text the workflow runs, so that renaming a
+ * script without touching the workflow fails here instead of in CI.
+ *
+ * Declared at the top rather than inside the first `describe` that needed it, because
+ * two of them ask about this list now: the `release-gate` job has to run all three, and
+ * the root manifest's note beside `verify` has to name all three. `verify` was described
+ * as "the whole of the local gate" in both places, which told the next person to run one
+ * command out of three before merging.
+ */
+const REQUIRED_COMMANDS: readonly { command: string; verdict: string }[] = [
+  {
+    command: 'pnpm verify',
+    verdict: 'the TypeScript stack typechecks, lints, tests, builds and renders'
+  },
+  {
+    command: 'node scripts/audit-runtime-dependencies.mjs',
+    verdict: 'nothing unreviewed reaches a player at runtime'
+  },
+  {
+    command: 'dotnet test OathAndCoin.sln -c Release',
+    verdict: 'the stack the migration has not cut over from is still green'
+  }
+];
+
 const JOB_NAME = 'release-gate';
 
 const job = workflow.jobs?.[JOB_NAME];
@@ -65,26 +96,6 @@ describe('the release gate is one job with three verdicts', () => {
       `.github/workflows/typescript.yml has no job named ${JOB_NAME}; the three gate commands are then run by nobody together`
     ).toBeDefined();
   });
-
-  /**
-   * The three commands the task's gate line names, each with what its absence
-   * would cost. Spelled as the exact text the workflow runs, so that renaming a
-   * script without touching the workflow fails here instead of in CI.
-   */
-  const REQUIRED_COMMANDS: readonly { command: string; verdict: string }[] = [
-    {
-      command: 'pnpm verify',
-      verdict: 'the TypeScript stack typechecks, lints, tests, builds and renders'
-    },
-    {
-      command: 'node scripts/audit-runtime-dependencies.mjs',
-      verdict: 'nothing unreviewed reaches a player at runtime'
-    },
-    {
-      command: 'dotnet test OathAndCoin.sln -c Release',
-      verdict: 'the stack the migration has not cut over from is still green'
-    }
-  ];
 
   it('runs all three of them', () => {
     for (const { command, verdict } of REQUIRED_COMMANDS) {
@@ -114,6 +125,48 @@ describe('the release gate is one job with three verdicts', () => {
       commands,
       `${JOB_NAME} runs the packaged desktop gate; it is a machine-wide singleton and belongs to the packaged-desktop job`
     ).not.toContain('test:desktop');
+  });
+
+  /**
+   * The three verdicts, held to being three.
+   *
+   * The job's own comment has always called them independent — "three different
+   * verdicts", "merging them into one shell line would report all three as the
+   * first one that failed" — and external review of segment 5 measured that the
+   * mechanism did exactly what the comment forbade. GitHub runs steps fail-fast
+   * unless a step says otherwise, so a red `pnpm verify` skipped the audit and the
+   * .NET run and the job reported one verdict out of three. The check above sees
+   * that all three commands are *present*, which is a different claim and was the
+   * only one anybody was making.
+   *
+   * `verify` is deliberately not in this list: it is first, so nothing before it
+   * can have failed, and giving it a condition would be a mechanism against nothing.
+   */
+  const INDEPENDENT_VERDICTS = ['audit', 'dotnet'] as const;
+
+  it.each(INDEPENDENT_VERDICTS)('takes the `%s` verdict even after an earlier one failed', (id) => {
+    const step = (job?.steps ?? []).find((candidate) => candidate.id === id);
+    const condition = (step?.if ?? '').replace(/\s/gu, '');
+
+    expect(step, `${JOB_NAME} has no step with id \`${id}\``).toBeDefined();
+
+    // Without one of these, the step inherits GitHub's default — run only if
+    // every previous step succeeded — and the verdict is not taken at all on the
+    // run where the other two disagreed.
+    expect(
+      condition,
+      `\`${id}\` runs under GitHub's fail-fast default, so a failed verdict before it means this one is never taken`
+    ).toMatch(/!cancelled\(\)|always\(\)/u);
+
+    // And it must not be conditional on another *verdict*. A reference to
+    // `steps.verify.outcome` would restore the fail-fast the line above just removed,
+    // in a form that reads as a deliberate dependency rather than as a default.
+    for (const other of ['verify', ...INDEPENDENT_VERDICTS].filter((name) => name !== id)) {
+      expect(
+        condition,
+        `\`${id}\` is conditional on the \`${other}\` verdict, so the two are one verdict reported twice`
+      ).not.toContain(`steps.${other}.`);
+    }
   });
 
   it('publishes what it measured even when it failed', () => {
@@ -219,7 +272,100 @@ describe('every job that runs the suite keeps the evidence of a red one', () => 
   }
 });
 
-describe('pnpm verify is the whole of the local gate', () => {
+/**
+ * The packaged build's obligatory artifact, and the two ways it could disappear.
+ *
+ * External review of segment 5 measured a chain of three: the suite writes
+ * `gate-report.json` and then asserts an object it still holds in memory, so deleting
+ * the write left Playwright green; the step that summarises the report answered a
+ * missing file with `::warning::` and `exit 0`; and the evidence upload's
+ * `if-no-files-found: error` was satisfied by the two *other* directories in its path.
+ * The one file this job exists to produce could vanish through all three without a red.
+ *
+ * And the reverse hole, in the same job: when `pnpm package:desktop` fails, the gate is
+ * skipped by GitHub's default, `steps.gate.outcome` is `skipped`, and both summaries and
+ * the evidence upload are guarded on that outcome and skipped with it. A packaging flake
+ * — the exact class this job exists to catch — left nothing behind at all.
+ *
+ * The suite's own half of the fix is in `tests/desktop/packaged-host.spec.ts`, which now
+ * reads its report back off the disk. This is the workflow's half.
+ */
+describe('the packaged desktop job cannot lose what it was run to produce', () => {
+  const PACKAGED_JOB = 'packaged-desktop';
+  const steps = workflow.jobs?.[PACKAGED_JOB]?.steps ?? [];
+  const stepWithId = (id: string): Step | undefined =>
+    steps.find((candidate) => candidate.id === id);
+
+  it('keeps the output of a failed packaging step', () => {
+    const packaging = stepWithId('package');
+
+    expect(
+      packaging?.run,
+      'the packaging step does not tee its output; when it fails, every step below is skipped and nothing is published'
+    ).toContain('tee artifacts/desktop-package/');
+
+    // GitHub's default shell on a Windows runner is PowerShell, and its `bash` is
+    // `bash -eo pipefail`. Without the declaration the pipe reports tee's exit code
+    // and a failed packaging passes this step — a capture that silences what it captures.
+    expect(packaging?.shell, 'the packaging step must declare `shell: bash`').toBe('bash');
+
+    const upload = steps.find(
+      (step) =>
+        step.uses?.startsWith('actions/upload-artifact') === true &&
+        (step.with?.path ?? '').includes('artifacts/desktop-package/')
+    );
+
+    expect(upload, 'the packaging log is teed into a file nobody uploads').toBeDefined();
+    // Bare, and it is the only upload in this job that may be: every other one is
+    // guarded on the gate's outcome, which is `skipped` on exactly the run this
+    // artifact exists for.
+    expect(
+      upload?.if?.replace(/\s/gu, ''),
+      'the packaging log must be published even when packaging is what failed'
+    ).toBe('always()');
+  });
+
+  it('fails when a green gate produced no report', () => {
+    const summary = steps.find((step) => (step.run ?? '').includes('gate-report.json'));
+
+    expect(summary, 'no step reads gate-report.json').toBeDefined();
+    expect(
+      summary?.run ?? '',
+      'a missing report after a passing gate is answered with a notice; the artifact this job exists to produce can then be deleted in silence'
+    ).toMatch(/::error::/u);
+    // Not merely present: the error branch has to end the step. A `::error::`
+    // annotation with `exit 0` under it is a red line in a log and a green job.
+    expect(summary?.run ?? '', 'the error branch does not fail the step').toMatch(
+      /::error::[\s\S]*\n\s*exit 1/u
+    );
+  });
+
+  it('publishes the report on its own, where `error` can mean what it says', () => {
+    const upload = steps.find(
+      (step) =>
+        step.uses?.startsWith('actions/upload-artifact') === true &&
+        (step.with?.path ?? '').trim() === 'artifacts/electron-spike/gate-report.json'
+    );
+
+    expect(
+      upload,
+      'no upload names gate-report.json alone; `if-no-files-found: error` over a multi-path upload passes as long as any one path matched, and the other two are written by every run'
+    ).toBeDefined();
+    expect(
+      upload?.with?.['if-no-files-found'],
+      'the dedicated upload must fail when the file it names is absent'
+    ).toBe('error');
+  });
+});
+
+describe('pnpm verify is the TypeScript and browser gate, not the whole of it', () => {
+  // The name is the finding. `pnpm verify` was called "the whole of the local gate"
+  // here and in the root manifest, and it is not: the gate before a merge is three
+  // commands — this one, `node scripts/audit-runtime-dependencies.mjs`, and
+  // `dotnet test OathAndCoin.sln -c Release` — which is what the `release-gate` job
+  // above runs and what REQUIRED_COMMANDS lists. A test title is the sentence the
+  // next person reads before a merge, and that one told them to run one of three.
+
   /**
    * Every stage `pnpm verify` chains. Adding one does not require touching this
    * list; removing one does, which is the point — a stage dropped from the
@@ -272,6 +418,23 @@ describe('pnpm verify is the whole of the local gate', () => {
     const duplicated = stages.filter((stage, index) => stages.indexOf(stage) !== index);
 
     expect([...new Set(duplicated)], 'pnpm verify repeats a stage').toEqual([]);
+  });
+
+  it('says beside itself that it is one of three, and names the other two', () => {
+    // The note in the manifest is the only thing a reader typing `pnpm verify`
+    // locally sees, and it read "The release gate as one command". Held to naming
+    // the other two rather than left as prose, for the reason every list in this
+    // file is: a sentence that stops being true costs nothing to leave in place.
+    const note = rootManifest.scripts?.['//verify'] ?? '';
+
+    expect(note, 'package.json carries no note beside `verify`').not.toBe('');
+
+    for (const { command } of REQUIRED_COMMANDS) {
+      expect(
+        note,
+        `the note beside \`verify\` does not name \`${command}\`, so a reader is told one command out of three is the gate`
+      ).toContain(command);
+    }
   });
 
   it('leaves the two commands that need a desktop out of it', () => {

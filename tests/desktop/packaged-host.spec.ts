@@ -1171,11 +1171,24 @@ test.describe('packaged desktop host', () => {
     // it. Written before the budget assertions, so a failed budget still
     // leaves the measurement behind to argue with.
     const reportDirectory = join(repoRoot, 'artifacts', 'electron-spike');
+    const reportPath = join(reportDirectory, 'gate-report.json');
     mkdirSync(reportDirectory, { recursive: true });
-    writeFileSync(
-      join(reportDirectory, 'gate-report.json'),
-      `${JSON.stringify(evidence, null, 2)}\n`,
-      'utf8'
+    writeFileSync(reportPath, `${JSON.stringify(evidence, null, 2)}\n`, 'utf8');
+
+    // Read back off the disk, and this is not belt-and-braces. External review of
+    // segment 5 measured what the write was held by: every assertion below runs
+    // against `evidence`, an object this test still holds, so deleting the
+    // `writeFileSync` above left the whole suite green. The CI step that summarises
+    // the report answered a missing file with `::warning::` and exit 0, and the
+    // upload's `if-no-files-found: error` was satisfied by the two other directories
+    // in its path. The obligatory artifact of the packaged build could disappear
+    // through three mechanisms in a row without one red.
+    //
+    // Compared against the JSON round trip of `evidence` rather than against
+    // `evidence` itself: what is on disk is what a reader gets, and `undefined`
+    // fields and anything else `JSON.stringify` drops are legitimately not in it.
+    expect(JSON.parse(readFileSync(reportPath, 'utf8'))).toEqual(
+      JSON.parse(JSON.stringify(evidence))
     );
 
     // The installed size is measured and recorded, and deliberately not
