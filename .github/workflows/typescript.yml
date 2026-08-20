@@ -334,6 +334,17 @@ jobs:
       # decision benchmark in `checks` above carries the same reservation for
       # the same reason; when the battle scene arrives and needs a latency
       # budget, it will come with a decision record rather than with a guess.
+      #
+      # Every measurement is guarded on its own file existing, and that is not
+      # defensive habit — it was measured. The first version reached straight
+      # for `apps/web/dist/assets`, which only exists once `pnpm verify` has got
+      # as far as `pnpm build`; on the two mutant runs that failed earlier than
+      # that, `find` exited non-zero inside a command substitution and
+      # `bash -eo pipefail` failed this step too. The job then reported two reds
+      # where one thing was wrong, and the second one said nothing about the
+      # first — which is the exact failure `dotnet.yml` records against its own
+      # evidence upload. A missing measurement on a failed run is the expected
+      # state, not a second defect.
       - name: Summarise what was measured, without gating on it
         if: always() && steps.verify.outcome != 'skipped'
         shell: bash
@@ -344,9 +355,11 @@ jobs:
             echo "| measurement | value |"
             echo "|---|---|"
 
-            bundle=$(find apps/web/dist/assets -name '*.js' -printf '%s\n' 2>/dev/null |
-              awk '{ total += $1 } END { print total + 0 }')
-            echo "| browser bundle, js bytes | $bundle |"
+            if [ -d apps/web/dist/assets ]; then
+              bundle=$(find apps/web/dist/assets -name '*.js' -printf '%s\n' |
+                awk '{ total += $1 } END { print total + 0 }')
+              echo "| browser bundle, js bytes | $bundle |"
+            fi
 
             report=artifacts/decision-benchmark/report.json
             if [ -f "$report" ]; then
