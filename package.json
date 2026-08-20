@@ -24,7 +24,9 @@
     "test:e2e": "playwright test",
     "test:desktop": "playwright test --config playwright.desktop.config.ts",
     "build": "node scripts/build-workspace.mjs",
-    "package:desktop": "node scripts/package-desktop.mjs"
+    "package:desktop": "node scripts/package-desktop.mjs",
+    "//verify": "The release gate as one command. `package:desktop` and `test:desktop` are deliberately NOT in it: they need an Electron binary and a Windows host, so they stay a separate command and a separate CI job. Everything else that has to be green before a merge is here, cheapest first, chained with && so the run stops at the first stage that fails and the log ends on the message that matters.",
+    "verify": "pnpm typecheck && pnpm lint && pnpm lint:deps && pnpm format:check && pnpm schema:check && pnpm test && pnpm test:scenario && pnpm scenario:parity && pnpm build && pnpm test:e2e"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
