@@ -2,6 +2,12 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 
+// The host's own declaration of the channel name, not a second copy of the
+// string: this gate breaks that channel on purpose below, and a gate that
+// named it independently would silently stop breaking anything the day the
+// host renamed it — the handler would answer as usual and the screen would
+// never reach the state under test.
+import { SAVE_LIST_CHANNEL } from '@oath-and-coin/desktop/src/contract.ts';
 import { _electron as electron, expect, test, type ElectronApplication } from '@playwright/test';
 
 /**
@@ -24,8 +30,16 @@ import { _electron as electron, expect, test, type ElectronApplication } from '@
  * checks below — the packaged renderer against `apps/web/dist`, and the
  * `main.cjs`/`preload.cjs` inside `app.asar` against `apps/desktop/dist`, read
  * from within the running application — are what makes that impossible to
- * repeat: a package built from older sources now fails on the hashes before
- * anyone has to wonder why a surface assertion disagrees with the tree.
+ * repeat.
+ *
+ * **What that identity is a claim about, exactly.** The comparison is the
+ * *package* against `dist/`, not against the sources: a package whose asar
+ * disagrees with the last build fails here. `dist/` itself is kept current by
+ * `pnpm package:desktop`, which builds before it packages — so the pair of
+ * commands the gate is run with holds the whole chain, while a bare
+ * `pnpm test:desktop` over a `dist/` and a package that are stale *together* is
+ * green and honest about only what it checked. Review of Task 17 named the
+ * first wording of this paragraph as promising more than the checks hold.
  */
 
 const repoRoot = resolve(import.meta.dirname, '..', '..');
@@ -47,12 +61,31 @@ const hostPackageDirectory = join(repoRoot, 'apps', 'desktop');
 const HOST_ENTRIES = ['dist/main.cjs', 'dist/preload.cjs'] as const;
 
 /**
- * The slot the save round trip borrows. Its previous contents are read first
- * and put back afterwards: this gate runs against the real per-user data
- * directory of a real packaged application, and a test that quietly destroys a
- * save is a test that has to be run in fear.
+ * The slot the save round trip borrows.
+ *
+ * This gate runs against the real per-user data directory of a real packaged
+ * application: `slot-c` is a slot a player uses, and there is no fourth,
+ * service slot to borrow instead — the set is closed at three.
+ *
+ * So the previous contents are copied to {@link PROBE_BACKUP_SUFFIX} **on
+ * disk**, inside the main process, before anything is written, and the copy is
+ * removed only after the original has been put back. Review of Task 17 found
+ * the first version holding the previous bytes in the test process's memory
+ * and calling that "read first and put back afterwards": a run killed between
+ * the write and the restore — Ctrl-C, a crashed worker, a rebooted machine —
+ * destroyed a save with no copy anywhere. The window is not closed by being
+ * short. With the file on disk, an interrupted run leaves the save recoverable
+ * by hand under a name that says what it is.
  */
 const PROBE_SLOT = 'slot-c';
+
+/**
+ * Appended to the slot's file name for the backup this gate takes. Not `.tmp`
+ * and not `.save`: the host's `list()` filters on `.save`, so a leftover
+ * backup is never mistaken for an occupied slot, and the name says both what
+ * it is and who left it.
+ */
+const PROBE_BACKUP_SUFFIX = '.gate-backup';
 
 /**
  * All 256 byte values. A save is bytes, and a probe of printable ASCII would
@@ -80,6 +113,19 @@ interface FileSize {
 interface SaveRoundTrip {
   wrote: string;
   readBack: string;
+  /**
+   * The absolute path the host wrote, derived inside the main process from
+   * `app.getPath('userData')`, and whether a file was there afterwards.
+   *
+   * The round trip alone cannot say where the bytes went: a store rooted in
+   * `%TEMP%`, in the drive root or in the process's working directory reads
+   * back exactly as happily. Review of Task 17 pointed out that the negative
+   * half — nothing appeared in the repository — was passing by coincidence,
+   * because the packaged application's working directory happened to be the
+   * repository root. This is the positive half, and it is mechanical.
+   */
+  path: string;
+  written: boolean;
 }
 
 /**
@@ -111,6 +157,9 @@ interface GateEvidence {
   declaredEntryPoints: DeclaredEntryPoint[];
   saveRoundTrip: SaveRoundTrip;
   strayFilesInRepository: string[];
+  /** The borrowed slot came back byte-identical, with no backup left behind. */
+  saveSlotRestored: boolean;
+  saveScreenStateOnHostRefusal: string;
 }
 
 interface PageExposure {
@@ -242,12 +291,20 @@ function sha256(path: string): string {
 }
 
 /**
- * `index.html` plus every file under `assets/`, hashed and sorted by relative
- * path. Called on both the build output and the packaged copy, so the two
- * lists are comparable as whole values rather than file by file.
+ * **Every** file under `root`, hashed and sorted by relative path. Called on
+ * both the build output and the packaged copy, so the two lists are comparable
+ * as whole values rather than file by file.
+ *
+ * Recursive over the whole directory, and not over `index.html` plus
+ * `assets/**` as the first version was. Review of Task 17 dropped
+ * `resources/web/stray-injected.js` into the package and watched this gate stay
+ * green: a comparison of two named branches says nothing about a third file
+ * that only one side has, and "the packaged renderer is the browser build" is a
+ * claim about the whole of it. The two directories agree file for file today
+ * (measured), so the stronger comparison costs nothing.
  */
 function hashRendererBuild(root: string): FileHash[] {
-  return [join(root, 'index.html'), ...listFilesRecursively(join(root, 'assets'))]
+  return listFilesRecursively(root)
     .map((path) => ({ path: toPosix(relative(root, path)), sha256: sha256(path) }))
     .sort(byPath);
 }
@@ -418,75 +475,246 @@ async function readPageExposure(app: ElectronApplication): Promise<PageExposure>
 }
 
 /**
- * Writes a save through the packaged bridge, reads it back, and looks for what
- * the write left in the repository.
- *
- * Both halves belong to one probe because the second is only meaningful after
- * the first: scanning a tree before anything has been written proves nothing.
- * The slot's previous contents are restored before returning, whatever the
- * caller then asserts.
+ * What the probe has to put back, decided and prepared inside the main process
+ * before a single byte is written.
  */
-async function probeSaveRoundTrip(
-  app: ElectronApplication
-): Promise<{ roundTrip: SaveRoundTrip; strayFilesInRepository: string[] }> {
-  const page = await app.firstWindow();
-  const wrote = toHex(PROBE_BYTES);
+interface ProbeGround {
+  /** `<userData>/saves/<slot>.save`, as the main process derives it. */
+  path: string;
+  /** The copy of the previous save, or `null` when the slot was empty. */
+  backupPath: string | null;
+  /** Whether the save directory existed before the probe created it. */
+  directoryExisted: boolean;
+  /** SHA-256 of what was in the slot, or `null` when it was empty. */
+  sha256Before: string | null;
+}
 
-  const previous = await page.evaluate(async (slot) => {
-    const api = (window as unknown as { desktop: DesktopBridge }).desktop;
-    const bytes = await api.readSave(slot);
-    return bytes === null
-      ? null
-      : [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
-  }, PROBE_SLOT);
+/** What the ground looked like once the probe had put everything back. */
+interface ProbeAftermath {
+  sha256After: string | null;
+  backupExists: boolean;
+  directoryExists: boolean;
+}
 
-  const readBack = await page.evaluate(
-    async ({ slot, hex }) => {
-      const api = (window as unknown as { desktop: DesktopBridge }).desktop;
-      const bytes = new Uint8Array(
-        (hex.match(/../g) ?? []).map((pair) => Number.parseInt(pair, 16))
-      );
-      await api.writeSave(slot, bytes);
-      const back = await api.readSave(slot);
-      return back === null
-        ? ''
-        : [...back].map((byte) => byte.toString(16).padStart(2, '0')).join('');
-    },
-    { slot: PROBE_SLOT, hex: wrote }
-  );
-
-  const strayFilesInRepository = findSaveFilesInRepository();
-
-  if (previous === null) {
-    await app.evaluate(({ app: electronApp }, slot) => {
-      // See `hashPackagedFiles` for why the main module's `require` and not
-      // `require` or `import()`.
+/**
+ * Copies whatever is in the probe slot to a backup file and reports where the
+ * host will write.
+ *
+ * The copy is a real file, made by the main process, and it is what makes the
+ * restore survive the test process dying — see {@link PROBE_SLOT}.
+ */
+async function prepareSaveProbe(app: ElectronApplication): Promise<ProbeGround> {
+  return app.evaluate(
+    ({ app: electronApp }, { slot, backupSuffix }) => {
+      // See `hashPackagedFiles` for why the main module's `require`.
       const load = process.mainModule?.require as ((id: string) => unknown) | undefined;
       if (!load) {
-        throw new Error('The packaged main process exposes no require; cannot clean up the probe.');
+        throw new Error('The packaged main process exposes no require; cannot guard the probe.');
       }
-      const { rmSync } = load('node:fs') as typeof import('node:fs');
+      const {
+        copyFileSync,
+        existsSync: exists,
+        readFileSync: readBytes
+      } = load('node:fs') as typeof import('node:fs');
+      const { createHash: hash } = load('node:crypto') as typeof import('node:crypto');
       const { join: joinPath } = load('node:path') as typeof import('node:path');
-      rmSync(joinPath(electronApp.getPath('userData'), 'saves', `${slot}.save`), { force: true });
-    }, PROBE_SLOT);
-  } else {
-    await page.evaluate(
+
+      const directory = joinPath(electronApp.getPath('userData'), 'saves');
+      const path = joinPath(directory, `${slot}.save`);
+      const directoryExisted = exists(directory);
+
+      if (!exists(path)) {
+        return { path, backupPath: null, directoryExisted, sha256Before: null };
+      }
+
+      const backupPath = `${path}${backupSuffix}`;
+      copyFileSync(path, backupPath);
+      return {
+        path,
+        backupPath,
+        directoryExisted,
+        sha256Before: hash('sha256').update(readBytes(path)).digest('hex')
+      };
+    },
+    { slot: PROBE_SLOT, backupSuffix: PROBE_BACKUP_SUFFIX }
+  );
+}
+
+/**
+ * Puts the slot back exactly as {@link prepareSaveProbe} found it, and removes
+ * the backup only once the original is in place.
+ *
+ * The order matters: `rename` over the target publishes the old bytes and
+ * removes the copy in one operation, so there is no moment at which neither
+ * file exists. An empty slot is restored by deleting the probe's file, and a
+ * save directory this probe created is removed with it — a machine that had
+ * never run the game should not be left holding an empty `saves` directory
+ * because a gate ran.
+ *
+ * What it reports back is what the ground looks like afterwards, so the caller
+ * can assert that the restore happened rather than trust that it was called.
+ */
+async function restoreSaveProbe(
+  app: ElectronApplication,
+  ground: ProbeGround
+): Promise<ProbeAftermath> {
+  return app.evaluate((_electronModule, probe) => {
+    const load = process.mainModule?.require as ((id: string) => unknown) | undefined;
+    if (!load) {
+      throw new Error('The packaged main process exposes no require; cannot restore the probe.');
+    }
+    const {
+      existsSync: exists,
+      readFileSync: readBytes,
+      renameSync,
+      rmSync
+    } = load('node:fs') as typeof import('node:fs');
+    const { createHash: hash } = load('node:crypto') as typeof import('node:crypto');
+    const { dirname } = load('node:path') as typeof import('node:path');
+
+    if (probe.backupPath === null) {
+      rmSync(probe.path, { force: true });
+    } else {
+      renameSync(probe.backupPath, probe.path);
+    }
+
+    const directory = dirname(probe.path);
+    if (!probe.directoryExisted) {
+      rmSync(directory, { recursive: true, force: true });
+    }
+
+    return {
+      sha256After: exists(probe.path)
+        ? hash('sha256').update(readBytes(probe.path)).digest('hex')
+        : null,
+      backupExists: probe.backupPath !== null && exists(probe.backupPath),
+      directoryExists: exists(directory)
+    };
+  }, ground);
+}
+
+/**
+ * Writes a save through the packaged bridge, reads it back, and looks at where
+ * the write landed and what it left in the repository.
+ *
+ * The three belong to one probe because the last two are only meaningful after
+ * the first: scanning a tree, or a data directory, before anything has been
+ * written proves nothing. The slot is restored before returning, whatever the
+ * caller then asserts, and it is restored from a file rather than from this
+ * process's memory.
+ */
+async function probeSaveRoundTrip(app: ElectronApplication): Promise<{
+  roundTrip: SaveRoundTrip;
+  strayFilesInRepository: string[];
+  ground: ProbeGround;
+  aftermath: ProbeAftermath;
+}> {
+  const page = await app.firstWindow();
+  const wrote = toHex(PROBE_BYTES);
+  const ground = await prepareSaveProbe(app);
+
+  // Assigned in the `finally` below, so the restore happens whatever the probe
+  // does — and its result is still what the caller gets to assert on.
+  let aftermath: ProbeAftermath;
+  let readBack: string;
+  let written: boolean;
+  let strayFilesInRepository: string[];
+
+  try {
+    readBack = await page.evaluate(
       async ({ slot, hex }) => {
         const api = (window as unknown as { desktop: DesktopBridge }).desktop;
-        await api.writeSave(
-          slot,
-          new Uint8Array((hex.match(/../g) ?? []).map((pair) => Number.parseInt(pair, 16)))
+        const bytes = new Uint8Array(
+          (hex.match(/../g) ?? []).map((pair) => Number.parseInt(pair, 16))
         );
+        await api.writeSave(slot, bytes);
+        const back = await api.readSave(slot);
+        return back === null
+          ? ''
+          : [...back].map((byte) => byte.toString(16).padStart(2, '0')).join('');
       },
-      { slot: PROBE_SLOT, hex: previous }
+      { slot: PROBE_SLOT, hex: wrote }
     );
+
+    // Asked of the main process, at the path the main process derived from
+    // `app.getPath('userData')` — the positive half of "the save went to the
+    // application's data directory".
+    written = await app.evaluate((_electronModule, path) => {
+      const load = process.mainModule?.require as ((id: string) => unknown) | undefined;
+      if (!load) {
+        throw new Error('The packaged main process exposes no require; cannot locate the save.');
+      }
+      const { existsSync: exists } = load('node:fs') as typeof import('node:fs');
+      return exists(path);
+    }, ground.path);
+
+    strayFilesInRepository = findSaveFilesInRepository();
+  } finally {
+    aftermath = await restoreSaveProbe(app, ground);
   }
 
-  return { roundTrip: { wrote, readBack }, strayFilesInRepository };
+  return {
+    roundTrip: { wrote, readBack, path: ground.path, written },
+    strayFilesInRepository,
+    ground,
+    aftermath
+  };
+}
+
+/**
+ * Breaks the host's `desktop:save-list` channel and reports what the slots
+ * screen becomes.
+ *
+ * This is the one error path the desktop build has and the browser build does
+ * not. `apps/web/src/save/desktop-store.ts` collapses every rejection from
+ * `window.desktop` into `SAVE_STORAGE_UNAVAILABLE`, and a failed listing
+ * refuses all three slots at once, which is the screen's `Error` state
+ * (`slot-descriptions.ts`, design spec §3.2). Until Task 17 nothing had ever
+ * executed it in a packaged application: the browser suite reaches `Error` by
+ * replacing `IDBFactory.prototype.open`, a route that does not exist here.
+ *
+ * The handler is replaced rather than the data disturbed, deliberately: the
+ * alternative — making the real store fail by moving the save directory aside
+ * — puts a player's whole save directory at risk to test a screen state.
+ *
+ * **The channel is not put back.** The shipped handler's closure is not
+ * reachable from outside the module that registered it, and a handler rebuilt
+ * here would no longer be the shipped code, so restoring it would replace a
+ * known-broken channel with a lie. This runs last, and the application is torn
+ * down immediately afterwards; nothing above it uses `listSaves`.
+ */
+async function probeSaveScreenOnHostRefusal(app: ElectronApplication): Promise<string> {
+  await app.evaluate(({ ipcMain }, channel) => {
+    ipcMain.removeHandler(channel);
+    ipcMain.handle(channel, () => {
+      throw new Error('the gate replaced this handler to exercise the host refusal path.');
+    });
+  }, SAVE_LIST_CHANNEL);
+
+  const page = await app.firstWindow();
+  await page.getByTestId('open-saves').click();
+
+  const screen = page.getByTestId('saves-screen');
+  // The screen shows `Loading` until the storage has answered, so what is
+  // waited for is that it has answered at all. Which answer it gave is the
+  // caller's assertion, not this wait's — a wait that already spelled `Error`
+  // would leave nothing for the check to be wrong about.
+  await expect(screen).not.toHaveAttribute('data-state', 'Loading');
+
+  return (await screen.getAttribute('data-state')) ?? '';
 }
 
 test.describe('packaged desktop host', () => {
   let app: ElectronApplication;
+
+  /**
+   * Measured once and asserted twice: by the test that provokes it and by the
+   * run that writes the report, so the artifact cannot claim a state the
+   * verdict did not see. Kept here rather than re-probed because the probe
+   * leaves the host's list channel broken on purpose — running it twice would
+   * measure the second time against a page already sitting on the answer.
+   */
+  let saveScreenStateOnHostRefusal: string | null = null;
 
   test.beforeAll(async () => {
     if (!existsSync(executable)) {
@@ -570,23 +798,40 @@ test.describe('packaged desktop host', () => {
     expect(userDataPath).not.toContain('@oath-and-coin');
   });
 
-  test('a save survives the packaged bridge byte for byte and leaves the repository alone', async () => {
-    const { roundTrip, strayFilesInRepository } = await probeSaveRoundTrip(app);
+  test('a save survives the packaged bridge byte for byte and goes to the data directory', async () => {
+    const { roundTrip, strayFilesInRepository, ground, aftermath } = await probeSaveRoundTrip(app);
+    const userDataPath = await readUserDataPath(app);
 
     // Through `contextBridge`, Electron IPC, the main process's Zod schemas
     // and the atomic file write — and back.
     expect(roundTrip.readBack).toBe(roundTrip.wrote);
 
-    // The other half of the same claim, and the one the round trip cannot
-    // make: a store rooted at the process's working directory would round trip
-    // just as happily, into the source tree it was launched from.
+    // Where it went, positively: the file was there, at the path the main
+    // process derives from `app.getPath('userData')`. Without this pair, a
+    // store rooted in `%TEMP%` or in the drive root passes everything else in
+    // this test.
+    expect(roundTrip.path.startsWith(userDataPath)).toBe(true);
+    expect(roundTrip.written).toBe(true);
+
+    // And the negative half: nothing of the sort appeared in the working tree.
     expect(strayFilesInRepository).toEqual([]);
+
+    // The borrowed slot is as it was — checked, not promised. This is the
+    // Critical review of Task 17 found: the first version restored from the
+    // test process's memory and said in prose that it did. A restore nothing
+    // verifies is a restore that stops happening quietly.
+    expect(aftermath.sha256After).toBe(ground.sha256Before);
+    expect(aftermath.backupExists).toBe(false);
+    // Including the directory: a machine that had never run the game is left
+    // without an empty `saves` in its data directory.
+    expect(aftermath.directoryExists).toBe(ground.directoryExisted);
   });
 
   test('the packaged renderer is the browser build this tree produced', async () => {
     // ADR-010's split, stated as a check rather than as a comment in
-    // `main.ts`: the file the packaged window loads is the file Playwright
-    // drives in a plain Chromium, byte for byte.
+    // `main.ts`: what the packaged window loads is what Playwright drives in a
+    // plain Chromium — the whole directory, file for file and byte for byte,
+    // so a file only one side has is a difference too.
     expect(hashRendererBuild(packagedRendererDirectory)).toEqual(
       hashRendererBuild(rendererBuildDirectory)
     );
@@ -594,9 +839,9 @@ test.describe('packaged desktop host', () => {
 
   test('the packaged host entries are the ones this tree produced', async () => {
     // Read out of `app.asar` by the process that is running them. This is what
-    // catches a package built from older sources — the failure Task 16.6 left
-    // behind and Task 17 was handed — before any assertion about behaviour has
-    // to explain itself.
+    // catches a package that disagrees with the last build — the failure Task
+    // 16.6 left behind and Task 17 was handed — before any assertion about
+    // behaviour has to explain itself.
     expect(await hashPackagedFiles(app, HOST_ENTRIES)).toEqual(hashHostBuild());
   });
 
@@ -616,6 +861,24 @@ test.describe('packaged desktop host', () => {
     expect(declared.filter((claim) => !claim.present)).toEqual([]);
   });
 
+  test('a refusing host drives the slots screen to its error state', async () => {
+    // The one error path the desktop build has and the browser build does not,
+    // executed in a packaged application for the first time. Task 16.8 reached
+    // `Error` in Chromium by replacing `IDBFactory.prototype.open`; there is no
+    // IndexedDB on this side, and until now nothing had ever made the host
+    // itself refuse.
+    saveScreenStateOnHostRefusal = await probeSaveScreenOnHostRefusal(app);
+
+    expect(saveScreenStateOnHostRefusal).toBe('Error');
+
+    // Not only the state: all three slots carry the refusal, which is what
+    // "the storage is gone" means as opposed to "one file is broken".
+    const page = await app.firstWindow();
+    for (const slot of ['slot-a', 'slot-b', 'slot-c']) {
+      await expect(page.getByTestId(`${slot}-error`)).toBeVisible();
+    }
+  });
+
   test('the four allowed IPC methods answer, and the run is recorded', async () => {
     const page = await app.firstWindow();
 
@@ -633,7 +896,7 @@ test.describe('packaged desktop host', () => {
     // from the tests above.
     const inlineScriptBlocked = await probeInlineScript(app);
     const openedExternally = await probeExternalOpen(app);
-    const { roundTrip, strayFilesInRepository } = await probeSaveRoundTrip(app);
+    const { roundTrip, strayFilesInRepository, ground, aftermath } = await probeSaveRoundTrip(app);
 
     const evidence: GateEvidence = {
       executable,
@@ -662,7 +925,16 @@ test.describe('packaged desktop host', () => {
       packagedManifest,
       declaredEntryPoints: await readDeclaredEntryPoints(app),
       saveRoundTrip: roundTrip,
-      strayFilesInRepository
+      strayFilesInRepository,
+      saveSlotRestored:
+        aftermath.sha256After === ground.sha256Before &&
+        !aftermath.backupExists &&
+        aftermath.directoryExists === ground.directoryExisted,
+      // Measured by the test above, or here when that test did not run — a
+      // `--grep` of this one alone still records a value it observed rather
+      // than a hole.
+      saveScreenStateOnHostRefusal: (saveScreenStateOnHostRefusal ??=
+        await probeSaveScreenOnHostRefusal(app))
     };
 
     // AGENTS.md §11: a number a reader sees comes from the run that produced
@@ -688,12 +960,14 @@ test.describe('packaged desktop host', () => {
     expect(evidence.packagedBytes).toBeGreaterThan(0);
 
     // The RSS budget stands, and the measurement fits it: Task 4 observed
-    // 328.8 MiB, Task 17 observed 409-411 MiB across its runs, all against
-    // 500 MB. A range rather than a number because this one is read from four
-    // live processes and moves between runs; the exact value of the run that
-    // wrote the report is in the report. This is a real gate — a leak or a
-    // second renderer would show up here, and the ~80 MiB the game itself
-    // costs is exactly the kind of movement it exists to keep visible.
+    // 328.8 MiB, Task 17 observed 409-413 MiB across its runs and its review's,
+    // all against 500 MB. A range rather than a number because this one is read
+    // from four live processes and moves between runs — the first range written
+    // here was 409-411 and the reviewer's own run came back 412.4, which is the
+    // point; the exact value of the run that wrote the report is in the report.
+    // This is a real gate — a leak or a second renderer would show up here, and
+    // the ~80 MiB the game itself costs is exactly the kind of movement it
+    // exists to keep visible.
     expect(evidence.rssBytes).toBeLessThanOrEqual(500 * 1024 * 1024);
 
     // The security probes and the save round trip are asserted against the
@@ -703,6 +977,9 @@ test.describe('packaged desktop host', () => {
     expect(evidence.inlineScriptBlocked).toBe(true);
     expect(evidence.openedExternally).toEqual(['https://example.com/docs']);
     expect(evidence.saveRoundTrip.readBack).toBe(evidence.saveRoundTrip.wrote);
+    expect(evidence.saveRoundTrip.written).toBe(true);
+    expect(evidence.saveSlotRestored).toBe(true);
     expect(evidence.strayFilesInRepository).toEqual([]);
+    expect(evidence.saveScreenStateOnHostRefusal).toBe('Error');
   });
 });

@@ -160,6 +160,9 @@ importers:
 
   tests/desktop:
     devDependencies:
+      '@oath-and-coin/desktop':
+        specifier: workspace:*
+        version: link:../../apps/desktop
       '@playwright/test':
         specifier: 1.62.1
         version: 1.62.1
