@@ -101,8 +101,15 @@ const PROBE_SLOT = 'slot-c';
  *
  * Cleared before the launch rather than after it, so a failed run leaves its
  * files to be looked at and the next run still starts from nothing.
+ *
+ * `resolve` around a value that is already absolute is not decoration. The
+ * guard in `beforeAll` refuses a path inside this repository, and it compares
+ * strings; a drive-relative path like `C:some\dir` is not inside the repository
+ * *as a string* and resolves into it as a path. Found by running this file's own
+ * mutant with a mangled literal, which created — and would have deleted — a
+ * directory in the working tree while the guard read it as harmless.
  */
-const scratchUserDataDirectory = join(tmpdir(), 'oath-and-coin-packaged-gate');
+const scratchUserDataDirectory = resolve(join(tmpdir(), 'oath-and-coin-packaged-gate'));
 
 /**
  * All 256 byte values. A save is bytes, and a probe of printable ASCII would
