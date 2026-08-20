@@ -514,7 +514,8 @@ async function prepareSaveProbe(app: ElectronApplication): Promise<ProbeGround> 
       const {
         copyFileSync,
         existsSync: exists,
-        readFileSync: readBytes
+        readFileSync: readBytes,
+        renameSync
       } = load('node:fs') as typeof import('node:fs');
       const { createHash: hash } = load('node:crypto') as typeof import('node:crypto');
       const { join: joinPath } = load('node:path') as typeof import('node:path');
@@ -522,6 +523,16 @@ async function prepareSaveProbe(app: ElectronApplication): Promise<ProbeGround> 
       const directory = joinPath(electronApp.getPath('userData'), 'saves');
       const path = joinPath(directory, `${slot}.save`);
       const directoryExisted = exists(directory);
+      const staleBackup = `${path}${backupSuffix}`;
+
+      // A backup from a run that died between the copy and the restore. Its
+      // bytes are the player's and the slot's are this gate's, so the backup
+      // wins — the interrupted run is finished here rather than left as a file
+      // nobody knows what to do with. Without this the recovery the backup
+      // exists for would be manual, which is a promise about a person.
+      if (exists(staleBackup)) {
+        renameSync(staleBackup, path);
+      }
 
       if (!exists(path)) {
         return { path, backupPath: null, directoryExisted, sha256Before: null };
