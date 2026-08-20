@@ -223,6 +223,48 @@ describe('запись отказывается произвести файл, �
   });
 });
 
+describe('чтение отказывается разбирать файл больше потолка, который держит любое хранилище', () => {
+  // External review of segment 5: the ceiling was enforced by everything that *produces*
+  // or *stores* a save and by nothing that reads one. Leading JSON whitespace is the
+  // demonstration because it is invisible to every other check in this module at once —
+  // `JSON.parse` skips it, so the object is unchanged and the checksum over that object
+  // still matches. A legitimate, honestly-signed save padded to `MAX_SAVE_BYTES + 1` was
+  // read back clean: `{"limit":8388608,"bytes":8388609,"accepted":true}`.
+  //
+  // The two cases below are a pair on purpose. Without the one at the limit, "refuse
+  // everything" would pass; without the one past it, the check can be deleted and nothing
+  // notices.
+
+  /** `bytes` with leading spaces in front of the JSON, to exactly `size` bytes. Every
+   * byte added is ASCII, so one space is one byte. */
+  function paddedTo(bytes: Uint8Array, size: number): Uint8Array {
+    return encodeUtf8(' '.repeat(size - bytes.length) + decodeUtf8OrThrow(bytes));
+  }
+
+  it('принимает файл ровно в потолок — и добивка ничего больше в нём не меняет', () => {
+    const atTheLimit = paddedTo(aValidSave(), MAX_SAVE_BYTES);
+
+    expect(atTheLimit.length).toBe(MAX_SAVE_BYTES);
+    expect(readSave(atTheLimit, expectedVersions).descriptor).toEqual({
+      createdAt: CREATED_AT,
+      logicalTime: state.metadata.logicalTime,
+      focusedContract: FOCUSED_CONTRACT
+    });
+  });
+
+  it('отказывает файлу на байт больше — и именно за размер, а не за сумму или форму', () => {
+    const oneTooMany = paddedTo(aValidSave(), MAX_SAVE_BYTES + 1);
+
+    expect(oneTooMany.length).toBe(MAX_SAVE_BYTES + 1);
+    expect(() => readSave(oneTooMany, expectedVersions)).toThrow(/SAVE_OUT_OF_BOUNDS/u);
+    // Названо отдельно: без этого проверка могла бы стоять после разбора и отвечать
+    // тем же кодом, уже разобрав те самые байты, которых потолок и не должен касаться.
+    expect(() => readSave(oneTooMany, expectedVersions)).toThrow(
+      `${MAX_SAVE_BYTES}-byte ceiling this build writes, stores and reads`
+    );
+  });
+});
+
 const tamperCases: [string, (f: Record<string, unknown>) => void, string][] = [
   [
     'чужая версия конверта',

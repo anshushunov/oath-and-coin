@@ -220,6 +220,8 @@ export function readSave(
   bytes: Uint8Array,
   expected: { readonly rulesetVersion: string; readonly contentVersion: string }
 ): { readonly state: GameState; readonly descriptor: SaveDescriptor } {
+  requireReadableSize(bytes);
+
   const parsed = parseSaveJson(bytes);
 
   requireSupportedFormatVersion(parsed);
@@ -330,6 +332,44 @@ export function snapshotHash(state: GameState): string {
  */
 export function saveChecksum(envelopeWithoutChecksum: unknown): string {
   return canonicalSha256(envelopeWithoutChecksum as CanonicalValue);
+}
+
+/**
+ * {@link MAX_SAVE_BYTES} on the way *in* — measured on the bytes, before a single one of
+ * them is decoded as UTF-8 or handed to `JSON.parse`.
+ *
+ * **The ceiling was a rule about writing, not about saves.** External review of segment 5
+ * measured it: a perfectly legitimate save, padded with leading JSON whitespace to
+ * `MAX_SAVE_BYTES + 1`, read back clean (`{"limit":8388608,"bytes":8388609,
+ * "accepted":true}`). Whitespace outside the value changes neither the object
+ * `JSON.parse` produces nor the checksum computed over it, so a file could be inflated to
+ * any size at all and every other check in this module would still agree the contents
+ * were untouched and honestly signed. `buildSave` refused to *produce* such a file and
+ * both `SaveStorePort` implementations refuse to *store* one — but a file arrives from a
+ * disk, not from this build, and nothing on the reading side had an opinion about how
+ * many bytes it was about to decode.
+ *
+ * Before the decode rather than after, and that is the whole point rather than an
+ * optimization: `decodeUtf8OrThrow` and `JSON.parse` both allocate proportionally to
+ * their input, so a check that runs after them has already done the work the ceiling
+ * exists to refuse.
+ *
+ * `SAVE_OUT_OF_BOUNDS` — the same code {@link buildSave} refuses with when a campaign
+ * encodes past the ceiling and the same one `requireStorableSize` refuses a write with,
+ * because it is the same condition seen from the third side. One condition, one code, in
+ * all three directions; a fourth code for "too big, but read rather than written" would
+ * be a new row in the refusal table (design spec §2.4) and a new key in a catalogue,
+ * naming nothing a player could act on differently.
+ */
+function requireReadableSize(bytes: Uint8Array): void {
+  if (bytes.length > MAX_SAVE_BYTES) {
+    throw new SaveReadError(
+      SaveErrorCodes.OutOfBounds,
+      `a save of ${String(bytes.length)} bytes was offered for reading, past the ` +
+        `${String(MAX_SAVE_BYTES)}-byte ceiling this build writes, stores and reads; nothing ` +
+        'is decoded from a file that size.'
+    );
+  }
 }
 
 function parseSaveJson(bytes: Uint8Array): unknown {
