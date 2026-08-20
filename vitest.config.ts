@@ -41,15 +41,10 @@ export default defineConfig({
     // live defect behind a green gate — which is the one outcome worse than the
     // flake.
     //
-    // The message now exists (below) and the cause **is** the timeout: the two
-    // full-corpus tests run at 2.0–4.3 s against a 5000 ms default even on green
-    // runs — one green run measured 4339 ms, 661 ms of margin — and cross it when
-    // transform and import go slow. Still not raised here, and deliberately: the
-    // ruling that parked this was taken above this task, the evidence that
-    // discharges it is three days newer than the ruling, and a branch that cannot
-    // be pushed cannot show the new setting behaving on a cold runner. The
-    // measurement is handed up with a recommendation instead of a setting nobody
-    // watched work.
+    // The message now exists (below) and the cause **is** the timeout, so the
+    // condition the ruling attached to it is discharged and `testTimeout` is set.
+    // What follows is the derivation, because a number without one does not live
+    // in this repository.
     //
     // So: the *next* red writes itself down, wherever it happens. `json`
     // carries each failure's own message and stack; the console log the CI step
@@ -92,6 +87,44 @@ export default defineConfig({
     //   the first CI run, not the 1151 of the full suite. A record of the last
     //   run, not a total, and the job summary says so.
     reporters: ['default', 'json'],
-    outputFile: { json: 'artifacts/vitest/results.json' }
+    outputFile: { json: 'artifacts/vitest/results.json' },
+
+    // 30 seconds, and here is where the number comes from.
+    //
+    // What is being covered: the heaviest tests in this suite replay the frozen
+    // corpus — 54 records, 27 checkpoints — and they do real work rather than
+    // waiting on anything. Measured cost of the heaviest one:
+    //
+    //   warm, quiet machine     593–1299 ms   (Task 16.3, nine runs)
+    //   green but loaded        2011–4339 ms  (Task 18, three runs)
+    //   over the 5000 ms limit  5055–9094 ms  (Task 18, three runs, six tests)
+    //
+    // The multiplier, not guessed: the same machine's `transform` phase moved
+    // between 3.13 s on a warm run and 73.42 s on the run that failed, a factor
+    // of about 20. Applied to the heaviest warm measurement — 1.3 s × 20 ≈ 26 s —
+    // and rounded up to 30 s. It is also 3.3× the worst duration ever observed
+    // here (9094 ms), so the envelope has room without being open-ended.
+    //
+    // Why the default was wrong rather than the tests being slow: at 5000 ms the
+    // margin on a *green* run was measured at 661 ms. A limit a passing run
+    // clears by 13 % is not a liveness guard, it is a coin toss, and it produced
+    // exactly the symptom — one test of 866, twice, message lost.
+    //
+    // What it costs, stated plainly: a test that genuinely hangs is now reported
+    // after 30 s instead of 5. That is the whole price, it is paid only on
+    // failure, and it buys a gate whose red means something.
+    //
+    // What this does NOT do — and it is the reason the setting was forbidden
+    // until the message existed — is make anything green that was failing for
+    // another reason. An assertion that fails still fails at the moment it fails;
+    // a test that hangs past 30 s still goes red, with the same sentence and a
+    // bigger number. Both were run as mutants after this was committed.
+    //
+    // `hookTimeout` is deliberately NOT raised alongside it. The default is
+    // 10000 ms and the same 20× argument would apply to a slow `beforeAll` — but
+    // no hook has ever been observed timing out here, and a second number chosen
+    // by analogy rather than by measurement is the invented threshold this
+    // repository refuses elsewhere. It waits for its own observation.
+    testTimeout: 30_000
   }
 });
