@@ -156,6 +156,17 @@ const GATE_DIRECTORY_MARKER = '.oath-and-coin-gate-directory';
  *
  * With a token, the evidence has to have been made by *this* run. A marker left
  * anywhere by anything else carries a different one and unlocks nothing.
+ *
+ * **Where this stops, and it stops sooner than it reads.** What the marker and
+ * the token hold is a *mistake*: a variable reassigned by accident, a marker
+ * left in some directory by another run or by an older version of this file, a
+ * path that was never created here. What they do not hold, and cannot, is an
+ * *edit to this file*: a change that assigns the variable and then writes this
+ * run's token into that directory deletes it recursively, and review of Task 17
+ * demonstrated exactly that on a decoy. A test cannot defend itself against
+ * being rewritten — the check and the thing checked are the same file. Anyone
+ * moving the two statements below apart, or adding a third that writes the
+ * marker somewhere else, is past every mechanism this file has.
  */
 const gateDirectoryToken = randomUUID();
 
