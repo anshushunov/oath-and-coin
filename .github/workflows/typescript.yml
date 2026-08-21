@@ -361,7 +361,16 @@ jobs:
         id: install
         run: pnpm install --frozen-lockfile
 
+      # `id`, because a verdict below depends on it and a dependency that cannot be
+      # named cannot be stated. Until segment review's last round this step had
+      # neither an id nor a condition, and it is the **second** setup step: a failed
+      # browser download silently carried off the `pnpm verify` verdict through
+      # GitHub's fail-fast default, while the job's comment promised three
+      # independent verdicts. The behaviour was right and nothing said so — the same
+      # gap between promise and mechanism as the finding that produced the two
+      # conditions below.
       - name: Install the browser
+        id: browser
         run: pnpm exec playwright install --with-deps chromium
 
       # Teed into a file, and that is this step's second job.
@@ -378,8 +387,19 @@ jobs:
       # `shell: bash` on purpose: GitHub runs it as `bash -eo pipefail`, so the
       # step still fails when `pnpm verify` does rather than reporting `tee`'s
       # exit code.
+      #
+      # The condition states what fail-fast used to leave implicit. This verdict is
+      # the one that genuinely needs a browser — `pnpm verify` ends in
+      # `pnpm test:e2e` — so a failed download skips it **legitimately**, and saying
+      # so out loud is the difference between a skip that was decided and a skip that
+      # merely happened. The two verdicts below deliberately do NOT carry
+      # `steps.browser`: neither the dependency audit nor `dotnet test` opens a
+      # browser, so both must still answer on a run where the download failed. That
+      # asymmetry is the whole content of "three independent verdicts" here, and
+      # `tests/architecture/release-gate.test.ts` holds both halves of it.
       - name: Release gate — pnpm verify
         id: verify
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && steps.browser.outcome == 'success' }}
         shell: bash
         run: |
           mkdir -p artifacts/release-gate

@@ -139,21 +139,47 @@ describe('the release gate is one job with three verdicts', () => {
    * that all three commands are *present*, which is a different claim and was the
    * only one anybody was making.
    *
-   * `verify` is deliberately not in this list, and the reason is narrower than the
-   * one first written here. It is **not** "it is first, so nothing before it can have
-   * failed" — that was wrong on the facts: six steps run before it, and one of them,
-   * `Install the browser`, carries neither an id nor a condition, so its failure skips
-   * the `verify` verdict exactly the way a failed verdict used to skip the other two.
+   * **All three are in this list now, and `verify` joined it last.** Two earlier
+   * editions of this comment excluded it, and both were wrong. The first said "it is
+   * first, so nothing before it can have failed" — wrong on the facts: six steps run
+   * before it. The second said the only thing that could silence it was setup, which was
+   * true and left the mechanism unstated: `Install the browser` carried neither an id nor
+   * a condition, so a failed download silently carried off the `verify` verdict through
+   * the very fail-fast default this block exists to remove. Right behaviour, no
+   * mechanism — the same gap the finding itself was about, one step to the left.
    *
-   * What is true is that `verify` is the first of the three *verdicts*: no verdict runs
-   * before it, so no verdict can silence it, which is the whole of what this check is
-   * about. What can silence it is a failed *setup* step — `Install` and `Install the
-   * browser` — and that is deliberately the same class as the
-   * `steps.install.outcome == 'success'` guard the other two carry: a tree that would
-   * not install, or a browser that would not download, cannot answer any of the three,
-   * and a second red about it would say nothing about the first.
+   * Each verdict now names the *setup* it needs and nothing else, and the asymmetry is
+   * the content rather than an accident: `verify` ends in `pnpm test:e2e` and legitimately
+   * cannot answer without a browser, while `audit` and `dotnet` open none and must still
+   * answer on a run where the download failed. {@link SETUP_A_VERDICT_NEEDS} states which
+   * is which, and the second half of the check below is what stops the browser guard being
+   * copied onto all three "for symmetry", which would silence two verdicts that had no
+   * reason to be silenced.
    */
-  const INDEPENDENT_VERDICTS = ['audit', 'dotnet'] as const;
+  const INDEPENDENT_VERDICTS = ['verify', 'audit', 'dotnet'] as const;
+
+  /**
+   * The setup steps each verdict may depend on. A verdict must be guarded on every step
+   * listed for it and on no other, because both directions are failures: an unnamed
+   * dependency is a skip nobody decided, and an extra one is a verdict that stops being
+   * taken for a reason that never applied to it.
+   */
+  const SETUP_A_VERDICT_NEEDS: Readonly<Record<string, readonly string[]>> = {
+    verify: ['install', 'browser'],
+    audit: ['install'],
+    dotnet: ['install']
+  };
+
+  const EVERY_SETUP_STEP = ['install', 'browser'] as const;
+
+  it.each(EVERY_SETUP_STEP)('gives the `%s` setup step an id to be depended on', (id) => {
+    // A dependency that cannot be named cannot be stated, and an unnamed setup step is
+    // exactly how `verify` came to be skipped by a mechanism nobody had written down.
+    expect(
+      (job?.steps ?? []).find((candidate) => candidate.id === id),
+      `${JOB_NAME} has no step with id \`${id}\`, so no verdict can declare whether it needs it`
+    ).toBeDefined();
+  });
 
   it.each(INDEPENDENT_VERDICTS)('takes the `%s` verdict even after an earlier one failed', (id) => {
     const step = (job?.steps ?? []).find((candidate) => candidate.id === id);
@@ -172,11 +198,36 @@ describe('the release gate is one job with three verdicts', () => {
     // And it must not be conditional on another *verdict*. A reference to
     // `steps.verify.outcome` would restore the fail-fast the line above just removed,
     // in a form that reads as a deliberate dependency rather than as a default.
-    for (const other of ['verify', ...INDEPENDENT_VERDICTS].filter((name) => name !== id)) {
+    for (const other of INDEPENDENT_VERDICTS.filter((name) => name !== id)) {
       expect(
         condition,
         `\`${id}\` is conditional on the \`${other}\` verdict, so the two are one verdict reported twice`
       ).not.toContain(`steps.${other}.`);
+    }
+  });
+
+  it.each(INDEPENDENT_VERDICTS)('guards `%s` on the setup it needs, and on no other', (id) => {
+    const step = (job?.steps ?? []).find((candidate) => candidate.id === id);
+    const condition = (step?.if ?? '').replace(/\s/gu, '');
+    const needed = SETUP_A_VERDICT_NEEDS[id] ?? [];
+
+    for (const setup of needed) {
+      expect(
+        condition,
+        `\`${id}\` does not say it needs the \`${setup}\` step, so a failure there skips this verdict by GitHub's default rather than by a decision`
+      ).toContain(`steps.${setup}.`);
+    }
+
+    // The other direction, and it is the one worth a check. `audit` opens no browser
+    // and `dotnet test` opens no browser, so a failed download must not stop either
+    // from answering — that is what "three independent verdicts" buys on the run where
+    // Playwright's CDN is down. Copying `verify`'s browser guard onto all three "for
+    // symmetry" would take two verdicts away for a reason that never applied to them.
+    for (const setup of EVERY_SETUP_STEP.filter((name) => !needed.includes(name))) {
+      expect(
+        condition,
+        `\`${id}\` is conditional on the \`${setup}\` step, which it does not need; a failure there would silence a verdict that could still have answered`
+      ).not.toContain(`steps.${setup}.`);
     }
   });
 
