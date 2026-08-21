@@ -319,17 +319,23 @@ jobs:
   # page, context or browser has been closed". It therefore keeps the job below,
   # on its own runner.
   #
-  # The RSS budget was suspected of the same flakiness and is **not** closed. Every
-  # measurement of it — Task 18's twelve and segment review's further six, taken with
-  # `pnpm test:desktop` and read from `artifacts/electron-spike/gate-report.json`'s
-  # `rssBytes` — reports 413.3 to 420.5 MiB against the 500 MiB budget, and overlapping
-  # runs move that by a few MiB rather than past it. Task 17's single 516.5 MiB is not
-  # among them and has not been reproduced. It is also not refuted, and the reason it
-  # cannot be refuted by more of the same measurement is structural: only the run that
-  # wins the single-instance lock ever writes a report, so every one of the eighteen
-  # numbers is one instance, and no number exists for the second. The open risk is
-  # recorded in §19.4 of `docs/production/FULL_TYPESCRIPT_MIGRATION.md`, together with
-  # what would settle it.
+  # **The RSS budget breaks when a second gate runs beside the first, and that is
+  # measured rather than suspected.** With one instance on the machine it holds: every
+  # solo run of `pnpm test:desktop`, read from `artifacts/electron-spike/gate-report.json`'s
+  # `rssBytes`, sits between 413 and 430 MiB against the 500 MiB budget. With two gates
+  # overlapping, the second instance's own measurement goes over and the budget assertion
+  # itself is what turns red — `Expected: <= 524288000 / Received: 543174656` and
+  # `543870976`, i.e. 518.0 and 518.7 MiB, in two of ten pairs run for the segment
+  # review, on top of three further reproductions by the reviewer (511.1, 524.2, 519.6
+  # MiB) and Task 17's original 516.5. Same four processes each time, every one of them
+  # fatter.
+  #
+  # This job and `packaged-desktop` never share a machine — they are separate jobs on
+  # separate runners — so the condition is not reachable in this workflow. It is
+  # reachable on a workstation, and §19.4 of
+  # `docs/production/FULL_TYPESCRIPT_MIGRATION.md` records it as a red rather than as a
+  # risk. The threshold itself comes from `ADR-011` and is the owner's to revisit; no
+  # number here predicts the next measurement.
   release-gate:
     runs-on: ubuntu-latest
     timeout-minutes: 25

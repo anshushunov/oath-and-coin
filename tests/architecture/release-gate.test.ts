@@ -139,8 +139,19 @@ describe('the release gate is one job with three verdicts', () => {
    * that all three commands are *present*, which is a different claim and was the
    * only one anybody was making.
    *
-   * `verify` is deliberately not in this list: it is first, so nothing before it
-   * can have failed, and giving it a condition would be a mechanism against nothing.
+   * `verify` is deliberately not in this list, and the reason is narrower than the
+   * one first written here. It is **not** "it is first, so nothing before it can have
+   * failed" — that was wrong on the facts: six steps run before it, and one of them,
+   * `Install the browser`, carries neither an id nor a condition, so its failure skips
+   * the `verify` verdict exactly the way a failed verdict used to skip the other two.
+   *
+   * What is true is that `verify` is the first of the three *verdicts*: no verdict runs
+   * before it, so no verdict can silence it, which is the whole of what this check is
+   * about. What can silence it is a failed *setup* step — `Install` and `Install the
+   * browser` — and that is deliberately the same class as the
+   * `steps.install.outcome == 'success'` guard the other two carry: a tree that would
+   * not install, or a browser that would not download, cannot answer any of the three,
+   * and a second red about it would say nothing about the first.
    */
   const INDEPENDENT_VERDICTS = ['audit', 'dotnet'] as const;
 
