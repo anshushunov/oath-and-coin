@@ -71,10 +71,13 @@ jobs:
         run: pnpm typecheck
 
       # Three statements of the content rules, held to each other: the Zod
-      # contracts, the generated schemas committed beside them, and the
-      # hand-written schemas the .NET stack still reads until cutover. Cheap, and
-      # it is the only thing standing between "a range was raised in one place"
-      # and content that is valid for exactly one of the two stacks.
+      # contracts, the generated schemas committed beside them, and four of the
+      # six hand-written schemas. The .NET stack that read those is gone (Task
+      # 19), and the reason they are still checked moved rather than expired: the
+      # generated ones are a projection of the contracts, so only a hand-written
+      # document can disagree with a bound somebody raised in one place. Which
+      # four, and what accounts for the other two, is
+      # `tests/architecture/orphaned-data.test.ts`.
       - name: Content schemas
         run: pnpm schema:check
 
