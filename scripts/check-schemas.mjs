@@ -10,11 +10,20 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
  * the .NET one read the hand-written `schemas/*.schema.json`. Deleting that stack
  * removed a reader and not the reason. The generated schemas are a projection of the
  * Zod contracts, so comparing the two can only ever find a *stale artifact* — never a
- * bound that moved. The hand-written document is the one statement of the content
- * rules that is not derived from the loader's own code, which makes it the only thing
- * in the tree that can disagree with a constant somebody raised in one place. That is
- * what the second half below measures, and it is why removing these files would be a
- * decision about the content contract rather than tidying after the cutover.
+ * bound that moved. A hand-written document is the one statement of the content rules
+ * that is not derived from the loader's own code, which makes it the only thing in the
+ * tree that can disagree with a constant somebody raised in one place. That is what the
+ * second half below measures.
+ *
+ * **It measures that for four files out of six, and the two it does not are named
+ * elsewhere rather than left implied.** External review of the cutover found this
+ * docblock claiming the property for `schemas/*.schema.json` as a whole while
+ * {@link expectations} lists `hero`, `contract`, `trait` and `locale` — so
+ * `scenario-manifest.schema.json` and `contrast.schema.json` were read by nothing at
+ * all and no gate said so. The gap is now a bijection in
+ * `tests/architecture/orphaned-data.test.ts`: every top-level schema is either checked
+ * here or declared orphaned with what would end that, and a file dropped from the
+ * literal below reddens there.
  *
  * Two independent failures are reported:
  *
@@ -341,5 +350,9 @@ if (failures.length > 0) {
 }
 
 console.log(
-  'schema:check: the Zod contracts, the generated schemas and the hand-written schemas agree.'
+  // Names the four rather than "the hand-written schemas": the sentence used to
+  // claim the whole directory while checking two thirds of it, which is the
+  // finding `tests/architecture/orphaned-data.test.ts` exists to keep closed.
+  'schema:check: the Zod contracts, the generated schemas and the hand-written hero, ' +
+    'contract, trait and locale schemas agree.'
 );

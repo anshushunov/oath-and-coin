@@ -150,7 +150,9 @@ Migration Definition of Done ограничен браузерной сборк�
 
 Реализация завершена. Статус записи остаётся `accepted` — как и предусмотрено абзацем выше.
 
-Числа сняты на ветке `migration/06-cutover` после удаления Godot/.NET-дерева, каждое своей командой; логи — `artifacts/migration-final/**`, отчёт гейта — `artifacts/migration-final/gate-report.json`.
+Числа сняты на ветке `migration/06-cutover` после удаления Godot/.NET-дерева, каждое своей командой. Локальные логи — `artifacts/migration-final/**` (каталог в `.gitignore`: он на рабочей станции, а не в дереве), отчёт гейта — `artifacts/migration-final/gate-report.json`. Те же прогоны на CI: workflow `typescript`, runs **32579489588** и **32579492304** на HEAD ветки, артефакты `release-gate-evidence`, `checks-vitest-report`, `desktop-gate-report`, `desktop-package-log`.
+
+**Две строки таблицы сняты только локально** и это названо, а не подразумевается: `pnpm package:desktop` и `pnpm test:desktop` требуют Electron-бинаря и Windows-хоста, живут в отдельном job'е и публикуют отчёт артефактом. Числа RSS и размера ниже — с рабочей станции; job `packaged-desktop` на CI зелёный.
 
 | Требование Definition of Done | Команда | Результат |
 |---|---|---|

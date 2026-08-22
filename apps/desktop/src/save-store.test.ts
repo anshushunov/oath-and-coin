@@ -154,7 +154,7 @@ describe('reading a slot', () => {
     // which is exactly what happened: this test failed once in six local full runs
     // and once on CI, on a commit whose re-run was green, with
     // `Test timed out in 30000ms` and nothing about bytes. The identical claim as
-    // a length plus a SHA-256 takes **5 ms** — the same two numbers, 2500× cheaper,
+    // a length plus a SHA-256 takes **5 ms** — the same claim, 2500× cheaper,
     // and a mismatch now reports two hex strings instead of asking Vitest to diff
     // eight million elements.
     const dir = await temporaryDirectory();
