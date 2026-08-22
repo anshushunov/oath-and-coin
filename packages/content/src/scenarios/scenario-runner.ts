@@ -32,7 +32,14 @@ export interface StepOutcome {
    * definition is a property of the content.
    */
   readonly heroDefinition: ContentId | null;
-  readonly decision: DecisionResult | null;
+  /**
+   * Every decision this step's events explain, in the same order as {@link events} —
+   * empty for a rejected step, which explains itself through {@link rejectionCode}
+   * instead. One entry today, because {@link proposeContractToHero} always asks a single
+   * hero; a command asking several at once (`pollCrew`, Tasks 6, 10-14) is what widens
+   * this beyond that.
+   */
+  readonly decisions: readonly DecisionResult[];
   readonly events: readonly DomainEvent[];
 }
 
@@ -78,7 +85,7 @@ export function applyScenarioCommands(
       applied: result.applied,
       rejectionCode: result.rejectionCode,
       heroDefinition: current.heroes.get(id)?.definition ?? null,
-      decision: result.decision,
+      decisions: result.decisions,
       events: result.events
     });
 

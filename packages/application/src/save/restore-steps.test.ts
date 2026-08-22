@@ -148,10 +148,10 @@ describe('rebuilding the answered steps from a state', () => {
 
     expect(step?.command.contract).toBe(CARAVAN);
     expect(step?.heroDefinition).toBe(parseContentId('core:bram'));
-    expect(step?.decision?.selectedAction).toBe(Actions.Accept);
+    expect(step?.decisions[0]?.selectedAction).toBe(Actions.Accept);
     // Счёта нет ни в событии, ни в следе — он сумма факторов.
-    expect(step?.decision?.selectedScore).toBe(63);
-    expect(step?.decision?.trace.traceId).toBe(0);
+    expect(step?.decisions[0]?.selectedScore).toBe(63);
+    expect(step?.decisions[0]?.trace.traceId).toBe(0);
   });
 
   it('у блокированного решения счёт остаётся null, а не нулём', () => {
@@ -163,9 +163,9 @@ describe('rebuilding the answered steps from a state', () => {
     const [step] = restoreDecidedSteps(state);
 
     expect(step?.command.contract).toBe(CRYPT);
-    expect(step?.decision?.selectedAction).toBe(Actions.Decline);
-    expect(step?.decision?.trace.blockedBy).toHaveLength(1);
-    expect(step?.decision?.selectedScore).toBeNull();
+    expect(step?.decisions[0]?.selectedAction).toBe(Actions.Decline);
+    expect(step?.decisions[0]?.trace.blockedBy).toHaveLength(1);
+    expect(step?.decisions[0]?.selectedScore).toBeNull();
   });
 
   it('answers nothing for a campaign nobody has been offered anything in', () => {

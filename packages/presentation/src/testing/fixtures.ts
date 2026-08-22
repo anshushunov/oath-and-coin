@@ -182,7 +182,7 @@ export function aStep(overrides: Partial<DecidedStep> = {}): DecidedStep {
   return {
     command: { contract: ids.caravan },
     heroDefinition: ids.bram,
-    decision: aDecision(),
+    decisions: [aDecision()],
     ...overrides
   };
 }

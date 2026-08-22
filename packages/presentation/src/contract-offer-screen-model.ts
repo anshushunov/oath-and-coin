@@ -234,5 +234,10 @@ export interface DecidedStep {
    */
   readonly command: { readonly contract: ContentId };
   readonly heroDefinition: ContentId | null;
-  readonly decision: DecidedOutcome | null;
+  /**
+   * Every decision this step's events explain, in the same order `StepOutcome.decisions`
+   * carries them — empty for a rejected step. One entry today: every step this factory
+   * sees answered a single hero.
+   */
+  readonly decisions: readonly DecidedOutcome[];
 }

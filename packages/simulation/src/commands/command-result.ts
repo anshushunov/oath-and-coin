@@ -39,21 +39,43 @@ export interface CommandResult {
   readonly state: GameState;
   readonly events: readonly DomainEvent[];
   /**
-   * The hero's decision, when the command produced one. `null` for every rejection — a
-   * refused command explains itself through {@link rejectionCode}, which is a fact
-   * about the command, not a decision anybody made.
+   * Every decision this command's events explain, in the same order as {@link events} —
+   * index `i` is the explanation for `events[i]`. Empty for every rejection — a refused
+   * command explains itself through {@link rejectionCode}, which is a fact about the
+   * command, not a decision anybody made.
+   *
+   * One decision per event is enforced, not assumed: {@link fromDecisions} throws rather
+   * than build a result whose two lists disagree in length, because a caller reading
+   * `decisions[i]` as "what explains `events[i]`" would otherwise be trusting a pairing
+   * nobody checked.
    */
-  readonly decision: DecisionResult | null;
+  readonly decisions: readonly DecisionResult[];
 }
 
 export function rejected(state: GameState, rejectionCode: RejectionCode): CommandResult {
-  return { applied: false, rejectionCode, state, events: [], decision: null };
+  return { applied: false, rejectionCode, state, events: [], decisions: [] };
 }
 
-export function fromDecision(
+/**
+ * Builds the result of an applied command from the events it produced and the decision
+ * behind each one, in the same order.
+ *
+ * Throws rather than silently accepting a result whose two lists disagree in length: a
+ * command result is not just "some events and some decisions" — it is one decision per
+ * event, and a mismatch here is a bug in the command that built the lists, not a shape
+ * downstream code should have to guard against.
+ */
+export function fromDecisions(
   state: GameState,
-  domainEvent: DomainEvent,
-  decision: DecisionResult
+  events: readonly DomainEvent[],
+  decisions: readonly DecisionResult[]
 ): CommandResult {
-  return { applied: true, rejectionCode: null, state, events: [domainEvent], decision };
+  if (events.length !== decisions.length) {
+    throw new Error(
+      `fromDecisions requires one decision per event, but got ${String(events.length)} event(s) ` +
+        `and ${String(decisions.length)} decision(s).`
+    );
+  }
+
+  return { applied: true, rejectionCode: null, state, events, decisions };
 }

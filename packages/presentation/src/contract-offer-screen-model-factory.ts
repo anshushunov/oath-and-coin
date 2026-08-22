@@ -183,8 +183,10 @@ export function contractOfferScreenModel(
   const heroDisplayNameKeys = new Map(heroes.map((hero) => [hero.definition, hero.displayNameKey]));
 
   const responses = steps
-    .filter((step) => step.decision !== null && step.command.contract === contract.id)
-    .map((step) => toResponseLine(step, heroDisplayNameKeys));
+    .filter((step) => step.command.contract === contract.id)
+    .flatMap((step) =>
+      step.decisions.map((decision) => toResponseLine(step, decision, heroDisplayNameKeys))
+    );
 
   return createContractOfferScreenModel({
     state: contract.respondedBy.size >= roster.length ? ScreenState.Normal : ScreenState.Incomplete,
@@ -286,16 +288,9 @@ function resolveTrait(
 
 function toResponseLine(
   step: DecidedStep,
+  decision: DecidedOutcome,
   heroDisplayNameKeys: ReadonlyMap<ContentId, string>
 ): ResponseLine {
-  const decision = step.decision;
-
-  if (decision === null) {
-    throw new Error(
-      'A step without a decision reached response building; the filter above missed it.'
-    );
-  }
-
   const hero = step.heroDefinition;
 
   if (hero === null) {

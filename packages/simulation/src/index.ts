@@ -74,7 +74,7 @@ export {
 
 export {
   RejectionCodes,
-  fromDecision,
+  fromDecisions,
   rejected,
   type CommandResult,
   type RejectionCode

@@ -62,27 +62,27 @@ describe('the screen a reloaded campaign draws', () => {
       const steps = restoreDecidedSteps(reloaded);
 
       for (const step of steps) {
-        const decision = step.decision;
-
-        if (decision === null) {
+        if (step.decisions.length === 0) {
           throw new Error(
             `a step restored from '${record.scenario}'/seed-${record.seed} carries no decision, ` +
               'but every event in the history of a campaign was produced by one'
           );
         }
 
-        // Счёт есть ровно тогда, когда красной линии не было — на решениях, которые
-        // корпус действительно записал, а не только на рукотворных. Без этой строки
-        // единственным сторожем правила оставался юнит-тест на выдуманной фикстуре:
-        // экран блокированного ответа счёта не показывает вовсе, поэтому сравнение
-        // экранов ниже нуль вместо `null` не видит.
-        const blocked = decision.trace.blockedBy.length > 0;
-        expect(decision.selectedScore === null).toBe(blocked);
+        for (const decision of step.decisions) {
+          // Счёт есть ровно тогда, когда красной линии не было — на решениях, которые
+          // корпус действительно записал, а не только на рукотворных. Без этой строки
+          // единственным сторожем правила оставался юнит-тест на выдуманной фикстуре:
+          // экран блокированного ответа счёта не показывает вовсе, поэтому сравнение
+          // экранов ниже нуль вместо `null` не видит.
+          const blocked = decision.trace.blockedBy.length > 0;
+          expect(decision.selectedScore === null).toBe(blocked);
 
-        if (blocked) {
-          blockedSeen += 1;
-        } else {
-          scoredSeen += 1;
+          if (blocked) {
+            blockedSeen += 1;
+          } else {
+            scoredSeen += 1;
+          }
         }
       }
 

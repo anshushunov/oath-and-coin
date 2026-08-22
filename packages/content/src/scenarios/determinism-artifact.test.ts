@@ -83,20 +83,20 @@ describe('a score that does not exist is absent, not null', () => {
     // drifts from one keyed on value.
     const result = ran('refusal_by_principle');
     const blocked = result.outcome.steps.find(
-      (step) => step.decision !== null && step.decision.selectedScore === null
+      (step) => step.decisions[0] !== undefined && step.decisions[0].selectedScore === null
     );
 
     expect(blocked, 'refusal_by_principle must contain a blocked decision').toBeDefined();
-    expect(renderDecision(blocked!.decision!)).not.toContain('selected_score');
-    expect(renderDecision(blocked!.decision!)).toContain('"trace_id"');
+    expect(renderDecision(blocked!.decisions[0]!)).not.toContain('selected_score');
+    expect(renderDecision(blocked!.decisions[0]!)).toContain('"trace_id"');
   });
 
   it('writes selected_score on a scored decision', () => {
     const scored = ran('gate0').outcome.steps.find(
-      (step) => step.decision !== null && step.decision.selectedScore !== null
+      (step) => step.decisions[0] !== undefined && step.decisions[0].selectedScore !== null
     );
 
-    expect(renderDecision(scored!.decision!)).toContain('selected_score');
+    expect(renderDecision(scored!.decisions[0]!)).toContain('selected_score');
   });
 });
 

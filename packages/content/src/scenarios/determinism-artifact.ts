@@ -109,7 +109,7 @@ function describeStep(step: StepOutcome): CanonicalValue {
     applied: step.applied,
     rejection_code: step.rejectionCode,
     hero_definition: step.heroDefinition,
-    decision: step.decision === null ? null : describeDecision(step.decision),
+    decisions: step.decisions.map(describeDecision),
     events: step.events.map(describeEvent)
   };
 }

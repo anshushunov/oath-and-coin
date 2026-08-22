@@ -257,10 +257,12 @@ describe('how a response ranks its reasons', () => {
     selectedAction = Actions.Accept
   ) {
     const step = aStep({
-      decision: aDecision({
-        selectedAction,
-        trace: { traceId: 0, positiveFactors, negativeFactors, blockedBy: [], tieBreak: null }
-      })
+      decisions: [
+        aDecision({
+          selectedAction,
+          trace: { traceId: 0, positiveFactors, negativeFactors, blockedBy: [], tieBreak: null }
+        })
+      ]
     });
 
     return contractOfferScreenModel(state, [step]).responses[0]?.reasons ?? [];
@@ -410,15 +412,17 @@ describe('which reasons name their source', () => {
 
   function sourceKeyFor(reasonCode: string, sourceEntity: ContentId): string | null {
     const step = aStep({
-      decision: aDecision({
-        trace: {
-          traceId: 0,
-          positiveFactors: [aFactor({ reasonCode, sourceEntity })],
-          negativeFactors: [],
-          blockedBy: [],
-          tieBreak: null
-        }
-      })
+      decisions: [
+        aDecision({
+          trace: {
+            traceId: 0,
+            positiveFactors: [aFactor({ reasonCode, sourceEntity })],
+            negativeFactors: [],
+            blockedBy: [],
+            tieBreak: null
+          }
+        })
+      ]
     });
 
     return (
@@ -461,17 +465,21 @@ describe('a blocked answer', () => {
   const state = withHeroes(aState(), heroes(ids.bram));
 
   const blocked = aStep({
-    decision: aDecision({
-      selectedAction: Actions.Decline,
-      selectedScore: null,
-      trace: {
-        traceId: 0,
-        positiveFactors: [aFactor({ magnitude: 90 })],
-        negativeFactors: [],
-        blockedBy: [{ reasonCode: ReasonCodes.PrincipleForbids, sourceEntity: ids.refusesTemples }],
-        tieBreak: null
-      }
-    })
+    decisions: [
+      aDecision({
+        selectedAction: Actions.Decline,
+        selectedScore: null,
+        trace: {
+          traceId: 0,
+          positiveFactors: [aFactor({ magnitude: 90 })],
+          negativeFactors: [],
+          blockedBy: [
+            { reasonCode: ReasonCodes.PrincipleForbids, sourceEntity: ids.refusesTemples }
+          ],
+          tieBreak: null
+        }
+      })
+    ]
   });
 
   it('names the principle and shows no reasons beside it', () => {
@@ -503,17 +511,19 @@ describe('whether the hero wavered', () => {
     });
 
     const step = aStep({
-      decision: aDecision({
-        selectedAction: selectedScore >= 0 ? Actions.Accept : Actions.Decline,
-        selectedScore,
-        trace: {
-          traceId: 0,
-          positiveFactors: mood?.positive === true ? [moodFactor] : [],
-          negativeFactors: mood?.positive === false ? [moodFactor] : [],
-          blockedBy: [],
-          tieBreak: null
-        }
-      })
+      decisions: [
+        aDecision({
+          selectedAction: selectedScore >= 0 ? Actions.Accept : Actions.Decline,
+          selectedScore,
+          trace: {
+            traceId: 0,
+            positiveFactors: mood?.positive === true ? [moodFactor] : [],
+            negativeFactors: mood?.positive === false ? [moodFactor] : [],
+            blockedBy: [],
+            tieBreak: null
+          }
+        })
+      ]
     });
 
     return contractOfferScreenModel(state, [step]).responses[0]?.wavered ?? false;
@@ -569,6 +579,69 @@ describe('the screens no run produces', () => {
 });
 
 describe('the read-model hash', () => {
+  it('does not depend on whether N decisions arrive as one step or as N steps', () => {
+    // The obligation `DEC-008` Task 5 inherits from the Task 2 spike
+    // (`docs/technical/SPIKE_2026-08-22-evidence-and-decisions.md`): a command answering
+    // several heroes at once (`pollCrew`, Tasks 6, 10-14) must collapse into `responses`
+    // no differently than the same decisions spread over several one-decision steps. The
+    // spike measured that equality once, on a temporary `pollCrew` probe that was thrown
+    // away with the rest of its code; this is the test that makes the number
+    // reproducible from the repository rather than resting on a discarded run.
+    const state = withContracts(withHeroes(aState(), heroes(ids.bram)), [
+      aContract({ respondedBy: responded(0) })
+    ]);
+
+    // Three distinct decisions — different actions, different traces — so a projection
+    // that quietly dropped all but the first would still be caught: a test built from
+    // three identical decisions could not tell "collapsed correctly" from "kept only
+    // one".
+    const decisions = [
+      aDecision({
+        selectedAction: Actions.Accept,
+        selectedScore: 5,
+        trace: {
+          traceId: 0,
+          positiveFactors: [aFactor({ reasonCode: ReasonCodes.PaymentAttractive, magnitude: 5 })],
+          negativeFactors: [],
+          blockedBy: [],
+          tieBreak: null
+        }
+      }),
+      aDecision({
+        selectedAction: Actions.Decline,
+        selectedScore: -40,
+        trace: {
+          traceId: 1,
+          positiveFactors: [],
+          negativeFactors: [aFactor({ reasonCode: ReasonCodes.RiskTooHigh, magnitude: 40 })],
+          blockedBy: [],
+          tieBreak: null
+        }
+      }),
+      aDecision({
+        selectedAction: Actions.Accept,
+        selectedScore: 0,
+        trace: {
+          traceId: 2,
+          positiveFactors: [],
+          negativeFactors: [],
+          blockedBy: [],
+          tieBreak: ReasonCodes.NoReasonToRefuse
+        }
+      })
+    ];
+
+    const oneStepWithThree = [aStep({ decisions })];
+    const threeStepsWithOne = decisions.map((decision) => aStep({ decisions: [decision] }));
+
+    const collapsed = contractOfferScreenModel(state, oneStepWithThree);
+    const spread = contractOfferScreenModel(state, threeStepsWithOne);
+
+    expect(collapsed.responses).toHaveLength(3);
+    expect(collapsed.responses).toEqual(spread.responses);
+    expect(readModelHash(collapsed)).toBe(readModelHash(spread));
+  });
+
   it('distinguishes two screens that differ only in state', () => {
     // Incomplete and Normal can carry an identical roster and identical responses. If
     // the state were outside the hash, a screen still waiting on a hero would be

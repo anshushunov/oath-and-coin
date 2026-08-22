@@ -26,11 +26,15 @@ import type { DecidedOutcome, DecidedStep } from '@oath-and-coin/presentation';
  * named" is a question about a different first step.
  */
 export function restoreDecidedSteps(state: GameState): readonly DecidedStep[] {
-  return state.history.map((event) => ({
-    command: { contract: event.contractId },
-    heroDefinition: heroDefinitionOf(state, event),
-    decision: restoreOutcome(state, event)
-  }));
+  return state.history.map((event) => {
+    const decision = restoreOutcome(state, event);
+
+    return {
+      command: { contract: event.contractId },
+      heroDefinition: heroDefinitionOf(state, event),
+      decisions: decision === null ? [] : [decision]
+    };
+  });
 }
 
 function heroDefinitionOf(state: GameState, event: DomainEvent): ContentId {

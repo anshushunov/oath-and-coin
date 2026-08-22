@@ -2,7 +2,7 @@ import { SortedMap } from './collections/sorted-map.ts';
 import { SortedSet } from './collections/sorted-set.ts';
 import {
   rejected,
-  fromDecision,
+  fromDecisions,
   RejectionCodes,
   type CommandResult
 } from './commands/command-result.ts';
@@ -171,5 +171,5 @@ export function proposeContractToHero(
     decision.ordinalsConsumed
   );
 
-  return fromDecision(nextState, domainEvent, decision.result);
+  return fromDecisions(nextState, [domainEvent], [decision.result]);
 }

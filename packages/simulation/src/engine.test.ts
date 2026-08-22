@@ -89,7 +89,7 @@ describe('a refused command changes nothing at all', () => {
 
     expect(result.applied).toBe(false);
     expect(result.rejectionCode).toBe(code);
-    expect(result.decision).toBeNull();
+    expect(result.decisions).toEqual([]);
     expect(result.events).toEqual([]);
     // The same object, not an equal one: a caller compares by reference to know that
     // nothing happened.
@@ -161,7 +161,7 @@ describe('a refused command changes nothing at all', () => {
 
     const withRefusals = proposeContractToHero(afterRefusals, aProposal());
 
-    expect(withRefusals.decision).toEqual(withoutRefusals.decision);
+    expect(withRefusals.decisions).toEqual(withoutRefusals.decisions);
     expect(withRefusals.state.metadata.nextDecisionOrdinal).toBe(
       withoutRefusals.state.metadata.nextDecisionOrdinal
     );
@@ -179,7 +179,7 @@ describe('an applied command records what the hero decided', () => {
     expect(result.state.metadata.nextEventId).toBe(1);
     expect(result.state.metadata.nextTraceId).toBe(1);
     expect(result.state.metadata.nextDecisionOrdinal).toBe(1n);
-    expect(result.state.traces.get(0)).toEqual(result.decision?.trace);
+    expect(result.state.traces.get(0)).toEqual(result.decisions[0]?.trace);
     expect(result.state.appliedCommandIds.has(1)).toBe(true);
   });
 
@@ -189,7 +189,7 @@ describe('an applied command records what the hero decided', () => {
     const result = proposeContractToHero(aCampaign(), aProposal());
 
     expect(
-      result.decision?.trace.positiveFactors.some(
+      result.decisions[0]?.trace.positiveFactors.some(
         (factor) =>
           factor.reasonCode === ReasonCodes.PersonalConviction && factor.sourceEntity === ids.loyal
       )
@@ -212,7 +212,7 @@ describe('an applied command records what the hero decided', () => {
       aProposal()
     );
 
-    expect(accepted.decision?.selectedAction).toBe(Actions.Accept);
+    expect(accepted.decisions[0]?.selectedAction).toBe(Actions.Accept);
     expect(accepted.events[0]?.kind).toBe('hero_accepted_contract');
     expect(accepted.events[0]?.causalTraceId).toBe(0);
   });
@@ -229,7 +229,7 @@ describe('an applied command records what the hero decided', () => {
 
     const contract = declined.state.contracts.get(ids.crypt)!;
 
-    expect(declined.decision?.selectedAction).toBe(Actions.Decline);
+    expect(declined.decisions[0]?.selectedAction).toBe(Actions.Decline);
     expect(declined.events[0]?.kind).toBe('hero_declined_contract');
     expect(contract.status).toBe(ContractStatus.Offered);
     expect(contract.respondedBy.has(bram.id)).toBe(true);
@@ -251,7 +251,7 @@ describe('an applied command records what the hero decided', () => {
       aProposal({ commandId: 2, heroId: zara.id, expectedStateVersion: 1 })
     );
 
-    expect(second.decision?.selectedAction).toBe(Actions.Accept);
+    expect(second.decisions[0]?.selectedAction).toBe(Actions.Accept);
     expect(second.state.contracts.get(ids.crypt)!.status).toBe(ContractStatus.Crewed);
   });
 
@@ -289,8 +289,8 @@ describe('an applied command records what the hero decided', () => {
 
     // Bram refuses an unpaid, dangerous job; Zara, who cares about none of it, does not.
     // So the two sets genuinely differ and the subset is not trivially true.
-    expect(first.decision?.selectedAction).toBe(Actions.Decline);
-    expect(second.decision?.selectedAction).toBe(Actions.Accept);
+    expect(first.decisions[0]?.selectedAction).toBe(Actions.Decline);
+    expect(second.decisions[0]?.selectedAction).toBe(Actions.Accept);
     expect(contract.respondedBy.values()).toEqual([bram.id, zara.id]);
     expect(contract.acceptedBy.values()).toEqual([zara.id]);
     for (const accepter of contract.acceptedBy.values()) {
@@ -322,7 +322,7 @@ describe('an applied command records what the hero decided', () => {
       aProposal({ commandId: 2, heroId: zaraLikesBram.id, expectedStateVersion: 1 })
     );
 
-    expect(second.decision?.trace.positiveFactors).toContainEqual({
+    expect(second.decisions[0]?.trace.positiveFactors).toContainEqual({
       reasonCode: ReasonCodes.StandsWithComrade,
       sourceEntity: ids.bram,
       magnitude: 9
@@ -341,8 +341,8 @@ describe('a decision the gate closed still happened', () => {
     const result = proposeContractToHero(state, aProposal({ heroId: zara.id }));
 
     expect(result.applied).toBe(true);
-    expect(result.decision?.selectedScore).toBeNull();
-    expect(result.decision?.trace.blockedBy).toHaveLength(1);
+    expect(result.decisions[0]?.selectedScore).toBeNull();
+    expect(result.decisions[0]?.trace.blockedBy).toHaveLength(1);
     expect(result.state.metadata.stateVersion).toBe(1);
     expect(result.state.metadata.nextTraceId).toBe(1);
     expect(result.state.metadata.nextDecisionOrdinal).toBe(0n);
