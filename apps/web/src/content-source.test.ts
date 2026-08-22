@@ -30,6 +30,12 @@ import {
  * against what another source in this same process answers. Two sources compared with
  * each other agree just as happily when both are wrong; a recorded constant cannot
  * move to meet a defect.
+ *
+ * One of the two constants below is the exception, and `SHIPPED_CONTENT_VERSION`'s own
+ * comment says so: `DEC-008` Task 3 moved the shipped tree's bytes on purpose, so that
+ * constant is a drift guard pinned by this repository from here on, not the corpus's
+ * own recorded value any more. `SCREEN_EMPTY_CONTENT_VERSION` is unaffected and still
+ * is what the corpus recorded.
  */
 
 /**

@@ -152,29 +152,6 @@ describe('loadContentSet over the shipped tree', () => {
     });
   });
 
-  it('reads the patron fee under its new name', () => {
-    // DEC-008 §1: the old field name stopped distinguishing anything the moment a
-    // second and a third kind of money joined it, so the field the file carries is
-    // `patron_fee` and the definition this loader produces carries `patronFee`.
-    const root = treeWith({
-      contracts: [
-        {
-          schema_version: 2,
-          id: 'core:cleanse_the_crypt',
-          display_name_key: 'contract.core.cleanse_the_crypt.name',
-          patron_fee: 55,
-          risk: 80,
-          required_crew: 4,
-          tags: ['target:undead']
-        }
-      ]
-    });
-
-    expect(loadContentSet(root).contracts.get(parseContentId('core:cleanse_the_crypt'))!.patronFee).toBe(
-      55
-    );
-  });
-
   it('gives an inclination its weight and a principle none', () => {
     // A red line has no strength, it closes the path (HERO_DECISION_SPEC §1.3), and
     // 0 is the domain's way of saying so.
@@ -192,6 +169,35 @@ describe('loadContentSet over the shipped tree', () => {
       tag: 'method:deception',
       weight: 0
     });
+  });
+});
+
+describe('loadContentSet over a tree built for this test', () => {
+  it('reads the patron fee under its new name', () => {
+    // DEC-008 §1: the old field name stopped distinguishing anything the moment a
+    // second and a third kind of money joined it, so the field the file carries is
+    // `patron_fee` and the definition this loader produces carries `patronFee`. Its
+    // own tree rather than the shipped one — the shipped tree already carries this
+    // through `describe('loadContentSet over the shipped tree')` above — this test's
+    // reason to exist is the value (55) differing from every fixture built there, so
+    // a loader that read a stale cached parse could not pass it by coincidence.
+    const root = treeWith({
+      contracts: [
+        {
+          schema_version: 2,
+          id: 'core:cleanse_the_crypt',
+          display_name_key: 'contract.core.cleanse_the_crypt.name',
+          patron_fee: 55,
+          risk: 80,
+          required_crew: 4,
+          tags: ['target:undead']
+        }
+      ]
+    });
+
+    expect(
+      loadContentSet(root).contracts.get(parseContentId('core:cleanse_the_crypt'))!.patronFee
+    ).toBe(55);
   });
 });
 

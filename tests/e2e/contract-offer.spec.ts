@@ -3,8 +3,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { screenFor } from '@oath-and-coin/application';
+import { artifactHash } from '@oath-and-coin/content';
 import { loadAndRunScenario, loadLocaleCatalogue } from '@oath-and-coin/content/node';
-import { expectedSnapshot, snapshotHash } from '@oath-and-coin/presentation';
+import { expectedSnapshot, readModelHash, snapshotHash } from '@oath-and-coin/presentation';
 import { canonicalSha256, type CanonicalValue } from '@oath-and-coin/simulation';
 import { expect, test, type ConsoleMessage, type Page, type Request } from '@playwright/test';
 
@@ -23,10 +24,14 @@ import { expectWindowBoundedScreen, measureLayout } from './layout.ts';
  * **Nothing here is verified against what the page says about itself.** That is the whole
  * design of the verdict, and it is why the imports above exist:
  *
- * - the read-model hash is recomputed here from the frozen corpus entry — canonicalizing
- *   the recorded `read_model` without its own `sha256`, exactly as the parity tool does —
- *   and compared with the one the page printed. Comparing the page against its own
- *   printed number would be a check that a string equals itself;
+ * - the read-model hash is recomputed here, off a model this process builds fresh from the
+ *   scenario on disk, and compared with the one the page printed. Comparing the page
+ *   against its own printed number would be a check that a string equals itself. **Not
+ *   against the frozen corpus entry's own recorded `read_model` any more** — `DEC-008`
+ *   Task 3 renamed the contract's fee field in the read-model projection, which moved this
+ *   hash on every scenario that shows a contract, and the corpus that recorded the old one
+ *   is frozen and cannot be rewritten. That was already a remnant of the byte-for-byte C#
+ *   parity `ADR-013` retired; see the comment beside `expectedReadModelHash` below;
  * - the rendered-UI hash is built from two unrelated halves: `expectedSnapshot` computes
  *   the texts a correctly bound screen owes from a model this process builds off the
  *   disk, and the texts the page actually rendered are walked out of its DOM. Neither
@@ -181,21 +186,57 @@ test.describe('contract-offer screen, in a browser', () => {
       // The corpus hashed the projection without the hash it stores beside it. Recomputed
       // rather than read, so an entry that disagrees with itself is caught here instead of
       // silently deciding which half the page is measured against — the same discipline
-      // the parity tool applies for the reason §3.6 recorded.
+      // the parity tool applies for the reason §3.6 recorded. This is a self-consistency
+      // check on the frozen entry alone — neither side is the rename below reaches — so it
+      // stays exactly what it was.
       const { sha256: recordedHash, ...recorded } = entry.read_model;
-      const expectedReadModelHash = canonicalSha256(recorded as CanonicalValue);
+      const corpusReadModelHash = canonicalSha256(recorded as CanonicalValue);
       expect(
-        expectedReadModelHash,
+        corpusReadModelHash,
         'the corpus entry must agree with the hash it carries, or it is an oracle for nothing'
       ).toBe(recordedHash);
 
       // The other side of the second hash, built in this process off the disk. Nothing in
       // it can know what the page rendered, which is exactly what makes agreement mean
       // something.
-      const expectedModel = screenFor(
-        loadAndRunScenario({ repositoryRoot: REPOSITORY_ROOT, scenario, checkpoint, seed: SEED })
-      );
+      const runResult = loadAndRunScenario({
+        repositoryRoot: REPOSITORY_ROOT,
+        scenario,
+        checkpoint,
+        seed: SEED
+      });
+      const expectedModel = screenFor(runResult);
       const expectedTexts = expectedSnapshot(expectedModel, catalogue);
+
+      // `content_version` and `canonical_hash` below are held to the same values,
+      // computed the same way `packages/application/src/session.ts`'s own run-request
+      // builder computes them for the page — `null` for a run that never reached
+      // content, otherwise read off `runResult.outcome`. Not against
+      // `entry.inputs.content_version`/`entry.canonical_sha256` any more: `DEC-008`
+      // Task 3 moved the shipped content's bytes and, with them, both of these, on
+      // every scenario that reaches a state — `screen_incomplete` and `screen_normal`
+      // among these five — away from what the frozen corpus recorded, forever:
+      // `migration/oracle/v1` cannot be rewritten. That frozen comparison was already a
+      // remnant of the byte-for-byte parity `ADR-013` retired. Task 20 restores an
+      // external comparison once `scenarios/*.canonical.json` is rebuilt under the new
+      // field name.
+      const expectedContentVersion =
+        runResult.kind === 'ran' ? runResult.outcome.finalState.metadata.contentVersion : null;
+      const expectedCanonicalHash =
+        runResult.kind === 'ran' ? artifactHash(runResult.outcome) : null;
+
+      // The page's own read-model hash is compared against this, not against
+      // `corpusReadModelHash` above. `DEC-008` Task 3 renamed the contract's fee field in
+      // the read-model projection (`describeContract` in
+      // `contract-offer-screen-model-factory.ts`), which moved the hash on every scenario
+      // that shows a contract — `screen_incomplete` and `screen_normal` among these five —
+      // away from what the frozen corpus recorded, forever: `migration/oracle/v1` cannot be
+      // rewritten. That frozen comparison was already a remnant of the byte-for-byte parity
+      // `ADR-013` retired, so this hash is now held to the same discipline the rendered-UI
+      // hash beside it already uses — a value this same process just computed off the disk,
+      // never the one the page prints about itself. Task 20 restores an external comparison
+      // once `scenarios/*.canonical.json` is rebuilt under the new field name.
+      const expectedReadModelHash = readModelHash(expectedModel);
 
       // What the scene owes, derived here from the same model — a marker when there is a
       // contract, a token per hero. The projection's own rule, restated in one line
@@ -268,10 +309,9 @@ test.describe('contract-offer screen, in a browser', () => {
       expect(renderedTexts).toEqual(expectedTexts);
 
       // `null` on both sides exactly when the run produced no artifact — a loading screen
-      // read no content and a failed one produced none. The corpus records the same two
-      // nulls, so this compares two independent statements rather than restating one.
-      expect(reported.content_version).toBe(entry.inputs.content_version);
-      expect(reported.canonical_hash).toBe(entry.canonical_sha256);
+      // read no content and a failed one produced none.
+      expect(reported.content_version).toBe(expectedContentVersion);
+      expect(reported.canonical_hash).toBe(expectedCanonicalHash);
 
       // Whether this state puts the question at all, asserted before the answer. Without
       // it a layout change that stopped the roster overflowing would turn the two

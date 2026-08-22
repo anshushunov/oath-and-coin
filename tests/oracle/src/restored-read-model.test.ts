@@ -17,8 +17,8 @@ import { allCorpusRecords, focusedContractOf, runCorpusRecord } from './corpus.t
  * model is where that recovered number becomes a visible sentence ("wavered", and which
  * reasons rank above which).
  *
- * **Both comparisons below are against a live, freshly computed screen, not against the
- * corpus's own frozen `read_model.sha256`.** They were against that frozen hash once;
+ * **The comparison below is against a live, freshly computed screen, not against the
+ * corpus's own frozen `read_model.sha256`.** It was against that frozen hash once;
  * `DEC-008` Task 3 renamed the contract's fee field in the read-model projection
  * (`describeContract` in `contract-offer-screen-model-factory.ts`), which moved every
  * byte that hash was taken over, and the corpus that recorded it is frozen and cannot be
@@ -28,6 +28,18 @@ import { allCorpusRecords, focusedContractOf, runCorpusRecord } from './corpus.t
  * a reloaded screen agrees with a screen that never stopped. Task 20 restores an external
  * comparison, once `scenarios/*.canonical.json` is rebuilt under the new field name and
  * can again supply an expected value this build did not itself compute.
+ *
+ * **One test, not two.** This file used to carry a second `it`, comparing the same two
+ * screens a second time over the same 50 records — a distinct claim while the first test
+ * compared against the frozen hash, and a duplicate of the first the moment that hash
+ * comparison came out: both loops ended up asserting the identical equality over the
+ * identical records. Merged into the one loop below rather than left as two, so the file
+ * still makes exactly the claims it can back and not one repeated for no reason. The
+ * asymmetry the second test carried is kept: `live` omits `focusedContract` where `model`
+ * states it outright, so the comparison still holds the fallback resolution (the first
+ * applied contract, or the lexicographically-first with nothing applied yet) to the same
+ * answer as the explicit one — `contractOfferScreenModel`'s own comment names this as
+ * degenerate on the corpus, and this is what continues to measure that.
  */
 
 describe('the screen a reloaded campaign draws', () => {
@@ -62,8 +74,8 @@ describe('the screen a reloaded campaign draws', () => {
         // Счёт есть ровно тогда, когда красной линии не было — на решениях, которые
         // корпус действительно записал, а не только на рукотворных. Без этой строки
         // единственным сторожем правила оставался юнит-тест на выдуманной фикстуре:
-        // экран блокированного ответа счёта не показывает вовсе, поэтому хеш ниже нуль
-        // вместо `null` не видит.
+        // экран блокированного ответа счёта не показывает вовсе, поэтому сравнение
+        // экранов ниже нуль вместо `null` не видит.
         const blocked = decision.trace.blockedBy.length > 0;
         expect(decision.selectedScore === null).toBe(blocked);
 
@@ -76,22 +88,11 @@ describe('the screen a reloaded campaign draws', () => {
 
       // Поля `focused_contract` в корпусе нет и появиться не может — он заморожен.
       // Ожидаемый фокус берётся из самой read model: это то, что экран показывал.
+      // `live` не называет его вовсе — так сравнение заодно проверяет, что запасной
+      // выбор (первый применённый контракт, а до этого лексикографически первый)
+      // на этом корпусе совпадает с явным.
       const model = contractOfferScreenModel(reloaded, steps, focusedContractOf(record));
-
-      // Раньше здесь сверялся `readModelHash(model)` с замороженным
-      // `record.read_model.sha256`. DEC-008 Task 3 переименовал денежное поле
-      // контракта в канонической проекции read model (`describeContract` в
-      // `contract-offer-screen-model-factory.ts`), что подвинуло байты этой
-      // проекции — и сравнение с частью корпуса, который заморожен и не
-      // переписывается, покраснело бы навсегда. Это был остаток паритета с
-      // C#-сборкой, который `ADR-013` уже снял: `record.read_model.sha256`
-      // сравнивало не два независимых источника, а эту сборку с собой же.
-      // Экран восстановленного прогона по-прежнему проверяется — напрямую,
-      // против экрана непрерывного прогона тех же команд, без хеша между двумя
-      // сторонами одной сборки. Task 20 вернёт внешний эталон: пересобранные
-      // `scenarios/*.canonical.json` станут источником ожидаемого значения,
-      // которое эта сборка не вычисляет сама.
-      const live = contractOfferScreenModel(outcome.finalState, outcome.steps, focusedContractOf(record));
+      const live = contractOfferScreenModel(outcome.finalState, outcome.steps);
 
       expect(model).toEqual(live);
     }
@@ -101,25 +102,5 @@ describe('the screen a reloaded campaign draws', () => {
     // эта проверка и стережёт.
     expect(blockedSeen).toBe(10);
     expect(scoredSeen).toBe(88);
-  });
-
-  it('согласуется с экраном живого прогона на тех же 50 записях', () => {
-    // Отдельная проверка, а не следствие: хеш выше сравнивает восстановленный экран с
-    // замороженным числом, и если бы обе стороны разошлись с текущим прогоном
-    // одинаково, он бы этого не показал. Здесь сравниваются два экрана этой сборки —
-    // собранный из шагов прогона и собранный из истории с следами.
-    const records = allCorpusRecords().filter((record) => record.final_state !== null);
-
-    for (const record of records) {
-      const outcome = runCorpusRecord(record);
-      const live = contractOfferScreenModel(outcome.finalState, outcome.steps);
-      const reloaded = decodeSnapshot(
-        JSON.parse(JSON.stringify(encodeSnapshot(outcome.finalState)))
-      );
-
-      expect(
-        contractOfferScreenModel(reloaded, restoreDecidedSteps(reloaded), focusedContractOf(record))
-      ).toEqual(live);
-    }
   });
 });
