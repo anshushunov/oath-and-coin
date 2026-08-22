@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdtemp, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -88,6 +89,16 @@ function bytesOf(text: string): Uint8Array {
   return new TextEncoder().encode(text);
 }
 
+/**
+ * Byte equality for payloads too large to compare element by element — see the
+ * ceiling test for the measurement that put this here. `null` answers a value no
+ * digest can equal, so a read that came back empty fails the comparison rather
+ * than throwing inside it.
+ */
+function sha256(bytes: Uint8Array | null): string {
+  return bytes === null ? 'no bytes' : createHash('sha256').update(bytes).digest('hex');
+}
+
 /** A `.tmp` file this store never itself produced under this name — the
  * shape a crash between `close` and `rename` leaves behind (brief step 3,
  * spike B). */
@@ -135,12 +146,26 @@ describe('reading a slot', () => {
     // The other side of the same comparison. Without it, a mutant turning `>`
     // into `>=` stays green, and the file this build itself produces at the
     // maximum size would stop being readable.
+    //
+    // **Length and digest, not `toEqual`, and that is measured rather than
+    // preferred.** `toEqual` over two equal 8 MiB typed arrays takes **12 828 ms**
+    // on a free workstation — Vitest walks them element by element in JavaScript,
+    // 8 388 608 times. Under a loaded runner that goes past `testTimeout: 30_000`,
+    // which is exactly what happened: this test failed once in six local full runs
+    // and once on CI, on a commit whose re-run was green, with
+    // `Test timed out in 30000ms` and nothing about bytes. The identical claim as
+    // a length plus a SHA-256 takes **5 ms** — the same two numbers, 2500× cheaper,
+    // and a mismatch now reports two hex strings instead of asking Vitest to diff
+    // eight million elements.
     const dir = await temporaryDirectory();
     const store = fileSaveStore(dir);
     const atTheCeiling = Buffer.alloc(MAX_SAVE_BYTES, 0x61);
     await writeFile(join(dir, 'slot-a.save'), atTheCeiling);
 
-    await expect(store.read('slot-a')).resolves.toEqual(new Uint8Array(atTheCeiling));
+    const read = await store.read('slot-a');
+
+    expect(read?.byteLength).toBe(MAX_SAVE_BYTES);
+    expect(sha256(read)).toBe(sha256(atTheCeiling));
   });
 
   it('answers the bytes a previous write left behind', async () => {
