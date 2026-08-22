@@ -22,7 +22,9 @@ export default tseslint.config(
       '**/node_modules/**',
       'artifacts/**',
       '.pnpm-store/**',
-      // The C# side and the frozen corpus are not this tool's business.
+      // The frozen corpus is not this tool's business — every file in it is
+      // covered by a digest, so a fixer touching one would invalidate the
+      // evidence the migration is measured against.
       'migration/oracle/**'
     ]
   },

@@ -5,12 +5,16 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 /**
  * Holds three statements of the content rules to each other.
  *
- * Until cutover (Task 19) two stacks read schemas: this one validates through the Zod
- * contracts, the .NET one still reads the hand-written `schemas/*.schema.json`. That
- * is two documents plus the TypeScript constants the loader enforces — three
- * statements of one rule, which `bounds.ts` says is only safe while something checks
- * that they still agree. This is that something, and it is the successor to the C#
- * side's `SchemaAgreementTests`.
+ * **Why the hand-written schemas outlived the stack that read them.** Until cutover
+ * (Task 19) two stacks read schemas: this one validates through the Zod contracts,
+ * the .NET one read the hand-written `schemas/*.schema.json`. Deleting that stack
+ * removed a reader and not the reason. The generated schemas are a projection of the
+ * Zod contracts, so comparing the two can only ever find a *stale artifact* — never a
+ * bound that moved. The hand-written document is the one statement of the content
+ * rules that is not derived from the loader's own code, which makes it the only thing
+ * in the tree that can disagree with a constant somebody raised in one place. That is
+ * what the second half below measures, and it is why removing these files would be a
+ * decision about the content contract rather than tidying after the cutover.
  *
  * Two independent failures are reported:
  *

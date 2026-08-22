@@ -5,15 +5,6 @@ dist/
 artifacts/
 pnpm-lock.yaml
 
-# The C# side keeps its own formatter (`dotnet format`) until cutover removes
-# it. Two formatters over one tree is how a repository gets a reformat war.
-**/*.cs
-**/*.csproj
-**/*.sln
-global.json
-tests/OathAndCoin.*/
-.github/workflows/dotnet.yml
-
 # The oracle corpus is byte-frozen: every file in it is covered by a SHA-256 in
 # its own manifest, so a formatter touching a single space would invalidate the
 # evidence the migration is measured against.
