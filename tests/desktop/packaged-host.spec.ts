@@ -294,11 +294,24 @@ interface PageExposure {
   processReachable: boolean;
 }
 
-/** The shape the preload puts on `window.desktop`; a type, so it erases. */
+/**
+ * The shape the preload puts on `window.desktop`; a type, so it erases.
+ *
+ * Both save channels answer a *reply*, not a bare result: since the review of PR #25 a
+ * refusal the host made deliberately — a file past the size ceiling, a slot that no
+ * longer holds what the caller saw — travels as a value carrying a stable code, because
+ * a rejection would arrive here as the storage being unreachable and lose it.
+ */
+type BridgeReadReply = { ok: true; bytes: Uint8Array | null } | { ok: false; code: string };
+type BridgeWriteReply = { ok: true } | { ok: false; code: string };
+
+/** What the caller believes the slot still holds — `packages/application`'s `SlotGuard`. */
+type BridgeGuard = { kind: 'unchecked' } | { kind: 'as-seen'; seen: Uint8Array | null };
+
 interface DesktopBridge {
   describeHost(): Promise<unknown>;
-  readSave(slot: string): Promise<Uint8Array | null>;
-  writeSave(slot: string, bytes: Uint8Array): Promise<void>;
+  readSave(slot: string): Promise<BridgeReadReply>;
+  writeSave(slot: string, bytes: Uint8Array, guard: BridgeGuard): Promise<BridgeWriteReply>;
   listSaves(): Promise<readonly string[]>;
 }
 
@@ -691,24 +704,56 @@ async function requireScratchDataDirectory(app: ElectronApplication): Promise<vo
   }
 }
 
-/** Writes `hex` into the probe slot through the bridge and reads it back. */
-async function writeAndReadBack(app: ElectronApplication, hex: string): Promise<string> {
+/**
+ * Writes `hex` into the probe slot through the bridge and reads it back.
+ *
+ * `seenHex` is what the caller claims the slot holds — `null` for "I saw it empty",
+ * `undefined` for "I have not looked". A write refused by that claim answers its code
+ * rather than the bytes, so one function covers both the round trip and the refusal:
+ * the packaged build is the only place the compare-and-swap runs across a real process
+ * boundary.
+ */
+async function writeAndReadBack(
+  app: ElectronApplication,
+  hex: string,
+  seenHex?: string | null
+): Promise<string> {
   await requireScratchDataDirectory(app);
   const page = await app.firstWindow();
 
   return page.evaluate(
-    async ({ slot, payload }) => {
+    async ({ slot, payload, checked, seen }) => {
       const api = (window as unknown as { desktop: DesktopBridge }).desktop;
-      const bytes = new Uint8Array(
-        (payload.match(/../g) ?? []).map((pair) => Number.parseInt(pair, 16))
-      );
-      await api.writeSave(slot, bytes);
+      const decode = (text: string): Uint8Array =>
+        new Uint8Array((text.match(/../g) ?? []).map((pair) => Number.parseInt(pair, 16)));
+      const encode = (bytes: Uint8Array): string =>
+        [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+
+      const guard: BridgeGuard = checked
+        ? { kind: 'as-seen', seen: seen === null ? null : decode(seen) }
+        : { kind: 'unchecked' };
+
+      const written = await api.writeSave(slot, decode(payload), guard);
+      if (!written.ok) {
+        return written.code;
+      }
+
       const back = await api.readSave(slot);
-      return back === null
-        ? ''
-        : [...back].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+      if (!back.ok) {
+        return back.code;
+      }
+
+      return back.bytes === null ? '' : encode(back.bytes);
     },
-    { slot: PROBE_SLOT, payload: hex }
+    // `checked` beside `seen` rather than `undefined` inside it: `undefined` does not
+    // survive Playwright's argument serialization, and "I saw it empty" arriving as "I
+    // have not looked" is the opposite claim.
+    {
+      slot: PROBE_SLOT,
+      payload: hex,
+      checked: seenHex !== undefined,
+      seen: seenHex ?? null
+    }
   );
 }
 
@@ -1041,6 +1086,30 @@ test.describe('packaged desktop host', () => {
     // at the expected length would not hide a tail the first payload left.
     const written = await mainProcess(app, { kind: 'measure-save', slot: PROBE_SLOT });
     expect(written.sha256).toBe(SECOND_PROBE_SHA256);
+  });
+
+  test('a write held to a stale view of the slot is refused, and the slot is left alone', async () => {
+    expect(hostSaveListBroken, 'this test must run before the host refusal probe').toBe(false);
+
+    // The compare-and-swap the review of PR #25 asked for, on the packaged build —
+    // the only place it runs across a real process boundary, with the comparison made
+    // in the main process rather than by the caller. The slot holds the second probe
+    // after the test above; claiming it holds the first is exactly the stale view a
+    // second window would have.
+    const stale = toHex(PROBE_BYTES);
+    const current = toHex(SECOND_PROBE_BYTES);
+
+    expect(await writeAndReadBack(app, stale, stale)).toBe('SAVE_SLOT_CHANGED');
+
+    // The bytes, not only the code: read from the file, so this says the host never
+    // moved rather than that it reported not moving.
+    const untouched = await mainProcess(app, { kind: 'measure-save', slot: PROBE_SLOT });
+    expect(untouched.sha256).toBe(SECOND_PROBE_SHA256);
+
+    // And the guard is passable — a caller that looked again writes through. Without
+    // this, a host that refused every checked write would satisfy the line above.
+    expect(await writeAndReadBack(app, stale, current)).toBe(stale);
+    expect(await writeAndReadBack(app, current)).toBe(current);
   });
 
   test('the packaged renderer is the browser build this tree produced', async () => {
