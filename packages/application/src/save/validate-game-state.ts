@@ -1,9 +1,12 @@
 import {
   ContractStatus,
+  type CausalTrace,
   type ContractState,
   type ContentId,
+  type DomainEvent,
   type GameState,
-  type HeroId
+  type HeroId,
+  type TraceFactor
 } from '@oath-and-coin/simulation';
 
 import { SaveErrorCodes, SaveReadError } from '@oath-and-coin/content';
@@ -37,17 +40,23 @@ import { SaveErrorCodes, SaveReadError } from '@oath-and-coin/content';
  */
 export function validateGameState(state: GameState): void {
   checkReferentialIntegrity(state);
+  checkDecisionTraces(state);
   checkResponseBookkeeping(state);
   checkCounters(state);
 }
 
 /**
  * References *between* two of `snapshot-codec.ts`'s independently-built maps — an
- * event's `heroId` or `contractId`, an event's `causalTraceId` pointing at a trace, a
- * contract's `respondedBy` or `acceptedBy` naming a hero, a hero's `traits` naming a
- * rule. The codec checks a map's own key against its value's identity and stops there,
- * because a reference across that seam spans two maps neither of which is being built
- * when the other is read.
+ * event's `heroId` or `contractId`, a contract's `respondedBy` or `acceptedBy` naming a
+ * hero, a hero's `traits` naming a rule. The codec checks a map's own key against its
+ * value's identity and stops there, because a reference across that seam spans two maps
+ * neither of which is being built when the other is read.
+ *
+ * An event's `causalTraceId` is the one reference of that shape *not* checked here: it
+ * belongs to {@link checkDecisionTraces}, which has to look the trace up anyway to say
+ * anything about what it explains, and one lookup with one refusal is better than a
+ * dangling-reference check here and a semantic one there disagreeing about which fires
+ * first.
  */
 function checkReferentialIntegrity(state: GameState): void {
   for (const event of state.history) {
@@ -62,13 +71,6 @@ function checkReferentialIntegrity(state: GameState): void {
       throw inconsistent(
         `history event ${String(event.eventId)} names contract '${event.contractId}', but the ` +
           'save carries no such contract.'
-      );
-    }
-
-    if (event.causalTraceId !== null && !state.traces.has(event.causalTraceId)) {
-      throw inconsistent(
-        `history event ${String(event.eventId)} references causalTraceId ` +
-          `${String(event.causalTraceId)}, but the save stores no trace under that id.`
       );
     }
   }
@@ -108,6 +110,147 @@ function checkReferentialIntegrity(state: GameState): void {
       }
     }
   }
+}
+
+/**
+ * Every decision against the explanation stored for it — the contract `ADR-007` and `TDD`
+ * §8 state, checked on a file rather than assumed of one.
+ *
+ * **What was open before this.** External review of segment 5 re-signed two files, each
+ * with one independent substitution, and both read back clean: one put `causalTraceId:
+ * null` on a decision event, the other added a `blockedBy` entry to the trace of an
+ * *accepted* contract while leaving its factors in place. Nothing checked either.
+ * `checkReferentialIntegrity` asked only whether a non-null reference resolved, and the
+ * counters asked only how many traces there were. So the first file lost the explanation
+ * of a decision the campaign had made — after loading it, the screen has a step with no
+ * "why" and `restoreDecidedSteps` answers `null` — and the second let the interface show a
+ * hero *accepting* a contract that its own trace says a red line closed.
+ *
+ * **Why every event, with no exception for a future tick.** `DomainEvent` is a closed
+ * union of two members and both are decisions (`domain-event.ts`), so today "an event
+ * with no trace" is exactly "a decision with no explanation". The nullability on
+ * `DomainEventBase.causalTraceId` is there for a tick event that does not exist yet; the
+ * day one is added, this loop is where the exception has to be written, and it will say
+ * so by refusing the first tick anybody produces rather than by silently admitting an
+ * unexplained decision in the meantime.
+ *
+ * **Coverage is a bijection, in both directions.** An event names exactly one trace, and
+ * a trace explains exactly one event. The counters next door already force
+ * `traces.size === nextTraceId` and dense ids, which is a statement about numbering and
+ * not about coverage: two events sharing one trace, with a second trace nothing points
+ * at, satisfies every count.
+ *
+ * **The score is not stored, and does not need to be.** `CausalTrace` carries the terms
+ * rather than their sum, and the sum *is* the score — the same identity
+ * `restoreDecidedSteps` already computes the number it shows a player from
+ * (`restore-steps.ts`), and the same one `contract-decision-rule.ts` produces (its own
+ * suite pins `Σpositive − Σnegative === selectedScore`). So "the action agrees with the
+ * score" is checkable from the file alone. It cannot silently overflow the way the
+ * engine's own `toInt32` can: `snapshot-codec.ts` bounds a factor's magnitude at
+ * `PAYMENT_MAX` and bounds how many factors a side may hold, which is that comment's
+ * stated reason for existing.
+ */
+function checkDecisionTraces(state: GameState): void {
+  const explains = new Map<number, number>();
+
+  for (const event of state.history) {
+    if (event.causalTraceId === null) {
+      throw inconsistent(
+        `history event ${String(event.eventId)} records a decision ('${event.kind}') carrying no ` +
+          'causalTraceId; every decision this build records is stored with the explanation it ' +
+          'was taken on.'
+      );
+    }
+
+    const alreadyExplained = explains.get(event.causalTraceId);
+    if (alreadyExplained !== undefined) {
+      throw inconsistent(
+        `history events ${String(alreadyExplained)} and ${String(event.eventId)} both reference ` +
+          `trace ${String(event.causalTraceId)}; a trace explains exactly one decision.`
+      );
+    }
+    explains.set(event.causalTraceId, event.eventId);
+
+    const trace = state.traces.get(event.causalTraceId);
+    if (trace === undefined) {
+      throw inconsistent(
+        `history event ${String(event.eventId)} references causalTraceId ` +
+          `${String(event.causalTraceId)}, but the save stores no trace under that id.`
+      );
+    }
+
+    checkOneTrace(event, trace);
+  }
+
+  for (const traceId of state.traces.keys()) {
+    if (!explains.has(traceId)) {
+      throw inconsistent(
+        `the save stores a trace under id ${String(traceId)} that no history event references; a ` +
+          'trace is the explanation of a decision, and every decision is an event.'
+      );
+    }
+  }
+}
+
+/**
+ * One decision against its own trace.
+ *
+ * The blocked case and the scored case are disjoint by construction — `createDecisionResult`
+ * refuses a result that is both or neither — and they are refused separately here because
+ * they fail differently: a blocked trace that carries factors is claiming a magnitude for
+ * something the rule states has none, while a scored trace whose sum contradicts the
+ * action is claiming an outcome the rule cannot reach from those terms.
+ */
+function checkOneTrace(event: DomainEvent, trace: CausalTrace): void {
+  const accepted = event.kind === 'hero_accepted_contract';
+
+  if (trace.blockedBy.length > 0) {
+    if (accepted) {
+      throw inconsistent(
+        `history event ${String(event.eventId)} records an acceptance explained by a trace that ` +
+          'names a hard constraint; a red line closes the decision before any score exists, so ' +
+          'it can only be declined.'
+      );
+    }
+
+    if (trace.positiveFactors.length > 0 || trace.negativeFactors.length > 0) {
+      throw inconsistent(
+        `trace ${String(trace.traceId)} names a hard constraint and weighs factors as well; a ` +
+          'blocked decision is closed before any factor is weighed.'
+      );
+    }
+
+    if (trace.tieBreak !== null) {
+      throw inconsistent(
+        `trace ${String(trace.traceId)} names a hard constraint and a tie-break; a blocked ` +
+          'decision settles no dead heat, because it never reaches one.'
+      );
+    }
+
+    return;
+  }
+
+  const score = total(trace.positiveFactors) - total(trace.negativeFactors);
+
+  if (accepted !== score >= 0) {
+    throw inconsistent(
+      `history event ${String(event.eventId)} records ${accepted ? 'an acceptance' : 'a refusal'} ` +
+        `explained by a trace summing to ${String(score)}; a hero takes a contract exactly when ` +
+        'its motives sum to zero or better.'
+    );
+  }
+
+  if ((trace.tieBreak !== null) !== (score === 0)) {
+    throw inconsistent(
+      `trace ${String(trace.traceId)} sums to ${String(score)} and ` +
+        `${trace.tieBreak === null ? 'breaks no tie' : `breaks a tie ('${trace.tieBreak}')`}; a ` +
+        'tie is exactly a sum of zero, where accepting and refusing scored the same.'
+    );
+  }
+}
+
+function total(factors: readonly TraceFactor[]): number {
+  return factors.reduce((sum, factor) => sum + factor.magnitude, 0);
 }
 
 /**

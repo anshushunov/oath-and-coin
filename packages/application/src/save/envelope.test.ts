@@ -482,7 +482,16 @@ interface RawSnapshot {
     value: { requiredCrew: number; status: string; respondedBy: number[]; acceptedBy: number[] };
   }[];
   appliedCommandIds: number[];
-  traces: { key: number; value: { traceId: number } }[];
+  traces: {
+    key: number;
+    value: {
+      traceId: number;
+      positiveFactors: { reasonCode: string; sourceEntity: string; magnitude: number }[];
+      negativeFactors: { reasonCode: string; sourceEntity: string; magnitude: number }[];
+      blockedBy: { reasonCode: string; sourceEntity: string }[];
+      tieBreak: string | null;
+    };
+  }[];
   history: {
     kind: string;
     eventId: number;
@@ -537,11 +546,20 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
     [
       'один герой отвечает на один контракт дважды',
       (snapshot) => {
+        // The second answer gets its own trace, and the counters follow it. Sharing the
+        // first event's trace would be refused a step earlier — a trace explains exactly
+        // one decision — and this case is about the *answer* being recorded twice, not
+        // about the explanation being.
         const [first] = snapshot.history;
-        snapshot.history = [first!, { ...first!, eventId: 1 }];
+        snapshot.history = [first!, { ...first!, eventId: 1, causalTraceId: 1 }];
+        snapshot.traces = [
+          ...snapshot.traces,
+          { key: 1, value: { ...snapshot.traces[0]!.value, traceId: 1 } }
+        ];
         snapshot.appliedCommandIds = [1, 2];
         snapshot.metadata.nextEventId = 2;
         snapshot.metadata.stateVersion = 2;
+        snapshot.metadata.nextTraceId = 2;
       },
       'more than once'
     ],
@@ -636,8 +654,12 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
         // looked at, and the case measures a check it does not name. So Bram declines
         // the *second* contract as well: its `respondedBy` gets him, its `acceptedBy`
         // does not, it stays `offered`, and a second trace is stored under the next free
-        // id. The only thing wrong with the result is that event 1 is dated before
-        // event 0.
+        // id. That second trace is the first one's factor lists swapped: the campaign's
+        // one real decision sums to +36, so the mirror of it sums to −36 — a refusal
+        // whose motives explain a refusal. A verbatim copy would be an acceptance's
+        // trace under a refusal's event, which is refused a step earlier now, and this
+        // case is about the clock rather than about the explanation. The only thing
+        // wrong with the result is that event 1 is dated before event 0.
         const [first] = snapshot.history;
         first!.logicalTime = 5;
         snapshot.history = [
@@ -653,7 +675,15 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
         ];
         snapshot.traces = [
           ...snapshot.traces,
-          { key: 1, value: { ...snapshot.traces[0]!.value, traceId: 1 } }
+          {
+            key: 1,
+            value: {
+              ...snapshot.traces[0]!.value,
+              traceId: 1,
+              positiveFactors: snapshot.traces[0]!.value.negativeFactors,
+              negativeFactors: snapshot.traces[0]!.value.positiveFactors
+            }
+          }
         ];
         const other = snapshot.contracts.find((entry) => entry.key === OTHER_CONTRACT)!;
         other.value.respondedBy = [first!.heroId];
@@ -664,6 +694,120 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
         snapshot.metadata.logicalTime = 5;
       },
       'history is monotone in logical time'
+    ],
+
+    // The two files external review of segment 5 re-signed by hand, and the four
+    // neighbouring shapes the same rule has to refuse. Both originals read back clean on
+    // the head this review was written against: the first left a decision with no
+    // explanation at all, the second let a trace say a red line closed a contract the
+    // history says the hero took.
+    [
+      'решение записано без объяснения — первый файл из внешнего ревью',
+      (snapshot) => {
+        snapshot.history[0]!.causalTraceId = null;
+      },
+      'carrying no causalTraceId'
+    ],
+    [
+      'принятие объяснено следом, который называет красную линию — второй файл из ревью',
+      (snapshot) => {
+        snapshot.traces[0]!.value.blockedBy = [
+          { reasonCode: 'hero.decision.principle_forbids', sourceEntity: 'core:greedy' }
+        ];
+      },
+      'a red line closes the decision before any score exists'
+    ],
+    [
+      'заблокированное решение всё же взвешивает факторы',
+      (snapshot) => {
+        // A refusal, so the block and the action agree — what remains wrong is that the
+        // trace both closes the path and weighs terms along it.
+        snapshot.history[0]!.kind = 'hero_declined_contract';
+        snapshot.contracts[0]!.value.acceptedBy = [];
+        snapshot.contracts[0]!.value.status = 'offered';
+        snapshot.traces[0]!.value.blockedBy = [
+          { reasonCode: 'hero.decision.principle_forbids', sourceEntity: 'core:greedy' }
+        ];
+      },
+      'closed before any factor is weighed'
+    ],
+    [
+      'заблокированное решение вдобавок разрешает ничью',
+      (snapshot) => {
+        snapshot.history[0]!.kind = 'hero_declined_contract';
+        snapshot.contracts[0]!.value.acceptedBy = [];
+        snapshot.contracts[0]!.value.status = 'offered';
+        snapshot.traces[0]!.value.positiveFactors = [];
+        snapshot.traces[0]!.value.negativeFactors = [];
+        snapshot.traces[0]!.value.blockedBy = [
+          { reasonCode: 'hero.decision.principle_forbids', sourceEntity: 'core:greedy' }
+        ];
+        snapshot.traces[0]!.value.tieBreak = 'hero.decision.no_reason_to_refuse';
+      },
+      'settles no dead heat'
+    ],
+    [
+      'принятие объяснено следом, чьи мотивы складываются в минус',
+      (snapshot) => {
+        // The one real decision sums to +36; swapping the lists mirrors it to −36 while
+        // the history still says the hero took the contract.
+        const trace = snapshot.traces[0]!.value;
+        const positive = trace.positiveFactors;
+        trace.positiveFactors = trace.negativeFactors;
+        trace.negativeFactors = positive;
+      },
+      'takes a contract exactly when its motives sum to zero or better'
+    ],
+    [
+      'ничья объявлена там, где мотивы не сошлись',
+      (snapshot) => {
+        snapshot.traces[0]!.value.tieBreak = 'hero.decision.no_reason_to_refuse';
+      },
+      'a tie is exactly a sum of zero'
+    ],
+    [
+      'след, который ничего не объясняет',
+      (snapshot) => {
+        // Numbering stays perfectly legal — dense ids, `nextTraceId` equal to the count —
+        // and nothing points at the second trace. That is the case the counters cannot
+        // see: they measure how many traces there are, not whether each explains a
+        // decision.
+        snapshot.traces = [
+          ...snapshot.traces,
+          { key: 1, value: { ...snapshot.traces[0]!.value, traceId: 1 } }
+        ];
+        snapshot.metadata.nextTraceId = 2;
+      },
+      'that no history event references'
+    ],
+    [
+      'два решения объяснены одним следом',
+      (snapshot) => {
+        // The other direction of the same bijection, and the one the counters are even
+        // further from seeing: with two events pointing at one trace, `nextTraceId`
+        // still equals the number of traces and the ids are still dense. Bram answers
+        // the second contract as well, so everything except the shared explanation is a
+        // campaign the engine could have produced.
+        const [first] = snapshot.history;
+        snapshot.history = [
+          first!,
+          {
+            kind: 'hero_declined_contract',
+            eventId: 1,
+            logicalTime: first!.logicalTime,
+            causalTraceId: 0,
+            heroId: first!.heroId,
+            contractId: OTHER_CONTRACT
+          }
+        ];
+        snapshot.contracts.find((entry) => entry.key === OTHER_CONTRACT)!.value.respondedBy = [
+          first!.heroId
+        ];
+        snapshot.appliedCommandIds = [1, 2];
+        snapshot.metadata.nextEventId = 2;
+        snapshot.metadata.stateVersion = 2;
+      },
+      'a trace explains exactly one decision'
     ]
   ];
 
