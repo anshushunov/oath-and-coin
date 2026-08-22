@@ -3,17 +3,14 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Headless scenario execution and oracle parity — the CLI that replays the frozen C# corpus against this port (ADR-010, Task 10)",
-  "main": "src/parity.ts",
-  "types": "src/parity.ts",
+  "description": "Headless scenario execution — the CLI that runs a scenario manifest through this port and reports its canonical hash (ADR-010; byte parity against the frozen corpus retired by ADR-013)",
+  "main": "src/cli.ts",
+  "types": "src/cli.ts",
   "scripts": {
     "test": "vitest run --root ../.. tools/scenario-runner"
   },
   "dependencies": {
-    "@oath-and-coin/application": "workspace:*",
-    "@oath-and-coin/content": "workspace:*",
-    "@oath-and-coin/presentation": "workspace:*",
-    "@oath-and-coin/simulation": "workspace:*"
+    "@oath-and-coin/content": "workspace:*"
   },
   "devDependencies": {
     "typescript": "6.0.3"

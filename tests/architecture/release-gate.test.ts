@@ -460,7 +460,6 @@ describe('pnpm verify is the TypeScript and browser gate, not the whole of it', 
     'schema:check',
     'test',
     'test:scenario',
-    'scenario:parity',
     'build',
     'test:e2e'
   ] as const;
