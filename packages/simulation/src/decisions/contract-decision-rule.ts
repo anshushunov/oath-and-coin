@@ -205,11 +205,11 @@ export function decide(context: DecisionContext): HeroDecision {
   }
 
   // Связи: only heroes who have already accepted this same contract, walked in
-  // `acceptedBy`'s own hero-id order. A hero listed there with no matching crew entry is
-  // a context-assembly bug — the engine forgot to carry that hero along — not an absent
-  // relationship, so it fails loudly instead of reading as "no opinion".
+  // `offer.acceptedBy`'s own hero-id order. A hero listed there with no matching crew
+  // entry is a context-assembly bug — the engine forgot to carry that hero along — not
+  // an absent relationship, so it fails loudly instead of reading as "no opinion".
   let bondSum = 0;
-  for (const acceptedHeroId of contract.acceptedBy.values()) {
+  for (const acceptedHeroId of contract.offer.acceptedBy.values()) {
     const comrade = context.crew.get(acceptedHeroId);
     if (comrade === undefined) {
       throw new Error(

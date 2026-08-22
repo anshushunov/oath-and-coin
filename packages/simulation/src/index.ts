@@ -63,6 +63,14 @@ export type {
 } from './events/domain-event.ts';
 
 export { ContractStatus, type ContractState } from './state/contract-state.ts';
+export {
+  MAX_TAGS_PER_CONTRACT,
+  OfferPhase,
+  createContractState,
+  effectiveTags,
+  initialOffer,
+  type OfferState
+} from './state/offer-state.ts';
 export type { HeroState } from './state/hero-state.ts';
 export {
   contractOf,

@@ -12,7 +12,7 @@ import { compareContentIds, parseContentId, type ContentId } from './ids/content
 import { compareHeroIds, heroId } from './ids/hero-id.ts';
 import { ContractStatus } from './state/contract-state.ts';
 import type { GameState } from './state/game-state.ts';
-import { aContract, aHero, aState, aTrait, ids } from './testing/fixtures.ts';
+import { aContract, aHero, anOffer, aState, aTrait, ids } from './testing/fixtures.ts';
 
 /**
  * What the engine adds on top of the rule: the order commands are refused in, and the
@@ -232,8 +232,8 @@ describe('an applied command records what the hero decided', () => {
     expect(declined.decisions[0]?.selectedAction).toBe(Actions.Decline);
     expect(declined.events[0]?.kind).toBe('hero_declined_contract');
     expect(contract.status).toBe(ContractStatus.Offered);
-    expect(contract.respondedBy.has(bram.id)).toBe(true);
-    expect(contract.acceptedBy.has(bram.id)).toBe(false);
+    expect(contract.offer.respondedBy.has(bram.id)).toBe(true);
+    expect(contract.offer.acceptedBy.has(bram.id)).toBe(false);
   });
 
   it('crews the offer only when every seat is filled', () => {
@@ -258,7 +258,12 @@ describe('an applied command records what the hero decided', () => {
   it('fails loudly when acceptedBy names a hero the campaign does not have', () => {
     const state = aCampaign({
       contracts: SortedMap.from(compareContentIds, [
-        [ids.crypt, aContract({ acceptedBy: SortedSet.from(compareHeroIds, [heroId(7)]) })]
+        [
+          ids.crypt,
+          aContract({
+            offer: anOffer({ acceptedBy: SortedSet.from(compareHeroIds, [heroId(7)]) })
+          })
+        ]
       ])
     });
 
@@ -291,10 +296,10 @@ describe('an applied command records what the hero decided', () => {
     // So the two sets genuinely differ and the subset is not trivially true.
     expect(first.decisions[0]?.selectedAction).toBe(Actions.Decline);
     expect(second.decisions[0]?.selectedAction).toBe(Actions.Accept);
-    expect(contract.respondedBy.values()).toEqual([bram.id, zara.id]);
-    expect(contract.acceptedBy.values()).toEqual([zara.id]);
-    for (const accepter of contract.acceptedBy.values()) {
-      expect(contract.respondedBy.has(accepter)).toBe(true);
+    expect(contract.offer.respondedBy.values()).toEqual([bram.id, zara.id]);
+    expect(contract.offer.acceptedBy.values()).toEqual([zara.id]);
+    for (const accepter of contract.offer.acceptedBy.values()) {
+      expect(contract.offer.respondedBy.has(accepter)).toBe(true);
     }
   });
 

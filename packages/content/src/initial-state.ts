@@ -5,8 +5,10 @@ import {
   compareContentIds,
   compareHeroIds,
   compareNumbers,
+  createContractState,
   freezeDeep,
   heroId,
+  initialOffer,
   requireArtifactSafeText,
   requireUint64,
   type CausalTrace,
@@ -92,16 +94,16 @@ export function createInitialState(
     compareContentIds,
     content.contracts.values().map((definition): readonly [ContentId, ContractState] => [
       definition.id,
-      {
+      createContractState({
         id: definition.id,
         patronFee: definition.patronFee,
         risk: definition.risk,
         requiredCrew: definition.requiredCrew,
         tags: SortedSet.from(compareContentIds, definition.tags),
         status: ContractStatus.Offered,
-        respondedBy: SortedSet.empty<HeroId>(compareHeroIds),
-        acceptedBy: SortedSet.empty<HeroId>(compareHeroIds)
-      }
+        offer: initialOffer(),
+        moodOrdinals: SortedMap.empty<HeroId, bigint>(compareHeroIds)
+      })
     ])
   );
 

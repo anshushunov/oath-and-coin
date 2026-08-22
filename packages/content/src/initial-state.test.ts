@@ -62,8 +62,10 @@ describe('createInitialState', () => {
   it('offers every contract with no responses yet', () => {
     for (const contract of state.contracts.values()) {
       expect(contract.status).toBe(ContractStatus.Offered);
-      expect(contract.respondedBy.size).toBe(0);
-      expect(contract.acceptedBy.size).toBe(0);
+      expect(contract.offer.version).toBe(1);
+      expect(contract.offer.respondedBy.size).toBe(0);
+      expect(contract.offer.acceptedBy.size).toBe(0);
+      expect(contract.moodOrdinals.size).toBe(0);
     }
 
     expect(state.contracts.get(parseContentId('core:cleanse_the_crypt'))?.tags.values()).toEqual([

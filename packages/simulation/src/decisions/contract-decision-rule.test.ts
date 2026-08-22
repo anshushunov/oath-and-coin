@@ -4,7 +4,7 @@ import { SortedMap } from '../collections/sorted-map.ts';
 import { SortedSet } from '../collections/sorted-set.ts';
 import { compareContentIds, type ContentId } from '../ids/content-id.ts';
 import { compareHeroIds, heroId, type HeroId } from '../ids/hero-id.ts';
-import { aContext, aContract, aHero, aTrait, ids } from '../testing/fixtures.ts';
+import { aContext, aContract, aHero, anOffer, aTrait, ids } from '../testing/fixtures.ts';
 
 import { Actions } from './actions.ts';
 import type { DecisionContext } from './context.ts';
@@ -155,7 +155,7 @@ describe('the trace is the arithmetic, written down', () => {
           patronFee: 40,
           risk: 80,
           tags: SortedSet.from(compareContentIds, [ids.temple, ids.undead]),
-          acceptedBy: SortedSet.from(compareHeroIds, [heroId(1), heroId(2)])
+          offer: anOffer({ acceptedBy: SortedSet.from(compareHeroIds, [heroId(1), heroId(2)]) })
         }),
         traits: [
           aTrait({ id: ids.loyal, tag: ids.undead, weight: 7 }),
@@ -271,8 +271,10 @@ describe('bonds', () => {
       aContext({
         hero,
         contract: aContract({
-          respondedBy: SortedSet.from(compareHeroIds, [heroId(1), heroId(2)]),
-          acceptedBy: SortedSet.from(compareHeroIds, [heroId(1)])
+          offer: anOffer({
+            respondedBy: SortedSet.from(compareHeroIds, [heroId(1), heroId(2)]),
+            acceptedBy: SortedSet.from(compareHeroIds, [heroId(1)])
+          })
         }),
         crew: crewOf([[1, ids.doran]]),
         decisionOrdinal: 6n
@@ -286,7 +288,9 @@ describe('bonds', () => {
   it('ignore an accepted hero the deciding hero has no opinion about', () => {
     const decision = decide(
       aContext({
-        contract: aContract({ acceptedBy: SortedSet.from(compareHeroIds, [heroId(1)]) }),
+        contract: aContract({
+          offer: anOffer({ acceptedBy: SortedSet.from(compareHeroIds, [heroId(1)]) })
+        }),
         crew: crewOf([[1, ids.doran]]),
         decisionOrdinal: 6n
       })
@@ -300,7 +304,9 @@ describe('bonds', () => {
     expect(() =>
       decide(
         aContext({
-          contract: aContract({ acceptedBy: SortedSet.from(compareHeroIds, [heroId(1)]) })
+          contract: aContract({
+            offer: anOffer({ acceptedBy: SortedSet.from(compareHeroIds, [heroId(1)]) })
+          })
         })
       )
     ).toThrow(/context-assembly bug/);
@@ -355,7 +361,9 @@ function localContexts(): readonly DecisionContext[] {
                     patronFee,
                     risk,
                     tags: SortedSet.from(compareContentIds, [ids.temple, ids.undead]),
-                    acceptedBy: SortedSet.from(compareHeroIds, [heroId(1), heroId(2)])
+                    offer: anOffer({
+                      acceptedBy: SortedSet.from(compareHeroIds, [heroId(1), heroId(2)])
+                    })
                   }),
                   traits: [
                     aTrait({ id: ids.loyal, tag: ids.undead, weight: traitWeight }),

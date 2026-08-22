@@ -10,6 +10,7 @@ import { compareHeroIds, heroId, type HeroId } from '../ids/hero-id.ts';
 import { ContractStatus, type ContractState } from '../state/contract-state.ts';
 import type { GameState } from '../state/game-state.ts';
 import type { HeroState } from '../state/hero-state.ts';
+import { initialOffer, type OfferState } from '../state/offer-state.ts';
 
 /**
  * Fixtures for the tests in this package, in `src` rather than beside one test file
@@ -32,8 +33,46 @@ export const ids = {
   temple: parseContentId('target:temple'),
   undead: parseContentId('target:undead'),
   refusesTemples: parseContentId('core:will_not_strike_a_temple'),
-  hatesUndead: parseContentId('core:fears_undeath')
+  hatesUndead: parseContentId('core:fears_undeath'),
+  /** A negotiated-tag pair (`NEGOTIATION_SPEC` §2.4): a target and a chosen method. */
+  cult: parseContentId('target:cult'),
+  deception: parseContentId('method:deception')
 };
+
+/** A `SortedSet<HeroId>` built from raw ids, for tests posing questions about a crew. */
+export function heroes(...rawIds: readonly number[]): SortedSet<HeroId> {
+  return SortedSet.from(compareHeroIds, rawIds.map(heroId));
+}
+
+/** A `SortedSet<ContentId>` built from the ids given, for tests posing questions about tags. */
+export function setOf(...contentIds: readonly ContentId[]): SortedSet<ContentId> {
+  return SortedSet.from(compareContentIds, contentIds);
+}
+
+/**
+ * Six distinct tags — `MAX_TAGS_PER_CONTRACT`'s own ceiling, already reached before a
+ * negotiated method tag ever joins them. Unrelated to any other id in this file on
+ * purpose: a test using this fixture is posing a question about the *count*, not
+ * about what any one tag means.
+ */
+export function sixTags(): SortedSet<ContentId> {
+  return SortedSet.from(
+    compareContentIds,
+    [
+      'target:tag_a',
+      'target:tag_b',
+      'target:tag_c',
+      'target:tag_d',
+      'target:tag_e',
+      'target:tag_f'
+    ].map(parseContentId)
+  );
+}
+
+/** An `OfferState`, for tests overriding just the terms or answers they need. */
+export function anOffer(overrides: Partial<OfferState> = {}): OfferState {
+  return { ...initialOffer(), ...overrides };
+}
 
 export function aHero(overrides: Partial<HeroState> = {}): HeroState {
   return {
@@ -58,8 +97,8 @@ export function aContract(overrides: Partial<ContractState> = {}): ContractState
     requiredCrew: 1,
     tags: SortedSet.from(compareContentIds, [ids.undead]),
     status: ContractStatus.Offered,
-    respondedBy: SortedSet.empty<HeroId>(compareHeroIds),
-    acceptedBy: SortedSet.empty<HeroId>(compareHeroIds),
+    offer: anOffer(),
+    moodOrdinals: SortedMap.empty<HeroId, bigint>(compareHeroIds),
     ...overrides
   };
 }

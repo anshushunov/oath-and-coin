@@ -1,3 +1,5 @@
+import { MAX_TAGS_PER_CONTRACT } from '@oath-and-coin/simulation';
+
 /**
  * The ceilings every path that reads external data is held to (`TDD` §18:
  * "ограничивать размер и глубину загружаемых структур").
@@ -31,8 +33,19 @@ export const MAX_TRAITS_PER_HERO = 4;
 /** Most relationships a single hero file may list. */
 export const MAX_RELATIONSHIPS_PER_HERO = 5;
 
-/** Most tags a single contract file may list. */
-export const MAX_TAGS_PER_CONTRACT = 6;
+/**
+ * Most tags a single contract file may list.
+ *
+ * Re-exported from `@oath-and-coin/simulation` rather than stated here as a literal
+ * `6`: `NEGOTIATION_SPEC` §2.1 needs the same ceiling to bound a contract's
+ * *effective* tag set once a negotiated method tag joins it, and that check lives in
+ * `createContractState` (`packages/simulation/src/state/offer-state.ts`) — which
+ * cannot import this package back (`ADR-002`, `simulation-depends-on-nothing`). One
+ * fact needed on both sides of a one-directional boundary has exactly one legal home:
+ * the side nothing forbids the other from reading. Exactly the reason `bounds.ts`'s
+ * `TRAIT_MAX` derives from the simulation's `TRAIT_SCALE` instead of restating it.
+ */
+export { MAX_TAGS_PER_CONTRACT };
 
 /**
  * How many tags a contract's `negotiable_tags` names, exactly — never "at least".
@@ -43,10 +56,11 @@ export const MAX_TAGS_PER_CONTRACT = 6;
  * Lives here rather than in `bounds.ts`, unlike the brief that first introduced it:
  * `bounds.ts`'s own header states it is the one place a content *range* is written
  * down, and this is a cardinality on a collection, the same kind of fact
- * `MAX_TRAITS_PER_HERO` and `MAX_TAGS_PER_CONTRACT` above already state here. Task 6
- * is expected to read this constant alongside `MAX_TAGS_PER_CONTRACT` for the rule
- * bounding the contract's effective tag count once a negotiated tag joins it, which
- * reads better as two constants declared beside each other than two files apart.
+ * `MAX_TRAITS_PER_HERO` and `MAX_TAGS_PER_CONTRACT` above already state (or, since
+ * Task 6, re-export) here. `createContractState` reads `MAX_TAGS_PER_CONTRACT`
+ * alongside this one for the rule bounding the contract's effective tag count once a
+ * negotiated tag joins it, which reads better as two constants declared beside each
+ * other than two files apart.
  */
 export const NEGOTIABLE_TAGS_COUNT = 2;
 

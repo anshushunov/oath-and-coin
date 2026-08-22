@@ -6,6 +6,7 @@ import {
   compareHeroIds,
   decide,
   heroId,
+  initialOffer,
   parseContentId,
   type ContentId,
   type ContractState,
@@ -124,6 +125,10 @@ function aHeroAt(scales: {
 }
 
 function aContractAt(patronFee: number, risk: number): ContractState {
+  // Built as a raw literal and handed straight to `decide()`, never through
+  // `createContractState` — this sweep poses a question about the decision rule's
+  // arithmetic, not about offer invariants, and `acceptedBy` here deliberately holds
+  // more heroes than `requiredCrew` allows so every comrade contributes a bond.
   return {
     id: parseContentId('core:the_offer'),
     patronFee,
@@ -131,11 +136,15 @@ function aContractAt(patronFee: number, risk: number): ContractState {
     requiredCrew: 1,
     tags: SortedSet.from(compareContentIds, TAG_IDS),
     status: ContractStatus.Offered,
-    respondedBy: SortedSet.empty<HeroId>(compareHeroIds),
-    acceptedBy: SortedSet.from(
-      compareHeroIds,
-      COMRADES.map(([id]) => id)
-    )
+    offer: {
+      ...initialOffer(),
+      respondedBy: SortedSet.empty<HeroId>(compareHeroIds),
+      acceptedBy: SortedSet.from(
+        compareHeroIds,
+        COMRADES.map(([id]) => id)
+      )
+    },
+    moodOrdinals: SortedMap.empty<HeroId, bigint>(compareHeroIds)
   };
 }
 

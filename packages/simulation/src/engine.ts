@@ -69,7 +69,7 @@ export function proposeContractToHero(
     return rejected(state, RejectionCodes.ContractAlreadyResolved);
   }
 
-  if (contract.respondedBy.has(command.heroId)) {
+  if (contract.offer.respondedBy.has(command.heroId)) {
     return rejected(state, RejectionCodes.AlreadyResponded);
   }
 
@@ -99,14 +99,14 @@ export function proposeContractToHero(
     traits.push(trait);
   }
 
-  // Comrades already committed to this same offer — exactly `contract.acceptedBy`,
+  // Comrades already committed to this same offer — exactly `contract.offer.acceptedBy`,
   // resolved to the content id the rule matches relationships against. Built from what
   // already lives in state, so every hero the decision's bonds walk reaches finds an
   // entry here; an accepted hero missing from crew is exactly the context-assembly bug
   // the rule guards against.
   const crew = SortedMap.from<HeroId, ContentId>(
     compareHeroIds,
-    contract.acceptedBy.values().map((acceptedHeroId) => {
+    contract.offer.acceptedBy.values().map((acceptedHeroId: HeroId) => {
       const comrade = state.heroes.get(acceptedHeroId);
       if (comrade === undefined) {
         throw new Error(
@@ -131,20 +131,25 @@ export function proposeContractToHero(
 
   const accepted = decision.result.selectedAction === Actions.Accept;
 
-  // Declining adds the hero to `respondedBy` and leaves the offer open — the contract's
-  // own status is about the contract, not about who said no to it. Without that, the
-  // first refusal would remove the offer from everyone else and a campaign could never
-  // show two heroes disagreeing about the same job.
+  // Declining adds the hero to `offer.respondedBy` and leaves the offer open — the
+  // contract's own status is about the contract, not about who said no to it. Without
+  // that, the first refusal would remove the offer from everyone else and a campaign
+  // could never show two heroes disagreeing about the same job.
   //
   // `crewed` means what it says: every seat filled, not merely one hero among several
   // saying yes — so the transition reads `acceptedBy.size` against `requiredCrew`, not
   // the single accepted flag from this one response.
-  const acceptedBy = accepted ? contract.acceptedBy.add(command.heroId) : contract.acceptedBy;
+  const acceptedBy = accepted
+    ? contract.offer.acceptedBy.add(command.heroId)
+    : contract.offer.acceptedBy;
   const respondedContract = {
     ...contract,
     status: acceptedBy.size >= contract.requiredCrew ? ContractStatus.Crewed : contract.status,
-    acceptedBy,
-    respondedBy: contract.respondedBy.add(command.heroId)
+    offer: {
+      ...contract.offer,
+      acceptedBy,
+      respondedBy: contract.offer.respondedBy.add(command.heroId)
+    }
   };
 
   const domainEvent: DomainEvent = {
