@@ -35,7 +35,8 @@ export { SAVE_SLOTS, type SaveSlot } from './save/slots.ts';
 export {
   createSessionController,
   type SessionController,
-  type SessionControllerDeps
+  type SessionControllerDeps,
+  type SessionLoadResult
 } from './session-controller.ts';
 
 export {

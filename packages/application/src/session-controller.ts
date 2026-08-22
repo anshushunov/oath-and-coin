@@ -80,6 +80,28 @@ export interface SessionControllerDeps {
   readonly expected: { readonly rulesetVersion: string; readonly contentVersion: string };
 }
 
+/**
+ * What became of one call to {@link SessionController.load}.
+ *
+ * **Why a return value and not a look at the session.** The page used to decide
+ * whether a load had worked by reading `store.snapshot().saveFailure` once the promise
+ * settled, and external review of segment 5 was right that two loads in flight then read
+ * each other's answer: there is one `saveFailure`, both callbacks look at it, and
+ * neither can tell whose it is. A result belongs to the call that produced it.
+ *
+ * `superseded` is the outcome that only exists because loads can overlap: the player
+ * clicked a second slot while the first was still being read, so this call's campaign is
+ * no longer the one asked for and it deliberately touches nothing. Its slot is not left
+ * undescribed — a slot that genuinely cannot be read says so on its own line the next
+ * time the screen asks the storage (`describeSaveSlots`), which it does after every
+ * operation.
+ */
+export interface SessionLoadResult {
+  readonly outcome: 'loaded' | 'empty' | 'refused' | 'superseded';
+  /** Present exactly when `outcome` is `refused`. */
+  readonly failure: SaveFailure | null;
+}
+
 export interface SessionController {
   /** The observable session. A screen subscribes here; nothing else publishes to it. */
   readonly store: Store<SessionState>;
@@ -87,8 +109,14 @@ export interface SessionController {
   start(): Promise<void>;
   /** Writes the campaign on screen into `slot`, or records why it could not. */
   save(slot: SaveSlot): Promise<void>;
-  /** Replaces the session with the campaign in `slot`, or records why it could not. */
-  load(slot: SaveSlot): Promise<void>;
+  /**
+   * Replaces the session with the campaign in `slot`, or records why it could not —
+   * and answers what became of **this call**, not what the session looks like
+   * afterwards.
+   *
+   * The distinction is the whole of {@link SessionLoadResult}'s reason for existing.
+   */
+  load(slot: SaveSlot): Promise<SessionLoadResult>;
   /**
    * The three slots as the storage answers about them now, with whatever this session
    * has since found out about one of them.
@@ -119,8 +147,40 @@ const PENDING_SESSION: SessionState = {
   errorDetail: null
 };
 
+/**
+ * Which load the player started most recently — the one fact `load` needs and cannot
+ * work out from the session.
+ *
+ * A load is not cancellable: a storage read is already in flight and there is nothing
+ * to tell it to stop. What *is* decidable is whether the answer that just arrived is
+ * still the answer to the question the player is asking, and a monotonic ticket is the
+ * whole of that decision. Without it, two loads commit in the order their storage
+ * happened to answer in — so a slow first read lands *after* a fast second one and
+ * replaces the campaign the player is looking at with the one they moved on from.
+ * External review of segment 5 named exactly this, and the UI offers no protection
+ * against it: the slots screen does not disable its buttons while an operation runs.
+ */
+interface LoadTurnstile {
+  /** Claims the next ticket. The caller holding the highest one owns the session. */
+  begin(): number;
+  isCurrent(ticket: number): boolean;
+}
+
+function createLoadTurnstile(): LoadTurnstile {
+  let latest = 0;
+
+  return {
+    begin: () => {
+      latest += 1;
+      return latest;
+    },
+    isCurrent: (ticket) => ticket === latest
+  };
+}
+
 export function createSessionController(deps: SessionControllerDeps): SessionController {
   const store = createStore<SessionState>(PENDING_SESSION);
+  const turnstile = createLoadTurnstile();
 
   return {
     store,
@@ -146,7 +206,7 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
     },
 
     save: (slot) => save(deps, store, slot),
-    load: (slot) => load(deps, store, slot),
+    load: (slot) => load(deps, store, slot, turnstile),
     slots: () => slots(deps, store)
   };
 }
@@ -308,18 +368,29 @@ function refusalToWrite(
  * contract that was focused, and everything else on the screen is derived from those
  * two by the same factory a live run goes through. What cannot be rebuilt is the run —
  * `canonicalHash` is `null` here for the reason its own doc comment gives.
+ *
+ * **Only the load the player started last may commit** (see {@link LoadTurnstile}). The
+ * ticket is checked after the storage has answered and again after the bytes have been
+ * turned into a session, because both are moments this function was suspended and a
+ * second click could have happened in either.
  */
 async function load(
   deps: SessionControllerDeps,
   store: Store<SessionState>,
-  slot: SaveSlot
-): Promise<void> {
+  slot: SaveSlot,
+  turnstile: LoadTurnstile
+): Promise<SessionLoadResult> {
+  const ticket = turnstile.begin();
+
   let bytes: Uint8Array | null;
   try {
     bytes = await deps.saves.read(slot);
   } catch (cause) {
-    record(store, slot, portFailure(slot, cause));
-    return;
+    return onlyIfCurrent(turnstile, ticket, () => {
+      const failure = portFailure(slot, cause);
+      record(store, slot, failure);
+      return { outcome: 'refused', failure };
+    });
   }
 
   // An empty slot is not a refusal (design spec §2.4, first row): there is no code for
@@ -327,21 +398,45 @@ async function load(
   // wrong. Nothing about the session changes, down to its identity, so a load of an
   // empty slot does not even notify a subscriber.
   if (bytes === null) {
-    return;
+    return turnstile.isCurrent(ticket) ? EMPTY_LOAD : SUPERSEDED_LOAD;
   }
 
-  let restored: SessionState;
-  try {
-    restored = restore(bytes, deps.expected);
-  } catch (cause) {
-    record(store, slot, fileFailure(slot, cause));
-    return;
-  }
+  return onlyIfCurrent(turnstile, ticket, () => {
+    let restored: SessionState;
+    try {
+      restored = restore(bytes, deps.expected);
+    } catch (cause) {
+      const failure = fileFailure(slot, cause);
+      record(store, slot, failure);
+      return { outcome: 'refused', failure };
+    }
 
-  // A load replaces the whole session, and the one thing that does not belong to the
-  // session is a refusal recorded about a *different* slot: that slot is still
-  // unreadable, and the screen still owes the player that line.
-  store.replace({ ...restored, saveFailure: failureNotAbout(store.snapshot(), slot) });
+    // A load replaces the whole session, and the one thing that does not belong to the
+    // session is a refusal recorded about a *different* slot: that slot is still
+    // unreadable, and the screen still owes the player that line.
+    store.replace({ ...restored, saveFailure: failureNotAbout(store.snapshot(), slot) });
+
+    return { outcome: 'loaded', failure: null };
+  });
+}
+
+const EMPTY_LOAD: SessionLoadResult = { outcome: 'empty', failure: null };
+const SUPERSEDED_LOAD: SessionLoadResult = { outcome: 'superseded', failure: null };
+
+/**
+ * Runs `apply` only if `ticket` is still the load the player is waiting for.
+ *
+ * A superseded load writes nothing at all — not the session, not a refusal about its own
+ * slot. Both would be answers to a question the player has replaced, and a refusal in
+ * particular is not lost by being dropped here: a slot that genuinely cannot be read
+ * says so on its own line the next time the screen asks the storage.
+ */
+function onlyIfCurrent(
+  turnstile: LoadTurnstile,
+  ticket: number,
+  apply: () => SessionLoadResult
+): SessionLoadResult {
+  return turnstile.isCurrent(ticket) ? apply() : SUPERSEDED_LOAD;
 }
 
 function restore(bytes: Uint8Array, expected: SessionControllerDeps['expected']): SessionState {

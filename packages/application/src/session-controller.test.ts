@@ -267,6 +267,78 @@ function harness(
   };
 }
 
+interface HeldSaves {
+  readonly bytes: ReadonlyMap<SaveSlot, Uint8Array>;
+  /** The screen state each of the two campaigns lands on — the two must differ. */
+  readonly stateOfA: string;
+  readonly stateOfB: string;
+}
+
+/**
+ * Two slots holding two campaigns a screen can tell apart.
+ *
+ * `slot-a` is the answered scenario and `slot-b` the rejected one, which land on
+ * different screen states — that difference is the whole instrument for "which of two
+ * overlapping loads won", and it is measured here rather than asserted from memory, so a
+ * change to either fixture that made them identical reddens the test that uses it
+ * instead of quietly making it prove nothing.
+ */
+async function twoDistinguishableSaves(): Promise<HeldSaves> {
+  const answered = harness();
+  await answered.controller.start();
+  await answered.controller.save('slot-a');
+
+  const rejected = harness({ scenario: rejectedScenario });
+  await rejected.controller.start();
+  await rejected.controller.save('slot-b');
+
+  return {
+    bytes: new Map([
+      ['slot-a', answered.saves.slots.get('slot-a')!],
+      ['slot-b', rejected.saves.slots.get('slot-b')!]
+    ]),
+    stateOfA: answered.controller.store.snapshot().screen.state,
+    stateOfB: rejected.controller.store.snapshot().screen.state
+  };
+}
+
+/**
+ * A slot store whose reads finish when the test says so, and in the order the test says.
+ *
+ * A timer would express the same thing less reliably and more slowly; what the case is
+ * about is the *order* two answers arrive in, and that is something to state rather than
+ * to arrange and hope for.
+ */
+function deferredStore(
+  held: HeldSaves,
+  options: { readonly unreadable?: SaveSlot } = {}
+): SaveStorePort & { release(slot: SaveSlot): void } {
+  const waiting = new Map<SaveSlot, () => void>();
+
+  return {
+    read: (slot) =>
+      new Promise<Uint8Array | null>((resolve, reject) => {
+        waiting.set(slot, () => {
+          if (slot === options.unreadable) {
+            reject(unavailable());
+            return;
+          }
+          resolve(held.bytes.get(slot) ?? null);
+        });
+      }),
+    write: () => Promise.resolve(),
+    list: () => Promise.resolve([...held.bytes.keys()]),
+    release: (slot) => {
+      const answer = waiting.get(slot);
+      if (answer === undefined) {
+        throw new Error(`nothing is waiting on a read of '${slot}'.`);
+      }
+      waiting.delete(slot);
+      answer();
+    }
+  };
+}
+
 /** The envelope a slot holds, as JSON. */
 function parseSave(bytes: Uint8Array): Record<string, unknown> {
   return JSON.parse(decodeUtf8OrThrow(bytes)) as Record<string, unknown>;
@@ -598,7 +670,7 @@ describe('the versions this build reads saves under', () => {
     });
     await other.controller.start();
 
-    await expect(other.controller.load('slot-a')).resolves.toBeUndefined();
+    await expect(other.controller.load('slot-a')).resolves.toMatchObject({ outcome: 'refused' });
 
     expect(other.controller.store.snapshot().saveFailure).toEqual({
       slot: 'slot-a',
@@ -702,12 +774,57 @@ describe('a store that refuses', () => {
     await controller.start();
     const before = controller.store.snapshot();
 
-    await expect(controller.load('slot-c')).resolves.toBeUndefined();
+    await expect(controller.load('slot-c')).resolves.toMatchObject({ outcome: 'refused' });
 
     const after = controller.store.snapshot();
     expect(after.saveFailure?.slot).toBe('slot-c');
     expect(after.saveFailure?.code).toBe(SaveErrorCodes.StorageUnavailable);
     expect(readModelHash(after.screen)).toBe(readModelHash(before.screen));
+  });
+
+  it('leaves the campaign the player asked for last, not the read that answered last', async () => {
+    // External review of segment 5: the slots screen disables nothing while an
+    // operation is in flight, so two loads overlap the moment a player clicks a
+    // second slot — and until this, they committed in the order their storage
+    // happened to answer in. A slow first read landing after a fast second one
+    // replaced the campaign on screen with the one the player had moved on from.
+    const held = await twoDistinguishableSaves();
+    const store = deferredStore(held);
+    const { controller } = harness({ saves: store });
+    await controller.start();
+
+    const first = controller.load('slot-a');
+    const second = controller.load('slot-b');
+
+    store.release('slot-b');
+    await expect(second).resolves.toMatchObject({ outcome: 'loaded' });
+
+    store.release('slot-a');
+    await expect(first).resolves.toMatchObject({ outcome: 'superseded' });
+
+    expect(controller.store.snapshot().screen.state).toBe(held.stateOfB);
+    expect(held.stateOfA).not.toBe(held.stateOfB);
+  });
+
+  it('a superseded refusal is not written over the session either', async () => {
+    // The same rule applied to the losing call's *failure*. Recording it would put a
+    // refusal on the screen about a question the player has already replaced — and it
+    // is not lost by being dropped: a slot that genuinely cannot be read says so on its
+    // own line the next time the screen asks the storage.
+    const held = await twoDistinguishableSaves();
+    const store = deferredStore(held, { unreadable: 'slot-a' });
+    const { controller } = harness({ saves: store });
+    await controller.start();
+
+    const first = controller.load('slot-a');
+    const second = controller.load('slot-b');
+
+    store.release('slot-b');
+    await second;
+    store.release('slot-a');
+
+    await expect(first).resolves.toEqual({ outcome: 'superseded', failure: null });
+    expect(controller.store.snapshot().saveFailure).toBeNull();
   });
 
   it('reports a port that threw something it never named as an unavailable store', async () => {
@@ -741,7 +858,7 @@ describe('a slot holding a save this build cannot make a screen out of', () => {
     const before = controller.store.snapshot();
     saves.slots.set('slot-a', withGhostComrade(saves.slots.get('slot-a')!));
 
-    await expect(controller.load('slot-a')).resolves.toBeUndefined();
+    await expect(controller.load('slot-a')).resolves.toMatchObject({ outcome: 'refused' });
 
     const after = controller.store.snapshot();
     expect(after.saveFailure?.code).toBe(SaveErrorCodes.Inconsistent);

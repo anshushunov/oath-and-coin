@@ -211,10 +211,18 @@ function useSaveSlots(
  * Loads `slot` and leaves the slots screen only if the campaign actually arrived.
  *
  * The refusal is shown in place (design spec §3.1: "попытка загрузить нечитаемый слот →
- * отказ на месте, без ухода с экрана"), and the session is what says which happened: the
- * controller reports every refusal as `saveFailure` on the slot it was about. A page that
- * navigated first and asked afterwards would drop the player onto whatever screen the
- * previous session was showing, with the reason nowhere.
+ * отказ на месте, без ухода с экрана"). A page that navigated first and asked afterwards
+ * would drop the player onto whatever screen the previous session was showing, with the
+ * reason nowhere.
+ *
+ * **What says which happened is this call's own result, not the session.** It used to be
+ * `store.snapshot().saveFailure`, read once the promise settled, and external review of
+ * segment 5 was right about what that costs when the player clicks two slots in a row:
+ * there is one `saveFailure` and both callbacks read it, so neither can tell whose answer
+ * it is. `SessionLoadResult` belongs to the call that produced it — including the outcome
+ * that only exists because loads overlap, where this call's campaign was superseded by a
+ * later one and navigating on its behalf would move the player somewhere they did not ask
+ * to go.
  */
 function openLoaded(
   controller: SessionController,
@@ -222,15 +230,13 @@ function openLoaded(
   onLoaded: () => void,
   onRefused: () => void
 ): void {
-  void controller.load(slot).then(() => {
-    const failure = controller.store.snapshot().saveFailure;
-
-    if (failure !== null && failure.slot === slot) {
-      onRefused();
+  void controller.load(slot).then((result) => {
+    if (result.outcome === 'loaded') {
+      onLoaded();
       return;
     }
 
-    onLoaded();
+    onRefused();
   }, onRefused);
 }
 
