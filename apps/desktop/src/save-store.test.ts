@@ -202,6 +202,49 @@ describe('writing a slot', () => {
     expect(entries.some((entry) => entry.includes('.tmp'))).toBe(false);
   });
 
+  it.each([
+    ['a write that fails the way a full disk fails it', 'beforeWrite'],
+    ['an fsync that fails on its own', 'beforeSync']
+  ] as const)('does not leave its temporary file behind after %s', async (_name, hook) => {
+    // External review of segment 5 named both of these as the branch
+    // `beforeRename` could not reach: the exception left the function through
+    // the `finally` that closes the handle, before the `catch` that deleted
+    // the temporary file ever ran, so every failed save left one uniquely
+    // named file behind for good.
+    const dir = await temporaryDirectory();
+
+    await expect(
+      writeSaveFileAtomically(dir, 'slot-a', bytesOf('ВТОРОЕ'), {
+        [hook]: () => {
+          throw new Error(`injected failure at ${hook}`);
+        }
+      })
+    ).rejects.toThrow(`injected failure at ${hook}`);
+
+    const entries = await readdir(dir);
+    expect(entries).toEqual([]);
+  });
+
+  it.each([['beforeWrite'], ['beforeSync']] as const)(
+    'a failure at %s leaves the previous save intact',
+    async (hook) => {
+      const dir = await temporaryDirectory();
+      const store = fileSaveStore(dir);
+
+      await store.write('slot-a', bytesOf('ПЕРВОЕ'));
+
+      await expect(
+        writeSaveFileAtomically(dir, 'slot-a', bytesOf('ВТОРОЕ'), {
+          [hook]: () => {
+            throw new Error(`injected failure at ${hook}`);
+          }
+        })
+      ).rejects.toThrow(`injected failure at ${hook}`);
+
+      expect(await store.read('slot-a')).toEqual(bytesOf('ПЕРВОЕ'));
+    }
+  );
+
   it('retries a transient EPERM/EBUSY on rename before publishing', async () => {
     // The module header comment records what this proves: two `rename`s onto
     // the same target — no shared temporary file needed — can still make

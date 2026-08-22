@@ -160,6 +160,26 @@ export async function readSaveFile(
  */
 export interface WriteHooks {
   /**
+   * Called with the temporary file open and empty, immediately before its bytes
+   * are written — the seam for a `writeFile` that fails the way a full disk
+   * makes it fail.
+   *
+   * External review of segment 5 asked for this one and for {@link beforeSync}
+   * by name: {@link beforeRename} exercises only the *later* branch, and the
+   * cleanup defect it found lived in the earlier one, where the exception left
+   * the function through the `finally` that closes the handle and never reached
+   * the `catch` that deletes the temporary file.
+   */
+  readonly beforeWrite?: () => void | Promise<void>;
+
+  /**
+   * Called after the temporary file's bytes are written and immediately before
+   * they are `fsync`ed — the seam for a `sync` that fails on its own, with the
+   * bytes already in the page cache. See {@link beforeWrite}.
+   */
+  readonly beforeSync?: () => void | Promise<void>;
+
+  /**
    * Called after the temporary file has been written, `fsync`ed and closed,
    * immediately before the `rename` that makes its bytes visible under the
    * slot's name. A hook that throws stops the write there: the `rename`
@@ -243,26 +263,41 @@ export async function writeSaveFileAtomically(
   const tmp = tempPath(dir, slot);
   const renameImpl = hooks.rename ?? ((from: string, to: string) => rename(from, to));
   const handle = await open(tmp, 'w');
-  try {
-    await handle.writeFile(bytes);
-    // The file's own descriptor, not the directory's — see this module's
-    // header comment for why the directory is never `fsync`ed.
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
 
+  // **One `finally` around everything after `open`, keyed on whether the bytes
+  // were published.** It used to be two blocks: a `try/finally` that closed the
+  // handle, and below it a `try/catch` that deleted the temporary file. External
+  // review of segment 5 measured what that left open — a `writeFile` or a `sync`
+  // that throws (a full disk, an I/O error) leaves the function through the
+  // *first* block, so the deletion in the second never runs and every failed save
+  // leaves one uniquely named file behind forever. The docblock above promised
+  // cleanup on the ordinary failure path; only the later half of that path had
+  // it.
+  //
+  // `published` rather than a `catch`, because the cleanup is not about there
+  // being an error: it is about the temporary file having a successor. And the
+  // `unlink` stays best-effort and swallowed for the reason it always was — the
+  // file already gone is not this write's failure and must not replace it.
+  let published = false;
   try {
+    try {
+      await hooks.beforeWrite?.();
+      await handle.writeFile(bytes);
+      await hooks.beforeSync?.();
+      // The file's own descriptor, not the directory's — see this module's
+      // header comment for why the directory is never `fsync`ed.
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+
     await hooks.beforeRename?.();
     await retryTransient(() => renameImpl(tmp, targetPath(dir, slot)));
-  } catch (error) {
-    // Best-effort: the ordinary failure path (the hook throwing in a test, a
-    // `rename` that fails) should not leave a temporary file behind for
-    // `list()` to have to filter out forever. A failure here — the file
-    // already gone, a second concurrent cleanup — is not this write's own
-    // failure and must not replace it.
-    await unlink(tmp).catch(() => undefined);
-    throw error;
+    published = true;
+  } finally {
+    if (!published) {
+      await unlink(tmp).catch(() => undefined);
+    }
   }
 }
 
