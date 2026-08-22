@@ -8,7 +8,9 @@
     "test": "vitest run --root ../.. tests/oracle"
   },
   "devDependencies": {
+    "@oath-and-coin/application": "workspace:*",
     "@oath-and-coin/content": "workspace:*",
+    "@oath-and-coin/presentation": "workspace:*",
     "@oath-and-coin/scenario-runner": "workspace:*",
     "@oath-and-coin/simulation": "workspace:*",
     "typescript": "6.0.3"

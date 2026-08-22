@@ -6,7 +6,8 @@
   "main": "dist/main.cjs",
   "scripts": {
     "build": "vite build --config vite.main.config.ts && vite build --config vite.preload.config.ts",
-    "package": "electron-builder --win --dir --config electron-builder.yml"
+    "package": "electron-builder --win --dir --config electron-builder.yml",
+    "test": "vitest run --root ../.. apps/desktop"
   },
   "dependencies": {
     "zod": "4.4.3"

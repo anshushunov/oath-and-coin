@@ -7,7 +7,6 @@ import {
   type CanonicalValue,
   type ContentId,
   type ContractState,
-  type DecisionResult,
   type GameState,
   type HeldTrait,
   type HeroState,
@@ -21,6 +20,7 @@ import {
   createContractOfferScreenModel,
   type ContractLine,
   type ContractOfferScreenModel,
+  type DecidedOutcome,
   type DecidedStep,
   type HeroCard,
   type ReasonLine,
@@ -130,10 +130,31 @@ export function failedScreen(errorCode: string, errorDetail: string): ContractOf
  * this screen. Completeness is read from the contract's own deduplicated
  * `respondedBy`, not from how many response lines the filter happened to keep, which
  * would double-count a hero appearing in more than one step.
+ *
+ * `focusedContract` names that contract outright, for the caller who already knows which
+ * screen is being drawn — a session reopened from a save, where the steps are rebuilt
+ * from history and history holds no rejected step at all, so "the contract the first step
+ * named" is not the same question there as it is after a live run. Optional rather than
+ * required: without it the rule above is exactly what it was, and every existing caller —
+ * including corpus parity — keeps its own answer unchanged.
+ *
+ * **The corpus does not distinguish the argument, and two hand-made inputs do.** On the
+ * frozen corpus it is degenerate: measured over all 50 entries that reached a state, none
+ * has a rejected first step and none has a `read_model.contract` differing from the
+ * contract of its first applied step, so `tests/oracle/src/restored-read-model.test.ts`
+ * passes with this parameter ignored. The two cases that redden when it is ignored are
+ * `contract-offer-screen-model-factory.test.ts`'s "is the one the caller named, over the
+ * lexicographically first fallback" and "…over the contract the first step answered"
+ * (Task 16.8). The round trip through a real envelope is `session-controller.test.ts`'s
+ * "is the screen that was on it when the only step was rejected", which is what already
+ * held this argument up from one layer above, in another package's suite. Written down
+ * because segment 4 already paid for the opposite habit — a comment that declared a check
+ * to exist before it did.
  */
 export function contractOfferScreenModel(
   state: GameState,
-  steps: readonly DecidedStep[]
+  steps: readonly DecidedStep[],
+  focusedContract?: ContentId
 ): ContractOfferScreenModel {
   // Both halves of the spec's rule for this state: nothing to offer, or nobody to
   // offer it to. The C# original implemented only the first, so a campaign with
@@ -152,7 +173,7 @@ export function contractOfferScreenModel(
     });
   }
 
-  const contract = resolveContract(state, steps);
+  const contract = resolveContract(state, steps, focusedContract);
   const heroes = [...state.heroes.values()];
   const roster = heroes.map((hero) => toHeroCard(hero, state.traitRules));
 
@@ -176,11 +197,18 @@ export function contractOfferScreenModel(
   });
 }
 
-function resolveContract(state: GameState, steps: readonly DecidedStep[]): ContractState {
+function resolveContract(
+  state: GameState,
+  steps: readonly DecidedStep[],
+  focusedContract: ContentId | undefined
+): ContractState {
   const first = steps[0];
-  // Lexicographically first when nothing has been offered yet: the map is already
-  // sorted, so the fallback is deterministic rather than "whichever came out first".
-  const contractId = first === undefined ? state.contracts.keys()[0] : first.command.contract;
+  // Named outright when the caller knows; otherwise the contract the first step
+  // answered; otherwise — nothing has been offered yet — the lexicographically first,
+  // since the map is already sorted and the fallback is deterministic rather than
+  // "whichever came out first".
+  const contractId =
+    focusedContract ?? (first === undefined ? state.contracts.keys()[0] : first.command.contract);
   const contract = contractId === undefined ? undefined : state.contracts.get(contractId);
 
   if (contract === undefined) {
@@ -341,7 +369,7 @@ function toResponseLine(
  * strongest and never whichever the trace happened to compute first.
  */
 function rankReasons(
-  decision: DecisionResult,
+  decision: DecidedOutcome,
   heroDisplayNameKeys: ReadonlyMap<ContentId, string>
 ): readonly ReasonLine[] {
   const accepted = decision.selectedAction === Actions.Accept;
@@ -436,7 +464,7 @@ function resolveSourceDisplayNameKey(
  * data that already went into the decision and never guessed. "Wavered" is then just:
  * did crossing zero change between that reconstructed score and the final one.
  */
-function computeWavered(decision: DecisionResult): boolean {
+function computeWavered(decision: DecidedOutcome): boolean {
   const finalScore = decision.selectedScore;
 
   if (finalScore === null) {

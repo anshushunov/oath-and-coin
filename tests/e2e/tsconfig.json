@@ -17,5 +17,8 @@
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "types": ["node"]
   },
-  "include": ["**/*.spec.ts"]
+  // `**/*.ts` rather than only the specs: `layout.ts` holds the measurement both suites
+  // share, Playwright does not collect it (its `testMatch` is `*.spec.ts`), and a helper
+  // outside the typecheck is a helper the gate cannot see.
+  "include": ["**/*.ts"]
 }

@@ -145,6 +145,15 @@ importers:
 
   tests/architecture:
     devDependencies:
+      '@oath-and-coin/application':
+        specifier: workspace:*
+        version: link:../../packages/application
+      '@oath-and-coin/content':
+        specifier: workspace:*
+        version: link:../../packages/content
+      '@oath-and-coin/desktop':
+        specifier: workspace:*
+        version: link:../../apps/desktop
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -154,6 +163,9 @@ importers:
 
   tests/desktop:
     devDependencies:
+      '@oath-and-coin/desktop':
+        specifier: workspace:*
+        version: link:../../apps/desktop
       '@playwright/test':
         specifier: 1.62.1
         version: 1.62.1
@@ -184,6 +196,9 @@ importers:
 
   tests/locale:
     devDependencies:
+      '@oath-and-coin/application':
+        specifier: workspace:*
+        version: link:../../packages/application
       '@oath-and-coin/content':
         specifier: workspace:*
         version: link:../../packages/content
@@ -199,9 +214,15 @@ importers:
 
   tests/oracle:
     devDependencies:
+      '@oath-and-coin/application':
+        specifier: workspace:*
+        version: link:../../packages/application
       '@oath-and-coin/content':
         specifier: workspace:*
         version: link:../../packages/content
+      '@oath-and-coin/presentation':
+        specifier: workspace:*
+        version: link:../../packages/presentation
       '@oath-and-coin/scenario-runner':
         specifier: workspace:*
         version: link:../../tools/scenario-runner

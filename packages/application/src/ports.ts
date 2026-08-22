@@ -1,15 +1,25 @@
 import type { ContentFileSource } from '@oath-and-coin/content';
 
+import type { SlotGuard } from './save/slot-guard.ts';
+import type { SaveSlot } from './save/slots.ts';
+
 /**
  * What the application needs from the outside, and nothing else.
  *
- * One port, because one port has an implementation today. `apps/web` builds a
- * {@link ContentFileSource} from `import.meta.glob`, `@oath-and-coin/content/node`
- * builds one from a directory, and both satisfy this without knowing about each
- * other. A `DesktopPort` and a `SavePort` are easy to imagine and are deliberately
- * not written: a port with no implementation is a shape guessed in advance, and the
- * first real caller always wants a slightly different one — at which point the guess
- * has to be changed by whoever least wants to change it.
+ * `ContentSourcePort` was, for most of this segment, the one port in this file with
+ * an implementation. `apps/web` builds a {@link ContentFileSource} from
+ * `import.meta.glob`, `@oath-and-coin/content/node` builds one from a directory, and
+ * both satisfy this without knowing about each other.
+ *
+ * This comment used to name `SavePort` alongside `DesktopPort` as "easy to imagine
+ * and deliberately not written": a port with no implementation is a shape guessed in
+ * advance, and the first real caller always wants a slightly different one — at which
+ * point the guess has to be changed by whoever least wants to change it. That was true
+ * of `SaveStorePort` until it stopped being a guess: `apps/web/src/save/indexeddb-store.ts`
+ * (Task 16.5) is its first real caller and its first real implementation, both at
+ * once, so the interface below is no longer a shape written in advance of anyone
+ * needing it. `DesktopPort` has no such caller yet and stays unwritten for exactly the
+ * original reason.
  *
  * Why a port at all rather than passing the two sources around: the load sequence
  * asks two different questions about files — "the scenario's own" and "the content
@@ -31,4 +41,61 @@ export interface ContentSourcePort {
    * and `screen_error` is a shipped scenario whose whole purpose is to reach it.
    */
   openContentRoot(repositoryRelativePath: string): ContentFileSource | null;
+}
+
+/**
+ * The slot store a save screen reads and writes through — the second port beside
+ * {@link ContentSourcePort}, for the same shape of reason: two runtimes answer "where
+ * do a save's bytes live" in genuinely different ways (design spec §2.1), and this
+ * interface is what lets the rest of `packages/application` — the envelope, and later
+ * the save-slots screen model — stay ignorant of which one it is talking to.
+ *
+ * `apps/web/src/save/indexeddb-store.ts` is the first implementation, over IndexedDB,
+ * where a `readwrite` transaction is what makes {@link write} atomic rather than the
+ * order its caller calls things in. A second implementation, over a file through
+ * Electron's main process, is a later task's.
+ *
+ * `list()` deliberately answers only *which* slots are occupied, not what they
+ * contain: a slot's descriptor comes from decoding its bytes (`readSave`, which
+ * `SaveDescriptor`'s own doc comment already explains does not know its own slot),
+ * and `read()` is what a caller already has for that. A caller wanting a slot paired
+ * with its descriptor builds that pair itself — `list()`'s slot beside `readSave`'s
+ * result for that same slot's bytes — rather than this port returning two separately-
+ * ordered arrays a caller would have to zip back together and trust stayed aligned.
+ * `save/slot-descriptions.ts` is that caller, and it is the only one: it matches by slot
+ * name and never by position, which is what the "no particular order" above is for.
+ */
+export interface SaveStorePort {
+  /** A slot's bytes, or `null` if it is empty. Throws if the store is unavailable. */
+  read(slot: SaveSlot): Promise<Uint8Array | null>;
+
+  /**
+   * Replaces a slot's contents wholesale and atomically, and only if the slot still
+   * holds what `guard` says it should.
+   *
+   * **Why a write needs a guard at all.** Atomicity is a promise about bytes not
+   * mixing; it is not a promise that nobody replaced them between the moment a screen
+   * was drawn and the moment a button was pressed. External review of segment 5
+   * measured what that leaves open, and the damaging case is the one the interface asks
+   * *no* question about: a tab reads slot A as empty, a second tab writes a campaign
+   * into it, and the first tab's save then destroys that campaign without ever asking —
+   * because a slot with nothing in it is exactly the slot the confirmation is skipped
+   * for. The confirmed case is a lost update too: the player consents to replacing the
+   * save they were shown, not whichever one arrived since.
+   *
+   * So a write states what it believes it is replacing, and the store compares inside
+   * whatever makes it atomic — one `readwrite` transaction, one serialized slot queue —
+   * rather than the caller comparing beforehand and hoping.
+   *
+   * @throws a `SaveReadError` carrying `SAVE_SLOT_CHANGED` when the slot holds
+   * something else — and leaves it exactly as it was found.
+   */
+  write(slot: SaveSlot, bytes: Uint8Array, guard: SlotGuard): Promise<void>;
+
+  /**
+   * Which slots are occupied, in no particular order — a caller matching this
+   * against a fixed slot layout sorts or looks up by name rather than relying on
+   * the order this answers in. An empty slot is not an error.
+   */
+  list(): Promise<readonly SaveSlot[]>;
 }

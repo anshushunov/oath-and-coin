@@ -1,9 +1,13 @@
-import { useText } from '../../text.tsx';
+import { useText } from '../text.tsx';
 
 /**
- * The three primitives every block of the contract-offer screen is built from —
- * `BuildLabel`, `AddCaptioned` and `AddKeyList` of the Godot original, with the
- * rules they carried intact.
+ * The three primitives every block of every screen is built from — `BuildLabel`,
+ * `AddCaptioned` and `AddKeyList` of the Godot original, with the rules they carried
+ * intact.
+ *
+ * They moved up a directory when the save-slots screen arrived (Task 16.8) and needed
+ * the same three. The alternative was one screen importing another screen's internals,
+ * which would have made "which screen owns a caption" a question with no answer.
  *
  * They are components rather than helpers because that is what makes the rules
  * enforceable: a caption and its value are two elements produced by one component, so

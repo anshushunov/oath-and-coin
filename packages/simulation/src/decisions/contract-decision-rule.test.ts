@@ -7,6 +7,7 @@ import { compareHeroIds, heroId, type HeroId } from '../ids/hero-id.ts';
 import { aContext, aContract, aHero, aTrait, ids } from '../testing/fixtures.ts';
 
 import { Actions } from './actions.ts';
+import type { DecisionContext } from './context.ts';
 import { decide, drawMood } from './contract-decision-rule.ts';
 import { ReasonCodes } from './reason-codes.ts';
 
@@ -303,6 +304,129 @@ describe('bonds', () => {
         })
       )
     ).toThrow(/context-assembly bug/);
+  });
+});
+
+/**
+ * Hero profiles the sweep below walks, chosen to put each scale at both ends of its own
+ * behaviour and at an ordinary middle — not to reproduce any authored hero.
+ */
+const PROFILES: readonly (readonly [number, number, number, number])[] = [
+  [0, 0, 0, 0],
+  [100, 100, 100, 100],
+  [60, 30, 45, 50],
+  [99, 1, 1, 9],
+  [1, 99, 99, 91]
+];
+
+/**
+ * A deterministic sweep of contexts, built here from {@link aContext} rather than drawn
+ * from a generator: global randomness is banned in this package, and an enumeration is
+ * reproducible on top of that — a failure names the same context on every run.
+ *
+ * Every term of `HERO_DECISION_SPEC` §2.3 is moved by something in here: payment and
+ * risk (which also drives the insult term on and off, since insult exists only while
+ * payment is below risk), the four hero scales, an inclination pulling each way, a bond
+ * pulling each way, and three mood ordinals. The traits carry both tags the contract
+ * does, so both fire.
+ */
+function localContexts(): readonly DecisionContext[] {
+  const contexts: DecisionContext[] = [];
+
+  for (const [greed, caution, pride, trustInGuild] of PROFILES) {
+    for (const payment of [0, 15, 40, 100]) {
+      for (const risk of [0, 9, 55, 80, 100]) {
+        for (const traitWeight of [-30, -3, 0, 7, 30]) {
+          for (const bondWeight of [-20, -5, 0, 5, 20]) {
+            for (const decisionOrdinal of [0n, 3n, 6n]) {
+              contexts.push(
+                aContext({
+                  hero: aHero({
+                    greed,
+                    caution,
+                    pride,
+                    trustInGuild,
+                    relationships: SortedMap.from(compareContentIds, [
+                      [ids.doran, bondWeight],
+                      [ids.zara, -bondWeight]
+                    ])
+                  }),
+                  contract: aContract({
+                    payment,
+                    risk,
+                    tags: SortedSet.from(compareContentIds, [ids.temple, ids.undead]),
+                    acceptedBy: SortedSet.from(compareHeroIds, [heroId(1), heroId(2)])
+                  }),
+                  traits: [
+                    aTrait({ id: ids.loyal, tag: ids.undead, weight: traitWeight }),
+                    aTrait({ id: ids.squeamish, tag: ids.temple, weight: -traitWeight })
+                  ],
+                  crew: crewOf([
+                    [1, ids.doran],
+                    [2, ids.zara]
+                  ]),
+                  decisionOrdinal
+                })
+              );
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // A red line closes the decision before any score exists, so these carry the score the
+  // sweep must skip rather than sum. Present on purpose: an invariant stated only over
+  // scored decisions would not say what it does about the other kind.
+  for (const decisionOrdinal of [0n, 3n, 6n]) {
+    contexts.push(
+      aContext({
+        contract: aContract({ tags: SortedSet.from(compareContentIds, [ids.temple]) }),
+        traits: [aTrait({ id: ids.refusesTemples, tag: ids.temple, isPrinciple: true, weight: 0 })],
+        decisionOrdinal
+      })
+    );
+  }
+
+  return contexts;
+}
+
+describe('the recorded score is the recorded factors', () => {
+  it('записанный счёт равен сумме записанных факторов', () => {
+    // Движок считает счёт из слагаемых, а факторы складывает отдельным списком: два
+    // параллельных пути. Восстановление шагов из сохранения опирается на их совпадение,
+    // поэтому оно проверяется, а не подразумевается.
+    //
+    // Контексты строятся локально, из `aContext` — этот тест не знает про границы
+    // контента и знать не может. Что тождество держится на всём, что пропускает
+    // загрузчик, проверяет тест в `packages/content`.
+    const contexts = localContexts();
+
+    // Названо числом: молчаливо сжавшийся перебор прошёл бы эту проверку целиком, и
+    // «зелено» означало бы «нечего было проверять».
+    expect(contexts).toHaveLength(7503);
+
+    let scored = 0;
+    let blocked = 0;
+
+    for (const context of contexts) {
+      const { result } = decide(context);
+
+      if (result.selectedScore === null) {
+        blocked += 1;
+        continue;
+      }
+
+      scored += 1;
+
+      const positive = result.trace.positiveFactors.reduce((a, f) => a + f.magnitude, 0);
+      const negative = result.trace.negativeFactors.reduce((a, f) => a + f.magnitude, 0);
+
+      expect(positive - negative).toBe(result.selectedScore);
+    }
+
+    expect(blocked).toBe(3);
+    expect(scored).toBe(7500);
   });
 });
 

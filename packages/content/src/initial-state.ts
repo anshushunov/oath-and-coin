@@ -19,6 +19,7 @@ import {
 } from '@oath-and-coin/simulation';
 
 import type { ContentSet } from './content-set.ts';
+import { MAX_ARTIFACT_SAFE_TEXT_LENGTH } from './limits.ts';
 import { SAVE_SCHEMA_VERSION } from './versions.ts';
 
 /**
@@ -51,6 +52,14 @@ export function createInitialState(
   // campaign would ever produce.
   requireArtifactSafeText('rulesetVersion', rulesetVersion);
   requireUint64('campaignSeed', campaignSeed);
+  // The third check in that pair, and it closes the same circle from the other side.
+  // `requireArtifactSafeText` states a character set and no length; the save codec
+  // states both (`limits.ts`, `MAX_ARTIFACT_SAFE_TEXT_LENGTH`), so a ruleset version
+  // longer than that produced a campaign this build could write and then refuse to read
+  // back. Applied here rather than inside `requireArtifactSafeText` because the ceiling
+  // is this package's — `packages/simulation` knows nothing about save files.
+  requireWithinArtifactTextLength('rulesetVersion', rulesetVersion);
+  requireWithinArtifactTextLength('contentVersion', content.contentVersion);
 
   const heroes = SortedMap.from(
     compareHeroIds,
@@ -130,4 +139,14 @@ export function createInitialState(
     traces: SortedMap.empty<number, CausalTrace>(compareNumbers),
     history: []
   });
+}
+
+function requireWithinArtifactTextLength(field: string, value: string): void {
+  if (value.length > MAX_ARTIFACT_SAFE_TEXT_LENGTH) {
+    throw new Error(
+      `${field} is ${String(value.length)} characters long; a campaign's save file accepts at ` +
+        `most ${String(MAX_ARTIFACT_SAFE_TEXT_LENGTH)} (limits.ts), so a longer one would build ` +
+        'a campaign this build could write and then refuse to read back.'
+    );
+  }
 }

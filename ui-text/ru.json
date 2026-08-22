@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "locale": "ru",
+  "entries": {
+    "error.save_malformed": "Файл сохранения повреждён и не читается.",
+    "error.save_format_unsupported": "Файл сохранения написан в формате, которого эта версия игры не знает.",
+    "error.save_schema_unsupported": "Снимок кампании внутри файла написан в формате, которого эта версия игры не знает.",
+    "error.save_ruleset_mismatch": "Сохранение сделано по другим правилам игры и не может быть продолжено здесь.",
+    "error.save_content_mismatch": "Сохранение сделано на другой версии контента и не может быть продолжено здесь.",
+    "error.save_checksum_mismatch": "Файл сохранения изменён после записи: контрольная сумма не сходится.",
+    "error.save_inconsistent": "Файл сохранения противоречит сам себе и не читается.",
+    "error.save_out_of_bounds": "В файле сохранения есть значение вне допустимых пределов.",
+    "error.save_storage_unavailable": "Хранилище сохранений недоступно.",
+    "error.save_slot_changed": "В этом слоте теперь другое сохранение — посмотрите, что там, и попробуйте снова.",
+
+    "screen.saves.title": "Сохранения",
+    "screen.saves.state.loading": "Читаем слоты…",
+    "screen.saves.state.empty": "Все слоты пусты",
+    "screen.saves.state.error": "Хранилище недоступно",
+    "screen.saves.state.incomplete": "Часть слотов прочитать не удалось",
+    "screen.saves.state.normal": "Слоты прочитаны",
+
+    "screen.saves.open": "Сохранения",
+    "screen.contract_offer.open": "Вернуться к контракту",
+
+    "save.slot.slot_a.name": "Слот A",
+    "save.slot.slot_a.save": "Сохранить в слот A",
+    "save.slot.slot_a.load": "Загрузить слот A",
+    "save.slot.slot_b.name": "Слот B",
+    "save.slot.slot_b.save": "Сохранить в слот B",
+    "save.slot.slot_b.load": "Загрузить слот B",
+    "save.slot.slot_c.name": "Слот C",
+    "save.slot.slot_c.save": "Сохранить в слот C",
+    "save.slot.slot_c.load": "Загрузить слот C",
+
+    "save.slot.status.empty": "пусто",
+    "save.slot.status.occupied": "есть сохранение",
+    "save.slot.status.unreadable": "не читается",
+
+    "field.save.created_at": "Снято:",
+    "field.save.logical_time": "Логическое время:",
+    "field.save.contract": "Контракт на экране:",
+
+    "save.overwrite.question": "Заменить сохранение в этом слоте?",
+    "save.overwrite.confirm": "Заменить",
+    "save.overwrite.cancel": "Отмена"
+  }
+}

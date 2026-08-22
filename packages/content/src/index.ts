@@ -30,6 +30,7 @@ export {
 } from './bounds.ts';
 
 export {
+  MAX_ARTIFACT_SAFE_TEXT_LENGTH,
   MAX_FILE_SIZE_BYTES,
   MAX_JSON_DEPTH,
   MAX_RELATIONSHIPS_PER_HERO,
@@ -76,6 +77,8 @@ export {
 
 export { memoryFileSource, type ContentFileSource } from './file-source.ts';
 
+export { decodeUtf8OrThrow, encodeUtf8 } from './text-codec.ts';
+
 export { fileName, isUnder, joinPath, parentPath, toPosixPath } from './paths.ts';
 
 export { createInitialState } from './initial-state.ts';
@@ -104,6 +107,7 @@ export { commandsUpTo, resolveCheckpoint } from './scenarios/checkpoint-resolver
 export { resolveContentRoot } from './scenarios/content-root.ts';
 export {
   RULESET_VERSION,
+  applyScenarioCommands,
   runScenario,
   type ScenarioOutcome,
   type StepOutcome
@@ -124,3 +128,26 @@ export {
   type ScenarioRunRequest,
   type ScenarioRunResult
 } from './scenarios/load-sequence.ts';
+
+export {
+  SAVE_ERROR_CODES,
+  SaveErrorCodes,
+  SaveReadError,
+  type SaveErrorCode
+} from './save/save-error-codes.ts';
+export {
+  MAX_APPLIED_COMMANDS,
+  MAX_HEROES_PER_CONTRACT,
+  decodeSnapshot,
+  encodeSnapshot,
+  requireReadableSnapshot
+} from './save/snapshot-codec.ts';
+
+export {
+  UI_TEXT_ROOT,
+  UI_TEXT_SCHEMA_VERSION,
+  loadUiTextCatalogue,
+  uiTextCatalogueFile,
+  uiTextFileSchema,
+  type UiTextFile
+} from './ui-text/ui-text-catalogue.ts';

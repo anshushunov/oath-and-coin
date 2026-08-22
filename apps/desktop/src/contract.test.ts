@@ -1,6 +1,86 @@
 import { describe, expect, it } from 'vitest';
 
-import { mayOpenExternally } from './contract';
+import {
+  ALLOWED_CHANNELS,
+  DESKTOP_SAVE_SLOTS,
+  MAX_SAVE_BYTES,
+  SAVE_LIST_CHANNEL,
+  SAVE_READ_CHANNEL,
+  SAVE_WRITE_CHANNEL,
+  mayOpenExternally,
+  saveListRequest,
+  saveReadRequest,
+  saveWriteRequest,
+  type DesktopSlotGuard
+} from './contract';
+
+/** Сторож записи, которая ни на что не претендует. */
+const UNCHECKED: DesktopSlotGuard = { kind: 'unchecked' };
+
+describe('DESKTOP_SAVE_SLOTS', () => {
+  it('names exactly the three slots the spec fixed, in that order', () => {
+    expect(DESKTOP_SAVE_SLOTS).toEqual(['slot-a', 'slot-b', 'slot-c']);
+  });
+});
+
+describe('the save channels', () => {
+  it('are all in the allowlist', () => {
+    expect(ALLOWED_CHANNELS).toEqual(
+      expect.arrayContaining([SAVE_READ_CHANNEL, SAVE_WRITE_CHANNEL, SAVE_LIST_CHANNEL])
+    );
+  });
+
+  it('checks a read request slot against the closed set, not merely its type', () => {
+    // The design intent brief step 6 states directly: the main process checks
+    // membership in `DESKTOP_SAVE_SLOTS` itself, because there is no type at
+    // the boundary between two processes — only whatever a renderer sends.
+    expect(() => saveReadRequest.parse(['slot-a'])).not.toThrow();
+    expect(() => saveReadRequest.parse(['not-a-real-slot'])).toThrow();
+  });
+
+  it('checks a write request slot the same way, alongside its bytes', () => {
+    expect(() =>
+      saveWriteRequest.parse(['slot-b', Uint8Array.of(1, 2, 3), UNCHECKED])
+    ).not.toThrow();
+    expect(() =>
+      saveWriteRequest.parse(['not-a-real-slot', Uint8Array.of(1), UNCHECKED])
+    ).toThrow();
+    expect(() => saveWriteRequest.parse(['slot-b', 'not bytes', UNCHECKED])).toThrow();
+    // Третий аргумент — не необязательный довесок: без сторожа запись безусловна, а
+    // безусловная запись и есть то, что внешнее ревью сегмента 5 назвало потерянным
+    // обновлением.
+    expect(() => saveWriteRequest.parse(['slot-b', Uint8Array.of(1)])).toThrow();
+    expect(() =>
+      saveWriteRequest.parse(['slot-b', Uint8Array.of(1), { kind: 'whatever' }])
+    ).toThrow();
+    expect(() =>
+      saveWriteRequest.parse(['slot-b', Uint8Array.of(1), { kind: 'as-seen', seen: null }])
+    ).not.toThrow();
+  });
+
+  it('a list request takes no arguments', () => {
+    expect(() => saveListRequest.parse([])).not.toThrow();
+    expect(() => saveListRequest.parse(['slot-a'])).toThrow();
+  });
+
+  it('refuses a write payload over MAX_SAVE_BYTES, and accepts one at the limit', () => {
+    expect(() =>
+      saveWriteRequest.parse(['slot-a', new Uint8Array(MAX_SAVE_BYTES), UNCHECKED])
+    ).not.toThrow();
+    expect(() =>
+      saveWriteRequest.parse(['slot-a', new Uint8Array(MAX_SAVE_BYTES + 1), UNCHECKED])
+    ).toThrow();
+    // Сторож несёт байты и потому связан тем же потолком — иначе предел обходится
+    // тем, что переросшее сохранение объявляют «увиденным».
+    expect(() =>
+      saveWriteRequest.parse([
+        'slot-a',
+        Uint8Array.of(1),
+        { kind: 'as-seen', seen: new Uint8Array(MAX_SAVE_BYTES + 1) }
+      ])
+    ).toThrow();
+  });
+});
 
 /**
  * The predicate behind `setWindowOpenHandler`. Tested here rather than only

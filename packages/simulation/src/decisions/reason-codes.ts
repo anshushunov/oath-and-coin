@@ -71,3 +71,55 @@ export type ReasonCode = (typeof ReasonCodes)[keyof typeof ReasonCodes];
  * exists.
  */
 export const REASON_CODES: readonly ReasonCode[] = Object.freeze(Object.values(ReasonCodes));
+
+/**
+ * The vocabulary split by the **role** a code plays in a {@link CausalTrace}: which codes
+ * `contract-decision-rule.ts` can put in a factor list, which in `blockedBy`, and which in
+ * `tieBreak`.
+ *
+ * `REASON_CODES` above says "this is the engine's whole dictionary", and the doc at the
+ * top of this file has always said the dictionary is closed — but a *reader* handed a
+ * trace off a save file had no set to hold it to. External review of segment 5 measured
+ * what that cost: a save with `hero.decision.unknown_but_well_shaped` in a factor,
+ * honestly re-signed, passed `readSave`, step restoration and the screen model, and only
+ * then reached the strict text catalogue, which throws on a key it does not have. A file
+ * that satisfies every format check and kills the screen three layers later is a file the
+ * format did not actually validate.
+ *
+ * Three sets rather than one, because the roles are not interchangeable and the difference
+ * is checkable. {@link ReasonCodes.PrincipleForbids} names a red line, which
+ * `createDecisionResult` requires to come with a `null` score; a save that moved it into
+ * `positiveFactors` would be claiming a hero was *attracted* by a taboo, with a magnitude
+ * attached to something the rule states has none. {@link ReasonCodes.NoReasonToRefuse} is
+ * not a motive at all — it is the rule that settled a dead heat — and a factor list is
+ * exactly where it must not appear. One combined set would accept both of those files.
+ *
+ * Membership is typed out here rather than derived from the rule, because there is nothing
+ * to derive it from: which list a code lands in is a property of the code's meaning, not
+ * of any value the rule exports. What is not left to memory is *completeness* —
+ * `vocabulary.test.ts` holds the three sets to a partition of `REASON_CODES`, so a code
+ * added above and forgotten here reddens rather than becoming a code no save may carry.
+ */
+export const FACTOR_REASON_CODES: readonly ReasonCode[] = Object.freeze([
+  ReasonCodes.PaymentAttractive,
+  ReasonCodes.RiskTooHigh,
+  ReasonCodes.TrustsTheGuild,
+  ReasonCodes.UnpredictableMood,
+  ReasonCodes.PaymentInsulting,
+  ReasonCodes.PersonalConviction,
+  ReasonCodes.PersonalAversion,
+  ReasonCodes.StandsWithComrade,
+  ReasonCodes.WillNotWorkWith
+]);
+
+/** The codes that may appear in {@link CausalTrace.blockedBy}. See
+ * {@link FACTOR_REASON_CODES}. */
+export const BLOCK_REASON_CODES: readonly ReasonCode[] = Object.freeze([
+  ReasonCodes.PrincipleForbids
+]);
+
+/** The codes that may appear in {@link CausalTrace.tieBreak}. See
+ * {@link FACTOR_REASON_CODES}. */
+export const TIE_BREAK_REASON_CODES: readonly ReasonCode[] = Object.freeze([
+  ReasonCodes.NoReasonToRefuse
+]);

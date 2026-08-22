@@ -82,8 +82,26 @@ jobs:
       - name: Dependency boundaries
         run: pnpm lint:deps
 
+      # Teed into a file for the same reason the release gate's step is, and the
+      # reason is sharper than it was there.
+      #
+      # The json reporter does not record hooks at all. Measured: a `beforeAll`
+      # that times out leaves the file `status: "failed"` with `message: ""`, the
+      # test `skipped`, `duration: undefined` and `failureMessages: []`. The
+      # number and the sentence — "Hook timed out in 10000ms" — exist only on the
+      # console. Without this line a hook timeout in the job that runs on every
+      # push is a red with the message nowhere, which is exactly the debt Task 18
+      # was given, reappearing one step to the left.
+      #
+      # `shell: bash` is load-bearing, not decoration. GitHub's default for `run:`
+      # is `bash -e {0}` with **no** `pipefail`, so `pnpm test | tee` would report
+      # tee's exit code and the step would pass over a failing suite. `shell: bash`
+      # is `bash --noprofile --norc -eo pipefail {0}`.
       - name: Test
-        run: pnpm test
+        shell: bash
+        run: |
+          mkdir -p artifacts/checks
+          pnpm test 2>&1 | tee artifacts/checks/test.log
 
       # Playwright's browsers are not in the lockfile — they are binaries the
       # tool downloads — so the version installed here is the one pinned by
@@ -103,6 +121,27 @@ jobs:
       #
       # This is a new CI check, so AGENTS.md §8 requires a mutant on it, and the journal
       # records which branch reddened it.
+      #
+      # KEPT AS IT IS, and the decision is written down because Task 18 removed the
+      # same shape one job below and review asked whether it belongs here too.
+      #
+      # It looks identical — a step that fails a second time after an earlier step
+      # already failed — and it is not the same thing. The `release-gate` step this
+      # was compared with publishes measurements with no threshold, where a missing
+      # number on a failed run is the expected state and failing on it added a red
+      # that said nothing. This step is the gate on evidence being *produced*: a
+      # suite that quietly stopped writing reports has to fail somewhere, and this
+      # is the only place that can notice.
+      #
+      # The residue is real and is named rather than fixed: when `pnpm test:e2e`
+      # fails after writing two of the five states, this step also fails, and its
+      # message ("produced no evidence for: …") reads as "the suite stopped writing
+      # reports" when the truth is "the suite stopped". Making it a notice when
+      # `steps.e2e.outcome == 'failure'` and an error when e2e passed would separate
+      # the two — that is the shape to take when someone next touches it. Not taken
+      # here: it changes what a gate does, and the branch cannot be pushed from this
+      # task, so it could not be shown red on CI. An unproven change to a gate is
+      # worse than a named limit.
       - name: Summarise the browser evidence
         if: always() && steps.e2e.outcome != 'skipped'
         shell: bash
@@ -125,18 +164,94 @@ jobs:
           {
             echo "### browser evidence"
             echo
-            echo "| state | read model | rendered ui | content | viewport | reachable | events |"
-            echo "|---|---|---|---|---|---|---|"
+            echo "| state | read model | rendered ui | content | viewport | window | reachable | events |"
+            echo "|---|---|---|---|---|---|---|---|"
             for state in $expected; do
               jq -r '
                 "| \(.screen_state) | \(.read_model_hash[0:16]) | \(.rendered_ui_hash[0:16]) "
                 + "| \(.layout.contentWidth)x\(.layout.contentHeight) "
                 + "| \(.layout.viewportWidth)x\(.layout.viewportHeight) "
+                + "| \(.layout.windowHeight) "
                 + "| \(.layout.reachableWidth)x\(.layout.reachableHeight) | \(.events) |"
               ' "$root/$state/report.json"
             done
             echo
           } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # The second screen's five states, listed here for the same reason the first five
+      # are: a state whose run stops producing evidence has to fail a stage, and the only
+      # place that can be noticed is a list of what was expected. Its own step and its own
+      # table because the two screens report different things — the slots screen has no
+      # corpus behind it, so there is no read-model hash to print, and it reports which of
+      # the five shapes the storage put it in instead.
+      #
+      # Same decision, same residue, same reason as the step above — it is the second
+      # of the two, and naming only one of a pair is how a class gets half-fixed.
+      - name: Summarise the save-slots evidence
+        if: always() && steps.e2e.outcome != 'skipped'
+        shell: bash
+        run: |
+          root=artifacts/browser-evidence/saves
+          expected="loading empty error incomplete normal"
+
+          missing=""
+          for state in $expected; do
+            [ -f "$root/$state/report.json" ] || missing="$missing $state"
+            [ -f "$root/$state/screenshot.png" ] || missing="$missing $state/frame"
+            [ -f "$root/$state/events.jsonl" ] || missing="$missing $state/events"
+          done
+
+          if [ -n "$missing" ]; then
+            echo "::error::The save-slots run produced no evidence for:$missing"
+            exit 1
+          fi
+
+          {
+            echo "### save-slots evidence"
+            echo
+            echo "| state | texts | content | viewport | window | reachable | events |"
+            echo "|---|---|---|---|---|---|---|"
+            for state in $expected; do
+              jq -r '
+                "| \(.saves_screen_state) | \(.texts) "
+                + "| \(.layout.contentWidth)x\(.layout.contentHeight) "
+                + "| \(.layout.viewportWidth)x\(.layout.viewportHeight) "
+                + "| \(.layout.windowHeight) "
+                + "| \(.layout.reachableWidth)x\(.layout.reachableHeight) | \(.events) |"
+              ' "$root/$state/report.json"
+            done
+            echo
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # The vitest report of whatever ran here, on its own and under a bare
+      # `always()`. It is not folded into the upload below, and that is the whole
+      # point of it existing separately.
+      #
+      # Task 18 put the capture of the unexplained intermittent red into the
+      # `release-gate` job and review measured where the red will actually happen:
+      # `pnpm test` runs in *this* job too, on every push, and every upload here is
+      # gated on `steps.e2e.outcome != 'skipped'`. A red `pnpm test` fails the job
+      # before `Install the browser`, so `e2e` never runs, `skipped` is exactly what
+      # its outcome is, and both uploads are skipped with it — the failing run's
+      # `results.json` goes nowhere. The mechanism was in the job where the flake had
+      # not been seen and missing from the one where it was.
+      #
+      # `if-no-files-found: warn`, unlike the evidence upload below: a job that died
+      # in `Install` never reached vitest, and failing it twice for that would be the
+      # second-red-that-says-nothing this workflow already carries one note about.
+      - name: Upload the vitest report, whatever happened
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checks-vitest-report
+          # Both halves, because neither names a failure on its own: the json
+          # carries `duration` and a stack that points at the test file, the log
+          # carries the sentence — and for a *hook* timeout the json carries
+          # nothing at all.
+          path: |
+            artifacts/vitest/
+            artifacts/checks/
+          if-no-files-found: warn
 
       - name: Upload browser evidence
         if: always() && steps.e2e.outcome != 'skipped'
@@ -169,6 +284,251 @@ jobs:
           path: artifacts/decision-benchmark/
           if-no-files-found: error
 
+  # The release gate: the three commands that have to answer before a branch is
+  # merged, in one job, in the order a reader of a red X would want them.
+  #
+  # It is not a rerun of `checks` above with a shorter name. `checks` reports
+  # ten separate stages, which is what a developer watching a push wants; this
+  # job runs the single command a developer types locally, so that "green here"
+  # and "green on my machine" are the same sentence rather than two lists that
+  # have to be compared by eye. A stage that fell out of `pnpm verify` fails
+  # here and passes there, which is exactly the disagreement worth catching.
+  #
+  # **The cost, named rather than left to be discovered.** This job re-runs every
+  # stage `checks` already ran, and `dotnet test` on top, on every push — roughly
+  # 2.5 minutes of runner beside the 1.5 that `checks` costs, and the .NET half is
+  # also run by `dotnet.yml`. That is deliberate and it is not free: the duplication
+  # is what buys the disagreement check above ("green here" vs "green on my
+  # machine"), and it is the first thing to reconsider if push traffic makes runner
+  # time matter. The cheaper shapes both give something up — `needs: checks` makes
+  # the gate serial and roughly doubles wall clock, and restricting this job to
+  # pull requests leaves the mutant branches AGENTS.md §8 asks for unobserved, which
+  # is exactly what the `on:` block at the top of this file exists to prevent.
+  #
+  # Three steps and not one, because they are three different verdicts:
+  # "the TypeScript stack is sound", "nothing unreviewed reaches a player at
+  # runtime", "the .NET stack the migration has not cut over from yet is still
+  # green". Merging them into one shell line would report all three as the
+  # first one that failed.
+  #
+  # **Why the desktop gate is not here.** `pnpm test:desktop` needs an Electron
+  # binary, a Windows host and — measured in Task 18 — the machine's real user
+  # data directory for its read-only launch, which makes it a machine-wide
+  # singleton: of four concurrent runs on one workstation exactly one passed,
+  # the other three died on `electron.launch` with Playwright's generic "Target
+  # page, context or browser has been closed". It therefore keeps the job below,
+  # on its own runner.
+  #
+  # **The RSS budget breaks when a second gate runs beside the first, and that is
+  # measured rather than suspected.** With one instance on the machine it holds: every
+  # solo run of `pnpm test:desktop`, read from `artifacts/electron-spike/gate-report.json`'s
+  # `rssBytes`, sits between 413 and 430 MiB against the 500 MiB budget. With two gates
+  # overlapping, the second instance's own measurement goes over and the budget assertion
+  # itself is what turns red — `Expected: <= 524288000 / Received: 543174656` and
+  # `543870976`, i.e. 518.0 and 518.7 MiB, in two of ten pairs run for the segment
+  # review, on top of three further reproductions by the reviewer (511.1, 524.2, 519.6
+  # MiB) and Task 17's original 516.5. Same four processes each time, every one of them
+  # fatter.
+  #
+  # This job and `packaged-desktop` never share a machine — they are separate jobs on
+  # separate runners — so the condition is not reachable in this workflow. It is
+  # reachable on a workstation, and §19.4 of
+  # `docs/production/FULL_TYPESCRIPT_MIGRATION.md` records it as a red rather than as a
+  # risk. The threshold itself comes from `ADR-011` and is the owner's to revisit; no
+  # number here predicts the next measurement.
+  release-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          # The same pin `dotnet.yml` uses, and for its reason: global.json sets
+          # rollForward: disable, so a runner with only a newer SDK fails to
+          # build rather than building with an unpinned toolchain.
+          dotnet-version: 8.0.424
+
+      - name: Enable the pinned package manager
+        run: corepack enable
+
+      - name: Install
+        id: install
+        run: pnpm install --frozen-lockfile
+
+      # `id`, because a verdict below depends on it and a dependency that cannot be
+      # named cannot be stated. Until segment review's last round this step had
+      # neither an id nor a condition, and it is the **second** setup step: a failed
+      # browser download silently carried off the `pnpm verify` verdict through
+      # GitHub's fail-fast default, while the job's comment promised three
+      # independent verdicts. The behaviour was right and nothing said so — the same
+      # gap between promise and mechanism as the finding that produced the two
+      # conditions below.
+      - name: Install the browser
+        id: browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      # Teed into a file, and that is this step's second job.
+      #
+      # Task 16.3 watched a red appear twice on a cold machine and lose its own
+      # message both times; nine warm runs never reproduced it, and AGENTS.md §8
+      # forbids silencing it with a timeout while nobody knows what it said.
+      # A CI runner is the first place cold runs are real rather than simulated,
+      # so the first red here has to survive the job that produced it. The log
+      # catches what the json reporter cannot — a worker that exited, a
+      # rejection outside any test, and the transform/import timings that were
+      # the only thing the two observations had in common.
+      #
+      # `shell: bash` on purpose: GitHub runs it as `bash -eo pipefail`, so the
+      # step still fails when `pnpm verify` does rather than reporting `tee`'s
+      # exit code.
+      #
+      # The condition states what fail-fast used to leave implicit. This verdict is
+      # the one that genuinely needs a browser — `pnpm verify` ends in
+      # `pnpm test:e2e` — so a failed download skips it **legitimately**, and saying
+      # so out loud is the difference between a skip that was decided and a skip that
+      # merely happened. The two verdicts below deliberately do NOT carry
+      # `steps.browser`: neither the dependency audit nor `dotnet test` opens a
+      # browser, so both must still answer on a run where the download failed. That
+      # asymmetry is the whole content of "three independent verdicts" here, and
+      # `tests/architecture/release-gate.test.ts` holds both halves of it.
+      - name: Release gate — pnpm verify
+        id: verify
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && steps.browser.outcome == 'success' }}
+        shell: bash
+        run: |
+          mkdir -p artifacts/release-gate
+          pnpm verify 2>&1 | tee artifacts/release-gate/verify.log
+
+      # **Three verdicts, and now three that are actually taken.** The comment above
+      # this job has always called them independent — "the TypeScript stack is
+      # sound", "nothing unreviewed reaches a player at runtime", "the .NET stack is
+      # still green" — and external review of segment 5 measured that they were not:
+      # steps run fail-fast by default, so a red `pnpm verify` skipped both of the
+      # others and the job reported one verdict out of three. A branch that broke the
+      # audit *and* a lint rule was told about the lint rule, fixed it, pushed, and
+      # heard about the audit on the next run. The architecture test next door checked
+      # that the three commands were present and could not see the difference between
+      # a list of steps and a list of verdicts.
+      #
+      # `!cancelled()` rather than `always()`: a cancelled run — the `concurrency`
+      # block at the top of this file cancels superseded pushes — should stop, not
+      # spend two more minutes on `dotnet test`. The job still goes red if any of the
+      # three fails, because a failed step fails its job whatever later steps do.
+      #
+      # Gated on `install` and not on the verdict before it, which is the difference
+      # that makes them independent. A tree with no `node_modules` cannot answer any
+      # of the three, and a second red about that would say nothing about the first.
+      - name: Release gate — runtime dependency audit
+        id: audit
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        shell: bash
+        run: |
+          mkdir -p artifacts/release-gate
+          node scripts/audit-runtime-dependencies.mjs 2>&1 | tee artifacts/release-gate/audit.log
+
+      # The other stack, still live until cutover (Task 19). Not `--no-build`:
+      # this job never ran `dotnet build`, and a `-c Release` test run builds
+      # what it needs. It is deliberately the last of the three — it is the
+      # slowest and the least likely to be what a TypeScript branch broke.
+      #
+      # `dotnet test` needs no `pnpm install`, and it is gated on it anyway: an
+      # install that failed means the checkout or the toolchain is broken, and this
+      # job's three verdicts are about a tree, not about three unrelated questions
+      # that happen to share a runner.
+      - name: Release gate — dotnet test
+        id: dotnet
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        shell: bash
+        run: |
+          mkdir -p artifacts/release-gate
+          dotnet test OathAndCoin.sln -c Release 2>&1 | tee artifacts/release-gate/dotnet.log
+
+      # The two numbers this job publishes and gates on neither. The bundle is
+      # already on disk — `pnpm verify` ends with a production build — so only
+      # the decision benchmark has to be run.
+      - name: Measure the decision path
+        if: always() && steps.verify.outcome == 'success'
+        run: pnpm bench:decision
+
+      # `always()`, with no `if-no-files-found: error`: the whole point is the
+      # run that failed, and a job that died in `Install` has nothing to publish
+      # and should not be failed twice for it.
+      - name: Upload the release gate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-gate-evidence
+          path: |
+            artifacts/release-gate/
+            artifacts/vitest/
+            artifacts/runtime-audit/
+            artifacts/decision-benchmark/
+          if-no-files-found: warn
+
+      # Measurements, published with no threshold attached, and the absence of a
+      # threshold is the decision rather than an omission. A bundle size or a
+      # p50 invented here would either never go red or go red on runner noise,
+      # and a gate nobody trusts is worse than a number nobody gated. The
+      # decision benchmark in `checks` above carries the same reservation for
+      # the same reason; when the battle scene arrives and needs a latency
+      # budget, it will come with a decision record rather than with a guess.
+      #
+      # Every measurement is guarded on its own file existing, and that is not
+      # defensive habit — it was measured. The first version reached straight
+      # for `apps/web/dist/assets`, which only exists once `pnpm verify` has got
+      # as far as `pnpm build`; on the two mutant runs that failed earlier than
+      # that, `find` exited non-zero inside a command substitution and
+      # `bash -eo pipefail` failed this step too. The job then reported two reds
+      # where one thing was wrong, and the second one said nothing about the
+      # first — which is the exact failure `dotnet.yml` records against its own
+      # evidence upload. A missing measurement on a failed run is the expected
+      # state, not a second defect.
+      - name: Summarise what was measured, without gating on it
+        if: always() && steps.verify.outcome != 'skipped'
+        shell: bash
+        run: |
+          {
+            echo "### release gate"
+            echo
+            echo "| measurement | value |"
+            echo "|---|---|"
+
+            if [ -d apps/web/dist/assets ]; then
+              bundle=$(find apps/web/dist/assets -name '*.js' -printf '%s\n' |
+                awk '{ total += $1 } END { print total + 0 }')
+              echo "| browser bundle, js bytes | $bundle |"
+            fi
+
+            report=artifacts/decision-benchmark/report.json
+            if [ -f "$report" ]; then
+              echo "| decide, p50 ms | $(jq -r '.decide.p50_ms' "$report") |"
+              echo "| proposeContractToHero, p50 ms | $(jq -r '.propose_contract_to_hero.p50_ms' "$report") |"
+            fi
+
+            if [ -f artifacts/runtime-audit/report.json ]; then
+              echo "| runtime packages reachable | $(jq -r '.closure | length' artifacts/runtime-audit/report.json) |"
+            fi
+
+            # The LAST vitest run of the chain, not the sum of both. `pnpm verify`
+            # runs `test` and then `test:scenario`, and they write one file: on a
+            # green run the second overwrites the first, and on a red one the file
+            # is the failing run's, which is the case this artifact exists for.
+            # Labelled rather than summed, because a total nobody can trace back to
+            # a command is the kind of number AGENTS.md §11 refuses.
+            if [ -f artifacts/vitest/results.json ]; then
+              echo "| vitest, last run of the chain, passed/total | $(jq -r '"\(.numPassedTests)/\(.numTotalTests)"' artifacts/vitest/results.json) |"
+            fi
+
+            echo
+            echo "No threshold is attached to any of these. See the step's comment."
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
   # The Task 4 gate, on the only OS it means anything on. Its own job because
   # a Windows runner is several times slower to provision than the Linux one
   # above, and nothing in `checks` should wait behind it.
@@ -193,8 +553,38 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
+      # Teed, and the reason is the failure this job could not report. External
+      # review of segment 5: when `pnpm package:desktop` fails, `Desktop gate` is
+      # skipped by GitHub's default, `steps.gate.outcome` is `skipped`, and every
+      # step below — both summaries and the evidence upload — is guarded on that
+      # outcome and skipped with it. A packaging flake, which is exactly the class
+      # this job exists to catch, left no artifact at all and nothing to read but
+      # the run log of a job somebody has to remember to open.
+      #
+      # `shell: bash` for the reason the `checks` job carries a paragraph about:
+      # GitHub's default `run:` on Windows is PowerShell, and its bash is
+      # `bash --noprofile --norc -eo pipefail {0}` — without it the pipe reports
+      # tee's exit code and a failed packaging would pass this step.
       - name: Package the desktop host
-        run: pnpm package:desktop
+        id: package
+        shell: bash
+        run: |
+          mkdir -p artifacts/desktop-package
+          pnpm package:desktop 2>&1 | tee artifacts/desktop-package/package.log
+
+      # A bare `always()`, unlike every other upload in this job, and that is the
+      # whole point of it being its own step: it is the one publication that must
+      # survive the step above failing. `warn` rather than `error`, because a job
+      # that died in `Install` never reached packaging and failing it twice for
+      # that is the second-red-that-says-nothing this workflow already carries a
+      # note about.
+      - name: Upload the packaging log, whatever happened
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-package-log
+          path: artifacts/desktop-package/
+          if-no-files-found: warn
 
       - name: Desktop gate
         id: gate
@@ -203,13 +593,32 @@ jobs:
       # The gate's numbers — installed size, RSS per process, what the page
       # could reach — live in this file and nowhere else (AGENTS.md §11: a
       # number is published by the run that produced it, never retyped).
+      #
+      # A missing report after a **green** gate is an error rather than a notice,
+      # and that is the second half of the same review finding. The suite writes
+      # `gate-report.json` and then asserts an object it still holds in memory, so
+      # deleting the write left Playwright green; this step answered with a
+      # `::warning::` and `exit 0`, and the evidence upload below found the two
+      # other directories in its path and succeeded on them. Three mechanisms in a
+      # row, and the obligatory artifact of the packaged build could vanish through
+      # all of them. The suite now reads its own report back (`packaged-host.spec.ts`)
+      # and this step refuses to call the run summarised when there is nothing to
+      # summarise.
+      #
+      # Still a notice when the gate itself failed: a suite that died before the
+      # last test legitimately has no report, and a second red about the missing
+      # file would say nothing about the first.
       - name: Summarise the gate
         if: always() && steps.gate.outcome != 'skipped'
         shell: bash
         run: |
           report=artifacts/electron-spike/gate-report.json
           if [ ! -f "$report" ]; then
-            echo "::warning::The gate produced no report."
+            if [ "${{ steps.gate.outcome }}" = "success" ]; then
+              echo "::error::The desktop gate passed and produced no report. The report is the only evidence this job publishes about the packaged build."
+              exit 1
+            fi
+            echo "::warning::The gate failed before it wrote a report."
             exit 0
           fi
           jq -r '
@@ -221,6 +630,26 @@ jobs:
             "- page reached: \(.pageExposure.desktopApiKeys | join(",")) (ipcRenderer=\(.pageExposure.ipcRendererReachable) require=\(.pageExposure.requireReachable))",
             ""
           ' "$report" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # The obligatory artifact, on its own, with nothing else in its path.
+      #
+      # It is not folded into the upload below and that separation is the finding:
+      # `if-no-files-found: error` over three paths passes as long as *one* of them
+      # matched, and the other two — the Playwright report and results directories —
+      # are written by every run. So the one file this job exists to produce could be
+      # absent while its upload stayed green. A path with one entry is the only shape
+      # in which `error` means what it says.
+      #
+      # Guarded on the gate having passed, for the same reason the summary above
+      # downgrades to a notice: a suite that died before its last test has no report
+      # to publish, and the bundle below still carries whatever it did leave behind.
+      - name: Upload the gate report
+        if: always() && steps.gate.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-gate-report
+          path: artifacts/electron-spike/gate-report.json
+          if-no-files-found: error
 
       - name: Upload the gate evidence
         if: always() && steps.gate.outcome != 'skipped'

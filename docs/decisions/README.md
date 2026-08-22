@@ -49,15 +49,19 @@ ADR-001-engine-and-language.md
 | [ADR-003](ADR-003-deterministic-rng.md) | Counter-based RNG без хранимого состояния | accepted |
 | [ADR-004](ADR-004-content-format.md) | Контент: JSON с JSON Schema и вычисляемой версией | accepted |
 | [ADR-005](ADR-005-stable-ids.md) | Стабильные namespaced идентификаторы | accepted |
+| [ADR-006](ADR-006-save-strategy.md) | Стратегия сохранений: снимок кампании, один порт, три слота, нулевое окно совместимости | accepted |
 | [ADR-007](ADR-007-events-and-causal-trace.md) | Конверт события и хранение causal trace в состоянии | accepted |
 | [ADR-008](ADR-008-runtime-harness.md) | Runtime harness: свой инструмент и состав условий успеха прогона | accepted |
 | [ADR-009](ADR-009-decision-contracts-and-content-v2.md) | Контракты решения и формат контента 2 | accepted |
 | [ADR-010](ADR-010-full-typescript-web-stack.md) | Полный переход на TypeScript web stack с Electron-хостом | accepted, область стоп-гейта сужена [ADR-011](ADR-011-electron-gate-without-steam.md) |
 | [ADR-011](ADR-011-electron-gate-without-steam.md) | Desktop-приложение без магазина; Task 4 проверяет Electron, а не Steam | accepted |
+| [ADR-012](ADR-012-interface-text-outside-content.md) | Тексты интерфейса живут вне `content/`, в каталоге `ui-text/` | accepted |
 
 `ADR-001` заменён `ADR-010`. Тело `ADR-001` и Godot-специфичный механизм `ADR-008` переписываются на этапе cutover, вместе с удалением кода, который они описывают ([`FULL_TYPESCRIPT_MIGRATION`](../production/FULL_TYPESCRIPT_MIGRATION.md), Task 19): до тех пор `ADR-001` читается как исторический контекст Gate 0, а действующим решением о движке и языке является `ADR-010`.
 
-Зарезервированные номера: `ADR-006` — стратегия сохранений (Milestone 3). Номер `ADR-009` держали пустым под фиксированный симуляционный тик; тик отозван из Gate 0 и входит в постановку модели времени боя на старте Milestone 2, где получит свой номер, а `ADR-009` занят записью выше.
+`ADR-012` вводит названное исключение из `AGENTS.md` §6 («данные живут в `content/`») со сроком до Task 19. Оно **второе** — первым был `Theme` UI-kit, — и пункт §6 переписан целиком, чтобы называть оба; правку санкционировал владелец. Третье исключение по §12 п. 3 переписывает пункт заново.
+
+`ADR-006` держали зарезервированным под стратегию сохранений с Gate 0; запись принята 2026-08-19 вместе с Task 16 сегмента 5 миграции. Зарезервированных номеров больше нет. Номер `ADR-009` держали пустым под фиксированный симуляционный тик; тик отозван из Gate 0 и входит в постановку модели времени боя на старте Milestone 2, где получит свой номер, а `ADR-009` занят записью выше.
 
 ## Шаблон
 

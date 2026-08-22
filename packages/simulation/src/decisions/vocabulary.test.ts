@@ -3,7 +3,13 @@ import { describe, expect, it } from 'vitest';
 import { isArtifactSafeText } from '../canonical/artifact-domain.ts';
 
 import { ACTIONS, Actions } from './actions.ts';
-import { REASON_CODES, ReasonCodes } from './reason-codes.ts';
+import {
+  BLOCK_REASON_CODES,
+  FACTOR_REASON_CODES,
+  REASON_CODES,
+  ReasonCodes,
+  TIE_BREAK_REASON_CODES
+} from './reason-codes.ts';
 
 /**
  * The two closed vocabularies the engine writes into a canonical artifact.
@@ -31,6 +37,43 @@ describe('every reason code may reach a canonical artifact', () => {
     for (const code of REASON_CODES) {
       expect(code.startsWith('hero.decision.')).toBe(true);
     }
+  });
+});
+
+describe('the vocabulary split by the role a code plays in a trace', () => {
+  // `snapshot-codec.ts` closes a save's three reason-code fields on these three sets, so
+  // a code missing from all of them is a code no save may carry — an engine that produced
+  // it would be writing files this build refuses to read. That makes completeness a
+  // property worth a check rather than a convention: the sets are typed out by hand,
+  // because which role a code plays is a fact about its meaning and there is nothing in
+  // the rule to derive it from.
+
+  const everySet = [...FACTOR_REASON_CODES, ...BLOCK_REASON_CODES, ...TIE_BREAK_REASON_CODES];
+
+  it('classifies every declared code, so a new one cannot be silently unsavable', () => {
+    const unclassified = REASON_CODES.filter((code) => !everySet.includes(code));
+
+    expect(
+      unclassified,
+      `declared in ReasonCodes and in none of the three role sets: ${unclassified.join(', ')}. ` +
+        'A code no set carries is a code snapshot-codec.ts will refuse in every position.'
+    ).toEqual([]);
+  });
+
+  it('invents nothing: every member of every set is a declared code', () => {
+    const invented = everySet.filter((code) => !REASON_CODES.includes(code));
+
+    expect(invented, `listed in a role set and declared nowhere: ${invented.join(', ')}`).toEqual(
+      []
+    );
+  });
+
+  it('gives each code exactly one role, which is what the split is for', () => {
+    // Disjointness is the load-bearing half, not tidiness. The sets exist so that a save
+    // cannot file `principle_forbids` — a red line, which `createDecisionResult` requires
+    // to come with a null score — as a positive factor with a magnitude attached. A code
+    // in two sets is a code back in the single combined vocabulary the split replaced.
+    expect(new Set(everySet).size).toBe(everySet.length);
   });
 });
 

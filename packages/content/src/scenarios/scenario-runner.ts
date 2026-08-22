@@ -50,20 +50,23 @@ export interface ScenarioOutcome {
 }
 
 /**
- * Runs a scenario against content: builds the initial state from the content and the
- * seed, then applies each command in order.
+ * Applies a command list to a state that already exists — the half of a run that does
+ * not care where the state came from. `runScenario` builds that state fresh from
+ * content and a seed; a run continuing from a save (Task 16) hands this the state a
+ * {@link import('../save/snapshot-codec.ts').decodeSnapshot} produced instead. Neither
+ * caller repeats the loop: there is one place a command is applied to a state, and
+ * both entry points go through it.
  */
-export function runScenario(
-  content: ContentSet,
-  commands: readonly ScenarioCommand[],
-  seed: bigint
+export function applyScenarioCommands(
+  state: GameState,
+  commands: readonly ScenarioCommand[]
 ): ScenarioOutcome {
-  let state = createInitialState(content, seed, RULESET_VERSION);
+  let current = state;
   const steps: StepOutcome[] = [];
 
   for (const command of commands) {
     const id = heroId(command.heroIndex);
-    const result = proposeContractToHero(state, {
+    const result = proposeContractToHero(current, {
       commandId: command.commandId,
       heroId: id,
       contractId: command.contract,
@@ -74,7 +77,7 @@ export function runScenario(
       command,
       applied: result.applied,
       rejectionCode: result.rejectionCode,
-      heroDefinition: state.heroes.get(id)?.definition ?? null,
+      heroDefinition: current.heroes.get(id)?.definition ?? null,
       decision: result.decision,
       events: result.events
     });
@@ -82,8 +85,22 @@ export function runScenario(
     // A rejected step returns the state it was given, so this assignment is a no-op for
     // it — the run continues rather than aborting, because "what did the engine refuse
     // and why" is part of what a scenario is for.
-    state = result.state;
+    current = result.state;
   }
 
-  return { finalState: state, steps };
+  return { finalState: current, steps };
+}
+
+/**
+ * Runs a scenario against content: builds the initial state from the content and the
+ * seed, then applies each command in order. A thin wrapper over
+ * {@link applyScenarioCommands} — the only thing this adds is where the starting state
+ * comes from.
+ */
+export function runScenario(
+  content: ContentSet,
+  commands: readonly ScenarioCommand[],
+  seed: bigint
+): ScenarioOutcome {
+  return applyScenarioCommands(createInitialState(content, seed, RULESET_VERSION), commands);
 }

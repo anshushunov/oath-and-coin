@@ -5,6 +5,7 @@
   "type": "module",
   "description": "The Task 4 gate — drives the packaged Electron application and records its evidence",
   "devDependencies": {
+    "@oath-and-coin/desktop": "workspace:*",
     "@playwright/test": "1.62.1",
     "typescript": "6.0.3"
   }

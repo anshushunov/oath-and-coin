@@ -8,6 +8,8 @@ import { expectedSnapshot, snapshotHash } from '@oath-and-coin/presentation';
 import { canonicalSha256, type CanonicalValue } from '@oath-and-coin/simulation';
 import { expect, test, type ConsoleMessage, type Page, type Request } from '@playwright/test';
 
+import { expectWindowBoundedScreen, measureLayout } from './layout.ts';
+
 /**
  * The browser evidence that replaces the Godot runtime harness.
  *
@@ -67,12 +69,18 @@ const CANVAS = 'world-canvas';
  *
  * `overflows` is stated per state because reachability is satisfied trivially by content
  * that fits, and three of these five states hold two or three texts and can never fill a
- * 1280x800 window. Measured at 1280x800: loading, empty and error are 494px tall inside a
- * 494px viewport; incomplete is 696 and normal is 1011. So the check is real on exactly
- * two of them, and saying which turns "the reachability check passed" into a claim with
- * a subject — a layout change that stops the roster overflowing would otherwise leave the
- * whole measurement green and meaningless, which is `FULL_TYPESCRIPT_MIGRATION` §14.3's
- * warning arriving from the other direction.
+ * 1280x800 window. Measured from the `report.json` each state writes under
+ * `artifacts/browser-evidence`: at a window of 800 the screen's box is 532, and loading,
+ * empty and error report 532px of content inside it — a box stretched to the window with
+ * shorter content reads its own height — while incomplete holds 696 and normal 1011. Two
+ * things moved these numbers in Task 16.8: the screen link took a row above the screen,
+ * and the project's viewport was repaired from the 720 `devices['Desktop Chrome']` had
+ * been quietly imposing to the 800 the record asks for.
+ *
+ * So the check is real on exactly two of them, and saying which turns "the reachability
+ * check passed" into a claim with a subject — a layout change that stops the roster
+ * overflowing would otherwise leave the whole measurement green and meaningless, which is
+ * `FULL_TYPESCRIPT_MIGRATION` §14.3's warning arriving from the other direction.
  *
  * It says nothing about the *horizontal* question, and that one is not exercised at all:
  * measured, no shipped state overflows 1280px sideways, so the width assertion below is a
@@ -121,29 +129,6 @@ interface PageReport {
 }
 
 /**
- * The four numbers `ScreenLayoutMeasurement` carried, measured in a browser.
- *
- * `content*` is the content's natural size before clipping. `reachable*` is the window
- * plus however far a *person* can scroll it — measured with the mouse wheel, for the
- * reason {@link measureLayout} records: neither `scrollWidth - clientWidth` nor an
- * assignment to `scrollTop` can tell a scrolling box from one whose overflow is `hidden`.
- */
-interface LayoutMeasurement {
-  readonly contentWidth: number;
-  readonly contentHeight: number;
-  readonly reachableWidth: number;
-  readonly reachableHeight: number;
-  /**
-   * How much of it is on screen at once, which is what says whether the reachability
-   * question was even asked. Content that fits satisfies the verdict trivially, so a
-   * report without these two numbers cannot be told apart from one where the check was
-   * vacuous.
-   */
-  readonly viewportWidth: number;
-  readonly viewportHeight: number;
-}
-
-/**
  * What the rendered scene looks like from outside the renderer.
  *
  * `distinctColors` is the port of `TerminalEvent.FrameDistinctColors` from the Godot
@@ -169,7 +154,17 @@ const catalogue = new Map(
 test.beforeAll(() => {
   // Cleared once per run, so a state that stops producing evidence leaves an empty
   // directory rather than last run's screenshot under this run's name.
-  rmSync(EVIDENCE_ROOT, { recursive: true, force: true });
+  //
+  // This file's own five directories, never the whole evidence root, and that changed in
+  // Task 16.8 for a reason worth stating: `save-slots.spec.ts` writes under
+  // `browser-evidence/saves/`, Playwright runs the two files in parallel workers, and a
+  // blanket `rmSync` of the parent would delete the other suite's artifacts partway
+  // through its run — nondeterministically, and only ever in the direction of "the
+  // evidence is missing" long after the tests themselves were green.
+  for (const { scenario } of SCENARIOS) {
+    rmSync(join(EVIDENCE_ROOT, scenario), { recursive: true, force: true });
+  }
+
   mkdirSync(EVIDENCE_ROOT, { recursive: true });
 });
 
@@ -225,7 +220,7 @@ test.describe('contract-offer screen, in a browser', () => {
         (await page.getByTestId('run-report').textContent()) ?? ''
       ) as PageReport;
       const renderedTexts = await collectRenderedTexts(page);
-      const layout = await measureLayout(page);
+      const layout = await measureLayout(page, SCREEN);
       const frame = await measureFrame(page);
 
       const directory = join(EVIDENCE_ROOT, scenario);
@@ -287,6 +282,12 @@ test.describe('contract-offer screen, in a browser', () => {
           ? 'this state must hold more than one window of content, or reachability is not being tested'
           : 'this state holds two or three texts and cannot overflow; if it now does, the layout changed'
       ).toBe(overflows);
+
+      // Before either reachability assertion: both of them compare content against a box,
+      // and a box sized by its own content satisfies them whatever the layout does. This
+      // is what says the box is the window's (see `layout.ts` — it is the check the 73px
+      // regression got past).
+      await expectWindowBoundedScreen(page, SCREEN, layout);
 
       // The port of `ScreenLayoutMeasurement`'s verdict. Its own assertion rather than a
       // clause of another, so a screen whose content has walked off the edge is reported
@@ -451,204 +452,6 @@ async function collectRenderedTexts(page: Page): Promise<readonly string[]> {
 
     return texts;
   }, SCREEN);
-}
-
-/**
- * How big the screen's content is, and how much of it a person at this window can get to.
- *
- * **The reachable extent is found with the mouse wheel, and the first version of this
- * function did it by assignment — which was wrong, and a mutant is what said so.**
- * Setting `element.scrollTop` scrolls a box whose computed overflow is `hidden` just as
- * happily as one set to `auto`: `overflow: hidden` removes the *user's* ability to
- * scroll, not the scripting API's. So the mutant this measurement exists for — the
- * container stops scrolling while both hashes stay green — left all five states green,
- * and the check was measuring "is this content addressable by script", which no player
- * has. Reading `scrollWidth - clientWidth` would have been worse still: that is the same
- * number whatever the overflow rule says.
- *
- * Wheeling is what a person does, so wheeling is what this does. The wheel is delivered
- * over the middle of the screen element and the resulting position is polled until it
- * stops changing, rather than waited for by a fixed delay: scrolling is applied
- * asynchronously, and a sleep long enough to be safe on this machine is a sleep that is
- * sometimes too short on a loaded CI runner.
- */
-async function measureLayout(page: Page): Promise<LayoutMeasurement> {
-  const box = await page.getByTestId(SCREEN).boundingBox();
-
-  if (box === null) {
-    throw new Error(`The page has no visible [data-testid="${SCREEN}"] to measure.`);
-  }
-
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-
-  // One delta far larger than any screen here, so a scrollable box lands at its end in a
-  // single step and an unscrollable one stays where it was. The size of the delta is not
-  // a threshold — the position is read back, never assumed.
-  const FAR = 100_000;
-
-  const wheelDown = async (): Promise<void> => {
-    await page.mouse.wheel(0, FAR);
-  };
-  const wheelRight = async (): Promise<void> => {
-    await page.mouse.wheel(FAR, 0);
-  };
-
-  await wheelDown();
-  const maxTop = await settledScroll(page, 'scrollTop', wheelDown);
-
-  await wheelRight();
-  const maxLeft = await settledScroll(page, 'scrollLeft', wheelRight);
-
-  return page.evaluate(
-    ({ testId, top, left }) => {
-      const element = document.querySelector(`[data-testid="${testId}"]`);
-
-      if (element === null) {
-        throw new Error(`The page has no [data-testid="${testId}"] to measure.`);
-      }
-
-      // The screen is meant to be the only scrolling box on the page: `html`, `body` and
-      // `#root` are pinned to the window's height, so nothing else can take the wheel.
-      // Asserted rather than assumed, because if anything above the screen did scroll,
-      // content this function called unreachable might be reachable by scrolling that
-      // instead — and the measurement would be wrong in the direction that fails a
-      // working screen.
-      //
-      // Every ancestor, not just `documentElement`, and both axes: external review
-      // pointed out that the first version checked one element and one direction, while
-      // `body`, `#root`, `main` and `document.scrollingElement` are all boxes a wheel
-      // could go to. The walk is bounded by the document.
-      //
-      // **This is a guard, not a check proven by a plausible mutant.** Measured: neither
-      // relaxing the grid row nor removing the screen's `min-height` makes any ancestor
-      // overflow, because a grid item with `overflow: auto` already has a zero automatic
-      // minimum size. It does fire — an explicit `height: 200%` on `main` reddens all
-      // five states with the message below — so the mechanism works; what is missing is
-      // an authoring mistake small enough to be likely. Named rather than counted as
-      // covered, on the same terms as the horizontal reachability assertion.
-      for (
-        let ancestor: Element | null = element.parentElement;
-        ancestor !== null;
-        ancestor = ancestor.parentElement
-      ) {
-        if (
-          ancestor.scrollHeight > ancestor.clientHeight ||
-          ancestor.scrollWidth > ancestor.clientWidth
-        ) {
-          throw new Error(
-            `<${ancestor.tagName.toLowerCase()}> above the screen overflows its own box, so the ` +
-              'screen element is no longer the only place content can be reached from and this ' +
-              'measurement no longer answers the question.'
-          );
-        }
-      }
-
-      return {
-        contentWidth: element.scrollWidth,
-        contentHeight: element.scrollHeight,
-        reachableWidth: element.clientWidth + left,
-        reachableHeight: element.clientHeight + top,
-        viewportWidth: element.clientWidth,
-        viewportHeight: element.clientHeight
-      };
-    },
-    { testId: SCREEN, top: maxTop, left: maxLeft }
-  );
-}
-
-/**
- * Where the screen ended up once it stopped moving.
- *
- * Two things make this less fragile than it first was, and external review named both.
- * A position is settled only after it has read the same across three consecutive
- * animation frames — two reads 25ms apart can both catch a wheel that has not been
- * processed yet and call a working screen unscrollable. And a position short of the
- * arithmetic maximum is not accepted on the first try: the wheel is delivered again, up
- * to a bounded number of attempts, because falling short is what a slow compositor looks
- * like and reaching the end is what a scrolling box does. A box that genuinely cannot
- * scroll spends the whole budget and still answers zero, which is the correct answer
- * arrived at slowly rather than a wrong one arrived at quickly.
- */
-async function settledScroll(
-  page: Page,
-  axis: 'scrollTop' | 'scrollLeft',
-  wheel: () => Promise<void>
-): Promise<number> {
-  const extent = axis === 'scrollTop' ? 'vertical' : 'horizontal';
-
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const { position, maximum } = await stableScrollPosition(page, axis);
-
-    if (position >= maximum) {
-      return position;
-    }
-
-    // Short of the end. Either the box stops here — an overflow rule that denies the
-    // user the rest — or the wheel has not been fully applied yet. Another wheel tells
-    // the two apart; the loop bound stops it being a wait forever.
-    await wheel();
-
-    if (attempt === 4) {
-      return position;
-    }
-  }
-
-  throw new Error(`Unreachable: the ${extent} scroll loop always returns.`);
-}
-
-/** The screen's scroll offset once three consecutive frames agree on it. */
-async function stableScrollPosition(
-  page: Page,
-  axis: 'scrollTop' | 'scrollLeft'
-): Promise<{ position: number; maximum: number }> {
-  return page.evaluate(
-    async ({ testId, property }) => {
-      const element = document.querySelector(`[data-testid="${testId}"]`);
-
-      if (element === null) {
-        throw new Error(`The page has no [data-testid="${testId}"] to measure.`);
-      }
-
-      const nextFrame = async (): Promise<void> => {
-        await new Promise<void>((resolve) => {
-          requestAnimationFrame(() => {
-            resolve();
-          });
-        });
-      };
-
-      const read = (): { position: number; maximum: number } =>
-        property === 'scrollTop'
-          ? {
-              position: element.scrollTop,
-              maximum: element.scrollHeight - element.clientHeight
-            }
-          : {
-              position: element.scrollLeft,
-              maximum: element.scrollWidth - element.clientWidth
-            };
-
-      let agreed = 0;
-      let last = read();
-
-      // Bounded: 60 frames is a second at 60Hz, and a scroll that is still moving after
-      // a second of nothing but this is not a scroll anyone is waiting on.
-      for (let frame = 0; frame < 60; frame += 1) {
-        await nextFrame();
-        const now = read();
-
-        agreed = now.position === last.position ? agreed + 1 : 0;
-        last = now;
-
-        if (agreed >= 2) {
-          return now;
-        }
-      }
-
-      throw new Error(`The screen's ${property} never settled across 60 frames.`);
-    },
-    { testId: SCREEN, property: axis }
-  );
 }
 
 /**

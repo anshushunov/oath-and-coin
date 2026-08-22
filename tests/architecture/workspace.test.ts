@@ -2,6 +2,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join, posix, relative, resolve, sep } from 'node:path';
 
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 
@@ -168,6 +169,80 @@ describe('gate coverage', () => {
     expect([...referenced].sort()).toEqual([...declaredMemberDirectories].sort());
   });
 
+  it("every .ts and .tsx file of every member is inside that member's own include", () => {
+    // The other half of the check above, and until Task 18 it was missing. A
+    // member can be listed in the root solution — so `tsc --build` opens its
+    // project — and still leave most of its own tree unchecked, because what
+    // `tsc` compiles is the project's `include`, not its directory. Both
+    // `tests/architecture` (`["src", "*.test.ts"]`) and `tests/locale`
+    // (`["*.test.ts"]`) match only the top level: a test added in a
+    // subdirectory of either is collected by vitest, runs, and is never
+    // typechecked by anything. Named as a repo-level hole during Task 16.2 and
+    // carried here.
+    //
+    // The membership question is answered by the compiler rather than by a
+    // glob matcher written here. tsconfig's `include` has its own semantics —
+    // a bare `src` means the directory recursively, `*.test.ts` does not cross
+    // a directory boundary, `**/*` does, and `exclude` and `files` interact
+    // with all of it — and a second implementation of those rules in this file
+    // would be a check on this file's opinion, not on what `pnpm typecheck`
+    // does. `parseJsonConfigFileContent` returns the exact file list `tsc`
+    // would compile.
+    const skipped = new Set([
+      'node_modules',
+      'dist',
+      'build',
+      'artifacts',
+      'playwright-report',
+      'test-results'
+    ]);
+
+    function sourceFiles(directory: string, found: string[] = []): string[] {
+      for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        if (entry.isDirectory()) {
+          if (!skipped.has(entry.name)) {
+            sourceFiles(join(directory, entry.name), found);
+          }
+          continue;
+        }
+        // Declaration files are excluded on purpose: an ambient `.d.ts` is
+        // pulled in by reference rather than by `include`, so requiring one to
+        // be listed would fail on a file that is in fact checked.
+        if (/\.tsx?$/.test(entry.name) && !entry.name.endsWith('.d.ts')) {
+          found.push(join(directory, entry.name));
+        }
+      }
+      return found;
+    }
+
+    const escaped: string[] = [];
+
+    for (const member of members) {
+      const directory = join(repoRoot, ...member.directory.split('/'));
+      const configPath = join(directory, 'tsconfig.json');
+
+      const { config, error } = ts.readConfigFile(configPath, ts.sys.readFile);
+      expect(error, `${member.directory}/tsconfig.json could not be read`).toBeUndefined();
+
+      const parsed = ts.parseJsonConfigFileContent(config, ts.sys, directory);
+      // Windows hands the same file back under more than one spelling — drive
+      // letter case above all — so the comparison is made on a normalised
+      // form rather than on whatever each side happened to produce.
+      const compiled = new Set(parsed.fileNames.map((file) => resolve(file).toLowerCase()));
+
+      for (const file of sourceFiles(directory)) {
+        if (!compiled.has(resolve(file).toLowerCase())) {
+          escaped.push(relative(repoRoot, file).split(sep).join(posix.sep));
+        }
+      }
+    }
+
+    expect(
+      escaped.sort(),
+      'these files are in a member that `tsc --build` opens, and in no project it compiles'
+    ).toEqual([]);
+  });
+
   it('every member is inside the dependency-boundary gate', () => {
     // `depcruise` walks the directories named on its command line and nothing
     // else. `packages/**` cannot be on that list until it exists — the tool
@@ -187,6 +262,193 @@ describe('gate coverage', () => {
       );
       expect(covered, `${member.directory} is not covered by lint:deps (${command})`).toBe(true);
     }
+  });
+
+  it('nothing that ships imports a package its member does not depend on at runtime', () => {
+    // The second statement of `not-to-dev-dep` (`.dependency-cruiser.cjs`), and
+    // it covers the two cases that rule is blind to rather than replacing it.
+    // Both rule and check are load-bearing; `REQUIRED_RULES` above names the
+    // pairing so that neither is deleted as a duplicate of the other.
+    //
+    // **The rule works.** An earlier version of this comment said it could never
+    // fire under pnpm's layout, and external review refuted that by measurement:
+    // `import { JSDOM } from 'jsdom'` in `apps/web/src/rendered-texts.ts` gives
+    //
+    //   error not-to-dev-dep: apps/web/src/rendered-texts.ts →
+    //     node_modules/.pnpm/jsdom@30.0.1…/node_modules/jsdom/lib/api.js
+    //
+    // because `jsdom` is a devDependency of `apps/web` itself, and the edge is
+    // classified `["npm-dev","import"]`. The wrong diagnosis is recorded here on
+    // purpose: it was about to send the next reader to delete a live rule.
+    //
+    // **What it is actually blind to**, measured the same way, one edge at a time
+    // from `depcruise --output-type json`:
+    //
+    //   jsdom          (devDependency of apps/web)   ["npm-dev","import"]     caught
+    //   vitest/config  (devDependency of the ROOT)   ["npm-no-pkg","import"]  missed
+    //   vite           (devDependency of apps/web)   no edge in the graph at all
+    //
+    // dependency-cruiser classifies an edge against the manifest of the member
+    // it starts in. A package that member declares is `npm-dev` and is refused;
+    // a package declared only by the root workspace manifest is in no manifest
+    // it consults, so it is `npm-no-pkg` — not a section it checks — and passes.
+    // The `vite` case is worse than a misclassification: the edge does not enter
+    // the graph and `no-unresolvable` says nothing either — the module and
+    // dependency counts `depcruise` reports are identical with the import and
+    // without it. (The counts themselves are not quoted here: they were `206` and
+    // `681` when this was measured and are `208` and `686` now, because this task
+    // added files. What holds is that the two runs agree, not what they agree on.)
+    //
+    // A member's own manifest answers all three, which is why the property is
+    // restated here rather than repaired there. (`preserveSymlinks: true` was
+    // tried and is not the repair: it makes `packages/content` importing
+    // `packages/simulation` resolve as
+    // `packages/content/node_modules/@oath-and-coin/simulation/…` and reports
+    // eleven real modules as violations.)
+    //
+    // Deliberately not a list of forbidden package names — that is the shape
+    // this repository has had to repair three times. Every bare specifier must
+    // be *permitted*, and the permission is the member's own `dependencies`.
+    const shipping = /^(apps|packages|tools)\//;
+    const testFile = /\.(test|spec)\.tsx?$/;
+    // The same files `.dependency-cruiser.cjs` excludes, and for its reason:
+    // build configuration is not shipped, and it imports the bundler by
+    // definition.
+    const buildConfig = /(^|\/)(vite\.[^/]*|(vitest|playwright)\.[^/]*config)\.ts$/;
+
+    /** `@scope/name/deep/path` -> `@scope/name`; `name/deep` -> `name`. */
+    function packageOf(specifier: string): string {
+      const parts = specifier.split('/');
+      return specifier.startsWith('@') ? parts.slice(0, 2).join('/') : (parts[0] ?? specifier);
+    }
+
+    /**
+     * The specifiers this file imports for types only, and never for a value.
+     *
+     * "Never" is what makes it safe to subtract: one `import type { A } from 'x'`
+     * beside one `import { b } from 'x'` leaves `x` present at runtime, so the
+     * package counts as a value import and stays under the rule. Both the
+     * declaration form (`import type … from`) and the per-specifier form
+     * (`import { type A } from`) are type-only; a declaration with no clause at
+     * all — `import 'x'` for its side effects — is emphatically a value import.
+     */
+    function typeOnlySpecifiers(text: string, file: string): ReadonlySet<string> {
+      const source = ts.createSourceFile(
+        file,
+        text,
+        ts.ScriptTarget.Latest,
+        // Parent pointers are not needed and cost time on every file in the tree.
+        false,
+        file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS
+      );
+
+      const seen = new Map<string, boolean>();
+
+      const record = (specifier: string, typeOnly: boolean): void => {
+        seen.set(specifier, (seen.get(specifier) ?? true) && typeOnly);
+      };
+
+      for (const statement of source.statements) {
+        if (ts.isImportDeclaration(statement)) {
+          if (!ts.isStringLiteral(statement.moduleSpecifier)) {
+            continue;
+          }
+          const clause = statement.importClause;
+          const typeOnly =
+            clause !== undefined &&
+            (clause.isTypeOnly ||
+              (clause.name === undefined &&
+                clause.namedBindings !== undefined &&
+                ts.isNamedImports(clause.namedBindings) &&
+                clause.namedBindings.elements.every((element) => element.isTypeOnly)));
+          record(statement.moduleSpecifier.text, typeOnly);
+          continue;
+        }
+        if (
+          ts.isExportDeclaration(statement) &&
+          statement.moduleSpecifier !== undefined &&
+          ts.isStringLiteral(statement.moduleSpecifier)
+        ) {
+          record(statement.moduleSpecifier.text, statement.isTypeOnly);
+        }
+      }
+
+      return new Set([...seen].filter(([, typeOnly]) => typeOnly).map(([specifier]) => specifier));
+    }
+
+    const skipped = new Set(['node_modules', 'dist', 'build', 'artifacts']);
+
+    function sourceFiles(directory: string, found: string[] = []): string[] {
+      for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        if (entry.isDirectory()) {
+          if (!skipped.has(entry.name)) {
+            sourceFiles(join(directory, entry.name), found);
+          }
+          continue;
+        }
+        if (/\.tsx?$/.test(entry.name) && !entry.name.endsWith('.d.ts')) {
+          found.push(join(directory, entry.name));
+        }
+      }
+      return found;
+    }
+
+    const violations: string[] = [];
+
+    for (const member of members) {
+      if (!shipping.test(member.directory)) {
+        continue;
+      }
+
+      const runtime = new Set(Object.keys(member.manifest.dependencies ?? {}));
+      const directory = join(repoRoot, ...member.directory.split('/'));
+
+      for (const file of sourceFiles(directory)) {
+        const relativePath = relative(repoRoot, file).split(sep).join(posix.sep);
+        if (testFile.test(relativePath) || buildConfig.test(relativePath)) {
+          continue;
+        }
+
+        // TypeScript's own scanner rather than a regular expression over the
+        // text: it sees `import`, `import type`, `export … from`, `require`
+        // and dynamic `import()` alike, and it does not see any of them inside
+        // a comment or a string literal.
+        const text = readTextFile(file);
+        const scanned = ts.preProcessFile(text, true, true);
+        // `dependencyTypesNot: ['type-only']`, which `not-to-dev-dep` has and
+        // the first version of this check silently dropped — a behaviour change
+        // nobody decided, found in review. A type-only import is erased by the
+        // compiler and cannot be present at runtime, so it is not what either
+        // statement of this property is about. `preProcessFile` does not
+        // distinguish the two, so they are collected separately and subtracted.
+        const erased = typeOnlySpecifiers(text, file);
+
+        for (const { fileName: specifier } of scanned.importedFiles) {
+          if (specifier.startsWith('.') || specifier.startsWith('node:')) {
+            continue;
+          }
+          if (erased.has(specifier)) {
+            continue;
+          }
+          const name = packageOf(specifier);
+          // Electron is the one honest exception and it is the same one
+          // `.dependency-cruiser.cjs` writes down: the host imports it, the
+          // runtime provides it, and it is never installed beside the packaged
+          // application — which is precisely why it is a devDependency.
+          if (name === 'electron') {
+            continue;
+          }
+          if (!runtime.has(name)) {
+            violations.push(`${relativePath} imports ${name}, which ${member.directory} does not`);
+          }
+        }
+      }
+    }
+
+    expect(
+      [...new Set(violations)].sort(),
+      'shipping code may import only what its own manifest lists under `dependencies`'
+    ).toEqual([]);
   });
 
   it('every member extends the shared compiler options', () => {
@@ -236,6 +498,13 @@ describe('the boundary rules that must exist', () => {
     'content-node-adapter-imports-only-its-package-and-node',
     'presentation-depends-only-on-simulation',
     'application-imports-only-the-three-layers-below-it',
+    'desktop-host-imports-only-its-own-package-node-and-electron',
+    // Paired with "nothing that ships imports a package its member does not
+    // depend on at runtime" below, and neither is a duplicate of the other:
+    // the rule catches a devDependency the member itself declares, the check
+    // catches one declared only by the root and one whose edge dependency-cruiser
+    // never puts in the graph. Measured, both directions — see that test's
+    // comment. Deleting either as redundant loses half the property.
     'not-to-dev-dep'
   ] as const;
 
@@ -288,7 +557,7 @@ describe('the checks that have nowhere else to live', () => {
     {
       path: 'tests/locale/catalogue.test.ts',
       property:
-        'the shipped catalogue answers every key the presentation layer can produce, which needs both sides of a boundary neither side may cross'
+        'the two shipped catalogues answer every key the presentation and application layers can produce, each in exactly one of them, and content/locale/ru.json has not grown — which needs both sides of a boundary neither side may cross (ADR-012)'
     }
   ];
 

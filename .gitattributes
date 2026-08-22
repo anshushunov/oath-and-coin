@@ -19,6 +19,16 @@ scenarios/**/*.json text eol=lf
 # convention: without it the test fails on a CRLF checkout of a correct corpus.
 migration/oracle/**/*.json text eol=lf
 
+# The interface text catalogue (`ADR-012`). It is a data file of exactly the shape
+# the three rules above cover, and it is deliberately the one such tree that is
+# *not* under `content/` — which is precisely how it fell through the pattern. No
+# digest covers it, so nothing here is about a hash; what breaks is the formatter.
+# Checked out CRLF on Windows, `pnpm format:check` fails on a file nobody edited
+# while `ubuntu-latest` is green on the same commit. That is the identical failure
+# `eslint.config.js` and `*.css` are commented for below, arriving a third time
+# through a new top-level directory rather than through a new extension.
+ui-text/**/*.json text eol=lf
+
 # The corpus's own README is covered by a digest too — every file in it is —
 # so it needs the identical rule. Left to the repository default it would be
 # checked out CRLF on Windows and the manifest's digest for it would be wrong

@@ -3,13 +3,9 @@ import { join } from 'node:path';
 
 import { BrowserWindow, app, ipcMain, session, shell } from 'electron';
 
-import {
-  DESCRIBE_HOST_CHANNEL,
-  describeHostRequest,
-  describeHostResponse,
-  mayOpenExternally,
-  type HostDescription
-} from './contract';
+import { describeHostResponse, mayOpenExternally, type HostDescription } from './contract';
+import { registerIpc } from './ipc';
+import { fileSaveStore } from './save-store';
 
 /**
  * The Electron main process: a window, a security boundary and one typed IPC
@@ -67,14 +63,15 @@ function describeHost(): HostDescription {
   });
 }
 
-function registerIpc(): void {
-  ipcMain.handle(DESCRIBE_HOST_CHANNEL, (_event, ...args: unknown[]) => {
-    // Validated even though the method takes nothing: a handler that ignores
-    // its arguments accepts anything, and the day it grows a parameter is the
-    // day nobody remembers this was the unchecked one.
-    describeHostRequest.parse(args);
-    return describeHost();
-  });
+/**
+ * Where this build keeps its saves: a `saves` directory under Electron's own
+ * per-application data directory. Read only after `app.setName` has run (see
+ * the call site below) — `app.getPath('userData')` is derived from the
+ * application name, and computing it earlier would answer with the name this
+ * build never asked for.
+ */
+function resolveSaveDirectory(): string {
+  return join(app.getPath('userData'), 'saves');
 }
 
 function hardenSession(): void {
@@ -147,6 +144,17 @@ function createWindow(): BrowserWindow {
   return window;
 }
 
+// Spike B measured the packaged build's `app.getPath('userData')` without
+// this call: `AppData\Roaming\@oath-and-coin\desktop`. `productName` in
+// `electron-builder.yml` never reaches the packaged `package.json` — the
+// name Electron actually reads is `name`, `@oath-and-coin/desktop`, and the
+// slash in it becomes a spurious extra directory level. Set before
+// `whenReady` (and before the single-instance lock, which touches the same
+// per-application state) so every path this process derives from the app
+// name — `resolveSaveDirectory` included — is already correct the first time
+// anything asks.
+app.setName('Oath and Coin');
+
 // A second instance would fight the first over the save directory once Task 16
 // exists. Cheap to state now, expensive to retrofit after a corrupted save.
 if (!app.requestSingleInstanceLock()) {
@@ -154,7 +162,7 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   void app.whenReady().then(() => {
     hardenSession();
-    registerIpc();
+    registerIpc(ipcMain, fileSaveStore(resolveSaveDirectory()), describeHost);
     createWindow();
   });
 

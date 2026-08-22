@@ -3,11 +3,12 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "The shipped locale catalogue held against every key the presentation layer can produce — the one check that needs to see both sides of the presentation/content boundary",
+  "description": "The two shipped catalogues held against every key the presentation and application layers can produce and against nothing else, each key in exactly one of them, and content/locale/ru.json held frozen (ADR-012) — the one check that needs to see both sides of a boundary neither side may cross",
   "scripts": {
     "test": "vitest run --root ../.. tests/locale"
   },
   "devDependencies": {
+    "@oath-and-coin/application": "workspace:*",
     "@oath-and-coin/content": "workspace:*",
     "@oath-and-coin/presentation": "workspace:*",
     "@oath-and-coin/simulation": "workspace:*",

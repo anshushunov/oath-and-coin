@@ -37,7 +37,14 @@ export {
 } from './decisions/causal-trace.ts';
 export type { HeldTrait } from './decisions/held-trait.ts';
 export { ACTIONS, Actions } from './decisions/actions.ts';
-export { REASON_CODES, ReasonCodes, type ReasonCode } from './decisions/reason-codes.ts';
+export {
+  BLOCK_REASON_CODES,
+  FACTOR_REASON_CODES,
+  REASON_CODES,
+  ReasonCodes,
+  TIE_BREAK_REASON_CODES,
+  type ReasonCode
+} from './decisions/reason-codes.ts';
 export type { DecisionContext } from './decisions/context.ts';
 export {
   MOOD_MAX,

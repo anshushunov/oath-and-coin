@@ -12,8 +12,46 @@
  * `node:fs` here is a compiler error rather than a broken page.
  */
 
-export type { ContentSourcePort } from './ports.ts';
+export type { ContentSourcePort, SaveStorePort } from './ports.ts';
 
-export { screenFor, startSession, type SessionRequest, type SessionState } from './session.ts';
+export {
+  MAX_SAVE_BYTES,
+  SAVE_FORMAT_VERSION,
+  buildSave,
+  readSave,
+  saveChecksum,
+  snapshotHash,
+  type SaveDescriptor
+} from './save/envelope.ts';
+export { validateGameState } from './save/validate-game-state.ts';
+export { restoreDecidedSteps } from './save/restore-steps.ts';
+export {
+  describeSaveSlots,
+  saveErrorCodeOf,
+  type SaveSlotDescription
+} from './save/slot-descriptions.ts';
+export { SAVE_SLOTS, type SaveSlot } from './save/slots.ts';
+export {
+  UNCHECKED_SLOT,
+  asSeen,
+  slotChanged,
+  slotMayBeWritten,
+  type SlotGuard
+} from './save/slot-guard.ts';
+
+export {
+  createSessionController,
+  type SessionController,
+  type SessionControllerDeps,
+  type SessionLoadResult
+} from './session-controller.ts';
+
+export {
+  screenFor,
+  startSession,
+  type SaveFailure,
+  type SessionRequest,
+  type SessionState
+} from './session.ts';
 
 export { createStore, type Store } from './store.ts';

@@ -16,6 +16,7 @@ import {
   TRAIT_MIN
 } from './bounds.ts';
 import {
+  MAX_ARTIFACT_SAFE_TEXT_LENGTH,
   MAX_RELATIONSHIPS_PER_HERO,
   MAX_TAGS_PER_CONTRACT,
   MAX_TRAITS_PER_HERO
@@ -61,7 +62,19 @@ const contentIdString = z.string().regex(new RegExp(CONTENT_ID_PATTERN));
  */
 export const LOCALIZATION_KEY_PATTERN = '^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$';
 
-const localizationKey = z.string().regex(new RegExp(LOCALIZATION_KEY_PATTERN));
+/**
+ * The pattern *and* a length, and the length is the half external review of Task 16
+ * found missing. `display_name_key` travels unchanged into `HeroState.displayNameKey`
+ * and from there into a save file, where `snapshot-codec.ts` holds the same field to
+ * {@link MAX_ARTIFACT_SAFE_TEXT_LENGTH}. Stating the pattern here and the length only
+ * there left content this loader accepts and this build's own save reader refuses —
+ * measured, not feared: a 257-character key loaded, was written, and came back
+ * `SAVE_OUT_OF_BOUNDS`. One declaration, `limits.ts`, applied at both ends.
+ */
+const localizationKey = z
+  .string()
+  .max(MAX_ARTIFACT_SAFE_TEXT_LENGTH)
+  .regex(new RegExp(LOCALIZATION_KEY_PATTERN));
 
 const contentSchemaVersion = z.literal(SUPPORTED_CONTENT_SCHEMA_VERSION);
 
