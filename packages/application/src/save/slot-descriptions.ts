@@ -32,6 +32,25 @@ export interface SaveSlotDescription {
   readonly errorCode: SaveErrorCode | null;
 }
 
+/**
+ * A description together with the bytes it was built from — what the *session* needs and
+ * a screen does not.
+ *
+ * The bytes are the guard a later write to this slot is held to (`SlotGuard`): "replace
+ * exactly what the player was shown". `undefined` where the storage never answered with
+ * bytes at all — a slot that failed to list, or failed to read — because "there was
+ * nothing to see" and "the slot is empty" are different claims and only one of them is
+ * something to hold a write to.
+ *
+ * Kept off {@link SaveSlotDescription} deliberately: that shape is assignable to
+ * `packages/presentation`'s `SaveSlotInput`, which is five scalars and nothing more, and
+ * a screen has no business carrying a save's bytes through a render.
+ */
+export interface ObservedSaveSlot {
+  readonly description: SaveSlotDescription;
+  readonly seen: Uint8Array | null | undefined;
+}
+
 /** An empty slot: no campaign in it, and nothing wrong with it either. */
 function empty(slot: SaveSlot): SaveSlotDescription {
   return { slot, createdAt: null, logicalTime: null, focusedContract: null, errorCode: null };
@@ -78,6 +97,22 @@ export async function describeSaveSlots(
   saves: SaveStorePort,
   expected: { readonly rulesetVersion: string; readonly contentVersion: string }
 ): Promise<readonly SaveSlotDescription[]> {
+  return (await observeSaveSlots(saves, expected)).map((observed) => observed.description);
+}
+
+/**
+ * {@link describeSaveSlots}, plus the bytes each description was built from.
+ *
+ * Two functions over one walk rather than two walks, because the walk *is* a pair of
+ * storage round trips per slot and a second one would answer about a different moment.
+ * The session controller takes this one because a save it later writes has to be held to
+ * what the player was shown (`SlotGuard`); everything that only draws a screen takes the
+ * one above.
+ */
+export async function observeSaveSlots(
+  saves: SaveStorePort,
+  expected: { readonly rulesetVersion: string; readonly contentVersion: string }
+): Promise<readonly ObservedSaveSlot[]> {
   let occupied: ReadonlySet<SaveSlot>;
 
   try {
@@ -85,12 +120,16 @@ export async function describeSaveSlots(
   } catch (cause) {
     const code = saveErrorCodeOf(cause, SaveErrorCodes.StorageUnavailable);
 
-    return SAVE_SLOTS.map((slot) => refused(slot, code));
+    // Nothing was seen, of any slot: the listing is what failed, so there is no
+    // observation to hold a later write to.
+    return SAVE_SLOTS.map((slot) => ({ description: refused(slot, code), seen: undefined }));
   }
 
   return Promise.all(
     SAVE_SLOTS.map(async (slot) =>
-      occupied.has(slot) ? await describeOne(saves, expected, slot) : empty(slot)
+      occupied.has(slot)
+        ? await describeOne(saves, expected, slot)
+        : { description: empty(slot), seen: null }
     )
   );
 }
@@ -99,34 +138,46 @@ async function describeOne(
   saves: SaveStorePort,
   expected: { readonly rulesetVersion: string; readonly contentVersion: string },
   slot: SaveSlot
-): Promise<SaveSlotDescription> {
+): Promise<ObservedSaveSlot> {
   let bytes: Uint8Array | null;
 
   try {
     bytes = await saves.read(slot);
   } catch (cause) {
-    return refused(slot, saveErrorCodeOf(cause, SaveErrorCodes.StorageUnavailable));
+    return {
+      description: refused(slot, saveErrorCodeOf(cause, SaveErrorCodes.StorageUnavailable)),
+      seen: undefined
+    };
   }
 
   if (bytes === null) {
-    return empty(slot);
+    return { description: empty(slot), seen: null };
   }
 
   try {
     const { descriptor } = readSave(bytes, expected);
 
     return {
-      slot,
-      createdAt: descriptor.createdAt,
-      logicalTime: descriptor.logicalTime,
-      focusedContract: descriptor.focusedContract,
-      errorCode: null
+      description: {
+        slot,
+        createdAt: descriptor.createdAt,
+        logicalTime: descriptor.logicalTime,
+        focusedContract: descriptor.focusedContract,
+        errorCode: null
+      },
+      seen: bytes
     };
   } catch (cause) {
     // `SAVE_INCONSISTENT` as the fallback for the same reason the session controller
     // uses it when a file it has already accepted cannot be turned into a screen: what
     // is left for the fallback is a file that disagrees with itself in a way the
     // envelope cannot name from where it stands, and that is what the code says.
-    return refused(slot, saveErrorCodeOf(cause, SaveErrorCodes.Inconsistent));
+    //
+    // The bytes are still an observation — the storage answered them and they are what
+    // a write here would replace — even though nothing could be read out of them.
+    return {
+      description: refused(slot, saveErrorCodeOf(cause, SaveErrorCodes.Inconsistent)),
+      seen: bytes
+    };
   }
 }

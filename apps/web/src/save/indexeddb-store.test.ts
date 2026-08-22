@@ -1,4 +1,4 @@
-import { SAVE_SLOTS, type SaveSlot } from '@oath-and-coin/application';
+import { SAVE_SLOTS, UNCHECKED_SLOT, type SaveSlot } from '@oath-and-coin/application';
 import { SaveReadError } from '@oath-and-coin/content';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -301,7 +301,7 @@ describe('when this environment has no indexedDB at all', () => {
     const store = createIndexedDbSaveStore();
 
     await expect(store.read('slot-a')).rejects.toThrow(/SAVE_STORAGE_UNAVAILABLE/u);
-    await expect(store.write('slot-a', Uint8Array.of(1))).rejects.toThrow(
+    await expect(store.write('slot-a', Uint8Array.of(1), UNCHECKED_SLOT)).rejects.toThrow(
       /SAVE_STORAGE_UNAVAILABLE/u
     );
     await expect(store.list()).rejects.toThrow(/SAVE_STORAGE_UNAVAILABLE/u);
@@ -345,7 +345,7 @@ describe('when indexedDB.open itself refuses', () => {
     installFakeIndexedDb({ open: 'throw' });
     const store = createIndexedDbSaveStore();
 
-    await expect(store.write('slot-a', Uint8Array.of(1))).rejects.toThrow(
+    await expect(store.write('slot-a', Uint8Array.of(1), UNCHECKED_SLOT)).rejects.toThrow(
       /SAVE_STORAGE_UNAVAILABLE/u
     );
   });
@@ -378,8 +378,10 @@ describe('when the database itself throws synchronously (a missing object store,
     installFakeIndexedDb({ open: 'success', transactionThrows: true });
     const store = createIndexedDbSaveStore();
 
-    await expect(store.write('slot-a', Uint8Array.of(1))).rejects.toBeInstanceOf(SaveReadError);
-    await expect(store.write('slot-a', Uint8Array.of(1))).rejects.toThrow(
+    await expect(store.write('slot-a', Uint8Array.of(1), UNCHECKED_SLOT)).rejects.toBeInstanceOf(
+      SaveReadError
+    );
+    await expect(store.write('slot-a', Uint8Array.of(1), UNCHECKED_SLOT)).rejects.toThrow(
       /SAVE_STORAGE_UNAVAILABLE/u
     );
   });
@@ -398,8 +400,10 @@ describe('when the database itself throws synchronously (a missing object store,
     installFakeIndexedDb({ open: 'success', putThrows: true });
     const store = createIndexedDbSaveStore();
 
-    await expect(store.write('slot-a', Uint8Array.of(1))).rejects.toBeInstanceOf(SaveReadError);
-    await expect(store.write('slot-a', Uint8Array.of(1))).rejects.toThrow(
+    await expect(store.write('slot-a', Uint8Array.of(1), UNCHECKED_SLOT)).rejects.toBeInstanceOf(
+      SaveReadError
+    );
+    await expect(store.write('slot-a', Uint8Array.of(1), UNCHECKED_SLOT)).rejects.toThrow(
       /SAVE_STORAGE_UNAVAILABLE/u
     );
   });
@@ -504,7 +508,7 @@ describe('write()', () => {
     installFakeIndexedDb({ open: 'success', writeOutcome: 'complete' });
     const store = createIndexedDbSaveStore();
 
-    await expect(store.write('slot-a', Uint8Array.of(1))).resolves.toBeUndefined();
+    await expect(store.write('slot-a', Uint8Array.of(1), UNCHECKED_SLOT)).resolves.toBeUndefined();
   });
 
   it('reports SAVE_STORAGE_UNAVAILABLE, not a re-telling of tx.error, when the transaction aborts', async () => {
@@ -514,7 +518,7 @@ describe('write()', () => {
     installFakeIndexedDb({ open: 'success', writeOutcome: 'abort' });
     const store = createIndexedDbSaveStore();
 
-    const failure = store.write('slot-a', Uint8Array.of(1));
+    const failure = store.write('slot-a', Uint8Array.of(1), UNCHECKED_SLOT);
     await expect(failure).rejects.toThrow(/SAVE_STORAGE_UNAVAILABLE/u);
     await expect(failure).rejects.toThrow(/was aborted/u);
     await expect(failure).rejects.not.toThrow(/\bnull\b/u);
@@ -529,7 +533,7 @@ describe('write()', () => {
     installFakeIndexedDb({ open: 'success', writeOutcome: 'error-then-abort' });
     const store = createIndexedDbSaveStore();
 
-    const failure = store.write('slot-a', Uint8Array.of(1));
+    const failure = store.write('slot-a', Uint8Array.of(1), UNCHECKED_SLOT);
     await expect(failure).rejects.toThrow(/SAVE_STORAGE_UNAVAILABLE/u);
     await expect(failure).rejects.toThrow(/writing slot 'slot-a' failed\./u);
     await expect(failure).rejects.not.toThrow(/was aborted/u);

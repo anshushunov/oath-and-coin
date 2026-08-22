@@ -11,6 +11,7 @@
     "error.save_inconsistent": "Файл сохранения противоречит сам себе и не читается.",
     "error.save_out_of_bounds": "В файле сохранения есть значение вне допустимых пределов.",
     "error.save_storage_unavailable": "Хранилище сохранений недоступно.",
+    "error.save_slot_changed": "В этом слоте теперь другое сохранение — посмотрите, что там, и попробуйте снова.",
 
     "screen.saves.title": "Сохранения",
     "screen.saves.state.loading": "Читаем слоты…",

@@ -133,18 +133,24 @@ describe('registerIpc', () => {
 
   it('a valid save-write call reaches the store with the slot and the bytes', async () => {
     const { ipcMainLike, handlers } = fakeIpcMain();
-    const calls: Array<{ slot: string; bytes: Uint8Array }> = [];
+    const calls: Array<{ slot: string; bytes: Uint8Array; guard: unknown }> = [];
     const store = fakeStore({
-      write: async (slot, bytes) => {
-        calls.push({ slot, bytes });
+      write: async (slot, bytes, guard) => {
+        calls.push({ slot, bytes, guard });
       }
     });
     registerIpc(ipcMainLike, store, fakeHostDescription);
 
     const writeHandler = handlers.get(SAVE_WRITE_CHANNEL);
-    await writeHandler?.(undefined, 'slot-a', Uint8Array.of(9));
+    const guard = { kind: 'as-seen', seen: null };
+    await expect(writeHandler?.(undefined, 'slot-a', Uint8Array.of(9), guard)).resolves.toEqual({
+      ok: true
+    });
 
-    expect(calls).toEqual([{ slot: 'slot-a', bytes: Uint8Array.of(9) }]);
+    // The guard reaches the store, rather than being validated and dropped: the
+    // comparison is the host's to make, and a handler that swallowed it would leave
+    // every write unconditional while the channel looked guarded.
+    expect(calls).toEqual([{ slot: 'slot-a', bytes: Uint8Array.of(9), guard }]);
   });
 
   it('a valid save-list call answers the store’s list', async () => {

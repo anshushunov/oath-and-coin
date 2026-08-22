@@ -384,6 +384,51 @@ test.describe('a write that is interrupted halfway', () => {
   });
 });
 
+test.describe('two save-slots screens open at once', () => {
+  test('one tab cannot silently destroy the campaign the other just saved', async ({ context }) => {
+    // The lost update external review of segment 5 named, reproduced where it actually
+    // happens: two real pages, one browser, one IndexedDB, and nothing notifying either
+    // of them that the other moved the storage. The damaging part is that the interface
+    // asks *no* question — the first tab sees an empty slot, and an empty slot is
+    // exactly the one the overwrite confirmation is skipped for.
+    //
+    // Two pages in one context rather than two contexts: IndexedDB is per origin *per
+    // context*, so two contexts would be two databases and the race could not exist.
+    const first = await context.newPage();
+    const second = await context.newPage();
+
+    await first.goto(runUrl());
+    await expect(first.getByTestId(SCREEN)).toHaveAttribute('data-state', 'Empty');
+
+    await second.goto(runUrl());
+    await second.getByTestId('slot-a-save').click();
+    await expect(second.getByTestId(SCREEN)).toHaveAttribute('data-state', 'Normal');
+
+    const written = await readSlot(second, 'slot-a');
+    expect(written, 'the second tab must actually have written something').not.toBeNull();
+
+    // The first tab still shows what it read before any of that, and clicking Save on a
+    // slot it believes is empty asks nothing.
+    await expect(first.getByTestId(SCREEN)).toHaveAttribute('data-state', 'Empty');
+    await first.getByTestId('slot-a-save').click();
+
+    await expect(first.getByTestId('slot-a-error')).toHaveText(text('error.save_slot_changed'));
+    // And the bytes, not only the message: read straight out of the database, so this
+    // says the storage never moved rather than that the page thinks it did not.
+    expect(await readSlot(first, 'slot-a')).toEqual(written);
+
+    // The refusal is passable, which is the other half of it. The failed save re-reads
+    // the slots, so the first tab is now looking at the campaign the second one saved —
+    // and the screen asks before replacing it, because now there is something to
+    // destroy.
+    await expect(first.getByTestId(SCREEN)).toHaveAttribute('data-state', 'Normal');
+    await first.getByTestId('slot-a-save').click();
+    await first.getByTestId('slot-a-confirm').click();
+
+    await expect(first.getByTestId('slot-a-error')).toBeHidden();
+  });
+});
+
 /** What the page reports about the run and the screen it is on. */
 interface PageReport {
   readonly screen: string;

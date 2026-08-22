@@ -10,8 +10,10 @@ import {
   saveReadResponse,
   saveWriteResponse,
   type DesktopSaveSlot,
+  type DesktopSlotGuard,
   type HostDescription,
-  type SaveReadReply
+  type SaveReadReply,
+  type SaveWriteReply
 } from './contract';
 
 /**
@@ -35,9 +37,13 @@ const desktopApi = {
     return saveReadResponse.parse(reply);
   },
 
-  async writeSave(slot: DesktopSaveSlot, bytes: Uint8Array): Promise<void> {
-    const reply: unknown = await ipcRenderer.invoke(SAVE_WRITE_CHANNEL, slot, bytes);
-    saveWriteResponse.parse(reply);
+  async writeSave(
+    slot: DesktopSaveSlot,
+    bytes: Uint8Array,
+    guard: DesktopSlotGuard
+  ): Promise<SaveWriteReply> {
+    const reply: unknown = await ipcRenderer.invoke(SAVE_WRITE_CHANNEL, slot, bytes, guard);
+    return saveWriteResponse.parse(reply);
   },
 
   async listSaves(): Promise<readonly DesktopSaveSlot[]> {

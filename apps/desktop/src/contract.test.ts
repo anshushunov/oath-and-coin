@@ -10,8 +10,12 @@ import {
   mayOpenExternally,
   saveListRequest,
   saveReadRequest,
-  saveWriteRequest
+  saveWriteRequest,
+  type DesktopSlotGuard
 } from './contract';
+
+/** Сторож записи, которая ни на что не претендует. */
+const UNCHECKED: DesktopSlotGuard = { kind: 'unchecked' };
 
 describe('DESKTOP_SAVE_SLOTS', () => {
   it('names exactly the three slots the spec fixed, in that order', () => {
@@ -35,9 +39,23 @@ describe('the save channels', () => {
   });
 
   it('checks a write request slot the same way, alongside its bytes', () => {
-    expect(() => saveWriteRequest.parse(['slot-b', Uint8Array.of(1, 2, 3)])).not.toThrow();
-    expect(() => saveWriteRequest.parse(['not-a-real-slot', Uint8Array.of(1)])).toThrow();
-    expect(() => saveWriteRequest.parse(['slot-b', 'not bytes'])).toThrow();
+    expect(() =>
+      saveWriteRequest.parse(['slot-b', Uint8Array.of(1, 2, 3), UNCHECKED])
+    ).not.toThrow();
+    expect(() =>
+      saveWriteRequest.parse(['not-a-real-slot', Uint8Array.of(1), UNCHECKED])
+    ).toThrow();
+    expect(() => saveWriteRequest.parse(['slot-b', 'not bytes', UNCHECKED])).toThrow();
+    // Третий аргумент — не необязательный довесок: без сторожа запись безусловна, а
+    // безусловная запись и есть то, что внешнее ревью сегмента 5 назвало потерянным
+    // обновлением.
+    expect(() => saveWriteRequest.parse(['slot-b', Uint8Array.of(1)])).toThrow();
+    expect(() =>
+      saveWriteRequest.parse(['slot-b', Uint8Array.of(1), { kind: 'whatever' }])
+    ).toThrow();
+    expect(() =>
+      saveWriteRequest.parse(['slot-b', Uint8Array.of(1), { kind: 'as-seen', seen: null }])
+    ).not.toThrow();
   });
 
   it('a list request takes no arguments', () => {
@@ -46,8 +64,21 @@ describe('the save channels', () => {
   });
 
   it('refuses a write payload over MAX_SAVE_BYTES, and accepts one at the limit', () => {
-    expect(() => saveWriteRequest.parse(['slot-a', new Uint8Array(MAX_SAVE_BYTES)])).not.toThrow();
-    expect(() => saveWriteRequest.parse(['slot-a', new Uint8Array(MAX_SAVE_BYTES + 1)])).toThrow();
+    expect(() =>
+      saveWriteRequest.parse(['slot-a', new Uint8Array(MAX_SAVE_BYTES), UNCHECKED])
+    ).not.toThrow();
+    expect(() =>
+      saveWriteRequest.parse(['slot-a', new Uint8Array(MAX_SAVE_BYTES + 1), UNCHECKED])
+    ).toThrow();
+    // Сторож несёт байты и потому связан тем же потолком — иначе предел обходится
+    // тем, что переросшее сохранение объявляют «увиденным».
+    expect(() =>
+      saveWriteRequest.parse([
+        'slot-a',
+        Uint8Array.of(1),
+        { kind: 'as-seen', seen: new Uint8Array(MAX_SAVE_BYTES + 1) }
+      ])
+    ).toThrow();
   });
 });
 

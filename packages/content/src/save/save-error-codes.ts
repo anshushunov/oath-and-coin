@@ -22,7 +22,20 @@ export const SaveErrorCodes = Object.freeze({
   ChecksumMismatch: 'SAVE_CHECKSUM_MISMATCH',
   Inconsistent: 'SAVE_INCONSISTENT',
   OutOfBounds: 'SAVE_OUT_OF_BOUNDS',
-  StorageUnavailable: 'SAVE_STORAGE_UNAVAILABLE'
+  StorageUnavailable: 'SAVE_STORAGE_UNAVAILABLE',
+
+  /**
+   * Слот держит не то, что видел игрок, когда решал записать поверх.
+   *
+   * Отказ хранилища, а не файла: файл в слоте цел и читается. Заведён после
+   * внешнего ревью сегмента 5, которое показало потерянное обновление — вкладка A
+   * видит слот пустым, вкладка B успевает его занять, A жмёт «Сохранить» и молча
+   * затирает чужую кампанию, ни о чём не спросив. Атомарность записи от этого не
+   * спасает: она обещает, что байты не перемешаются, а не что их некому было
+   * заменить между чтением и кликом. Экран показывает отказ, перечитывает слоты и
+   * спрашивает заново — уже про то, что там лежит на самом деле.
+   */
+  SlotChanged: 'SAVE_SLOT_CHANGED'
 });
 
 export type SaveErrorCode = (typeof SaveErrorCodes)[keyof typeof SaveErrorCodes];

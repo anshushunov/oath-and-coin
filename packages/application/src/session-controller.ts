@@ -6,10 +6,11 @@ import type { SaveStorePort } from './ports.ts';
 import { buildSave, readSave, snapshotHash } from './save/envelope.ts';
 import { restoreDecidedSteps } from './save/restore-steps.ts';
 import {
-  describeSaveSlots,
+  observeSaveSlots,
   saveErrorCodeOf,
   type SaveSlotDescription
 } from './save/slot-descriptions.ts';
+import { UNCHECKED_SLOT, asSeen } from './save/slot-guard.ts';
 import type { SaveSlot } from './save/slots.ts';
 import {
   startSession,
@@ -182,6 +183,16 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
   const store = createStore<SessionState>(PENDING_SESSION);
   const turnstile = createLoadTurnstile();
 
+  /**
+   * What this session last saw in each slot — the guard a write to it is held to.
+   *
+   * On the controller rather than on {@link SessionState} on purpose, and for the reason
+   * {@link SessionController.slots} gives about itself: a slot's contents belong to the
+   * storage, not to the session, and putting them on a store a screen subscribes to
+   * would make every listing a render.
+   */
+  const observed = new Map<SaveSlot, Uint8Array | null>();
+
   return {
     store,
 
@@ -205,9 +216,9 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
       return Promise.resolve();
     },
 
-    save: (slot) => save(deps, store, slot),
+    save: (slot) => save(deps, store, observed, slot),
     load: (slot) => load(deps, store, slot, turnstile),
-    slots: () => slots(deps, store)
+    slots: () => slots(deps, store, observed)
   };
 }
 
@@ -228,9 +239,24 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
  */
 async function slots(
   deps: SessionControllerDeps,
-  store: Store<SessionState>
+  store: Store<SessionState>,
+  observed: Map<SaveSlot, Uint8Array | null>
 ): Promise<readonly SaveSlotDescription[]> {
-  const described = await describeSaveSlots(deps.saves, deps.expected);
+  const answers = await observeSaveSlots(deps.saves, deps.expected);
+
+  // What the player is about to be shown, remembered so that a save can be held to it
+  // (`SlotGuard`). A slot the storage could not answer about at all is *forgotten*
+  // rather than recorded as empty: "nothing was seen" is not an observation, and
+  // recording it as one would let a write claim the slot was empty when nobody looked.
+  for (const { description, seen } of answers) {
+    if (seen === undefined) {
+      observed.delete(description.slot);
+    } else {
+      observed.set(description.slot, seen);
+    }
+  }
+
+  const described = answers.map((answer) => answer.description);
   const failure = store.snapshot().saveFailure;
 
   if (failure === null) {
@@ -268,6 +294,7 @@ async function slots(
 async function save(
   deps: SessionControllerDeps,
   store: Store<SessionState>,
+  observed: Map<SaveSlot, Uint8Array | null>,
   slot: SaveSlot
 ): Promise<void> {
   const session = store.snapshot();
@@ -314,12 +341,31 @@ async function save(
     return;
   }
 
+  // **The write is held to what this session last showed the player about this slot.**
+  // External review of segment 5 measured what an unconditional write costs: a tab that
+  // read slot A as empty destroys the campaign a second tab put there since, and does it
+  // without asking, because an empty slot is exactly the one the confirmation is skipped
+  // for. `observed` is what the slots screen was drawn from, and the store compares it
+  // inside whatever makes the write atomic.
+  //
+  // A slot this session has been told nothing about writes unchecked, and that is the
+  // honest answer rather than a hole: there is no belief to be wrong about. It is not a
+  // reachable state from the slots screen, which asks the storage before it draws and
+  // again after every operation.
+  const seen = observed.get(slot);
+  const guard = seen === undefined ? UNCHECKED_SLOT : asSeen(seen);
+
   try {
-    await deps.saves.write(slot, bytes);
+    await deps.saves.write(slot, bytes, guard);
   } catch (cause) {
     record(store, slot, portFailure(slot, cause));
     return;
   }
+
+  // The slot now holds exactly these bytes, so this session's belief about it moves with
+  // it. Without this, saving the same slot twice in a row would refuse the second time —
+  // the guard would still be describing what was there before the first write.
+  observed.set(slot, bytes);
 
   record(store, slot, null, snapshotHash(session.state));
 }

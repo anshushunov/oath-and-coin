@@ -1,5 +1,6 @@
 import type { ContentFileSource } from '@oath-and-coin/content';
 
+import type { SlotGuard } from './save/slot-guard.ts';
 import type { SaveSlot } from './save/slots.ts';
 
 /**
@@ -68,8 +69,28 @@ export interface SaveStorePort {
   /** A slot's bytes, or `null` if it is empty. Throws if the store is unavailable. */
   read(slot: SaveSlot): Promise<Uint8Array | null>;
 
-  /** Replaces a slot's contents wholesale and atomically. */
-  write(slot: SaveSlot, bytes: Uint8Array): Promise<void>;
+  /**
+   * Replaces a slot's contents wholesale and atomically, and only if the slot still
+   * holds what `guard` says it should.
+   *
+   * **Why a write needs a guard at all.** Atomicity is a promise about bytes not
+   * mixing; it is not a promise that nobody replaced them between the moment a screen
+   * was drawn and the moment a button was pressed. External review of segment 5
+   * measured what that leaves open, and the damaging case is the one the interface asks
+   * *no* question about: a tab reads slot A as empty, a second tab writes a campaign
+   * into it, and the first tab's save then destroys that campaign without ever asking —
+   * because a slot with nothing in it is exactly the slot the confirmation is skipped
+   * for. The confirmed case is a lost update too: the player consents to replacing the
+   * save they were shown, not whichever one arrived since.
+   *
+   * So a write states what it believes it is replacing, and the store compares inside
+   * whatever makes it atomic — one `readwrite` transaction, one serialized slot queue —
+   * rather than the caller comparing beforehand and hoping.
+   *
+   * @throws a `SaveReadError` carrying `SAVE_SLOT_CHANGED` when the slot holds
+   * something else — and leaves it exactly as it was found.
+   */
+  write(slot: SaveSlot, bytes: Uint8Array, guard: SlotGuard): Promise<void>;
 
   /**
    * Which slots are occupied, in no particular order — a caller matching this

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 import { afterAll, describe, expect, it } from 'vitest';
 
-import { MAX_SAVE_BYTES } from './contract';
+import { MAX_SAVE_BYTES, type DesktopSlotGuard } from './contract';
 import {
   enqueueSlotWrite,
   fileSaveStore,
@@ -77,6 +77,13 @@ afterAll(async () => {
   ).toEqual([]);
 });
 
+/**
+ * The guard for a write that makes no claim about what the slot held. Most of this
+ * file is about atomicity and cleanup rather than about lost updates, so it writes
+ * unchecked; the compare-and-swap has its own block below.
+ */
+const UNCHECKED: DesktopSlotGuard = { kind: 'unchecked' };
+
 function bytesOf(text: string): Uint8Array {
   return new TextEncoder().encode(text);
 }
@@ -140,7 +147,7 @@ describe('reading a slot', () => {
     const dir = await temporaryDirectory();
     const store = fileSaveStore(dir);
 
-    await store.write('slot-a', bytesOf('ПЕРВОЕ'));
+    await store.write('slot-a', bytesOf('ПЕРВОЕ'), UNCHECKED);
 
     await expect(store.read('slot-a')).resolves.toEqual(bytesOf('ПЕРВОЕ'));
   });
@@ -189,8 +196,8 @@ describe('writing a slot', () => {
     const dir = await temporaryDirectory();
     const store = fileSaveStore(dir);
 
-    await store.write('slot-a', bytesOf('ПЕРВОЕ'));
-    await store.write('slot-a', bytesOf('ВТОРОЕ'));
+    await store.write('slot-a', bytesOf('ПЕРВОЕ'), UNCHECKED);
+    await store.write('slot-a', bytesOf('ВТОРОЕ'), UNCHECKED);
 
     await expect(store.read('slot-a')).resolves.toEqual(bytesOf('ВТОРОЕ'));
   });
@@ -200,7 +207,7 @@ describe('writing a slot', () => {
     const dir = join(parent, 'saves');
     const store = fileSaveStore(dir);
 
-    await store.write('slot-a', bytesOf('ПЕРВОЕ'));
+    await store.write('slot-a', bytesOf('ПЕРВОЕ'), UNCHECKED);
 
     await expect(store.read('slot-a')).resolves.toEqual(bytesOf('ПЕРВОЕ'));
   });
@@ -209,10 +216,10 @@ describe('writing a slot', () => {
     const dir = await temporaryDirectory();
     const store = fileSaveStore(dir);
 
-    await store.write('slot-a', bytesOf('ПЕРВОЕ'));
+    await store.write('slot-a', bytesOf('ПЕРВОЕ'), UNCHECKED);
 
     await expect(
-      writeSaveFileAtomically(dir, 'slot-a', bytesOf('ВТОРОЕ'), {
+      writeSaveFileAtomically(dir, 'slot-a', bytesOf('ВТОРОЕ'), UNCHECKED, {
         beforeRename: () => {
           throw new Error('injected failure before rename');
         }
@@ -226,7 +233,7 @@ describe('writing a slot', () => {
     const dir = await temporaryDirectory();
 
     await expect(
-      writeSaveFileAtomically(dir, 'slot-a', bytesOf('ВТОРОЕ'), {
+      writeSaveFileAtomically(dir, 'slot-a', bytesOf('ВТОРОЕ'), UNCHECKED, {
         beforeRename: () => {
           throw new Error('injected failure before rename');
         }
@@ -249,7 +256,7 @@ describe('writing a slot', () => {
     const dir = await temporaryDirectory();
 
     await expect(
-      writeSaveFileAtomically(dir, 'slot-a', bytesOf('ВТОРОЕ'), {
+      writeSaveFileAtomically(dir, 'slot-a', bytesOf('ВТОРОЕ'), UNCHECKED, {
         [hook]: () => {
           throw new Error(`injected failure at ${hook}`);
         }
@@ -266,10 +273,10 @@ describe('writing a slot', () => {
       const dir = await temporaryDirectory();
       const store = fileSaveStore(dir);
 
-      await store.write('slot-a', bytesOf('ПЕРВОЕ'));
+      await store.write('slot-a', bytesOf('ПЕРВОЕ'), UNCHECKED);
 
       await expect(
-        writeSaveFileAtomically(dir, 'slot-a', bytesOf('ВТОРОЕ'), {
+        writeSaveFileAtomically(dir, 'slot-a', bytesOf('ВТОРОЕ'), UNCHECKED, {
           [hook]: () => {
             throw new Error(`injected failure at ${hook}`);
           }
@@ -296,7 +303,9 @@ describe('writing a slot', () => {
       await rename(from, to);
     };
 
-    await writeSaveFileAtomically(dir, 'slot-a', bytesOf('ПЕРВОЕ'), { rename: flakyRename });
+    await writeSaveFileAtomically(dir, 'slot-a', bytesOf('ПЕРВОЕ'), UNCHECKED, {
+      rename: flakyRename
+    });
 
     await expect(readSaveFile(dir, 'slot-a')).resolves.toEqual(bytesOf('ПЕРВОЕ'));
     expect(attempts).toBe(3);
@@ -309,7 +318,7 @@ describe('writing a slot', () => {
     };
 
     await expect(
-      writeSaveFileAtomically(dir, 'slot-a', bytesOf('ПЕРВОЕ'), { rename: alwaysBusy })
+      writeSaveFileAtomically(dir, 'slot-a', bytesOf('ПЕРВОЕ'), UNCHECKED, { rename: alwaysBusy })
     ).rejects.toThrow(/EBUSY/u);
 
     const entries = await readdir(dir);
@@ -328,7 +337,10 @@ describe('writing a slot', () => {
     const long = bytesOf('Д'.repeat(200_000));
     const short = bytesOf('К');
 
-    await Promise.all([store.write('slot-a', long), store.write('slot-a', short)]);
+    await Promise.all([
+      store.write('slot-a', long, UNCHECKED),
+      store.write('slot-a', short, UNCHECKED)
+    ]);
 
     const result = await store.read('slot-a');
     expect(result).not.toBeNull();
@@ -351,10 +363,10 @@ describe('writing a slot', () => {
     const dir = await temporaryDirectory();
     const store = fileSaveStore(dir);
 
-    const first = enqueueSlotWrite(dir, 'slot-a', bytesOf('ПЕРВЫЙ ВЫЗОВ'), {
+    const first = enqueueSlotWrite(dir, 'slot-a', bytesOf('ПЕРВЫЙ ВЫЗОВ'), UNCHECKED, {
       beforeRename: () => new Promise((resolve) => setTimeout(resolve, 30))
     });
-    const second = enqueueSlotWrite(dir, 'slot-a', bytesOf('ВТОРОЙ ВЫЗОВ'));
+    const second = enqueueSlotWrite(dir, 'slot-a', bytesOf('ВТОРОЙ ВЫЗОВ'), UNCHECKED);
 
     await Promise.all([first, second]);
 
@@ -377,6 +389,85 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   return true;
 }
 
+describe('writing under a guard', () => {
+  // Атомарность обещает, что байты не перемешаются; она ничего не обещает про то, что
+  // слот не заняли между чтением экрана и нажатием кнопки. Сравнение живёт внутри
+  // очереди записи этого слота — только так «проверить и записать» становится одной
+  // неделимой операцией.
+
+  it('refuses a slot that filled up since it was last seen, and leaves it alone', async () => {
+    const dir = await temporaryDirectory();
+    const store = fileSaveStore(dir);
+    await store.write('slot-a', bytesOf('ЧУЖОЕ'), UNCHECKED);
+
+    await expect(
+      store.write('slot-a', bytesOf('МОЁ'), { kind: 'as-seen', seen: null })
+    ).rejects.toThrow(/SAVE_SLOT_CHANGED/u);
+
+    await expect(store.read('slot-a')).resolves.toEqual(bytesOf('ЧУЖОЕ'));
+  });
+
+  it('refuses a slot whose contents were replaced since it was last seen', async () => {
+    const dir = await temporaryDirectory();
+    const store = fileSaveStore(dir);
+    await store.write('slot-a', bytesOf('НОВОЕ'), UNCHECKED);
+
+    await expect(
+      store.write('slot-a', bytesOf('МОЁ'), { kind: 'as-seen', seen: bytesOf('СТАРОЕ') })
+    ).rejects.toThrow(/SAVE_SLOT_CHANGED/u);
+
+    await expect(store.read('slot-a')).resolves.toEqual(bytesOf('НОВОЕ'));
+  });
+
+  it('publishes when the slot holds exactly what was seen', async () => {
+    const dir = await temporaryDirectory();
+    const store = fileSaveStore(dir);
+    await store.write('slot-a', bytesOf('СТАРОЕ'), UNCHECKED);
+
+    await store.write('slot-a', bytesOf('НОВОЕ'), { kind: 'as-seen', seen: bytesOf('СТАРОЕ') });
+
+    await expect(store.read('slot-a')).resolves.toEqual(bytesOf('НОВОЕ'));
+  });
+
+  it('and when the slot is empty and empty is what was seen', async () => {
+    const dir = await temporaryDirectory();
+    const store = fileSaveStore(dir);
+
+    await store.write('slot-a', bytesOf('ПЕРВОЕ'), { kind: 'as-seen', seen: null });
+
+    await expect(store.read('slot-a')).resolves.toEqual(bytesOf('ПЕРВОЕ'));
+  });
+
+  it('a refused write creates no save directory it then leaves empty', async () => {
+    const parent = await temporaryDirectory();
+    const dir = join(parent, 'saves');
+
+    await expect(
+      fileSaveStore(dir).write('slot-a', bytesOf('МОЁ'), {
+        kind: 'as-seen',
+        seen: bytesOf('НИЧЕГО ПОДОБНОГО')
+      })
+    ).rejects.toThrow(/SAVE_SLOT_CHANGED/u);
+
+    await expect(readdir(parent)).resolves.toEqual([]);
+  });
+
+  it('compares against what the write ahead of it in the queue published', async () => {
+    // Очередь слота — это и есть «неделимо». Первая запись ещё не опубликована, когда
+    // вторая уже поставлена в очередь; сторож второй обязан увидеть результат первой, а
+    // не то, что лежало до неё.
+    const dir = await temporaryDirectory();
+    const store = fileSaveStore(dir);
+
+    const first = store.write('slot-a', bytesOf('ПЕРВОЕ'), UNCHECKED);
+    const second = store.write('slot-a', bytesOf('ВТОРОЕ'), { kind: 'as-seen', seen: null });
+
+    await first;
+    await expect(second).rejects.toThrow(/SAVE_SLOT_CHANGED/u);
+    await expect(store.read('slot-a')).resolves.toEqual(bytesOf('ПЕРВОЕ'));
+  });
+});
+
 describe('listing occupied slots', () => {
   it('answers an empty list when the save directory holds nothing, or does not exist yet', async () => {
     const parent = await temporaryDirectory();
@@ -389,8 +480,8 @@ describe('listing occupied slots', () => {
     const dir = await temporaryDirectory();
     const store = fileSaveStore(dir);
 
-    await store.write('slot-b', bytesOf('B'));
-    await store.write('slot-a', bytesOf('A'));
+    await store.write('slot-b', bytesOf('B'), UNCHECKED);
+    await store.write('slot-a', bytesOf('A'), UNCHECKED);
 
     const slots = await store.list();
     expect(new Set(slots)).toEqual(new Set(['slot-a', 'slot-b']));
@@ -401,7 +492,7 @@ describe('listing occupied slots', () => {
     const dir = await temporaryDirectory();
     const store = fileSaveStore(dir);
 
-    await store.write('slot-a', bytesOf('ПЕРВОЕ'));
+    await store.write('slot-a', bytesOf('ПЕРВОЕ'), UNCHECKED);
     await writeStrayTmp(dir);
 
     await expect(store.list()).resolves.toEqual(['slot-a']);
@@ -415,7 +506,7 @@ describe('listing occupied slots', () => {
     const dir = await temporaryDirectory();
     const store = fileSaveStore(dir);
 
-    await store.write('slot-a', bytesOf('ПЕРВОЕ'));
+    await store.write('slot-a', bytesOf('ПЕРВОЕ'), UNCHECKED);
     await writeFile(join(dir, 'slot-z.save'), bytesOf('НЕ СЛОТ'));
 
     await expect(store.list()).resolves.toEqual(['slot-a']);
@@ -424,7 +515,7 @@ describe('listing occupied slots', () => {
   it('retries a transient EPERM/EBUSY on readdir before answering', async () => {
     const dir = await temporaryDirectory();
     const store = fileSaveStore(dir);
-    await store.write('slot-a', bytesOf('ПЕРВОЕ'));
+    await store.write('slot-a', bytesOf('ПЕРВОЕ'), UNCHECKED);
 
     let attempts = 0;
     const flakyReaddir = async (path: string): Promise<readonly string[]> => {

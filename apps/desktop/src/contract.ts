@@ -80,7 +80,7 @@ const desktopSaveSlot = z.enum(DESKTOP_SAVE_SLOTS);
  * {@link DESKTOP_SAVE_SLOTS} and {@link MAX_SAVE_BYTES} are, and held to that
  * declaration by `tests/architecture/save-refusal-codes-agreement.test.ts`.
  */
-export const SAVE_HOST_REFUSAL_CODES = ['SAVE_OUT_OF_BOUNDS'] as const;
+export const SAVE_HOST_REFUSAL_CODES = ['SAVE_OUT_OF_BOUNDS', 'SAVE_SLOT_CHANGED'] as const;
 
 export type SaveHostRefusalCode = (typeof SAVE_HOST_REFUSAL_CODES)[number];
 
@@ -168,13 +168,52 @@ export type SaveReadReply = z.infer<typeof saveReadResponse>;
  */
 export const MAX_SAVE_BYTES = 8 * 1024 * 1024;
 
-export const saveWriteRequest = z.tuple([
-  desktopSaveSlot,
-  z.instanceof(Uint8Array).refine((bytes) => bytes.length <= MAX_SAVE_BYTES, {
-    message: `save payload exceeds the ${String(MAX_SAVE_BYTES)}-byte limit.`
-  })
+const savePayload = z.instanceof(Uint8Array).refine((bytes) => bytes.length <= MAX_SAVE_BYTES, {
+  message: `save payload exceeds the ${String(MAX_SAVE_BYTES)}-byte limit.`
+});
+
+/**
+ * What the renderer believes the slot still holds — `packages/application`'s `SlotGuard`,
+ * stated a third time for the reason the slot names and the size ceiling are stated a
+ * second time.
+ *
+ * The comparison happens in *this* process, inside the serialized per-slot write queue,
+ * and that placement is the whole point: a renderer that read the slot and then wrote it
+ * would leave exactly the window the guard exists to close. See `SaveStorePort.write`
+ * for what the window costs.
+ *
+ * The bytes travel in full rather than as a digest, and are bounded by the same ceiling
+ * the payload is — see `packages/application/src/save/slot-guard.ts` for why a digest
+ * would be three implementations of one identity.
+ */
+export const slotGuard = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('unchecked') }),
+  z.object({ kind: z.literal('as-seen'), seen: savePayload.nullable() })
 ]);
-export const saveWriteResponse = z.void();
+
+/**
+ * The same shape {@link slotGuard} parses, written out rather than inferred.
+ *
+ * `z.instanceof(Uint8Array)` infers `Uint8Array<ArrayBuffer>` specifically, and the
+ * application's own `SlotGuard` — and every `TextEncoder` in a test — produces the wider
+ * `Uint8Array<ArrayBufferLike>`. A rule stated twice that cannot be handed the same value
+ * twice is not comparable, and comparing them is what
+ * `tests/architecture/slot-guard-agreement.test.ts` exists to do. What the schema parses
+ * is assignable to this, so the boundary still validates; the type is the wider of the
+ * two on purpose.
+ */
+export type DesktopSlotGuard =
+  { readonly kind: 'unchecked' } | { readonly kind: 'as-seen'; readonly seen: Uint8Array | null };
+
+export const saveWriteRequest = z.tuple([desktopSaveSlot, savePayload, slotGuard]);
+
+/** Either the write happened, or it was refused with a name. See {@link saveReadResponse}. */
+export const saveWriteResponse = z.discriminatedUnion('ok', [
+  z.object({ ok: z.literal(true) }),
+  saveHostRefusal
+]);
+
+export type SaveWriteReply = z.infer<typeof saveWriteResponse>;
 
 export const saveListRequest = z.tuple([]);
 export const saveListResponse = z.array(desktopSaveSlot);

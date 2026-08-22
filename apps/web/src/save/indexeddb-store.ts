@@ -1,4 +1,11 @@
-import { SAVE_SLOTS, type SaveSlot, type SaveStorePort } from '@oath-and-coin/application';
+import {
+  SAVE_SLOTS,
+  slotChanged,
+  slotMayBeWritten,
+  type SaveSlot,
+  type SaveStorePort,
+  type SlotGuard
+} from '@oath-and-coin/application';
 import { SaveErrorCodes, SaveReadError } from '@oath-and-coin/content';
 
 import { requireStorableSize } from './save-size.ts';
@@ -48,7 +55,7 @@ const STORE_NAME = 'slots';
 export function createIndexedDbSaveStore(): SaveStorePort {
   return {
     read: (slot) => read(slot),
-    write: (slot, bytes) => write(slot, bytes),
+    write: (slot, bytes, guard) => write(slot, bytes, guard),
     list: () => list()
   };
 }
@@ -93,7 +100,7 @@ async function read(slot: SaveSlot): Promise<Uint8Array | null> {
   }
 }
 
-async function write(slot: SaveSlot, bytes: Uint8Array): Promise<void> {
+async function write(slot: SaveSlot, bytes: Uint8Array, guard: SlotGuard): Promise<void> {
   // Before the database is even opened: the ceiling is a property of the port
   // (`MAX_SAVE_BYTES` in `packages/application`), not of IndexedDB, and refusing here
   // means the browser and the desktop host answer the same call the same way. See
@@ -141,8 +148,38 @@ async function write(slot: SaveSlot, bytes: Uint8Array): Promise<void> {
         reject(storageUnavailable(`writing slot '${slot}' was aborted.`));
       };
 
+      // **The guard is read inside this same transaction**, and that is the whole
+      // of what makes it a compare-and-swap rather than a check with a gap after
+      // it. A `read()` here followed by a `write()` there would leave exactly the
+      // window the guard exists to close — another tab writing between the two —
+      // and IndexedDB's own isolation is what removes it: nothing else touches
+      // this object store while this `readwrite` transaction is open.
+      //
+      // A refusal `abort()`s as well as rejecting: the abort is how the slot is
+      // *left as it was found*, which is the other half of the promise, and the
+      // rejection has to come first — `onabort` above would otherwise settle this
+      // promise as an unavailable store, which is precisely the wrong thing to
+      // tell a player about a store that answered perfectly.
       try {
-        tx.objectStore(STORE_NAME).put(bytes, slot);
+        const store = tx.objectStore(STORE_NAME);
+        const current = store.get(slot);
+
+        current.onsuccess = () => {
+          if (!slotMayBeWritten(guard, current.result)) {
+            reject(slotChanged(slot));
+            tx.abort();
+            return;
+          }
+
+          try {
+            store.put(bytes, slot);
+          } catch (error) {
+            reject(storageUnavailable(`writing slot '${slot}' failed: ${describe(error)}`));
+          }
+        };
+        current.onerror = () => {
+          reject(storageUnavailable(`reading slot '${slot}' before writing it failed.`));
+        };
       } catch (error) {
         reject(storageUnavailable(`writing slot '${slot}' failed: ${describe(error)}`));
       }

@@ -31,6 +31,13 @@ export {
   type SaveSlotDescription
 } from './save/slot-descriptions.ts';
 export { SAVE_SLOTS, type SaveSlot } from './save/slots.ts';
+export {
+  UNCHECKED_SLOT,
+  asSeen,
+  slotChanged,
+  slotMayBeWritten,
+  type SlotGuard
+} from './save/slot-guard.ts';
 
 export {
   createSessionController,

@@ -1,4 +1,4 @@
-import type { SaveStorePort } from '@oath-and-coin/application';
+import { UNCHECKED_SLOT, type SaveStorePort } from '@oath-and-coin/application';
 import { SaveReadError } from '@oath-and-coin/content';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -24,14 +24,16 @@ afterEach(() => {
  */
 type FakeReadReply = { ok: true; bytes: Uint8Array | null } | { ok: false; code: string };
 
+type FakeWriteReply = { ok: true } | { ok: false; code: string };
+
 function installFakeDesktopApi(overrides: {
   readSave?: (slot: string) => Promise<FakeReadReply>;
-  writeSave?: (slot: string, bytes: Uint8Array) => Promise<void>;
+  writeSave?: (slot: string, bytes: Uint8Array) => Promise<FakeWriteReply>;
   listSaves?: () => Promise<readonly string[]>;
 }): void {
   (globalThis as { desktop?: unknown }).desktop = {
     readSave: overrides.readSave ?? (async () => ({ ok: true, bytes: null })),
-    writeSave: overrides.writeSave ?? (async () => undefined),
+    writeSave: overrides.writeSave ?? (async () => ({ ok: true })),
     listSaves: overrides.listSaves ?? (async () => [])
   };
 }
@@ -41,7 +43,7 @@ describe('when window.desktop is absent or not the expected shape', () => {
     const store = desktopSaveStore();
 
     await expect(store.read('slot-a')).rejects.toThrow(/SAVE_STORAGE_UNAVAILABLE/u);
-    await expect(store.write('slot-a', Uint8Array.of(1))).rejects.toThrow(
+    await expect(store.write('slot-a', Uint8Array.of(1), UNCHECKED_SLOT)).rejects.toThrow(
       /SAVE_STORAGE_UNAVAILABLE/u
     );
     await expect(store.list()).rejects.toThrow(/SAVE_STORAGE_UNAVAILABLE/u);
@@ -97,11 +99,12 @@ describe('delegating to window.desktop', () => {
     installFakeDesktopApi({
       writeSave: async (slot, bytes) => {
         calls.push({ slot, bytes });
+        return { ok: true };
       }
     });
     const store = desktopSaveStore();
 
-    await store.write('slot-b', Uint8Array.of(1, 2));
+    await store.write('slot-b', Uint8Array.of(1, 2), UNCHECKED_SLOT);
 
     expect(calls).toEqual([{ slot: 'slot-b', bytes: Uint8Array.of(1, 2) }]);
   });
@@ -133,7 +136,7 @@ describe('delegating to window.desktop', () => {
     });
     const store = desktopSaveStore();
 
-    await expect(store.write('slot-a', Uint8Array.of(1))).rejects.toThrow(
+    await expect(store.write('slot-a', Uint8Array.of(1), UNCHECKED_SLOT)).rejects.toThrow(
       /SAVE_STORAGE_UNAVAILABLE/u
     );
   });
@@ -182,7 +185,7 @@ describe('delegating to window.desktop', () => {
               throw new Error(leakyMessage);
             }
           }),
-        invoke: (store) => store.write('slot-a', Uint8Array.of(1))
+        invoke: (store) => store.write('slot-a', Uint8Array.of(1), UNCHECKED_SLOT)
       },
       {
         label: 'list()',

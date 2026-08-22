@@ -92,11 +92,20 @@ export function registerIpc(
   });
 
   ipcMainLike.handle(SAVE_WRITE_CHANNEL, async (_event, ...args: unknown[]) => {
-    const [slot, bytes] = saveWriteRequest.parse(args);
-    // The empty result is a result: `write` promises the renderer nothing came
-    // back, and a store that started answering something would be changing the
-    // channel's contract without the contract saying so.
-    return saveWriteResponse.parse(await store.write(slot, bytes));
+    const [slot, bytes, guard] = saveWriteRequest.parse(args);
+
+    // The same split the read channel makes, and for the same reason: a guard the
+    // slot no longer satisfies is a refusal the host decided, not a storage it
+    // could not reach.
+    try {
+      await store.write(slot, bytes, guard);
+      return saveWriteResponse.parse({ ok: true });
+    } catch (error) {
+      if (!(error instanceof SaveHostRefusal)) {
+        throw error;
+      }
+      return saveWriteResponse.parse({ ok: false, code: error.code });
+    }
   });
 
   ipcMainLike.handle(SAVE_LIST_CHANNEL, async (_event, ...args: unknown[]) => {

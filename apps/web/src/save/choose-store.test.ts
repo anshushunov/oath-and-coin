@@ -1,3 +1,4 @@
+import { UNCHECKED_SLOT } from '@oath-and-coin/application';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { chooseSaveStore } from './choose-store.ts';
@@ -26,12 +27,13 @@ describe('chooseSaveStore', () => {
       readSave: async () => null,
       writeSave: async (slot: string, bytes: Uint8Array) => {
         calls.push({ slot, bytes });
+        return { ok: true };
       },
       listSaves: async () => []
     };
 
     const store = chooseSaveStore();
-    await store.write('slot-a', Uint8Array.of(1, 2, 3));
+    await store.write('slot-a', Uint8Array.of(1, 2, 3), UNCHECKED_SLOT);
 
     expect(calls).toEqual([{ slot: 'slot-a', bytes: Uint8Array.of(1, 2, 3) }]);
   });

@@ -6,7 +6,8 @@ import {
   DESKTOP_SAVE_SLOTS,
   MAX_SAVE_BYTES,
   SaveHostRefusal,
-  type DesktopSaveSlot
+  type DesktopSaveSlot,
+  type DesktopSlotGuard
 } from './contract';
 
 /**
@@ -72,8 +73,12 @@ const SAVE_FILE_SUFFIX = '.save';
 export interface DesktopSaveStore {
   /** A slot's bytes, or `null` if it is empty. */
   read(slot: DesktopSaveSlot): Promise<Uint8Array | null>;
-  /** Replaces a slot's contents wholesale and atomically. */
-  write(slot: DesktopSaveSlot, bytes: Uint8Array): Promise<void>;
+  /**
+   * Replaces a slot's contents wholesale and atomically, and only if the slot
+   * still holds what `guard` says it should — see {@link DesktopSlotGuard} and
+   * {@link mayPublish}.
+   */
+  write(slot: DesktopSaveSlot, bytes: Uint8Array, guard: DesktopSlotGuard): Promise<void>;
   /** Which slots are occupied, in no particular order. */
   list(): Promise<readonly DesktopSaveSlot[]>;
 }
@@ -82,9 +87,33 @@ export interface DesktopSaveStore {
 export function fileSaveStore(dir: string): DesktopSaveStore {
   return {
     read: (slot) => readSaveFile(dir, slot),
-    write: (slot, bytes) => enqueueSlotWrite(dir, slot, bytes),
+    write: (slot, bytes, guard) => enqueueSlotWrite(dir, slot, bytes, guard),
     list: () => listSaveFiles(dir)
   };
+}
+
+/**
+ * Whether a slot currently holding `actual` may be written under `guard` — the
+ * host's own statement of `packages/application`'s `slotMayBeWritten`, for the
+ * reason `DESKTOP_SAVE_SLOTS` and `MAX_SAVE_BYTES` are stated here a second time.
+ *
+ * Exported only so that a test can call it: nothing in this module's own surface needs
+ * it. Held to the application's rule by
+ * `tests/architecture/slot-guard-agreement.test.ts`, which runs the same table of
+ * cases through both.
+ */
+export function mayPublish(guard: DesktopSlotGuard, actual: Uint8Array | null): boolean {
+  if (guard.kind === 'unchecked') {
+    return true;
+  }
+
+  if (actual === null || guard.seen === null) {
+    return guard.seen === actual;
+  }
+
+  return (
+    guard.seen.length === actual.length && guard.seen.every((byte, index) => byte === actual[index])
+  );
 }
 
 /**
@@ -284,6 +313,7 @@ export function enqueueSlotWrite(
   dir: string,
   slot: DesktopSaveSlot,
   bytes: Uint8Array,
+  guard: DesktopSlotGuard,
   hooks: WriteHooks = {}
 ): Promise<void> {
   const key = `${dir} ${slot}`;
@@ -296,7 +326,7 @@ export function enqueueSlotWrite(
   // never swallowed.
   const result = previous
     .catch(() => undefined)
-    .then(() => writeSaveFileAtomically(dir, slot, bytes, hooks));
+    .then(() => writeSaveFileAtomically(dir, slot, bytes, guard, hooks));
 
   slotWriteQueues.set(
     key,
@@ -319,8 +349,30 @@ export async function writeSaveFileAtomically(
   dir: string,
   slot: DesktopSaveSlot,
   bytes: Uint8Array,
+  guard: DesktopSlotGuard,
   hooks: WriteHooks = {}
 ): Promise<void> {
+  // **The guard is compared here, inside the per-slot queue**, rather than by the
+  // renderer before it calls. Only one write per slot is ever in flight (see this
+  // module's header), so between this read and the `rename` below no other write
+  // this process makes can touch the slot — which is what turns "check, then
+  // write" into a compare-and-swap. A renderer comparing first would leave open
+  // exactly the window the guard exists to close.
+  //
+  // Before `mkdir`, so that a refused write does not create a save directory it
+  // then leaves empty.
+  if (guard.kind !== 'unchecked') {
+    const actual = await readSaveFile(dir, slot);
+
+    if (!mayPublish(guard, actual)) {
+      throw new SaveHostRefusal(
+        'SAVE_SLOT_CHANGED',
+        `slot '${slot}' no longer holds what it held when it was last read, so this save would ` +
+          'replace a campaign nobody was shown.'
+      );
+    }
+  }
+
   // The save directory is not guaranteed to exist yet: `list()` and `read()`
   // both tolerate a missing directory (an ENOENT reads as "no saves"), and a
   // fresh install's save directory is exactly that case for its first write.

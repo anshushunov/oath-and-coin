@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { ContentSourcePort, SaveStorePort } from './ports.ts';
 import { saveChecksum } from './save/envelope.ts';
+import { slotChanged, slotMayBeWritten } from './save/slot-guard.ts';
 import { SAVE_SLOTS, type SaveSlot } from './save/slots.ts';
 import {
   createSessionController,
@@ -191,14 +192,25 @@ const EXPECTED_VERSIONS = {
   contentVersion: computeContentVersion(contentTree())
 };
 
-/** A slot store that is nothing but a map, so what it holds is what was written. */
+/**
+ * A slot store that is nothing but a map, so what it holds is what was written — except
+ * for the guard, which it honours exactly as both shipped stores do.
+ *
+ * A double that ignored the guard would make every test below pass whether the
+ * controller passed one or not, which is the definition of a check that is not one. The
+ * comparison is `slotMayBeWritten`, the same function the IndexedDB store calls, rather
+ * than a second opinion written here.
+ */
 function fakeStore(): SaveStorePort & { readonly slots: Map<SaveSlot, Uint8Array> } {
   const slots = new Map<SaveSlot, Uint8Array>();
 
   return {
     slots,
     read: (slot) => Promise.resolve(slots.get(slot) ?? null),
-    write: (slot, bytes) => {
+    write: (slot, bytes, guard) => {
+      if (!slotMayBeWritten(guard, slots.get(slot) ?? null)) {
+        return Promise.reject(slotChanged(slot));
+      }
       slots.set(slot, bytes);
       return Promise.resolve();
     },
@@ -900,8 +912,8 @@ describe('a refusal recorded for one slot', () => {
         slot === 'slot-c'
           ? Promise.reject(unavailable())
           : Promise.resolve(inner.slots.get(slot) ?? null),
-      write: (slot, bytes) =>
-        slot === 'slot-c' ? Promise.reject(unavailable()) : inner.write(slot, bytes),
+      write: (slot, bytes, guard) =>
+        slot === 'slot-c' ? Promise.reject(unavailable()) : inner.write(slot, bytes, guard),
       list: () => inner.list()
     };
   }
@@ -945,8 +957,8 @@ describe('a refusal recorded for one slot', () => {
     const broken = { still: true };
     const saves: SaveStorePort = {
       read: (slot) => inner.read(slot),
-      write: (slot, bytes) =>
-        broken.still ? Promise.reject(unavailable()) : inner.write(slot, bytes),
+      write: (slot, bytes, guard) =>
+        broken.still ? Promise.reject(unavailable()) : inner.write(slot, bytes, guard),
       list: () => inner.list()
     };
     const { controller } = harness({ saves });
@@ -991,8 +1003,8 @@ describe('the three slots as the controller answers for them', () => {
     const broken = { still: false };
     const saves: SaveStorePort = {
       read: (slot) => inner.read(slot),
-      write: (slot, bytes) =>
-        broken.still ? Promise.reject(unavailable()) : inner.write(slot, bytes),
+      write: (slot, bytes, guard) =>
+        broken.still ? Promise.reject(unavailable()) : inner.write(slot, bytes, guard),
       list: () => inner.list()
     };
     const { controller } = harness({ saves });
@@ -1016,8 +1028,8 @@ describe('the three slots as the controller answers for them', () => {
     const broken = { still: true };
     const saves: SaveStorePort = {
       read: (slot) => inner.read(slot),
-      write: (slot, bytes) =>
-        broken.still ? Promise.reject(unavailable()) : inner.write(slot, bytes),
+      write: (slot, bytes, guard) =>
+        broken.still ? Promise.reject(unavailable()) : inner.write(slot, bytes, guard),
       list: () => inner.list()
     };
     const { controller } = harness({ saves });
@@ -1044,6 +1056,104 @@ describe('an empty slot', () => {
     await controller.load('slot-b');
 
     expect(controller.store.snapshot()).toBe(before);
+  });
+});
+
+describe('сохранение поверх слота, который успели занять', () => {
+  // Сценарий внешнего ревью сегмента 5 целиком, на уровне контроллера: вкладка A видит
+  // слот пустым, вкладка B успевает его занять, A жмёт «Сохранить». Подтверждения A не
+  // спрашивала и не должна была — пустой слот его не требует, — поэтому без сторожа
+  // кампания B исчезает молча.
+
+  it('отказывает и оставляет чужую кампанию на месте', async () => {
+    const { controller, saves } = harness();
+    await controller.start();
+
+    // Вкладка A смотрит на экран сохранений: все три слота пусты.
+    await controller.slots();
+
+    // Вкладка B занимает слот-a. Хранилище то же, уведомлений нет.
+    const fromAnotherTab = encodeUtf8('{"чужая":"кампания"}');
+    saves.slots.set('slot-a', fromAnotherTab);
+
+    await controller.save('slot-a');
+
+    expect(saves.slots.get('slot-a')).toBe(fromAnotherTab);
+    expect(controller.store.snapshot().saveFailure).toEqual({
+      slot: 'slot-a',
+      code: SaveErrorCodes.SlotChanged,
+      detail: expect.stringContaining('replace a campaign nobody was shown')
+    });
+  });
+
+  it('и повторное сохранение проходит, когда игрок посмотрел заново', async () => {
+    // Отказ обязан быть проходимым: экран перечитывает слоты после каждой операции, а
+    // сторож, который нельзя обновить, — это слот, в который больше никогда не
+    // сохранить.
+    const { controller, saves } = harness();
+    await controller.start();
+    await controller.slots();
+    saves.slots.set('slot-a', encodeUtf8('{"чужая":"кампания"}'));
+
+    await controller.save('slot-a');
+    await controller.slots();
+    await controller.save('slot-a');
+
+    expect(controller.store.snapshot().saveFailure).toBeNull();
+    expect(parseSave(saves.slots.get('slot-a')!).format_version).toBe(1);
+  });
+
+  it('сохраняет в тот же слот дважды подряд, не споря сам с собой', async () => {
+    // Сторож после успешной записи описывает именно её результат. Иначе вторая запись
+    // подряд отказывала бы, сравнивая слот с тем, что лежало до первой.
+    const { controller, saves } = harness();
+    await controller.start();
+    await controller.slots();
+
+    await controller.save('slot-a');
+    await controller.save('slot-a');
+
+    expect(controller.store.snapshot().saveFailure).toBeNull();
+    expect(saves.slots.size).toBe(1);
+  });
+
+  it('пишет без сторожа только туда, о чём этой сессии никто ничего не говорил', async () => {
+    // Честный ответ, а не лазейка: не о чем ошибаться. С экрана сохранений он
+    // недостижим — тот спрашивает хранилище до отрисовки и после каждой операции.
+    const { controller, saves } = harness();
+    await controller.start();
+    saves.slots.set('slot-a', encodeUtf8('{"чужая":"кампания"}'));
+
+    await controller.save('slot-a');
+
+    expect(controller.store.snapshot().saveFailure).toBeNull();
+    expect(parseSave(saves.slots.get('slot-a')!).format_version).toBe(1);
+  });
+
+  it('забывает слот, о котором хранилище не смогло ответить', async () => {
+    // «Ничего не увидели» — не наблюдение. Записать его как «пусто» значило бы дать
+    // записи утверждать, что слот был пуст, когда туда никто не смотрел.
+    const inner = fakeStore();
+    const broken = { still: false };
+    const saves: SaveStorePort = {
+      read: (slot) => (broken.still ? Promise.reject(unavailable()) : inner.read(slot)),
+      write: (slot, bytes, guard) => inner.write(slot, bytes, guard),
+      list: () => inner.list()
+    };
+    const { controller } = harness({ saves });
+    await controller.start();
+
+    // Сначала слот увиден пустым, потом чтение ломается и наблюдение обязано пропасть.
+    await controller.slots();
+    inner.slots.set('slot-a', encodeUtf8('{"чужая":"кампания"}'));
+    broken.still = true;
+    await controller.slots();
+
+    await controller.save('slot-a');
+
+    // Без забывания сторож всё ещё утверждал бы «слот был пуст» и запись отказала бы;
+    // с ним запись безусловна, потому что этой сессии про слот ничего не известно.
+    expect(controller.store.snapshot().saveFailure).toBeNull();
   });
 });
 
