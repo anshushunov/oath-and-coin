@@ -22,9 +22,11 @@ import { describe, expect, it } from 'vitest';
  * - the five vectors flagged `same_artifact_version: true` produce the `current`
  *   bytes as well, because under both rules they are the same bytes;
  * - every string a determinism artifact holds falls inside that agreeing domain, so
- *   the artifact version does not step and the 54 recorded artifacts stay
- *   comparable. That last claim is not taken on trust: Task 10 replays all 54
- *   against their recorded bytes.
+ *   the artifact version did not have to step over this gap. `ADR-013` retired byte
+ *   parity as the property that number protects — it now moves with the artifact's
+ *   own shape, not with the ruleset — so what this file proves is exactly the digests
+ *   below, no more: every byte the frozen corpus still carries on disk hashes to what
+ *   the exporter recorded.
  *
  * The SHA-256 half is the third leg of the proof that this repository's own hash
  * implementation is correct. The 57 digests in `manifest.json` were produced by
@@ -56,6 +58,11 @@ interface JcsVectorFile {
 }
 
 interface CorpusManifest {
+  readonly source_commit: string;
+  readonly seeds: readonly string[];
+  readonly scenarios: readonly {
+    readonly checkpoints: readonly unknown[];
+  }[];
   readonly files: readonly {
     readonly path: string;
     readonly bytes: number;
@@ -169,6 +176,23 @@ describe('canonicalization against the frozen corpus', () => {
     expect(new TextDecoder().decode(canonicalBytes({ n: 9007199254740993n }))).toBe(
       '{"n":9007199254740993}'
     );
+  });
+});
+
+describe('the corpus is the one that was frozen', () => {
+  // `tests/oracle/parity.test.ts` asserted this identity until `ADR-013` retired byte
+  // parity and took the file with it; nothing else in the tree checks it executably.
+  // Stated as numbers rather than left to `manifest.json`'s shape, because a corpus that
+  // silently shrank would still be readable JSON and would still pass every other check
+  // in this file.
+  it('was exported from the migration baseline commit, at the two seeds it recorded', () => {
+    expect(manifest.source_commit).toBe('12565862b1e88e0524f95def18c023571ec4269f');
+    expect(manifest.seeds).toEqual(['7', '424242']);
+  });
+
+  it('is 27 scenarios and 27 checkpoints', () => {
+    expect(manifest.scenarios).toHaveLength(27);
+    expect(manifest.scenarios.flatMap((scenario) => scenario.checkpoints)).toHaveLength(27);
   });
 });
 
