@@ -1,5 +1,5 @@
 import { type SaveSlot, type SaveStorePort } from '@oath-and-coin/application';
-import { SaveErrorCodes, SaveReadError } from '@oath-and-coin/content';
+import { SaveErrorCodes, SaveReadError, type SaveErrorCode } from '@oath-and-coin/content';
 
 import { requireStorableSize } from './save-size.ts';
 
@@ -34,10 +34,24 @@ import { requireStorableSize } from './save-size.ts';
  * to whatever shows a screen's refusal text.
  */
 interface DesktopSaveApi {
-  readSave(slot: SaveSlot): Promise<Uint8Array | null>;
+  readSave(slot: SaveSlot): Promise<DesktopReadReply>;
   writeSave(slot: SaveSlot, bytes: Uint8Array): Promise<void>;
   listSaves(): Promise<readonly SaveSlot[]>;
 }
+
+/**
+ * What the read channel answers — bytes, or a refusal the host made on purpose.
+ *
+ * The second arm exists because "the store could not be reached" is the wrong thing
+ * to tell a player about a file the host read the size of perfectly well and declined
+ * to load. `apps/desktop/src/contract.ts` declares the codes; this module states the
+ * shape structurally for the reason its header gives, and
+ * `tests/architecture/save-refusal-codes-agreement.test.ts` holds the two lists
+ * together.
+ */
+type DesktopReadReply =
+  | { readonly ok: true; readonly bytes: Uint8Array | null }
+  | { readonly ok: false; readonly code: SaveErrorCode };
 
 /** Builds the desktop build's `SaveStorePort`, over `window.desktop`. */
 export function desktopSaveStore(): SaveStorePort {
@@ -49,11 +63,26 @@ export function desktopSaveStore(): SaveStorePort {
 }
 
 async function read(slot: SaveSlot): Promise<Uint8Array | null> {
+  let reply: DesktopReadReply;
+
   try {
-    return await desktopApi().readSave(slot);
+    reply = await desktopApi().readSave(slot);
   } catch {
     throw storageUnavailable(`reading slot '${slot}' through window.desktop failed.`);
   }
+
+  if (!reply.ok) {
+    // The host's own code, kept rather than folded into the `catch` above. The
+    // detail is this module's own text, for the reason its header gives — but the
+    // *code* is the host's answer, and it is the one thing the renderer could not
+    // have worked out for itself.
+    throw new SaveReadError(
+      reply.code,
+      `the desktop host refused to read slot '${slot}': ${reply.code}.`
+    );
+  }
+
+  return reply.bytes;
 }
 
 async function write(slot: SaveSlot, bytes: Uint8Array): Promise<void> {

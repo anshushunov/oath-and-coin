@@ -5,6 +5,7 @@ import { join } from 'node:path';
 
 import { afterAll, describe, expect, it } from 'vitest';
 
+import { MAX_SAVE_BYTES } from './contract';
 import {
   enqueueSlotWrite,
   fileSaveStore,
@@ -99,6 +100,40 @@ describe('reading a slot', () => {
     const store = fileSaveStore(dir);
 
     await expect(store.read('slot-a')).resolves.toBeNull();
+  });
+
+  it('refuses a file past the ceiling without reading it, and names the ceiling', async () => {
+    // A real file rather than a seam, and it has to be: the whole finding is that
+    // the bound belonged to the *host*, where the file is opened, and until
+    // external review of segment 5 the only comparison against `MAX_SAVE_BYTES`
+    // was in the renderer — after the main process had allocated the whole thing
+    // and IPC had copied it across. A hook that answered bytes would prove
+    // nothing about a file, because a hook has no file.
+    //
+    // `slot-a.save` is written directly, not through `write()`: the store refuses
+    // to *produce* something this size, which is the other half of the same
+    // ceiling and not the half under test. An old build or a hand-placed file is
+    // exactly how one gets there.
+    const dir = await temporaryDirectory();
+    const store = fileSaveStore(dir);
+    await writeFile(join(dir, 'slot-a.save'), Buffer.alloc(MAX_SAVE_BYTES + 1, 0x61));
+
+    await expect(store.read('slot-a')).rejects.toThrow(/SAVE_OUT_OF_BOUNDS/u);
+    await expect(store.read('slot-a')).rejects.toThrow(
+      new RegExp(`${String(MAX_SAVE_BYTES)}-byte ceiling`, 'u')
+    );
+  });
+
+  it('reads a file of exactly the ceiling — the bound is on more than a save, not on a save', async () => {
+    // The other side of the same comparison. Without it, a mutant turning `>`
+    // into `>=` stays green, and the file this build itself produces at the
+    // maximum size would stop being readable.
+    const dir = await temporaryDirectory();
+    const store = fileSaveStore(dir);
+    const atTheCeiling = Buffer.alloc(MAX_SAVE_BYTES, 0x61);
+    await writeFile(join(dir, 'slot-a.save'), atTheCeiling);
+
+    await expect(store.read('slot-a')).resolves.toEqual(new Uint8Array(atTheCeiling));
   });
 
   it('answers the bytes a previous write left behind', async () => {

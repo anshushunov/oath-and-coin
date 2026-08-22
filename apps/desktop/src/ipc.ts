@@ -3,6 +3,7 @@ import {
   SAVE_LIST_CHANNEL,
   SAVE_READ_CHANNEL,
   SAVE_WRITE_CHANNEL,
+  SaveHostRefusal,
   describeHostRequest,
   describeHostResponse,
   saveListRequest,
@@ -71,7 +72,23 @@ export function registerIpc(
 
   ipcMainLike.handle(SAVE_READ_CHANNEL, async (_event, ...args: unknown[]) => {
     const [slot] = saveReadRequest.parse(args);
-    return saveReadResponse.parse(await store.read(slot));
+
+    // The one handler where a failure is not automatically a rejection. A refusal
+    // the store made on purpose — today, a file past the size ceiling — carries a
+    // stable code, and a rejection would erase it: the renderer cannot tell one
+    // raw `fs` error from another and reports the whole class as
+    // `SAVE_STORAGE_UNAVAILABLE`, which would blame the storage for a file's
+    // size. Anything that is *not* a deliberate refusal still rejects, and still
+    // reaches the player as the storage being unreachable, because that is what
+    // it is.
+    try {
+      return saveReadResponse.parse({ ok: true, bytes: await store.read(slot) });
+    } catch (error) {
+      if (!(error instanceof SaveHostRefusal)) {
+        throw error;
+      }
+      return saveReadResponse.parse({ ok: false, code: error.code });
+    }
   });
 
   ipcMainLike.handle(SAVE_WRITE_CHANNEL, async (_event, ...args: unknown[]) => {

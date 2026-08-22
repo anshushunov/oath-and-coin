@@ -148,6 +148,9 @@ importers:
       '@oath-and-coin/application':
         specifier: workspace:*
         version: link:../../packages/application
+      '@oath-and-coin/content':
+        specifier: workspace:*
+        version: link:../../packages/content
       '@oath-and-coin/desktop':
         specifier: workspace:*
         version: link:../../apps/desktop

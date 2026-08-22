@@ -6,6 +6,7 @@ import {
   SAVE_LIST_CHANNEL,
   SAVE_READ_CHANNEL,
   SAVE_WRITE_CHANNEL,
+  SaveHostRefusal,
   type HostDescription
 } from './contract';
 import { registerIpc, type IpcMainLike } from './ipc';
@@ -92,7 +93,42 @@ describe('registerIpc', () => {
     registerIpc(ipcMainLike, store, fakeHostDescription);
 
     const readHandler = handlers.get(SAVE_READ_CHANNEL);
-    await expect(readHandler?.(undefined, 'slot-a')).resolves.toEqual(Uint8Array.of(1, 2));
+    await expect(readHandler?.(undefined, 'slot-a')).resolves.toEqual({
+      ok: true,
+      bytes: Uint8Array.of(1, 2)
+    });
+  });
+
+  it('answers a deliberate refusal as a value on the channel, not as a rejection', async () => {
+    // `SAVE_OUT_OF_BOUNDS` is the host's own verdict about a file it measured. A
+    // rejection would erase it: the renderer cannot tell one raw `fs` error from
+    // another and reports the whole class as `SAVE_STORAGE_UNAVAILABLE`.
+    const { ipcMainLike, handlers } = fakeIpcMain();
+    const store = fakeStore({
+      read: () => {
+        throw new SaveHostRefusal('SAVE_OUT_OF_BOUNDS', 'the file under this slot is too large.');
+      }
+    });
+    registerIpc(ipcMainLike, store, fakeHostDescription);
+
+    const readHandler = handlers.get(SAVE_READ_CHANNEL);
+    await expect(readHandler?.(undefined, 'slot-a')).resolves.toEqual({
+      ok: false,
+      code: 'SAVE_OUT_OF_BOUNDS'
+    });
+  });
+
+  it('still rejects on a failure that is not a deliberate refusal', async () => {
+    const { ipcMainLike, handlers } = fakeIpcMain();
+    const store = fakeStore({
+      read: () => {
+        throw new Error('EBUSY: resource busy or locked');
+      }
+    });
+    registerIpc(ipcMainLike, store, fakeHostDescription);
+
+    const readHandler = handlers.get(SAVE_READ_CHANNEL);
+    await expect(readHandler?.(undefined, 'slot-a')).rejects.toThrow(/EBUSY/u);
   });
 
   it('a valid save-write call reaches the store with the slot and the bytes', async () => {

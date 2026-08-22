@@ -63,8 +63,69 @@ export type DesktopSaveSlot = (typeof DESKTOP_SAVE_SLOTS)[number];
  */
 const desktopSaveSlot = z.enum(DESKTOP_SAVE_SLOTS);
 
+/**
+ * The refusals the host answers with **as an answer**, rather than by rejecting the
+ * call.
+ *
+ * Every other failure inside the main process is a rejection, and the renderer
+ * reports the whole class as `SAVE_STORAGE_UNAVAILABLE` — it cannot tell one raw
+ * `fs` error from another, and it deliberately does not repeat their messages,
+ * which embed the player's Windows username in an `AppData` path. That is the
+ * right answer for "the store could not be reached" and the wrong one for a
+ * refusal the host made deliberately, about a file it read perfectly well.
+ *
+ * So a deliberate refusal travels as a value on the channel, carrying the same
+ * stable code the rest of the build uses for that condition. The strings are
+ * `packages/content`'s `SaveErrorCodes`, stated here a second time for the reason
+ * {@link DESKTOP_SAVE_SLOTS} and {@link MAX_SAVE_BYTES} are, and held to that
+ * declaration by `tests/architecture/save-refusal-codes-agreement.test.ts`.
+ */
+export const SAVE_HOST_REFUSAL_CODES = ['SAVE_OUT_OF_BOUNDS'] as const;
+
+export type SaveHostRefusalCode = (typeof SAVE_HOST_REFUSAL_CODES)[number];
+
+/**
+ * A refusal the store made on purpose, thrown inside the main process and turned
+ * into a value on the wire by `ipc.ts`.
+ *
+ * A thrown error rather than a result type through every internal call, because the
+ * store's own callers — `main.ts`, the test suite — want the ordinary shape, and the
+ * seam where a refusal has to stop being an exception is exactly one function wide.
+ */
+export class SaveHostRefusal extends Error {
+  readonly code: SaveHostRefusalCode;
+
+  constructor(code: SaveHostRefusalCode, message: string) {
+    // The code inside the message as well as on the field, the same way
+    // `packages/content`'s `SaveReadError` carries it: this one is logged in the
+    // main process, where `error.message` is usually the whole of what is seen.
+    super(`${code}: ${message}`);
+    this.name = 'SaveHostRefusal';
+    this.code = code;
+  }
+}
+
+const saveHostRefusal = z.object({
+  ok: z.literal(false),
+  code: z.enum(SAVE_HOST_REFUSAL_CODES)
+});
+
 export const saveReadRequest = z.tuple([desktopSaveSlot]);
-export const saveReadResponse = z.instanceof(Uint8Array).nullable();
+
+/**
+ * Either the slot's bytes or a refusal with a name.
+ *
+ * It was a bare `Uint8Array | null`, which left the host no way to say anything but
+ * "here they are" or "the call failed". External review of segment 5 found what that
+ * cost on the one condition the host is the only process that can see: an oversized
+ * file. See {@link MAX_SAVE_BYTES}.
+ */
+export const saveReadResponse = z.discriminatedUnion('ok', [
+  z.object({ ok: z.literal(true), bytes: z.instanceof(Uint8Array).nullable() }),
+  saveHostRefusal
+]);
+
+export type SaveReadReply = z.infer<typeof saveReadResponse>;
 
 /**
  * The upper bound on a save-write payload, **declared a second time** for the
@@ -83,6 +144,17 @@ export const saveReadResponse = z.instanceof(Uint8Array).nullable();
  * Why the host states it at all rather than trusting the renderer's check: the
  * renderer is the untrusted side of this boundary. A limit only the caller
  * applies is not a limit.
+ *
+ * **It bounds a read as well as a write**, since external review of segment 5.
+ * `readSave` in the renderer compared a save's size against this number before
+ * decoding it, which is one boundary too late for the desktop build: the main
+ * process had already read the whole file into its own heap and IPC had already
+ * copied it into the renderer's. An old or hand-placed `slot-a.save` of arbitrary
+ * size was enough to spend the memory of both processes on a file nothing was ever
+ * going to accept. `save-store.ts` now measures the open file's own descriptor and
+ * refuses past this ceiling before allocating anything, and the refusal reaches the
+ * player as {@link SAVE_HOST_REFUSAL_CODES}'s `SAVE_OUT_OF_BOUNDS` rather than as
+ * the storage being blamed for a file's size.
  *
  * The number itself: the frozen scenario corpus's largest canonical snapshot —
  * the whole state of a finished campaign — is about 11 KB

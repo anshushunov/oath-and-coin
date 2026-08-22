@@ -16,13 +16,21 @@ afterEach(() => {
   delete (globalThis as { desktop?: unknown }).desktop;
 });
 
+/**
+ * The read channel's reply as `apps/desktop/src/contract.ts` declares it: bytes, or a
+ * refusal the host made deliberately and named. Restated structurally here for the
+ * reason `desktop-store.ts` restates the API itself — `apps/web` may not import
+ * `apps/desktop`.
+ */
+type FakeReadReply = { ok: true; bytes: Uint8Array | null } | { ok: false; code: string };
+
 function installFakeDesktopApi(overrides: {
-  readSave?: (slot: string) => Promise<Uint8Array | null>;
+  readSave?: (slot: string) => Promise<FakeReadReply>;
   writeSave?: (slot: string, bytes: Uint8Array) => Promise<void>;
   listSaves?: () => Promise<readonly string[]>;
 }): void {
   (globalThis as { desktop?: unknown }).desktop = {
-    readSave: overrides.readSave ?? (async () => null),
+    readSave: overrides.readSave ?? (async () => ({ ok: true, bytes: null })),
     writeSave: overrides.writeSave ?? (async () => undefined),
     listSaves: overrides.listSaves ?? (async () => [])
   };
@@ -60,13 +68,28 @@ describe('delegating to window.desktop', () => {
     installFakeDesktopApi({
       readSave: async (slot) => {
         requestedSlot = slot;
-        return bytes;
+        return { ok: true, bytes };
       }
     });
     const store = desktopSaveStore();
 
     await expect(store.read('slot-a')).resolves.toEqual(bytes);
     expect(requestedSlot).toBe('slot-a');
+  });
+
+  it('carries the host’s own refusal code instead of blaming the storage', async () => {
+    // The host is the only process that can see an oversized file, and until
+    // external review of segment 5 it had no way of saying so: every failure in
+    // the main process arrived here as a rejection, and this module reports the
+    // whole class as `SAVE_STORAGE_UNAVAILABLE` — the storage blamed for a file's
+    // size, on a storage that was perfectly reachable.
+    installFakeDesktopApi({
+      readSave: async () => ({ ok: false, code: 'SAVE_OUT_OF_BOUNDS' })
+    });
+    const store = desktopSaveStore();
+
+    await expect(store.read('slot-a')).rejects.toBeInstanceOf(SaveReadError);
+    await expect(store.read('slot-a')).rejects.toThrow(/SAVE_OUT_OF_BOUNDS/u);
   });
 
   it('write() forwards the slot and the bytes to writeSave', async () => {

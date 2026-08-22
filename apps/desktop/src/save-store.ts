@@ -1,8 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, open, readdir, readFile, rename, unlink } from 'node:fs/promises';
+import { mkdir, open, readdir, rename, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { DESKTOP_SAVE_SLOTS, type DesktopSaveSlot } from './contract';
+import {
+  DESKTOP_SAVE_SLOTS,
+  MAX_SAVE_BYTES,
+  SaveHostRefusal,
+  type DesktopSaveSlot
+} from './contract';
 
 /**
  * The file-backed save store, the desktop half of `SaveStorePort` (design
@@ -87,6 +92,12 @@ export function fileSaveStore(dir: string): DesktopSaveStore {
  * `save-store.test.ts` simulate the transient `EPERM`/`EBUSY` a read can hit
  * on Windows when it lands during another process's `rename`, without an
  * actual race — nothing in `fileSaveStore` ever supplies this.
+ *
+ * A hook replaces {@link readAtMostTheCeiling} whole, bound included, and that
+ * is deliberate: a substituted read answers a test's own bytes, so there is
+ * nothing on disk for a ceiling to be about. The ceiling therefore has no seam
+ * of its own — `save-store.test.ts` proves it against a real oversized file,
+ * which is the only way to prove it at all.
  */
 export interface ReadHooks {
   readonly readFile?: (path: string) => Promise<Buffer>;
@@ -128,12 +139,67 @@ async function retryTransient<T>(attempt: () => Promise<T>): Promise<T> {
   }
 }
 
+/**
+ * A slot's bytes, and never more of them than a save may be.
+ *
+ * **The measurement is of the open descriptor, not of the path.** `stat(path)`
+ * followed by `readFile(path)` is two answers about two moments; `open` once and
+ * ask the handle means the size checked and the bytes read belong to the same
+ * file, whatever happens to the name in between. And only `size` bytes are ever
+ * asked for, so a file that grows after the check still cannot make this read
+ * larger than the check allowed.
+ *
+ * **Why it is here and not in the renderer.** `readSave` compares a save's length
+ * against the same ceiling before it decodes anything, and until external review
+ * of segment 5 that was the only comparison there was — by which time the main
+ * process had allocated the whole file and IPC had copied it into the renderer.
+ * A file of arbitrary size, left in the save directory by an older build or
+ * placed there by hand, was enough to spend both processes' memory on bytes
+ * nothing was ever going to accept. The host is the process that opens the file,
+ * so the host is where the bound belongs; the renderer's check stays, as the
+ * second line behind it.
+ */
+async function readAtMostTheCeiling(path: string): Promise<Buffer> {
+  const handle = await open(path, 'r');
+
+  try {
+    const { size } = await handle.stat();
+
+    if (size > MAX_SAVE_BYTES) {
+      throw new SaveHostRefusal(
+        'SAVE_OUT_OF_BOUNDS',
+        `the file under this slot is ${String(size)} bytes, past the ` +
+          `${String(MAX_SAVE_BYTES)}-byte ceiling every save in this build is held to; nothing ` +
+          'is read from a file that size.'
+      );
+    }
+
+    const buffer = Buffer.allocUnsafe(size);
+    let filled = 0;
+
+    // A loop rather than one `read`, because a single call is allowed to answer
+    // with fewer bytes than asked for. `bytesRead === 0` means the file ended
+    // early — it shrank under us — and the caller gets what was actually there.
+    while (filled < size) {
+      const { bytesRead } = await handle.read(buffer, filled, size - filled, filled);
+      if (bytesRead === 0) {
+        break;
+      }
+      filled += bytesRead;
+    }
+
+    return buffer.subarray(0, filled);
+  } finally {
+    await handle.close();
+  }
+}
+
 export async function readSaveFile(
   dir: string,
   slot: DesktopSaveSlot,
   hooks: ReadHooks = {}
 ): Promise<Uint8Array | null> {
-  const readImpl = hooks.readFile ?? ((path: string) => readFile(path));
+  const readImpl = hooks.readFile ?? readAtMostTheCeiling;
   const path = targetPath(dir, slot);
 
   try {
