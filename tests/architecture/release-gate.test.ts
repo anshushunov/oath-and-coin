@@ -7,9 +7,10 @@ import { parse as parseYaml } from 'yaml';
 /**
  * The release gate, held to its own composition.
  *
- * Task 18's gate is three commands — `pnpm verify`, the runtime dependency
- * audit, and the .NET test run — and its whole value is that all three are in
- * one place. That is also its whole failure mode: a step deleted from a
+ * Task 18's gate was three commands — `pnpm verify`, the runtime dependency
+ * audit, and the .NET test run; Task 19 deleted the stack the third one tested,
+ * so it is two. Its whole value is that both are in one place. That is also its
+ * whole failure mode: a step deleted from a
  * workflow leaves the job green over what remains, and the diff that removed it
  * is a diff nobody reads twice. `AGENTS.md` §8 names this exactly — "иначе в
  * pipeline попадает стадия, которая никогда не краснела" — and the same
@@ -59,15 +60,20 @@ const rootManifest = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'ut
 };
 
 /**
- * The three commands the gate before a merge is composed of, each with what its
- * absence would cost. Spelled as the exact text the workflow runs, so that renaming a
- * script without touching the workflow fails here instead of in CI.
+ * The commands the gate before a merge is composed of, each with what its absence
+ * would cost. Spelled as the exact text the workflow runs, so that renaming a script
+ * without touching the workflow fails here instead of in CI.
  *
  * Declared at the top rather than inside the first `describe` that needed it, because
- * two of them ask about this list now: the `release-gate` job has to run all three, and
- * the root manifest's note beside `verify` has to name all three. `verify` was described
- * as "the whole of the local gate" in both places, which told the next person to run one
- * command out of three before merging.
+ * two of them ask about this list now: the `release-gate` job has to run all of them,
+ * and the root manifest's note beside `verify` has to name all of them. `verify` was
+ * described as "the whole of the local gate" in both places, which told the next person
+ * to run one command out of three before merging.
+ *
+ * It was three until cutover. `dotnet test OathAndCoin.sln -c Release` is gone with the
+ * stack it tested (Task 19), and it is named here rather than silently dropped: a list
+ * that shrinks is exactly the disappearance this file exists to notice, so the shrink
+ * has to be a decision somebody wrote down.
  */
 const REQUIRED_COMMANDS: readonly { command: string; verdict: string }[] = [
   {
@@ -77,10 +83,22 @@ const REQUIRED_COMMANDS: readonly { command: string; verdict: string }[] = [
   {
     command: 'node scripts/audit-runtime-dependencies.mjs',
     verdict: 'nothing unreviewed reaches a player at runtime'
-  },
+  }
+];
+
+/**
+ * What the gate must **not** run, and why each entry is here.
+ *
+ * The list above says what a shrinking gate loses; this one says what a growing one
+ * must never regain. `dotnet test` is on it because the tree it tested no longer
+ * exists: a workflow that still invoked it would fail on every push with a message
+ * about a missing solution file, and the repository would learn about the cutover from
+ * a red pipeline rather than from this file.
+ */
+const FORBIDDEN_COMMANDS: readonly { command: string; reason: string }[] = [
   {
-    command: 'dotnet test OathAndCoin.sln -c Release',
-    verdict: 'the stack the migration has not cut over from is still green'
+    command: 'dotnet',
+    reason: 'the Godot/.NET tree was deleted at cutover (Task 19); there is nothing to test'
   }
 ];
 
@@ -89,7 +107,7 @@ const JOB_NAME = 'release-gate';
 const job = workflow.jobs?.[JOB_NAME];
 const commands = (job?.steps ?? []).map((step) => step.run ?? '').join('\n');
 
-describe('the release gate is one job with three verdicts', () => {
+describe('the release gate is one job with independent verdicts', () => {
   it('exists in the TypeScript workflow', () => {
     expect(
       job,
@@ -97,7 +115,7 @@ describe('the release gate is one job with three verdicts', () => {
     ).toBeDefined();
   });
 
-  it('runs all three of them', () => {
+  it('runs every one of them', () => {
     for (const { command, verdict } of REQUIRED_COMMANDS) {
       // Bounded on both sides rather than as a bare substring. A step runs
       // `pnpm verify 2>&1 | tee …`, so an exact match is impossible, but an
@@ -115,6 +133,10 @@ describe('the release gate is one job with three verdicts', () => {
     }
   });
 
+  it.each(FORBIDDEN_COMMANDS)('does not run `$command`', ({ command, reason }) => {
+    expect(commands, `${JOB_NAME} runs \`${command}\`, and ${reason}`).not.toContain(command);
+  });
+
   it('does not run the packaged desktop gate beside them', () => {
     // Not tidiness. `pnpm test:desktop` launches the shipped application
     // against the machine's own user data directory for its read-only check,
@@ -128,35 +150,34 @@ describe('the release gate is one job with three verdicts', () => {
   });
 
   /**
-   * The three verdicts, held to being three.
+   * The verdicts, held to being independent of each other.
    *
-   * The job's own comment has always called them independent — "three different
-   * verdicts", "merging them into one shell line would report all three as the
-   * first one that failed" — and external review of segment 5 measured that the
-   * mechanism did exactly what the comment forbade. GitHub runs steps fail-fast
-   * unless a step says otherwise, so a red `pnpm verify` skipped the audit and the
-   * .NET run and the job reported one verdict out of three. The check above sees
-   * that all three commands are *present*, which is a different claim and was the
-   * only one anybody was making.
+   * The job's own comment has always called them independent — "different verdicts",
+   * "merging them into one shell line would report both as the first one that
+   * failed" — and external review of segment 5 measured that the mechanism did
+   * exactly what the comment forbade. GitHub runs steps fail-fast unless a step says
+   * otherwise, so a red `pnpm verify` skipped the audit and the .NET run and the job
+   * reported one verdict out of three. The check above sees that the commands are
+   * *present*, which is a different claim and was the only one anybody was making.
    *
-   * **All three are in this list now, and `verify` joined it last.** Two earlier
-   * editions of this comment excluded it, and both were wrong. The first said "it is
-   * first, so nothing before it can have failed" — wrong on the facts: six steps run
-   * before it. The second said the only thing that could silence it was setup, which was
-   * true and left the mechanism unstated: `Install the browser` carried neither an id nor
-   * a condition, so a failed download silently carried off the `verify` verdict through
-   * the very fail-fast default this block exists to remove. Right behaviour, no
-   * mechanism — the same gap the finding itself was about, one step to the left.
+   * **`verify` joined this list last.** Two earlier editions of this comment excluded
+   * it, and both were wrong. The first said "it is first, so nothing before it can have
+   * failed" — wrong on the facts: six steps run before it. The second said the only thing
+   * that could silence it was setup, which was true and left the mechanism unstated:
+   * `Install the browser` carried neither an id nor a condition, so a failed download
+   * silently carried off the `verify` verdict through the very fail-fast default this
+   * block exists to remove. Right behaviour, no mechanism — the same gap the finding
+   * itself was about, one step to the left.
    *
-   * Each verdict now names the *setup* it needs and nothing else, and the asymmetry is
-   * the content rather than an accident: `verify` ends in `pnpm test:e2e` and legitimately
-   * cannot answer without a browser, while `audit` and `dotnet` open none and must still
-   * answer on a run where the download failed. {@link SETUP_A_VERDICT_NEEDS} states which
-   * is which, and the second half of the check below is what stops the browser guard being
-   * copied onto all three "for symmetry", which would silence two verdicts that had no
-   * reason to be silenced.
+   * Each verdict names the *setup* it needs and nothing else, and the asymmetry is the
+   * content rather than an accident: `verify` ends in `pnpm test:e2e` and legitimately
+   * cannot answer without a browser, while `audit` opens none and must still answer on a
+   * run where the download failed. {@link SETUP_A_VERDICT_NEEDS} states which is which,
+   * and the second half of the check below is what stops the browser guard being copied
+   * onto both "for symmetry", which would silence a verdict that had no reason to be
+   * silenced.
    */
-  const INDEPENDENT_VERDICTS = ['verify', 'audit', 'dotnet'] as const;
+  const INDEPENDENT_VERDICTS = ['verify', 'audit'] as const;
 
   /**
    * The setup steps each verdict may depend on. A verdict must be guarded on every step
@@ -166,8 +187,7 @@ describe('the release gate is one job with three verdicts', () => {
    */
   const SETUP_A_VERDICT_NEEDS: Readonly<Record<string, readonly string[]>> = {
     verify: ['install', 'browser'],
-    audit: ['install'],
-    dotnet: ['install']
+    audit: ['install']
   };
 
   const EVERY_SETUP_STEP = ['install', 'browser'] as const;
@@ -218,11 +238,11 @@ describe('the release gate is one job with three verdicts', () => {
       ).toContain(`steps.${setup}.`);
     }
 
-    // The other direction, and it is the one worth a check. `audit` opens no browser
-    // and `dotnet test` opens no browser, so a failed download must not stop either
-    // from answering — that is what "three independent verdicts" buys on the run where
-    // Playwright's CDN is down. Copying `verify`'s browser guard onto all three "for
-    // symmetry" would take two verdicts away for a reason that never applied to them.
+    // The other direction, and it is the one worth a check. `audit` opens no browser,
+    // so a failed download must not stop it from answering — that is what "independent
+    // verdicts" buys on the run where Playwright's CDN is down. Copying `verify`'s
+    // browser guard onto both "for symmetry" would take a verdict away for a reason
+    // that never applied to it.
     for (const setup of EVERY_SETUP_STEP.filter((name) => !needed.includes(name))) {
       expect(
         condition,
@@ -422,10 +442,9 @@ describe('the packaged desktop job cannot lose what it was run to produce', () =
 
 describe('pnpm verify is the TypeScript and browser gate, not the whole of it', () => {
   // The name is the finding. `pnpm verify` was called "the whole of the local gate"
-  // here and in the root manifest, and it is not: the gate before a merge is three
-  // commands — this one, `node scripts/audit-runtime-dependencies.mjs`, and
-  // `dotnet test OathAndCoin.sln -c Release` — which is what the `release-gate` job
-  // above runs and what REQUIRED_COMMANDS lists. A test title is the sentence the
+  // here and in the root manifest, and it is not: the gate before a merge is this one
+  // and `node scripts/audit-runtime-dependencies.mjs`, which is what the `release-gate`
+  // job above runs and what REQUIRED_COMMANDS lists. A test title is the sentence the
   // next person reads before a merge, and that one told them to run one of three.
 
   /**
@@ -482,7 +501,7 @@ describe('pnpm verify is the TypeScript and browser gate, not the whole of it', 
     expect([...new Set(duplicated)], 'pnpm verify repeats a stage').toEqual([]);
   });
 
-  it('says beside itself that it is one of three, and names the other two', () => {
+  it('says beside itself that it is one of the gate’s commands, and names the others', () => {
     // The note in the manifest is the only thing a reader typing `pnpm verify`
     // locally sees, and it read "The release gate as one command". Held to naming
     // the other two rather than left as prose, for the reason every list in this

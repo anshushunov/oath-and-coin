@@ -12,11 +12,13 @@ scenarios/**/*.json text eol=lf
 # The migration oracle corpus is the same kind of file as the three above, and
 # then some: every file in it is covered by a SHA-256 recorded in the corpus's
 # own manifest, so a checkout that turned LF into CRLF would make every digest
-# in that manifest wrong at once — on a corpus whose entire purpose is to be
-# byte-identical on every machine after the C# implementation it describes has
-# been deleted. `OracleCorpusTests` reads the raw bytes and rejects 0x0D, so
-# this line is part of the corpus contract rather than a workstation
-# convention: without it the test fails on a CRLF checkout of a correct corpus.
+# in that manifest wrong at once — on a corpus whose entire purpose was to stay
+# byte-identical on every machine after the C# implementation it describes had
+# been deleted. Since Task 19 it has: the corpus is now the only record of that
+# implementation's behaviour, which makes this line more load-bearing rather than
+# less. `tests/oracle` reads the raw bytes and rejects 0x0D, so it is part of the
+# corpus contract rather than a workstation convention: without it the check
+# fails on a CRLF checkout of a correct corpus.
 migration/oracle/**/*.json text eol=lf
 
 # The interface text catalogue (`ADR-012`). It is a data file of exactly the shape

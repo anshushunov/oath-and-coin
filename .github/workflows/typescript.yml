@@ -1,19 +1,20 @@
-# The TypeScript half of the dual-stack pipeline (ADR-010, Task 5).
+# The build pipeline (ADR-010).
 #
-# It runs beside `dotnet.yml`, not instead of it: until cutover (Task 19) both
-# stacks are live, and the migration's whole safety argument is that the old
-# gates stay green while the new ones come up. Two workflows rather than two
-# jobs in one file, because they have nothing in common — different toolchain,
-# different runner needs, and a reader looking at a red X should not have to
-# work out which stack it belongs to.
+# It was the TypeScript half of a dual-stack pipeline: `dotnet.yml` ran beside
+# it, because until cutover (Task 19) both stacks were live and the migration's
+# whole safety argument was that the old gates stayed green while the new ones
+# came up. Task 19 deleted the Godot/.NET tree, so `dotnet.yml` went with it and
+# this file is the pipeline rather than half of one. The name is kept: renaming a
+# workflow renames every required check that refers to it, and "typescript" is
+# still what it runs.
 #
 # Order is cheapest-first, so a type error is reported in a minute instead of
 # waiting behind a browser download.
 name: typescript
 
 on:
-  # Every branch, matching dotnet.yml and for the same reason: the mutant runs
-  # that prove a check can go red are pushed branches with no pull request.
+  # Every branch, not only the default one: the mutant runs that prove a check
+  # can go red are pushed branches with no pull request.
   push:
     branches: ['**']
   pull_request:
@@ -295,21 +296,20 @@ jobs:
   # here and passes there, which is exactly the disagreement worth catching.
   #
   # **The cost, named rather than left to be discovered.** This job re-runs every
-  # stage `checks` already ran, and `dotnet test` on top, on every push — roughly
-  # 2.5 minutes of runner beside the 1.5 that `checks` costs, and the .NET half is
-  # also run by `dotnet.yml`. That is deliberate and it is not free: the duplication
-  # is what buys the disagreement check above ("green here" vs "green on my
-  # machine"), and it is the first thing to reconsider if push traffic makes runner
-  # time matter. The cheaper shapes both give something up — `needs: checks` makes
+  # stage `checks` already ran, on every push — roughly 1.5 minutes of runner beside
+  # the 1.5 that `checks` costs. That is deliberate and it is not free: the
+  # duplication is what buys the disagreement check above ("green here" vs "green on
+  # my machine"), and it is the first thing to reconsider if push traffic makes
+  # runner time matter. The cheaper shapes both give something up — `needs: checks` makes
   # the gate serial and roughly doubles wall clock, and restricting this job to
   # pull requests leaves the mutant branches AGENTS.md §8 asks for unobserved, which
   # is exactly what the `on:` block at the top of this file exists to prevent.
   #
-  # Three steps and not one, because they are three different verdicts:
-  # "the TypeScript stack is sound", "nothing unreviewed reaches a player at
-  # runtime", "the .NET stack the migration has not cut over from yet is still
-  # green". Merging them into one shell line would report all three as the
-  # first one that failed.
+  # Two steps and not one, because they are two different verdicts: "the
+  # TypeScript stack is sound" and "nothing unreviewed reaches a player at
+  # runtime". Merging them into one shell line would report both as the first one
+  # that failed. There was a third — "the .NET stack the migration has not cut
+  # over from yet is still green" — and Task 19 removed the stack it asked about.
   #
   # **Why the desktop gate is not here.** `pnpm test:desktop` needs an Electron
   # binary, a Windows host and — measured in Task 18 — the machine's real user
@@ -346,13 +346,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-
-      - uses: actions/setup-dotnet@v4
-        with:
-          # The same pin `dotnet.yml` uses, and for its reason: global.json sets
-          # rollForward: disable, so a runner with only a newer SDK fails to
-          # build rather than building with an unpinned toolchain.
-          dotnet-version: 8.0.424
 
       - name: Enable the pinned package manager
         run: corepack enable
@@ -393,9 +386,9 @@ jobs:
       # `pnpm test:e2e` — so a failed download skips it **legitimately**, and saying
       # so out loud is the difference between a skip that was decided and a skip that
       # merely happened. The two verdicts below deliberately do NOT carry
-      # `steps.browser`: neither the dependency audit nor `dotnet test` opens a
-      # browser, so both must still answer on a run where the download failed. That
-      # asymmetry is the whole content of "three independent verdicts" here, and
+      # `steps.browser`: the dependency audit opens no browser, so it must still
+      # answer on a run where the download failed. That asymmetry is the whole
+      # content of "independent verdicts" here, and
       # `tests/architecture/release-gate.test.ts` holds both halves of it.
       - name: Release gate — pnpm verify
         id: verify
@@ -405,25 +398,24 @@ jobs:
           mkdir -p artifacts/release-gate
           pnpm verify 2>&1 | tee artifacts/release-gate/verify.log
 
-      # **Three verdicts, and now three that are actually taken.** The comment above
-      # this job has always called them independent — "the TypeScript stack is
-      # sound", "nothing unreviewed reaches a player at runtime", "the .NET stack is
-      # still green" — and external review of segment 5 measured that they were not:
-      # steps run fail-fast by default, so a red `pnpm verify` skipped both of the
-      # others and the job reported one verdict out of three. A branch that broke the
-      # audit *and* a lint rule was told about the lint rule, fixed it, pushed, and
-      # heard about the audit on the next run. The architecture test next door checked
-      # that the three commands were present and could not see the difference between
-      # a list of steps and a list of verdicts.
+      # **Verdicts that are actually taken.** The comment above this job has always
+      # called them independent — "the TypeScript stack is sound", "nothing
+      # unreviewed reaches a player at runtime" — and external review of segment 5
+      # measured that they were not: steps run fail-fast by default, so a red
+      # `pnpm verify` skipped the others and the job reported one verdict out of
+      # three. A branch that broke the audit *and* a lint rule was told about the
+      # lint rule, fixed it, pushed, and heard about the audit on the next run. The
+      # architecture test next door checked that the commands were present and could
+      # not see the difference between a list of steps and a list of verdicts.
       #
       # `!cancelled()` rather than `always()`: a cancelled run — the `concurrency`
-      # block at the top of this file cancels superseded pushes — should stop, not
-      # spend two more minutes on `dotnet test`. The job still goes red if any of the
-      # three fails, because a failed step fails its job whatever later steps do.
+      # block at the top of this file cancels superseded pushes — should stop rather
+      # than spend more runner time. The job still goes red if either verdict fails,
+      # because a failed step fails its job whatever later steps do.
       #
       # Gated on `install` and not on the verdict before it, which is the difference
-      # that makes them independent. A tree with no `node_modules` cannot answer any
-      # of the three, and a second red about that would say nothing about the first.
+      # that makes them independent. A tree with no `node_modules` cannot answer
+      # either, and a second red about that would say nothing about the first.
       - name: Release gate — runtime dependency audit
         id: audit
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
@@ -431,23 +423,6 @@ jobs:
         run: |
           mkdir -p artifacts/release-gate
           node scripts/audit-runtime-dependencies.mjs 2>&1 | tee artifacts/release-gate/audit.log
-
-      # The other stack, still live until cutover (Task 19). Not `--no-build`:
-      # this job never ran `dotnet build`, and a `-c Release` test run builds
-      # what it needs. It is deliberately the last of the three — it is the
-      # slowest and the least likely to be what a TypeScript branch broke.
-      #
-      # `dotnet test` needs no `pnpm install`, and it is gated on it anyway: an
-      # install that failed means the checkout or the toolchain is broken, and this
-      # job's three verdicts are about a tree, not about three unrelated questions
-      # that happen to share a runner.
-      - name: Release gate — dotnet test
-        id: dotnet
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        shell: bash
-        run: |
-          mkdir -p artifacts/release-gate
-          dotnet test OathAndCoin.sln -c Release 2>&1 | tee artifacts/release-gate/dotnet.log
 
       # The two numbers this job publishes and gates on neither. The bundle is
       # already on disk — `pnpm verify` ends with a production build — so only
@@ -486,9 +461,9 @@ jobs:
       # that, `find` exited non-zero inside a command substitution and
       # `bash -eo pipefail` failed this step too. The job then reported two reds
       # where one thing was wrong, and the second one said nothing about the
-      # first — which is the exact failure `dotnet.yml` records against its own
-      # evidence upload. A missing measurement on a failed run is the expected
-      # state, not a second defect.
+      # first — the same failure the deleted `dotnet.yml` had already recorded
+      # against its own evidence upload. A missing measurement on a failed run is
+      # the expected state, not a second defect.
       - name: Summarise what was measured, without gating on it
         if: always() && steps.verify.outcome != 'skipped'
         shell: bash
