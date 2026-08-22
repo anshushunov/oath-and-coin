@@ -39,6 +39,8 @@ ADR-001-engine-and-language.md
 | [DEC-008](DEC-008-negotiation-first-differentiation.md) | Переговоры и обещания — приоритетный дифференциатор | accepted |
 | [DEC-009](DEC-009-hero-portraits-in-m1.md) | Шесть портретов героев в M1 как исключение из DEC-007 | accepted |
 | [DEC-010](DEC-010-hero-decision-model.md) | Модель решения героя: ворота и взвешенная сумма, непокупаемые красные линии | accepted |
+| [DEC-011](DEC-011-combat-space-and-time.md) | Пространство и время боя: поле 3×3, отряд 4–6, дискретные такты | accepted |
+| [DEC-012](DEC-012-negotiation-offer-protocol.md) | Протокол оффера, обещание доплаты и казна гильдии | accepted |
 
 Технические решения:
 
@@ -56,6 +58,7 @@ ADR-001-engine-and-language.md
 | [ADR-010](ADR-010-full-typescript-web-stack.md) | Полный переход на TypeScript web stack с Electron-хостом | accepted, область стоп-гейта сужена [ADR-011](ADR-011-electron-gate-without-steam.md) |
 | [ADR-011](ADR-011-electron-gate-without-steam.md) | Desktop-приложение без магазина; Task 4 проверяет Electron, а не Steam | accepted |
 | [ADR-012](ADR-012-interface-text-outside-content.md) | Тексты интерфейса живут вне `content/`, в каталоге `ui-text/` | accepted; срок снят 2026-08-22 — граница постоянная |
+| [ADR-013](ADR-013-retiring-corpus-parity.md) | Снятие паритета с корпусом миграции при первом изменении правил | accepted |
 
 **Cutover состоялся 2026-08-22** ([`FULL_TYPESCRIPT_MIGRATION`](../production/FULL_TYPESCRIPT_MIGRATION.md), Task 19): Godot/.NET-дерево удалено, действующее решение о движке и языке — `ADR-010`. `ADR-001` получил статус `superseded`, `ADR-008` — `superseded в части механизма`; у обоих сверху стоит датированная заметка cutover.
 
