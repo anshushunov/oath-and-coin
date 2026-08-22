@@ -66,10 +66,10 @@ const CONSIDERED: readonly ContentId[] = Object.freeze([Actions.Accept, Actions.
 /**
  * How a hero answers a contract offer (`TDD` §8, `DEC-010`, `HERO_DECISION_SPEC` §2).
  *
- * `score = payment*greed/TRAIT_SCALE − risk*caution/TRAIT_SCALE − insult + inclinations
+ * `score = patronFee*greed/TRAIT_SCALE − risk*caution/TRAIT_SCALE − insult + inclinations
  * + trust/10 + bonds + mood`; refused below zero, taken above it, and at exactly zero
- * settled by an explicit tie-break. `insult` is `(risk − payment)*pride/TRAIT_SCALE`
- * when payment is below risk, and otherwise absent entirely — not a zero term.
+ * settled by an explicit tie-break. `insult` is `(risk − patronFee)*pride/TRAIT_SCALE`
+ * when the patron fee is below risk, and otherwise absent entirely — not a zero term.
  *
  * Every term divides on its own, before being added into the sum: dividing the sum
  * instead rounds differently under integer division (`HERO_DECISION_SPEC` §2.3), and the
@@ -122,19 +122,22 @@ export function decide(context: DecisionContext): HeroDecision {
   const positive: TraceFactor[] = [];
   const negative: TraceFactor[] = [];
 
-  // The order below is the `HERO_DECISION_SPEC` §2.3 table, verbatim: payment, risk,
+  // The order below is the `HERO_DECISION_SPEC` §2.3 table, verbatim: patron fee, risk,
   // insult, inclinations (by trait id — already the order `traits` is sorted in), trust,
   // bonds (by hero id), mood last. That order is not cosmetic: it is what ends up in the
   // trace, and the trace is a canonical artifact.
 
   // Выгода: what the contract pays, pulled toward acceptance by greed. The contract is
   // the source of the money, and a factor points at the thing a player could go look at.
-  const paymentPull = divideTowardZero(multiplyInt32(contract.payment, hero.greed), TRAIT_SCALE);
-  if (paymentPull > 0) {
+  const patronFeePull = divideTowardZero(
+    multiplyInt32(contract.patronFee, hero.greed),
+    TRAIT_SCALE
+  );
+  if (patronFeePull > 0) {
     positive.push({
       reasonCode: ReasonCodes.PaymentAttractive,
       sourceEntity: contract.id,
-      magnitude: paymentPull
+      magnitude: patronFeePull
     });
   }
 
@@ -148,12 +151,12 @@ export function decide(context: DecisionContext): HeroDecision {
     });
   }
 
-  // Обида: only when the payment does not even cover the risk being asked — paid fairly
-  // or better there is no insult at all, not a zero-magnitude one.
+  // Обида: only when the patron fee does not even cover the risk being asked — paid
+  // fairly or better there is no insult at all, not a zero-magnitude one.
   const insult =
-    contract.payment < contract.risk
+    contract.patronFee < contract.risk
       ? divideTowardZero(
-          multiplyInt32(toInt32(contract.risk - contract.payment), hero.pride),
+          multiplyInt32(toInt32(contract.risk - contract.patronFee), hero.pride),
           TRAIT_SCALE
         )
       : 0;
@@ -260,9 +263,9 @@ export function decide(context: DecisionContext): HeroDecision {
   // Wrapped once, not after each term — see `toInt32`. Every `int` operation in the
   // original wraps on overflow, and a port that computed this in doubles answered
   // `46116860141324210` where C# answers `0` on inputs C# accepts (external review's
-  // counterexample: payment and greed both `2147483647`).
+  // counterexample: the patron fee and greed both `2147483647`).
   const score = toInt32(
-    paymentPull - riskAversion - insult + inclinationSum + guildTrust + bondSum + mood.value
+    patronFeePull - riskAversion - insult + inclinationSum + guildTrust + bondSum + mood.value
   );
 
   // Exactly zero is a tie, not an acceptance with a very small margin: nothing weighed

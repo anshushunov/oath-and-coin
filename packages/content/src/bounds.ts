@@ -24,8 +24,8 @@ export const TRAIT_MIN = 0;
  */
 export const TRAIT_MAX = TRAIT_MIN + TRAIT_SCALE;
 
-export const PAYMENT_MIN = 0;
-export const PAYMENT_MAX = 100;
+export const PATRON_FEE_MIN = 0;
+export const PATRON_FEE_MAX = 100;
 
 export const RISK_MIN = 0;
 export const RISK_MAX = 100;

@@ -2,7 +2,7 @@
   "schema_version": 2,
   "id": "fixture:plain_beta",
   "display_name_key": "contract.fixture.plain_beta.name",
-  "payment": 50,
+  "patron_fee": 50,
   "risk": 10,
   "required_crew": 6,
   "tags": []

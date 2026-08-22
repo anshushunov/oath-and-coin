@@ -100,7 +100,7 @@ describe('snapshot codec', () => {
   });
 
   it('отказывается читать след с магнитудой фактора больше достижимой в decide()', () => {
-    // 100 — PAYMENT_MAX/RISK_MAX, потолок MAX_FACTOR_MAGNITUDE. 101 — на единицу
+    // 100 — PATRON_FEE_MAX/RISK_MAX, потолок MAX_FACTOR_MAGNITUDE. 101 — на единицу
     // больше того, что `decide()` может когда-либо записать в след (§1.3 спеки:
     // границы содержимого недостаточно, нужен ещё и потолок величины фактора).
     const state = createInitialState(content, 7n, 'm1-decision/1');

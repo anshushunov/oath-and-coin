@@ -1,29 +1,37 @@
 import { restoreDecidedSteps } from '@oath-and-coin/application';
 import { decodeSnapshot, encodeSnapshot } from '@oath-and-coin/content';
-import { contractOfferScreenModel, readModelHash } from '@oath-and-coin/presentation';
+import { contractOfferScreenModel } from '@oath-and-coin/presentation';
 import { describe, expect, it } from 'vitest';
 
 import { allCorpusRecords, focusedContractOf, runCorpusRecord } from './corpus.ts';
 
 /**
- * The screen a reloaded campaign draws, measured against the screen the C# original drew
- * — on every corpus entry that reached a state.
+ * The screen a reloaded campaign draws, measured against the screen a continuous run of
+ * the same commands draws — on every corpus entry that reached a state.
  *
- * `save-round-trip.test.ts` (Task 16.2) already shows that a state survives the codec:
- * the artifact hash of a run whose final state went through it is the frozen one. This
- * file asks the other question, the one a player actually sees: after a reload there is no
- * step list any more, only history and traces, and the screen has to be rebuilt out of
- * them. The two are not the same claim — the artifact carries `selectedScore` verbatim,
+ * `save-round-trip.test.ts` (Task 16.2) already shows that a state survives the codec.
+ * This file asks the other question, the one a player actually sees: after a reload there
+ * is no step list any more, only history and traces, and the screen has to be rebuilt out
+ * of them. The two are not the same claim — the artifact carries `selectedScore` verbatim,
  * while `restoreDecidedSteps` has to recover it from the trace's factors, and the read
  * model is where that recovered number becomes a visible sentence ("wavered", and which
  * reasons rank above which).
  *
- * Not a circular check: `read_model.sha256` was computed by the original from its own
- * `selectedScore`, years before anything summed a factor list.
+ * **Both comparisons below are against a live, freshly computed screen, not against the
+ * corpus's own frozen `read_model.sha256`.** They were against that frozen hash once;
+ * `DEC-008` Task 3 renamed the contract's fee field in the read-model projection
+ * (`describeContract` in `contract-offer-screen-model-factory.ts`), which moved every
+ * byte that hash was taken over, and the corpus that recorded it is frozen and cannot be
+ * rewritten. That frozen comparison was already a remnant of the byte-for-byte parity
+ * `ADR-013` retired — it compared this build with itself, not with an independent
+ * implementation — so what is checked here now is the same claim stated the other way:
+ * a reloaded screen agrees with a screen that never stopped. Task 20 restores an external
+ * comparison, once `scenarios/*.canonical.json` is rebuilt under the new field name and
+ * can again supply an expected value this build did not itself compute.
  */
 
 describe('the screen a reloaded campaign draws', () => {
-  it('восстановленный экран даёт записанный корпусом хеш read model', () => {
+  it('восстановленный экран совпадает с экраном непрерывного прогона на тех же записях', () => {
     // 50, а не 54: у `screen_error` и `screen_loading` `final_state` и
     // `canonical_sha256` равны null — прогон до состояния там не доходит. Число названо,
     // чтобы молчаливое сжатие набора не выглядело успехом.
@@ -70,7 +78,22 @@ describe('the screen a reloaded campaign draws', () => {
       // Ожидаемый фокус берётся из самой read model: это то, что экран показывал.
       const model = contractOfferScreenModel(reloaded, steps, focusedContractOf(record));
 
-      expect(readModelHash(model)).toBe(record.read_model.sha256);
+      // Раньше здесь сверялся `readModelHash(model)` с замороженным
+      // `record.read_model.sha256`. DEC-008 Task 3 переименовал денежное поле
+      // контракта в канонической проекции read model (`describeContract` в
+      // `contract-offer-screen-model-factory.ts`), что подвинуло байты этой
+      // проекции — и сравнение с частью корпуса, который заморожен и не
+      // переписывается, покраснело бы навсегда. Это был остаток паритета с
+      // C#-сборкой, который `ADR-013` уже снял: `record.read_model.sha256`
+      // сравнивало не два независимых источника, а эту сборку с собой же.
+      // Экран восстановленного прогона по-прежнему проверяется — напрямую,
+      // против экрана непрерывного прогона тех же команд, без хеша между двумя
+      // сторонами одной сборки. Task 20 вернёт внешний эталон: пересобранные
+      // `scenarios/*.canonical.json` станут источником ожидаемого значения,
+      // которое эта сборка не вычисляет сама.
+      const live = contractOfferScreenModel(outcome.finalState, outcome.steps, focusedContractOf(record));
+
+      expect(model).toEqual(live);
     }
 
     // Обе стороны правила названы числами: набор, в котором блокированных решений не

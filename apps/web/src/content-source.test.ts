@@ -32,8 +32,14 @@ import {
  * move to meet a defect.
  */
 
-/** The content version the corpus records for the shipped tree in all 54 entries. */
-const SHIPPED_CONTENT_VERSION = '5d03734fd9c7abaa';
+/**
+ * The content version this repository computes for the shipped tree.
+ *
+ * Was the corpus's own value for the shipped tree in all 54 entries, until `DEC-008`
+ * Task 3 renamed the contract's fee field and moved the shipped tree's bytes on
+ * purpose — pinned here from now on as a drift guard, not as corpus parity.
+ */
+const SHIPPED_CONTENT_VERSION = '96aff403339c2a29';
 
 /**
  * The content version the corpus records for `screen_empty`'s own fixture root.

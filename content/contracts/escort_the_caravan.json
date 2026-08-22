@@ -2,7 +2,7 @@
   "schema_version": 2,
   "id": "core:escort_the_caravan",
   "display_name_key": "contract.core.escort_the_caravan.name",
-  "payment": 40,
+  "patron_fee": 40,
   "risk": 50,
   "required_crew": 4,
   "tags": ["patron:merchant_guild", "target:bandits"]

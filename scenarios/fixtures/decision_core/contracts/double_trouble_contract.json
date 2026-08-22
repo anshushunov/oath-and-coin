@@ -2,7 +2,7 @@
   "schema_version": 2,
   "id": "fixture:double_trouble_contract",
   "display_name_key": "contract.fixture.double_trouble_contract.name",
-  "payment": 10,
+  "patron_fee": 10,
   "risk": 10,
   "required_crew": 1,
   "tags": ["test:alpha", "test:beta"]

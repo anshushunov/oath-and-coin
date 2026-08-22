@@ -13,7 +13,7 @@ import { TITLE_KEY } from './keys.ts';
 const aContractLine: ContractLine = {
   definition: 'core:escort_the_caravan',
   displayNameKey: 'contract.core.escort_the_caravan.name',
-  payment: 40,
+  patronFee: 40,
   risk: QualitativeGrade.Moderate,
   tagKeys: [],
   requiredCrew: 2,

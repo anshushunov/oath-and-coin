@@ -19,8 +19,8 @@ import { describe, expect, it } from 'vitest';
 import {
   INCLINATION_WEIGHT_MAX,
   INCLINATION_WEIGHT_MIN,
-  PAYMENT_MAX,
-  PAYMENT_MIN,
+  PATRON_FEE_MAX,
+  PATRON_FEE_MIN,
   RELATIONSHIP_WEIGHT_MAX,
   RELATIONSHIP_WEIGHT_MIN,
   RISK_MAX,
@@ -46,7 +46,7 @@ import {
  * and `@oath-and-coin/simulation` — so this is where the two meet.
  *
  * The distinction matters because the identity is not free. It holds only while every
- * one-sided term the score subtracts is non-negative: a negative payment pull, risk
+ * one-sided term the score subtracts is non-negative: a negative patron-fee pull, risk
  * aversion, insult or trust would be *subtracted from* the score while appearing in
  * neither factor list, and the two paths would part. That non-negativity is a property of
  * the ranges below, and it is the property the sweep here measures — one decision per
@@ -58,14 +58,14 @@ import {
  */
 
 /** Both ends of a range and its middle — the middle because `insult` exists only while
- * payment is below risk, so an enumeration of the ends alone would never switch that term
- * off and on inside one sweep. */
+ * the patron fee is below risk, so an enumeration of the ends alone would never switch
+ * that term off and on inside one sweep. */
 function edgesOf(min: number, max: number): readonly number[] {
   return [min, Math.trunc((min + max) / 2), max];
 }
 
 const HERO_SCALES = edgesOf(TRAIT_MIN, TRAIT_MAX);
-const PAYMENTS = edgesOf(PAYMENT_MIN, PAYMENT_MAX);
+const PATRON_FEES = edgesOf(PATRON_FEE_MIN, PATRON_FEE_MAX);
 const RISKS = edgesOf(RISK_MIN, RISK_MAX);
 const INCLINATION_WEIGHTS = edgesOf(INCLINATION_WEIGHT_MIN, INCLINATION_WEIGHT_MAX);
 const RELATIONSHIP_WEIGHTS = edgesOf(RELATIONSHIP_WEIGHT_MIN, RELATIONSHIP_WEIGHT_MAX);
@@ -123,10 +123,10 @@ function aHeroAt(scales: {
   };
 }
 
-function aContractAt(payment: number, risk: number): ContractState {
+function aContractAt(patronFee: number, risk: number): ContractState {
   return {
     id: parseContentId('core:the_offer'),
-    payment,
+    patronFee,
     risk,
     requiredCrew: 1,
     tags: SortedSet.from(compareContentIds, TAG_IDS),
@@ -158,14 +158,14 @@ function contextsAtBounds(): readonly DecisionContext[] {
     for (const caution of HERO_SCALES) {
       for (const pride of HERO_SCALES) {
         for (const trustInGuild of HERO_SCALES) {
-          for (const payment of PAYMENTS) {
+          for (const patronFee of PATRON_FEES) {
             for (const risk of RISKS) {
               for (const traitWeight of INCLINATION_WEIGHTS) {
                 for (const bondWeight of RELATIONSHIP_WEIGHTS) {
                   for (const decisionOrdinal of ORDINALS) {
                     contexts.push({
                       hero: aHeroAt({ greed, caution, pride, trustInGuild, bondWeight }),
-                      contract: aContractAt(payment, risk),
+                      contract: aContractAt(patronFee, risk),
                       traits: traitsAt(traitWeight),
                       crew: CREW,
                       campaignSeed: CAMPAIGN_SEED,
@@ -193,7 +193,7 @@ describe('the score equals its factors everywhere the loader admits', () => {
     // целиком, и «зелено» означало бы «нечего было проверять».
     expect(contexts).toHaveLength(
       HERO_SCALES.length ** 4 *
-        PAYMENTS.length *
+        PATRON_FEES.length *
         RISKS.length *
         INCLINATION_WEIGHTS.length *
         RELATIONSHIP_WEIGHTS.length *
@@ -224,8 +224,8 @@ describe('the score equals its factors everywhere the loader admits', () => {
     expect(HERO_SCALES).toContain(TRAIT_MIN);
     expect(HERO_SCALES).toContain(TRAIT_MAX);
 
-    expect(PAYMENTS).toContain(PAYMENT_MIN);
-    expect(PAYMENTS).toContain(PAYMENT_MAX);
+    expect(PATRON_FEES).toContain(PATRON_FEE_MIN);
+    expect(PATRON_FEES).toContain(PATRON_FEE_MAX);
 
     expect(RISKS).toContain(RISK_MIN);
     expect(RISKS).toContain(RISK_MAX);

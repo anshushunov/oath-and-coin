@@ -84,7 +84,7 @@ const hero = {
 
 const contract = {
   id: ids.crypt,
-  payment: 70,
+  patronFee: 70,
   risk: 80,
   requiredCrew: 2,
   tags: SortedSet.from(compareContentIds, [ids.undead, ids.temple]),

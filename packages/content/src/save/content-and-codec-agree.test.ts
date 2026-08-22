@@ -45,7 +45,7 @@ const CONTRACT_FILE = JSON.stringify({
   schema_version: 2,
   id: 'core:cleanse_the_crypt',
   display_name_key: 'contract.core.cleanse_the_crypt.name',
-  payment: 70,
+  patron_fee: 70,
   risk: 30,
   required_crew: 1,
   tags: []

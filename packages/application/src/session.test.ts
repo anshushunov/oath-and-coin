@@ -40,7 +40,7 @@ const CONTRACT = {
   schema_version: 2,
   id: 'core:escort',
   display_name_key: 'contract.core.escort.name',
-  payment: 70,
+  patron_fee: 70,
   risk: 30,
   required_crew: 1,
   tags: ['method:escort']
@@ -55,7 +55,7 @@ const TRAIT = {
   weight: 20
 };
 
-function contentTree(overrides: { readonly payment?: number } = {}): ContentFileSource {
+function contentTree(overrides: { readonly patron_fee?: number } = {}): ContentFileSource {
   return memoryFileSource({
     'heroes/bram.json': JSON.stringify(HERO),
     'contracts/escort.json': JSON.stringify({ ...CONTRACT, ...overrides }),
@@ -237,7 +237,7 @@ describe('the content version a session reports', () => {
     // the manifest — would survive an edit, and a replay claiming "same content" over
     // edited numbers is worse than one admitting it cannot reproduce the run.
     const before = session(ranScenario, contentTree()).contentVersion;
-    const after = session(ranScenario, contentTree({ payment: 71 })).contentVersion;
+    const after = session(ranScenario, contentTree({ patron_fee: 71 })).contentVersion;
 
     expect(after).not.toBe(before);
   });

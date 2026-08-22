@@ -44,7 +44,7 @@ const MAX_REASONS = 3;
  * External review of the C# original found what ranking every factor together costs.
  * On entirely legal data a hero accepts at +3 while risk (−30), insult (−29) and a
  * dislike (−28) are the three largest magnitudes in the trace — so the screen showed
- * three reasons to refuse beneath the word "accepted" and hid the payment, the
+ * three reasons to refuse beneath the word "accepted" and hid the patron fee, the
  * convictions and the trust that actually carried it. A majority of the slots
  * therefore goes to the side that won, which buys two properties: a supporting reason
  * is always visible when one exists, and a win carried by several smaller motives
@@ -225,7 +225,7 @@ function toContractLine(contract: ContractState): ContractLine {
   return {
     definition: contract.id,
     displayNameKey: contractDisplayNameKey(contract.id),
-    payment: contract.payment,
+    patronFee: contract.patronFee,
     risk: gradeForValue(contract.risk),
     tagKeys: [...contract.tags.values()].map(tagKey),
     requiredCrew: contract.requiredCrew,
@@ -450,7 +450,7 @@ function resolveSourceDisplayNameKey(
     return key;
   }
 
-  // Payment/risk name the contract; trust and mood name the responding hero. Both are
+  // Patron fee/risk name the contract; trust and mood name the responding hero. Both are
   // already on screen under their own key.
   return null;
 }
@@ -573,7 +573,7 @@ function describeContract(contract: ContractLine): CanonicalValue {
   return {
     definition: contract.definition,
     display_name_key: contract.displayNameKey,
-    payment: contract.payment,
+    patron_fee: contract.patronFee,
     risk: contract.risk,
     tag_keys: [...contract.tagKeys],
     required_crew: contract.requiredCrew,

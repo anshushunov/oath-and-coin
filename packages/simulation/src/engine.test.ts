@@ -206,7 +206,7 @@ describe('an applied command records what the hero decided', () => {
     const accepted = proposeContractToHero(
       aCampaign({
         contracts: SortedMap.from(compareContentIds, [
-          [ids.crypt, aContract({ payment: 100, risk: 0 })]
+          [ids.crypt, aContract({ patronFee: 100, risk: 0 })]
         ])
       }),
       aProposal()
@@ -221,7 +221,7 @@ describe('an applied command records what the hero decided', () => {
     const declined = proposeContractToHero(
       aCampaign({
         contracts: SortedMap.from(compareContentIds, [
-          [ids.crypt, aContract({ payment: 0, risk: 100 })]
+          [ids.crypt, aContract({ patronFee: 0, risk: 100 })]
         ])
       }),
       aProposal()
@@ -239,7 +239,7 @@ describe('an applied command records what the hero decided', () => {
   it('crews the offer only when every seat is filled', () => {
     const twoSeats = aCampaign({
       contracts: SortedMap.from(compareContentIds, [
-        [ids.crypt, aContract({ payment: 100, risk: 0, requiredCrew: 2 })]
+        [ids.crypt, aContract({ patronFee: 100, risk: 0, requiredCrew: 2 })]
       ])
     });
 
@@ -275,7 +275,7 @@ describe('an applied command records what the hero decided', () => {
     // equivalence stops being quietly false.
     const threeSeats = aCampaign({
       contracts: SortedMap.from(compareContentIds, [
-        [ids.crypt, aContract({ payment: 0, risk: 100, requiredCrew: 3 })]
+        [ids.crypt, aContract({ patronFee: 0, risk: 100, requiredCrew: 3 })]
       ])
     });
 
@@ -312,7 +312,7 @@ describe('an applied command records what the hero decided', () => {
         [zaraLikesBram.id, zaraLikesBram]
       ]),
       contracts: SortedMap.from(compareContentIds, [
-        [ids.crypt, aContract({ payment: 100, risk: 0, requiredCrew: 2 })]
+        [ids.crypt, aContract({ patronFee: 100, risk: 0, requiredCrew: 2 })]
       ])
     });
 

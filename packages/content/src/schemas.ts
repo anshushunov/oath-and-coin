@@ -4,8 +4,8 @@ import { z } from 'zod';
 import {
   INCLINATION_WEIGHT_MAX,
   INCLINATION_WEIGHT_MIN,
-  PAYMENT_MAX,
-  PAYMENT_MIN,
+  PATRON_FEE_MAX,
+  PATRON_FEE_MIN,
   RELATIONSHIP_WEIGHT_MAX,
   RELATIONSHIP_WEIGHT_MIN,
   REQUIRED_CREW_MAX,
@@ -102,7 +102,7 @@ export const contractFileSchema = z.strictObject({
   schema_version: contentSchemaVersion,
   id: contentIdString,
   display_name_key: localizationKey,
-  payment: z.int().min(PAYMENT_MIN).max(PAYMENT_MAX),
+  patron_fee: z.int().min(PATRON_FEE_MIN).max(PATRON_FEE_MAX),
   risk: z.int().min(RISK_MIN).max(RISK_MAX),
   required_crew: z.int().min(REQUIRED_CREW_MIN).max(REQUIRED_CREW_MAX),
   tags: z.array(contentIdString).max(MAX_TAGS_PER_CONTRACT)

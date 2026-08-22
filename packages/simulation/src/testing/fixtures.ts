@@ -53,7 +53,7 @@ export function aHero(overrides: Partial<HeroState> = {}): HeroState {
 export function aContract(overrides: Partial<ContractState> = {}): ContractState {
   return {
     id: ids.crypt,
-    payment: 70,
+    patronFee: 70,
     risk: 80,
     requiredCrew: 1,
     tags: SortedSet.from(compareContentIds, [ids.undead]),
@@ -83,7 +83,7 @@ export function aTrait(overrides: Partial<HeldTrait> = {}): HeldTrait {
 export function aContext(overrides: Partial<DecisionContext> = {}): DecisionContext {
   return {
     hero: aHero({ greed: 0, caution: 0, pride: 0, trustInGuild: 0 }),
-    contract: aContract({ payment: 0, risk: 0 }),
+    contract: aContract({ patronFee: 0, risk: 0 }),
     traits: [],
     crew: SortedMap.empty<HeroId, ContentId>(compareHeroIds),
     campaignSeed: 7n,

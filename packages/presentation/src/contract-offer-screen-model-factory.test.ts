@@ -75,7 +75,7 @@ describe('the screen with nothing to offer', () => {
 
 describe('which contract the screen is about', () => {
   const caravan = aContract({ id: ids.caravan });
-  const crypt = aContract({ id: ids.crypt, payment: 90 });
+  const crypt = aContract({ id: ids.crypt, patronFee: 90 });
 
   it('is the one the first step named', () => {
     const state = withContracts(aState(), [caravan, crypt]);
@@ -187,7 +187,7 @@ describe('the contract line', () => {
   it('shows objective numbers literally and everything else on the qualitative scale', () => {
     const state = withContracts(aState(), [
       aContract({
-        payment: 40,
+        patronFee: 40,
         risk: 55,
         requiredCrew: 4,
         acceptedBy: responded(0, 1, 2),
@@ -198,7 +198,7 @@ describe('the contract line', () => {
     expect(contractOfferScreenModel(state, []).contract).toEqual({
       definition: ids.caravan,
       displayNameKey: 'contract.core.escort_the_caravan.name',
-      payment: 40,
+      patronFee: 40,
       risk: QualitativeGrade.Moderate,
       tagKeys: ['tag.patron.merchant_guild', 'tag.target.undead'],
       requiredCrew: 4,

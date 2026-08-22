@@ -38,7 +38,7 @@ import { Captioned, KeyList, Label } from '../labels.tsx';
  * shown at all. It is not a name a player reads, showing it beside the resolved name
  * it duplicates is the raw-identifier leak `TDD` §11.1 forbids, and `readModelHash`
  * already covers every one of them without help from here. The three objective
- * numbers the spec calls out on purpose — payment, required crew, accepted count —
+ * numbers the spec calls out on purpose — patron fee, required crew, accepted count —
  * are the one kind of value shown literally, because they were never keys.
  * `errorDetail` does not reach this screen at all: it is assembled in code, carries a
  * machine's own path, and neither hash covers it.
@@ -98,7 +98,7 @@ function ContractBlock({ contract }: { readonly contract: ContractLine }) {
       <Label text={text(contract.displayNameKey)} />
 
       <div className="row">
-        <Captioned captionKey={FieldKeys.ContractPayment} value={String(contract.payment)} />
+        <Captioned captionKey={FieldKeys.ContractPatronFee} value={String(contract.patronFee)} />
         <Captioned
           captionKey={FieldKeys.ContractRisk}
           value={text(qualitativeKey(contract.risk))}

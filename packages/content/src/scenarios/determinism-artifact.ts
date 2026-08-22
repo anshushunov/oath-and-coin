@@ -176,7 +176,7 @@ function describeHero(hero: HeroState): CanonicalValue {
 function describeContract(contract: ContractState): CanonicalValue {
   return {
     id: contract.id,
-    payment: contract.payment,
+    patron_fee: contract.patronFee,
     risk: contract.risk,
     required_crew: contract.requiredCrew,
     tags: contract.tags.values(),

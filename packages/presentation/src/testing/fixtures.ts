@@ -69,7 +69,7 @@ export function aHero(overrides: Partial<HeroState> = {}): HeroState {
 export function aContract(overrides: Partial<ContractState> = {}): ContractState {
   return {
     id: ids.caravan,
-    payment: 40,
+    patronFee: 40,
     risk: 55,
     requiredCrew: 2,
     tags: SortedSet.from(compareContentIds, [ids.merchants]),

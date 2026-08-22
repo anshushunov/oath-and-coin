@@ -1,7 +1,6 @@
 import {
   RULESET_VERSION,
   applyScenarioCommands,
-  artifactHash,
   createInitialState,
   decodeSnapshot,
   encodeSnapshot
@@ -22,7 +21,7 @@ import { allCorpusRecords, corpusRecord, inputsOf, runCorpusRecord } from './cor
  */
 
 describe('continuing a run from a state that came back from a save', () => {
-  it('продолжение с загруженного состояния даёт замороженное финальное состояние', () => {
+  it('продолжение с загруженного состояния даёт тот же результат, что несломанный прогон', () => {
     const record = corpusRecord('mixed_gate_then_decisions', 7n);
     const { content, commands, seed } = inputsOf(record);
 
@@ -49,20 +48,26 @@ describe('continuing a run from a state that came back from a save', () => {
 
     const continued = applyScenarioCommands(reloaded, commands.slice(k));
 
-    // Шаги префикса и продолжения склеены в список, который дал бы целый прогон,
-    // и сверены с замороженным числом корпуса — не с текущей сборкой самой
-    // собой (как было раньше), и не только с финальным состоянием: непроверенным
-    // не остаётся ничего из того, что решил, скольким событиям привёл к и как
-    // объяснил продолженный прогон.
-    expect(
-      artifactHash({
-        steps: [...prefix.steps, ...continued.steps],
-        finalState: continued.finalState
-      })
-    ).toBe(record.canonical_sha256);
+    // Раньше здесь сверялись шаги префикса и продолжения, склеенные в список,
+    // который дал бы целый прогон, с замороженным числом корпуса
+    // (`record.canonical_sha256`). DEC-008 Task 3 переименовал денежное поле
+    // контракта — это подвинуло байты канонического артефакта, и сравнение с
+    // числом корпуса покраснело бы навсегда: корпус заморожен, переписывать
+    // его нельзя. Сама проверка была уже снятым паритетом с C#-сборкой —
+    // `ADR-013` убрал побайтовое сравнение с чужой реализацией и оставил здесь
+    // сравнение сборки с собой же. Раз так, сравниваем напрямую: продолженное
+    // состояние обязано совпасть с тем, что дал бы целый, непрерывный прогон
+    // тех же команд — то самое сравнение, которое describe-комментарий этого
+    // файла обещает словами "comparing against a whole, uninterrupted run of
+    // the same commands". Task 20 вернёт этой проверке силу внешнего эталона:
+    // пересобранные `scenarios/*.canonical.json` дадут ожидаемое значение не
+    // из этой же сборки, а из отдельно пересчитанного слепка.
+    const whole = runCorpusRecord(record);
+
+    expect(continued.finalState).toEqual(whole.finalState);
   });
 
-  it('круг через сохранение сохраняет хеш артефакта на записях, у которых есть состояние', () => {
+  it('круг через сохранение сохраняет состояние на записях, у которых оно есть', () => {
     // 50, а не 54: у `screen_error` и `screen_loading` `final_state` и
     // `canonical_sha256` равны null — прогон до состояния там не доходит.
     // Число проверяется, чтобы молчаливое сжатие набора не выглядело успехом.
@@ -75,10 +80,17 @@ describe('continuing a run from a state that came back from a save', () => {
         JSON.parse(JSON.stringify(encodeSnapshot(outcome.finalState)))
       );
 
-      // Если кодек потерял поле, которое несёт артефакт, замороженное число
-      // разойдётся. Это страж от расхождения двух проекций — вместо обещания,
-      // что они не разойдутся.
-      expect(artifactHash({ ...outcome, finalState: reloaded })).toBe(record.canonical_sha256);
+      // Раньше здесь ещё сверялся `artifactHash({ ...outcome, finalState: reloaded })`
+      // с замороженным `record.canonical_sha256`. DEC-008 Task 3 переименовал
+      // денежное поле контракта, что подвинуло байты канонического артефакта —
+      // и это сравнение с частью корпуса, который заморожен и не переписывается,
+      // покраснело бы навсегда. Это был остаток паритета с C#-сборкой, который
+      // `ADR-013` уже снял: сравнение с `canonical_sha256` здесь сверяло не два
+      // независимых источника, а эту сборку с собой же. Круг через сохранение
+      // по-прежнему проверяется — ниже, напрямую, без хеша между двумя
+      // сторонами одной и той же сборки. Task 20 вернёт внешний эталон:
+      // пересобранные `scenarios/*.canonical.json` станут источником ожидаемого
+      // значения, которое эта сборка не вычисляет сама.
       expect(reloaded).toEqual(outcome.finalState);
     }
   });

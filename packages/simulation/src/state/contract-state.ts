@@ -24,7 +24,7 @@ export type ContractStatus = (typeof ContractStatus)[keyof typeof ContractStatus
 /** A contract offer's terms and lifecycle state. */
 export interface ContractState {
   readonly id: ContentId;
-  readonly payment: number;
+  readonly patronFee: number;
   readonly risk: number;
   /** How many heroes must accept before this offer is crewed (`HERO_DECISION_SPEC` §1.5). */
   readonly requiredCrew: number;

@@ -138,7 +138,7 @@ export const REASON_DIRECTION_KEYS: readonly string[] = Object.freeze(
  *
  * External review of the C# screen found what their absence costs: on the captured
  * frame the texts `40`, `4`, `3` and a run of "Умеренно / Слабо / Умеренно" stood one
- * under another with nothing to say which was the payment, which the crew, and which
+ * under another with nothing to say which was the patron fee, which the crew, and which
  * of greed, caution and pride each grade belonged to. Both hashes were green
  * throughout, and correctly so — they compare the texts the model produced, and every
  * one of those was the right text for its field.
@@ -148,7 +148,7 @@ export const REASON_DIRECTION_KEYS: readonly string[] = Object.freeze(
  * differ by language, so the colon lives in the catalogue with the words.
  */
 export const FieldKeys = Object.freeze({
-  ContractPayment: 'field.contract.payment',
+  ContractPatronFee: 'field.contract.patron_fee',
   ContractRisk: 'field.contract.risk',
   ContractRequiredCrew: 'field.contract.required_crew',
   ContractAcceptedCount: 'field.contract.accepted_count',

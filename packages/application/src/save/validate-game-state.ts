@@ -147,7 +147,7 @@ function checkReferentialIntegrity(state: GameState): void {
  * suite pins `Σpositive − Σnegative === selectedScore`). So "the action agrees with the
  * score" is checkable from the file alone. It cannot silently overflow the way the
  * engine's own `toInt32` can: `snapshot-codec.ts` bounds a factor's magnitude at
- * `PAYMENT_MAX` and bounds how many factors a side may hold, which is that comment's
+ * `PATRON_FEE_MAX` and bounds how many factors a side may hold, which is that comment's
  * stated reason for existing.
  */
 function checkDecisionTraces(state: GameState): void {

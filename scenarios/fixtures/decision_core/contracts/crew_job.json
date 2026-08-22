@@ -2,7 +2,7 @@
   "schema_version": 2,
   "id": "fixture:crew_job",
   "display_name_key": "contract.fixture.crew_job.name",
-  "payment": 50,
+  "patron_fee": 50,
   "risk": 0,
   "required_crew": 2,
   "tags": []

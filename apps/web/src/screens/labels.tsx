@@ -33,14 +33,14 @@ export function Label({ text }: { readonly text: string }) {
  *
  * External review of the Godot screen found what the captions are for: the frame
  * showed `40`, `4`, `3` and a run of qualitative grades stacked with nothing saying
- * which was the payment, which the crew, and which of greed, caution and pride each
+ * which was the patron fee, which the crew, and which of greed, caution and pride each
  * grade belonged to. Both hashes were green, and correctly — every one of those texts
  * was the right text for its field.
  *
  * `captionKey` is a key and `value` is already resolved text, because the two are
  * different kinds of thing: a caption is always a catalogue entry, while a value is
  * sometimes one (a qualitative grade) and sometimes an objective number the model
- * carries literally (`payment`, `requiredCrew`, `acceptedCount`).
+ * carries literally (`patronFee`, `requiredCrew`, `acceptedCount`).
  */
 export function Captioned({
   captionKey,

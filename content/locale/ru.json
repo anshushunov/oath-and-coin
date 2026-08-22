@@ -57,7 +57,7 @@
     "response.wavered.false": "Не колебался",
     "reason.direction.supported": "За решение",
     "reason.direction.opposed": "Против решения",
-    "field.contract.payment": "Оплата:",
+    "field.contract.patron_fee": "Оплата:",
     "field.contract.risk": "Риск:",
     "field.contract.required_crew": "Нужен отряд:",
     "field.contract.accepted_count": "Согласились:",

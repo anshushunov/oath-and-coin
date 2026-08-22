@@ -85,8 +85,8 @@ export function expectedSnapshot(
 
   if (contract !== null) {
     resolve(contract.displayNameKey);
-    resolve(FieldKeys.ContractPayment);
-    texts.push(String(contract.payment));
+    resolve(FieldKeys.ContractPatronFee);
+    texts.push(String(contract.patronFee));
     resolve(FieldKeys.ContractRisk);
     resolve(qualitativeKey(contract.risk));
     resolve(FieldKeys.ContractRequiredCrew);

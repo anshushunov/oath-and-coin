@@ -94,7 +94,7 @@ export function createInitialState(
       definition.id,
       {
         id: definition.id,
-        payment: definition.payment,
+        patronFee: definition.patronFee,
         risk: definition.risk,
         requiredCrew: definition.requiredCrew,
         tags: SortedSet.from(compareContentIds, definition.tags),

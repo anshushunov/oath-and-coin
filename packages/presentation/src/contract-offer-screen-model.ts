@@ -90,8 +90,8 @@ export interface ResponseLine {
 export interface ContractLine {
   readonly definition: string;
   readonly displayNameKey: string;
-  /** The payment in coins — an objective fact, shown as a plain number on purpose. */
-  readonly payment: number;
+  /** The patron fee in coins — an objective fact, shown as a plain number on purpose. */
+  readonly patronFee: number;
   readonly risk: QualitativeGrade;
   readonly tagKeys: readonly string[];
   readonly requiredCrew: number;

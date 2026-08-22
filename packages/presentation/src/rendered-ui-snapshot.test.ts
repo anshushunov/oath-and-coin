@@ -66,7 +66,7 @@ const aFullModel = createContractOfferScreenModel({
   contract: {
     definition: 'core:escort_the_caravan',
     displayNameKey: 'contract.core.escort_the_caravan.name',
-    payment: 40,
+    patronFee: 40,
     risk: QualitativeGrade.Moderate,
     tagKeys: ['tag.patron.merchant_guild', 'tag.target.bandits'],
     requiredCrew: 4,
@@ -187,7 +187,7 @@ describe('the texts a correctly bound screen produces', () => {
       'text(screen.contract_offer.title)',
       'text(screen.contract_offer.state.normal)',
       'text(contract.core.escort_the_caravan.name)',
-      'text(field.contract.payment)',
+      'text(field.contract.patron_fee)',
       '40',
       'text(field.contract.risk)',
       'text(qualitative.moderate)',

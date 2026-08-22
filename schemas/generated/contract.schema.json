@@ -18,7 +18,7 @@
       "maxLength": 256,
       "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$"
     },
-    "payment": {
+    "patron_fee": {
       "type": "integer",
       "minimum": 0,
       "maximum": 100
@@ -46,7 +46,7 @@
     "schema_version",
     "id",
     "display_name_key",
-    "payment",
+    "patron_fee",
     "risk",
     "required_crew",
     "tags"

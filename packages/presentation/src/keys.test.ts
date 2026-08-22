@@ -90,7 +90,7 @@ describe('the field captions', () => {
     // were green because every text was the right text for its field.
     expect(FIELD_KEYS).toEqual(
       expect.arrayContaining([
-        FieldKeys.ContractPayment,
+        FieldKeys.ContractPatronFee,
         FieldKeys.ContractRequiredCrew,
         FieldKeys.ContractAcceptedCount,
         FieldKeys.HeroGreed,

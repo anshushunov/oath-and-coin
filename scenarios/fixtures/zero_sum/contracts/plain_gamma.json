@@ -2,7 +2,7 @@
   "schema_version": 2,
   "id": "fixture:plain_gamma",
   "display_name_key": "contract.fixture.plain_gamma.name",
-  "payment": 50,
+  "patron_fee": 50,
   "risk": 10,
   "required_crew": 6,
   "tags": []

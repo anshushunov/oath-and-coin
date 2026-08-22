@@ -100,13 +100,13 @@ describe('the gate runs before any arithmetic', () => {
 
 describe('every term divides on its own', () => {
   it('is not the same number as dividing the combined sum', () => {
-    // payment*greed = 150 and risk*caution = 90. Term by term: 1 − 0 = 1. Sum first:
+    // patronFee*greed = 150 and risk*caution = 90. Term by term: 1 − 0 = 1. Sum first:
     // trunc(60/100) = 0. The two answers differ, and this context is the boundary where
     // they do.
     const decision = decide(
       aContext({
         hero: aHero({ greed: 10, caution: 10, pride: 0, trustInGuild: 0 }),
-        contract: aContract({ payment: 15, risk: 9 }),
+        contract: aContract({ patronFee: 15, risk: 9 }),
         decisionOrdinal: 6n
       })
     );
@@ -128,7 +128,7 @@ describe('every term divides on its own', () => {
     const decision = decide(
       aContext({
         hero: aHero({ greed: 0, caution: 0, pride: -45, trustInGuild: 0 }),
-        contract: aContract({ payment: 0, risk: 70 }),
+        contract: aContract({ patronFee: 0, risk: 70 }),
         decisionOrdinal: 6n
       })
     );
@@ -152,7 +152,7 @@ describe('the trace is the arithmetic, written down', () => {
           ])
         }),
         contract: aContract({
-          payment: 40,
+          patronFee: 40,
           risk: 80,
           tags: SortedSet.from(compareContentIds, [ids.temple, ids.undead]),
           acceptedBy: SortedSet.from(compareHeroIds, [heroId(1), heroId(2)])
@@ -189,7 +189,7 @@ describe('the trace is the arithmetic, written down', () => {
     const decision = decide(
       aContext({
         hero: aHero({ greed: 100, caution: 100, pride: 100, trustInGuild: 50 }),
-        contract: aContract({ payment: 40, risk: 80 })
+        contract: aContract({ patronFee: 40, risk: 80 })
       })
     );
 
@@ -203,12 +203,12 @@ describe('the trace is the arithmetic, written down', () => {
 
   it('omits a term that weighed nothing rather than listing it at zero', () => {
     // A reason that changed nothing is noise crowding real reasons out of the top rows
-    // (`HERO_DECISION_SPEC` §2.3). Greed 0 makes the payment pull 0, and a fairly paid
+    // (`HERO_DECISION_SPEC` §2.3). Greed 0 makes the patron-fee pull 0, and a fairly paid
     // contract has no insult *at all* — not an insult of zero.
     const decision = decide(
       aContext({
         hero: aHero({ greed: 0, caution: 0, pride: 100, trustInGuild: 0 }),
-        contract: aContract({ payment: 80, risk: 40 }),
+        contract: aContract({ patronFee: 80, risk: 40 }),
         decisionOrdinal: 6n
       })
     );
@@ -219,13 +219,13 @@ describe('the trace is the arithmetic, written down', () => {
   });
 
   it('draws mood on every scored path, inside the grey band or far outside it', () => {
-    // The draw is unconditional so that a change in payment cannot change whether an
-    // ordinal was spent — otherwise a contrast pair would measure the wrong thing
+    // The draw is unconditional so that a change in the patron fee cannot change whether
+    // an ordinal was spent — otherwise a contrast pair would measure the wrong thing
     // (`HERO_DECISION_SPEC` §2.4).
     const decisive = decide(
       aContext({
         hero: aHero({ greed: 100, caution: 0, pride: 0, trustInGuild: 0 }),
-        contract: aContract({ payment: 100, risk: 0 })
+        contract: aContract({ patronFee: 100, risk: 0 })
       })
     );
 
@@ -324,9 +324,9 @@ const PROFILES: readonly (readonly [number, number, number, number])[] = [
  * from a generator: global randomness is banned in this package, and an enumeration is
  * reproducible on top of that — a failure names the same context on every run.
  *
- * Every term of `HERO_DECISION_SPEC` §2.3 is moved by something in here: payment and
- * risk (which also drives the insult term on and off, since insult exists only while
- * payment is below risk), the four hero scales, an inclination pulling each way, a bond
+ * Every term of `HERO_DECISION_SPEC` §2.3 is moved by something in here: the patron fee
+ * and risk (which also drives the insult term on and off, since insult exists only while
+ * the patron fee is below risk), the four hero scales, an inclination pulling each way, a bond
  * pulling each way, and three mood ordinals. The traits carry both tags the contract
  * does, so both fire.
  */
@@ -334,7 +334,7 @@ function localContexts(): readonly DecisionContext[] {
   const contexts: DecisionContext[] = [];
 
   for (const [greed, caution, pride, trustInGuild] of PROFILES) {
-    for (const payment of [0, 15, 40, 100]) {
+    for (const patronFee of [0, 15, 40, 100]) {
       for (const risk of [0, 9, 55, 80, 100]) {
         for (const traitWeight of [-30, -3, 0, 7, 30]) {
           for (const bondWeight of [-20, -5, 0, 5, 20]) {
@@ -352,7 +352,7 @@ function localContexts(): readonly DecisionContext[] {
                     ])
                   }),
                   contract: aContract({
-                    payment,
+                    patronFee,
                     risk,
                     tags: SortedSet.from(compareContentIds, [ids.temple, ids.undead]),
                     acceptedBy: SortedSet.from(compareHeroIds, [heroId(1), heroId(2)])

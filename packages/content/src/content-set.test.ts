@@ -17,10 +17,16 @@ const shippedContent = join(repoRoot, 'content');
  * after.
  *
  * The shipped-tree assertions are parity assertions, not sanity ones. `contentVersion`
- * is the strongest of them: the corpus recorded `5d03734fd9c7abaa` for this exact tree
- * when the C# exporter froze it, so this port agreeing on it means the whole digest
+ * was the strongest of them: the corpus recorded `5d03734fd9c7abaa` for this exact tree
+ * when the C# exporter froze it, so this port agreeing on it meant the whole digest
  * chain — ordinal path order, the path being part of the hash, the separator byte, and
- * this repository's own SHA-256 — reproduces a value nobody here computed.
+ * this repository's own SHA-256 — reproduced a value nobody here computed.
+ *
+ * `DEC-008` Task 3 renamed the contract's fee field in the file format and this
+ * loader's output, which moved every content-derived byte and, with it, this digest.
+ * `96aff403339c2a29` is a drift guard pinned by this repository from here on, not a
+ * claim of byte-for-byte agreement with the frozen C# export — that parity ended the
+ * moment the shipped tree changed on purpose.
  */
 
 const temporaryRoots: string[] = [];
@@ -47,7 +53,7 @@ const CONTRACT = {
   schema_version: 2,
   id: 'core:cleanse_the_crypt',
   display_name_key: 'contract.core.cleanse_the_crypt.name',
-  payment: 70,
+  patron_fee: 70,
   risk: 80,
   required_crew: 4,
   tags: ['target:undead']
@@ -91,11 +97,13 @@ describe('loadContentSet over the shipped tree', () => {
     expect(content.traits.size).toBe(8);
   });
 
-  it('reproduces the content version the frozen corpus recorded', () => {
-    // The corpus's `inputs.content_version` for every one of its 54 entries. A
-    // digest that agreed with itself but not with this value would let the whole
-    // segment pass parity on a coincidence.
-    expect(content.contentVersion).toBe('5d03734fd9c7abaa');
+  it('pins the content version this repository computes for the shipped tree', () => {
+    // Was the corpus's own `inputs.content_version` for every one of its 54 entries,
+    // until `DEC-008` Task 3 renamed the contract's fee field and moved the shipped
+    // tree's bytes on purpose. What this pin buys now is the same as before the
+    // rename — a digest that drifted only with itself would let the whole segment
+    // pass parity on a coincidence — just no longer against the frozen C# export.
+    expect(content.contentVersion).toBe('96aff403339c2a29');
   });
 
   it('keys heroes, contracts and traits in content-id order', () => {
@@ -137,11 +145,34 @@ describe('loadContentSet over the shipped tree', () => {
     expect(content.contracts.get(parseContentId('core:cleanse_the_crypt'))).toEqual({
       id: 'core:cleanse_the_crypt',
       displayNameKey: 'contract.core.cleanse_the_crypt.name',
-      payment: 70,
+      patronFee: 70,
       risk: 80,
       requiredCrew: 4,
       tags: ['target:undead', 'method:public_contract']
     });
+  });
+
+  it('reads the patron fee under its new name', () => {
+    // DEC-008 §1: the old field name stopped distinguishing anything the moment a
+    // second and a third kind of money joined it, so the field the file carries is
+    // `patron_fee` and the definition this loader produces carries `patronFee`.
+    const root = treeWith({
+      contracts: [
+        {
+          schema_version: 2,
+          id: 'core:cleanse_the_crypt',
+          display_name_key: 'contract.core.cleanse_the_crypt.name',
+          patron_fee: 55,
+          risk: 80,
+          required_crew: 4,
+          tags: ['target:undead']
+        }
+      ]
+    });
+
+    expect(loadContentSet(root).contracts.get(parseContentId('core:cleanse_the_crypt'))!.patronFee).toBe(
+      55
+    );
   });
 
   it('gives an inclination its weight and a principle none', () => {

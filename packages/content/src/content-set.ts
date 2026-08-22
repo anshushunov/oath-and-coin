@@ -74,7 +74,7 @@ export interface HeroDefinition {
 export interface ContractDefinition {
   readonly id: ContentId;
   readonly displayNameKey: string;
-  readonly payment: number;
+  readonly patronFee: number;
   readonly risk: number;
   readonly requiredCrew: number;
   readonly tags: readonly ContentId[];
@@ -168,7 +168,7 @@ function toContractDefinition(file: ContractFile): ContractDefinition {
   return {
     id: parseContentId(file.id),
     displayNameKey: file.display_name_key,
-    payment: file.payment,
+    patronFee: file.patron_fee,
     risk: file.risk,
     requiredCrew: file.required_crew,
     tags: file.tags.map((tag) => parseContentId(tag))

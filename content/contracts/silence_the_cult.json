@@ -2,7 +2,7 @@
   "schema_version": 2,
   "id": "core:silence_the_cult",
   "display_name_key": "contract.core.silence_the_cult.name",
-  "payment": 55,
+  "patron_fee": 55,
   "risk": 65,
   "required_crew": 3,
   "tags": ["target:cult", "target:temple"]

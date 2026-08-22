@@ -3,7 +3,7 @@
  * before it reaches a screen.
  *
  * The interface never shows the player a number besides an objective fact like a
- * payment in coins: an exact probability turns a hero's choice into an equation to
+ * patron fee in coins: an exact probability turns a hero's choice into an equation to
  * solve instead of a character to read, and that interpretive space is what
  * `DEC-006` decided to keep. Two different underlying scales map onto the same five
  * grades through two different thresholds, because "35" means something different

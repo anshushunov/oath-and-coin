@@ -62,7 +62,7 @@ const CARAVAN_FILE = {
   schema_version: 2,
   id: 'core:escort_the_caravan',
   display_name_key: 'contract.core.escort_the_caravan.name',
-  payment: 70,
+  patron_fee: 70,
   risk: 30,
   required_crew: 1,
   tags: ['method:escort']
@@ -93,7 +93,7 @@ const CRYPT_FILE = {
   schema_version: 2,
   id: 'core:cleanse_the_crypt',
   display_name_key: 'contract.core.cleanse_the_crypt.name',
-  payment: 40,
+  patron_fee: 40,
   risk: 80,
   required_crew: 1,
   tags: ['target:undead']
@@ -113,7 +113,7 @@ function ran(files: Record<string, string>, contract: string): GameState {
 /**
  * Bram takes the caravan job. The arithmetic, written out so the expectation below is not
  * this build agreeing with itself (`HERO_DECISION_SPEC` §2.3, every term divided on its
- * own): payment 70 × greed 60 / 100 = +42; risk 30 × caution 30 / 100 = −9; no insult at
+ * own): patron fee 70 × greed 60 / 100 = +42; risk 30 × caution 30 / 100 = −9; no insult at
  * all, the pay covers the risk; the inclination `core:greedy` matches the contract's
  * `method:escort` tag at +20; trust 50 / 10 = +5; no bonds; mood at seed 424242, ordinal
  * 0 = +5. 42 − 9 + 20 + 5 + 5 = 63.

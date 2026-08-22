@@ -34,8 +34,8 @@ import {
 import {
   INCLINATION_WEIGHT_MAX,
   INCLINATION_WEIGHT_MIN,
-  PAYMENT_MAX,
-  PAYMENT_MIN,
+  PATRON_FEE_MAX,
+  PATRON_FEE_MIN,
   RELATIONSHIP_WEIGHT_MAX,
   RELATIONSHIP_WEIGHT_MIN,
   REQUIRED_CREW_MAX,
@@ -74,7 +74,7 @@ import { SaveErrorCodes, SaveReadError, type SaveErrorCode } from './save-error-
 /**
  * A single decision (`contract-decision-rule.ts`) can push a factor onto one side
  * — positive or negative — from at most: the fixed terms that ever land on one
- * particular side (payment, trust and mood-positive on the positive side; risk,
+ * particular side (patron fee, trust and mood-positive on the positive side; risk,
  * insult and mood-negative on the negative one — three per side), plus every
  * inclination landing on that side (at most `MAX_TRAITS_PER_HERO`) and every bond
  * landing on that side (at most `MAX_RELATIONSHIPS_PER_HERO`). That ceiling is
@@ -198,7 +198,7 @@ const contractStatusSchema = z.union([
 
 const contractValueSchema = z.strictObject({
   id: contentId,
-  payment: z.int().min(PAYMENT_MIN).max(PAYMENT_MAX),
+  patronFee: z.int().min(PATRON_FEE_MIN).max(PATRON_FEE_MAX),
   risk: z.int().min(RISK_MIN).max(RISK_MAX),
   requiredCrew: z.int().min(REQUIRED_CREW_MIN).max(REQUIRED_CREW_MAX),
   tags: z.array(contentId).max(MAX_TAGS_PER_CONTRACT),
@@ -218,13 +218,13 @@ const traitRuleValueSchema = z.strictObject({
  * Largest magnitude a single trace factor can carry (`contract-decision-rule.ts`'s
  * `decide`). Every term divides by `TRAIT_SCALE` before it reaches a factor, and
  * `TRAIT_MAX` equals `TRAIT_SCALE` (`bounds.ts`), so a term whose *other* operand
- * is a content bound never exceeds that bound: `paymentPull` is capped by
- * `PAYMENT_MAX`, `riskAversion` by `RISK_MAX`, and `insult` — `(risk − payment) *
- * pride / TRAIT_SCALE` — by `RISK_MAX` too, since `payment ≥ PAYMENT_MIN = 0`. An
+ * is a content bound never exceeds that bound: `patronFeePull` is capped by
+ * `PATRON_FEE_MAX`, `riskAversion` by `RISK_MAX`, and `insult` — `(risk − patronFee) *
+ * pride / TRAIT_SCALE` — by `RISK_MAX` too, since `patronFee ≥ PATRON_FEE_MIN = 0`. An
  * inclination is capped by `INCLINATION_WEIGHT_MAX` (30), trust by `TRAIT_MAX`
  * divided by the rule's own trust divisor (100 / 10 = 10), a bond by
  * `RELATIONSHIP_WEIGHT_MAX` (20), and mood by the rule's own `MOOD_MAX` (5). The
- * largest of these is `PAYMENT_MAX` — and `RISK_MAX`, the same number — 100.
+ * largest of these is `PATRON_FEE_MAX` — and `RISK_MAX`, the same number — 100.
  *
  * This is not merely a shape ceiling. `restoreDecidedSteps`
  * (`packages/application/src/save/restore-steps.ts`) recomputes a decision's
@@ -239,7 +239,7 @@ const traitRuleValueSchema = z.strictObject({
  * `MAX_FACTORS_PER_TRACE_SIDE` of them nowhere near where a plain sum and a
  * wrapped one could ever part ways.
  */
-const MAX_FACTOR_MAGNITUDE = PAYMENT_MAX;
+const MAX_FACTOR_MAGNITUDE = PATRON_FEE_MAX;
 
 /**
  * The three reason-code fields, each closed on the set of codes the engine can actually
@@ -399,7 +399,7 @@ export function encodeSnapshot(state: GameState): unknown {
       key,
       value: {
         id: value.id,
-        payment: value.payment,
+        patronFee: value.patronFee,
         risk: value.risk,
         requiredCrew: value.requiredCrew,
         tags: value.tags.values(),
@@ -468,7 +468,7 @@ export function decodeSnapshot(value: unknown): GameState {
     (raw) => parseContentId(raw.id),
     (raw) => ({
       id: parseContentId(raw.id),
-      payment: raw.payment,
+      patronFee: raw.patronFee,
       risk: raw.risk,
       requiredCrew: raw.requiredCrew,
       tags: SortedSet.from(compareContentIds, raw.tags.map((tag) => parseContentId(tag))),

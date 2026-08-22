@@ -24,7 +24,7 @@ export const ReasonCodes = Object.freeze({
   TrustsTheGuild: 'hero.decision.trusts_the_guild',
   UnpredictableMood: 'hero.decision.unpredictable_mood',
 
-  /** The offered payment is low enough to be a personal insult. */
+  /** The offered patron fee is low enough to be a personal insult. */
   PaymentInsulting: 'hero.decision.payment_insulting',
 
   /** A personal conviction speaks for taking the contract. */
