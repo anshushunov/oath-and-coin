@@ -42,13 +42,16 @@ import type { ScenarioOutcome, StepOutcome } from './scenario-runner.ts';
  * Shape version of this artifact. A comparison across builds that disagree on the shape
  * is not a determinism failure, and this is what tells them apart.
  *
- * It stays at 3 across the whole TypeScript port, and that is the recorded decision of
- * `FULL_TYPESCRIPT_MIGRATION` §7.2, not an oversight: the RFC 8785 writer and the C#
- * one differ only on inputs no artifact contains, and every string reaching this
- * projection is held inside `ARTIFACT_SAFE_TEXT_PATTERN` by the content contracts, the
- * state boundary and — since Task 9 — the engine's own vocabularies. Stepping it would
- * make 54 byte-identical artifacts formally incomparable and destroy the parity
- * evidence the segment is measured on.
+ * It steps together with the artifact's own shape, not with the rules a run applies:
+ * `ADR-013` retired byte parity with the frozen C# corpus as a property the port owes,
+ * so a rule change that leaves `describeOutcome`'s fields and their types alone is not a
+ * reason to move this number. It still holds at 3 for now — `FULL_TYPESCRIPT_MIGRATION`
+ * §7.2 found the RFC 8785 writer and the C# one differing only on inputs no artifact
+ * contains — but that is a fact about the artifacts written so far, not a promise about
+ * the ones after. What now stands in for the parity evidence this version used to
+ * protect is the canonical snapshots committed under `scenarios/`: a rule change that
+ * alters the shape or the content of an artifact must update its `.canonical.json`
+ * alongside it, and that diff is where the change is reviewed.
  */
 export const ARTIFACT_VERSION = 3;
 

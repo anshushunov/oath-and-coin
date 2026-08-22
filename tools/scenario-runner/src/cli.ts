@@ -5,14 +5,11 @@ import process from 'node:process';
 import { artifactHash, toCanonicalJson } from '@oath-and-coin/content';
 import { loadAndRunScenario } from '@oath-and-coin/content/node';
 
-import { runParity } from './parity.ts';
-
 /**
- * Headless scenario execution and oracle parity.
+ * Headless scenario execution.
  *
  *   node tools/scenario-runner/src/cli.ts run --scenario gate0 [--checkpoint NAME]
  *                                            [--seed N] [--content DIR] [--output FILE]
- *   node tools/scenario-runner/src/cli.ts parity --oracle migration/oracle/v1 [--output FILE]
  *
  * A plain `node` invocation over `.ts` sources, not a test pretending to be a script and
  * not a build step. `FULL_TYPESCRIPT_MIGRATION` §8.3 records why that works and what it
@@ -20,26 +17,24 @@ import { runParity } from './parity.ts';
  * extension and no construct with a runtime effect may appear — which is what
  * `erasableSyntaxOnly` in the base tsconfig enforces for the whole workspace.
  *
- * Exit codes are the interface a pipeline reads: 0 agreement, 1 disagreement, 2 the
- * command line itself was wrong. A parity run that could not find the corpus must not
- * exit 0 with "0 mismatches".
+ * Exit codes are the interface a pipeline reads: 0 the run completed, 2 the command line
+ * itself was wrong. `parity` — replaying the frozen corpus byte for byte — lived here
+ * until `ADR-013` retired that guarantee; what the corpus still proves (canonicalization,
+ * file digests, RNG vectors) is asserted directly in `tests/oracle`, not through this CLI.
  */
 
 const USAGE = [
   'usage:',
   '  scenario-runner run --scenario <id> [--checkpoint <name>] [--seed <n>]',
-  '                      [--scenarios <dir>] [--content <dir>] [--output <file>]',
-  '  scenario-runner parity --oracle <dir> [--repo <dir>] [--output <file>]'
+  '                      [--scenarios <dir>] [--content <dir>] [--output <file>]'
 ].join('\n');
 
 const EXIT_OK = 0;
-const EXIT_MISMATCH = 1;
 const EXIT_USAGE = 2;
 
-/** Every option each command accepts. An unknown one is a usage error, not a no-op. */
+/** Every option `run` accepts. An unknown one is a usage error, not a no-op. */
 const KNOWN_OPTIONS: Readonly<Record<string, readonly string[]>> = Object.freeze({
-  run: ['--scenario', '--checkpoint', '--seed', '--scenarios', '--content', '--repo', '--output'],
-  parity: ['--oracle', '--repo', '--output']
+  run: ['--scenario', '--checkpoint', '--seed', '--scenarios', '--content', '--repo', '--output']
 });
 
 /**
@@ -61,7 +56,7 @@ export function main(argv: readonly string[]): number {
   // it is `string | undefined` and no `default` can ever be dropped from it. A `switch`
   // here would have to carry a `case undefined` that exists only to satisfy a rule
   // whose whole point is elsewhere.
-  if (command !== 'run' && command !== 'parity') {
+  if (command !== 'run') {
     console.error(command === undefined ? USAGE : `Unknown command '${command}'.\n${USAGE}`);
     return EXIT_USAGE;
   }
@@ -75,7 +70,7 @@ export function main(argv: readonly string[]): number {
   }
 
   try {
-    return command === 'run' ? runCommand(options) : parityCommand(options);
+    return runCommand(options);
   } catch (cause) {
     // A malformed argument value — a `--seed` that is not a number — reaches this. It is
     // still the command line being wrong, so it is still 2. A genuine defect in the run
@@ -135,52 +130,6 @@ function runCommand(options: Options): number {
       return EXIT_OK;
     }
   }
-}
-
-function parityCommand(options: Options): number {
-  const oracle = options.get('--oracle');
-  if (oracle === undefined) {
-    console.error(`parity needs --oracle.\n${USAGE}`);
-    return EXIT_USAGE;
-  }
-
-  const repositoryRoot = resolve(options.get('--repo') ?? '.');
-
-  let report;
-  try {
-    report = runParity(repositoryRoot, resolve(oracle));
-  } catch (cause) {
-    // Reaching the corpus is a precondition, not a result. Reporting "0 mismatches"
-    // because the directory was misspelled is the one failure this command must never
-    // produce.
-    console.error(`parity could not read the corpus: ${messageOf(cause)}`);
-    return EXIT_USAGE;
-  }
-
-  const output = options.get('--output');
-  if (output !== undefined) {
-    writeTo(resolve(output), `${JSON.stringify(report, null, 2)}\n`);
-  }
-
-  console.log(`oracle:      ${report.oracleRoot}`);
-  console.log(`baseline:    ${report.sourceCommit}`);
-  console.log(`scenarios:   ${String(report.scenarios)}`);
-  console.log(`checkpoints: ${String(report.checkpoints)}`);
-  console.log(`seeds:       ${report.seeds.join(', ')}`);
-  console.log(`entries:     ${String(report.matched)}/${String(report.entries)} reproduced`);
-
-  for (const verdict of report.verdicts) {
-    if (verdict.matched) {
-      continue;
-    }
-
-    console.error(`\n${verdict.scenario}/${verdict.checkpoint}/seed-${verdict.seed}`);
-    for (const failure of verdict.failures) {
-      console.error(`  ${failure}`);
-    }
-  }
-
-  return report.matched === report.entries ? EXIT_OK : EXIT_MISMATCH;
 }
 
 interface Options {

@@ -223,9 +223,6 @@ importers:
       '@oath-and-coin/presentation':
         specifier: workspace:*
         version: link:../../packages/presentation
-      '@oath-and-coin/scenario-runner':
-        specifier: workspace:*
-        version: link:../../tools/scenario-runner
       '@oath-and-coin/simulation':
         specifier: workspace:*
         version: link:../../packages/simulation
@@ -235,18 +232,9 @@ importers:
 
   tools/scenario-runner:
     dependencies:
-      '@oath-and-coin/application':
-        specifier: workspace:*
-        version: link:../../packages/application
       '@oath-and-coin/content':
         specifier: workspace:*
         version: link:../../packages/content
-      '@oath-and-coin/presentation':
-        specifier: workspace:*
-        version: link:../../packages/presentation
-      '@oath-and-coin/simulation':
-        specifier: workspace:*
-        version: link:../../packages/simulation
     devDependencies:
       typescript:
         specifier: 6.0.3

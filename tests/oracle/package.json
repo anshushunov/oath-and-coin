@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "The port replayed against the frozen C# corpus in migration/oracle/v1 — the evidence that behaviour survived the rewrite",
+  "description": "What the frozen C# corpus in migration/oracle/v1 still proves once byte parity is retired (ADR-013): canonicalization, file digests and RNG vectors, plus save/read-model round trips against it",
   "scripts": {
     "test": "vitest run --root ../.. tests/oracle"
   },
@@ -11,7 +11,6 @@
     "@oath-and-coin/application": "workspace:*",
     "@oath-and-coin/content": "workspace:*",
     "@oath-and-coin/presentation": "workspace:*",
-    "@oath-and-coin/scenario-runner": "workspace:*",
     "@oath-and-coin/simulation": "workspace:*",
     "typescript": "6.0.3"
   }

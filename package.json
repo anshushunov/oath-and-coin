@@ -20,13 +20,12 @@
     "bench:decision": "node scripts/benchmark-decision.mjs",
     "test": "vitest run",
     "test:scenario": "vitest run tests/oracle tools/scenario-runner",
-    "scenario:parity": "node tools/scenario-runner/src/cli.ts parity --oracle migration/oracle/v1",
     "test:e2e": "playwright test",
     "test:desktop": "playwright test --config playwright.desktop.config.ts",
     "build": "node scripts/build-workspace.mjs",
     "package:desktop": "node scripts/package-desktop.mjs",
     "//verify": "The TypeScript and browser gate as one command — NOT the whole release gate, and the difference is the one an external review found being taught wrongly here. The full gate before a merge is two commands, and the `release-gate` job in .github/workflows/typescript.yml runs exactly these two: `pnpm verify`, then `node scripts/audit-runtime-dependencies.mjs` (nothing unreviewed reaches a player at runtime). It was three until cutover (Task 19), when `dotnet test OathAndCoin.sln -c Release` went with the stack it tested — there is no second stack left to keep green. `package:desktop` and `test:desktop` are a third thing again and deliberately in neither: they need an Electron binary and a Windows host, so they stay separate commands and a separate CI job. Inside this one, everything is cheapest first, chained with && so the run stops at the first stage that fails and the log ends on the message that matters.",
-    "verify": "pnpm typecheck && pnpm lint && pnpm lint:deps && pnpm format:check && pnpm schema:check && pnpm test && pnpm test:scenario && pnpm scenario:parity && pnpm build && pnpm test:e2e"
+    "verify": "pnpm typecheck && pnpm lint && pnpm lint:deps && pnpm format:check && pnpm schema:check && pnpm test && pnpm test:scenario && pnpm build && pnpm test:e2e"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

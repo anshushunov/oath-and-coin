@@ -9,7 +9,6 @@ import {
 } from '@oath-and-coin/content';
 import { loadContentSet } from '@oath-and-coin/content/node';
 import { parseContentId, type ContentId } from '@oath-and-coin/simulation';
-import { readCorpusIndex } from '@oath-and-coin/scenario-runner';
 
 /**
  * The frozen corpus, read once and in one shape.
@@ -19,16 +18,60 @@ import { readCorpusIndex } from '@oath-and-coin/scenario-runner';
  * codec and the read model rebuilt from a restored state — and two hand-written
  * statements of the same JSON shape would drift the first time a field was read.
  *
- * The *comparison* is deliberately not here: `tools/scenario-runner` owns that, and
- * `parity.test.ts` says why a second copy of it would only ever agree with itself.
+ * `readCorpusEntries` used to be `readCorpusIndex`, imported from
+ * `@oath-and-coin/scenario-runner`: that package owned the frozen corpus's index because
+ * it also owned the byte-parity comparison the index fed. `ADR-013` retired the
+ * comparison and `tools/scenario-runner/src/parity.ts` went with it, so the index is
+ * inlined here instead — the one remaining reader of the manifest's shape, same as
+ * `rng.test.ts` and `canonical.test.ts` already read their own corpus files directly.
  */
 
 const repoRoot = resolve(import.meta.dirname, '..', '..', '..');
 
-// Not exported: `parity.test.ts`, `rng.test.ts` and `canonical.test.ts` each still
-// declare their own, and moving those three onto this one is not this task's change.
-// An export nobody imports reads as a contract that already has consumers.
+// Not exported: `rng.test.ts` and `canonical.test.ts` each still declare their own, and
+// moving those two onto this one is not this task's change. An export nobody imports
+// reads as a contract that already has consumers.
 const corpusRoot = join(repoRoot, 'migration', 'oracle', 'v1');
+
+interface CorpusManifest {
+  readonly scenarios: readonly {
+    readonly scenario: string;
+    readonly checkpoints: readonly {
+      readonly checkpoint: string;
+      readonly entries: readonly { readonly path: string; readonly seed: string }[];
+    }[];
+  }[];
+}
+
+interface EntryReference {
+  readonly scenario: string;
+  readonly checkpoint: string;
+  readonly seed: string;
+  readonly path: string;
+}
+
+/** Every entry the corpus manifest declares, in the order it declares them. */
+function readCorpusEntries(oracleRoot: string): readonly EntryReference[] {
+  const manifest = JSON.parse(
+    readFileSync(join(oracleRoot, 'manifest.json'), 'utf8')
+  ) as CorpusManifest;
+  const entries: EntryReference[] = [];
+
+  for (const scenario of manifest.scenarios) {
+    for (const checkpoint of scenario.checkpoints) {
+      for (const entry of checkpoint.entries) {
+        entries.push({
+          scenario: scenario.scenario,
+          checkpoint: checkpoint.checkpoint,
+          seed: entry.seed,
+          path: entry.path
+        });
+      }
+    }
+  }
+
+  return entries;
+}
 
 interface RawCommand {
   readonly command_id: number;
@@ -61,8 +104,7 @@ export interface CorpusRecord {
 
 /** Every entry the manifest indexes, read from disk. */
 export function allCorpusRecords(): readonly CorpusRecord[] {
-  const { entries } = readCorpusIndex(corpusRoot);
-  return entries.map(
+  return readCorpusEntries(corpusRoot).map(
     (entry) => JSON.parse(readFileSync(join(corpusRoot, entry.path), 'utf8')) as CorpusRecord
   );
 }
