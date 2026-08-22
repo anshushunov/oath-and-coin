@@ -19,7 +19,7 @@
   "properties": {
     "schema_version": {
       "type": "integer",
-      "const": 2,
+      "const": 3,
       "description": "Version of this content format (TDD 11.1). Pinned by const so a file authored for a later format is refused by tooling, not read under today's assumptions; ContentSet.SupportedContentSchemaVersion states the same number and SchemaAgreementTests keeps the two equal."
     },
     "id": {

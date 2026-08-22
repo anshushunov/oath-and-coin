@@ -7,7 +7,7 @@
   "properties": {
     "schema_version": {
       "type": "number",
-      "const": 2
+      "const": 3
     },
     "id": {
       "type": "string",
@@ -35,6 +35,13 @@
     },
     "tags": {
       "maxItems": 6,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$"
+      }
+    },
+    "negotiable_tags": {
       "type": "array",
       "items": {
         "type": "string",

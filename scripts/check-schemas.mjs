@@ -145,6 +145,9 @@ const expectations = {
     'properties.required_crew.maximum': bounds.REQUIRED_CREW_MAX,
     'properties.tags.maxItems': limits.MAX_TAGS_PER_CONTRACT,
     'properties.tags.items.pattern': CONTENT_ID_PATTERN,
+    'properties.negotiable_tags.minItems': bounds.NEGOTIABLE_TAGS_COUNT,
+    'properties.negotiable_tags.maxItems': bounds.NEGOTIABLE_TAGS_COUNT,
+    'properties.negotiable_tags.items.pattern': CONTENT_ID_PATTERN,
     additionalProperties: false
   },
   'trait.schema.json': {
@@ -321,7 +324,8 @@ for (const fileName of Object.keys(expectations).filter((name) => name !== 'trai
 // set the contract state holds — which is what the C# loader did too.
 for (const [fileName, arrayProperty] of [
   ['hero.schema.json', 'traits'],
-  ['contract.schema.json', 'tags']
+  ['contract.schema.json', 'tags'],
+  ['contract.schema.json', 'negotiable_tags']
 ]) {
   const handWritten = readJson(join(schemasDirectory, fileName));
   if (at(handWritten, `properties.${arrayProperty}.uniqueItems`) !== true) {

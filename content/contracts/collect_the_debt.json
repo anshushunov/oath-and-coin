@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "id": "core:collect_the_debt",
   "display_name_key": "contract.core.collect_the_debt.name",
   "patron_fee": 30,

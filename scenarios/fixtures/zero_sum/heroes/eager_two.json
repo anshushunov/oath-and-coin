@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "id": "fixture:eager_two",
   "display_name_key": "hero.fixture.eager_two.name",
   "greed": 100,

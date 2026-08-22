@@ -40,7 +40,7 @@ import {
  */
 
 const BRAM_FILE = {
-  schema_version: 2,
+  schema_version: 3,
   id: 'core:bram',
   display_name_key: 'hero.core.bram.name',
   greed: 60,
@@ -52,7 +52,7 @@ const BRAM_FILE = {
 };
 
 const CRYPT_FILE = {
-  schema_version: 2,
+  schema_version: 3,
   id: 'core:cleanse_the_crypt',
   display_name_key: 'contract.core.cleanse_the_crypt.name',
   patron_fee: 70,
@@ -66,7 +66,7 @@ const CRYPT_FILE = {
  * 2: a nonexistent id is caught by referential integrity before the checksum is ever
  * asked, which proves nothing about checksum coverage). */
 const CARAVAN_FILE = {
-  schema_version: 2,
+  schema_version: 3,
   id: 'core:escort_the_caravan',
   display_name_key: 'contract.core.escort_the_caravan.name',
   patron_fee: 40,
@@ -77,7 +77,7 @@ const CARAVAN_FILE = {
 
 /** Unused by any hero here — `loadContentSet` still requires a `traits/` directory. */
 const GREEDY_FILE = {
-  schema_version: 2,
+  schema_version: 3,
   id: 'core:greedy',
   display_name_key: 'trait.core.greedy.name',
   kind: 'inclination',

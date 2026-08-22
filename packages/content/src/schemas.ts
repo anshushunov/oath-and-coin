@@ -4,6 +4,7 @@ import { z } from 'zod';
 import {
   INCLINATION_WEIGHT_MAX,
   INCLINATION_WEIGHT_MIN,
+  NEGOTIABLE_TAGS_COUNT,
   PATRON_FEE_MAX,
   PATRON_FEE_MIN,
   RELATIONSHIP_WEIGHT_MAX,
@@ -98,15 +99,60 @@ export const heroFileSchema = z.strictObject({
   relationships: z.array(relationshipFileSchema).max(MAX_RELATIONSHIPS_PER_HERO)
 });
 
-export const contractFileSchema = z.strictObject({
-  schema_version: contentSchemaVersion,
-  id: contentIdString,
-  display_name_key: localizationKey,
-  patron_fee: z.int().min(PATRON_FEE_MIN).max(PATRON_FEE_MAX),
-  risk: z.int().min(RISK_MIN).max(RISK_MAX),
-  required_crew: z.int().min(REQUIRED_CREW_MIN).max(REQUIRED_CREW_MAX),
-  tags: z.array(contentIdString).max(MAX_TAGS_PER_CONTRACT)
-});
+/**
+ * `negotiable_tags`: the pair of mutually exclusive method tags a contract offers
+ * the player a choice between (`NEGOTIATION_SPEC` §2.4). Optional — most contracts
+ * are negotiated on money and promise only — but when present it is exactly two
+ * tags, neither of which the contract already carries in `tags`: a tag the
+ * contract already has is not a choice, and a set of one or three is not the
+ * either/or the spec describes.
+ *
+ * Both checks live in `superRefine` rather than on the array alone, because the
+ * second one — no overlap with `tags` — needs the rest of the object to check
+ * against, and both messages need to name the contract's own id to be useful to
+ * whoever reads them off a failed content load.
+ */
+export const contractFileSchema = z
+  .strictObject({
+    schema_version: contentSchemaVersion,
+    id: contentIdString,
+    display_name_key: localizationKey,
+    patron_fee: z.int().min(PATRON_FEE_MIN).max(PATRON_FEE_MAX),
+    risk: z.int().min(RISK_MIN).max(RISK_MAX),
+    required_crew: z.int().min(REQUIRED_CREW_MIN).max(REQUIRED_CREW_MAX),
+    tags: z.array(contentIdString).max(MAX_TAGS_PER_CONTRACT),
+    negotiable_tags: z.array(contentIdString).optional()
+  })
+  .superRefine((file, ctx) => {
+    if (file.negotiable_tags === undefined) {
+      return;
+    }
+
+    if (file.negotiable_tags.length !== NEGOTIABLE_TAGS_COUNT) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['negotiable_tags'],
+        message:
+          `Contract '${file.id}' declares ${file.negotiable_tags.length} negotiable tag(s); ` +
+          `'negotiable_tags' must name exactly ${NEGOTIABLE_TAGS_COUNT} — a player choice needs ` +
+          'two mutually exclusive options, not one and not three (NEGOTIATION_SPEC §2.4).'
+      });
+      return;
+    }
+
+    for (const tag of file.negotiable_tags) {
+      if (file.tags.includes(tag)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['negotiable_tags'],
+          message:
+            `Contract '${file.id}' already carries tag '${tag}' in 'tags'; a negotiable tag must ` +
+            'be one the contract does not already carry, or there would be nothing left to choose ' +
+            'between.'
+        });
+      }
+    }
+  });
 
 /**
  * A trait, as a union discriminated on `kind` rather than as one object with an

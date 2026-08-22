@@ -31,31 +31,36 @@ import {
  * each other agree just as happily when both are wrong; a recorded constant cannot
  * move to meet a defect.
  *
- * One of the two constants below is the exception, and `SHIPPED_CONTENT_VERSION`'s own
- * comment says so: `DEC-008` Task 3 moved the shipped tree's bytes on purpose, so that
- * constant is a drift guard pinned by this repository from here on, not the corpus's
- * own recorded value any more. `SCREEN_EMPTY_CONTENT_VERSION` is unaffected and still
- * is what the corpus recorded.
+ * Both constants below are now drift guards rather than corpus parity, and both for
+ * the same underlying reason. `SHIPPED_CONTENT_VERSION`'s own comment already said so
+ * after `DEC-008` Task 3 moved the shipped tree's bytes on purpose; Task 4 moved both
+ * trees again — every file's `schema_version` raised, `screen_empty`'s own hero
+ * fixture included — so `SCREEN_EMPTY_CONTENT_VERSION` joined it as a guard rather
+ * than a corpus citation.
  */
 
 /**
  * The content version this repository computes for the shipped tree.
  *
  * Was the corpus's own value for the shipped tree in all 54 entries, until `DEC-008`
- * Task 3 renamed the contract's fee field and moved the shipped tree's bytes on
- * purpose — pinned here from now on as a drift guard, not as corpus parity.
+ * Task 3 renamed the contract's fee field, and Task 4 raised the schema version and
+ * authored `negotiable_tags`, each moving the shipped tree's bytes on purpose —
+ * pinned here from now on as a drift guard, not as corpus parity.
  */
-const SHIPPED_CONTENT_VERSION = '96aff403339c2a29';
+const SHIPPED_CONTENT_VERSION = '6ec78515d096f8f9';
 
 /**
- * The content version the corpus records for `screen_empty`'s own fixture root.
+ * The content version the corpus recorded for `screen_empty`'s own fixture root,
+ * until `DEC-008` Task 4 raised its lone hero fixture's `schema_version` to stay
+ * loadable under the new supported version — moving this digest on purpose, the same
+ * way Task 3 moved `SHIPPED_CONTENT_VERSION`.
  *
  * A second anchor, and not a decorative one: that root's `contracts/` and `traits/`
  * are empty directories held in git by a `.gitkeep`, and a glob without
  * `exhaustive: true` silently skips dotfiles. This is the number that moves when it
  * does.
  */
-const SCREEN_EMPTY_CONTENT_VERSION = '914b935df2b48720';
+const SCREEN_EMPTY_CONTENT_VERSION = 'a353727bd915de52';
 
 function requireRoot(root: string) {
   const source = openRepositoryRoot(root);

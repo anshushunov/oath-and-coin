@@ -84,12 +84,13 @@ const content = loadContentSet(shippedContent);
  * would quietly weaken the other. Task 19 retires **both**, not only this one; `ADR-012`
  * records that.
  *
- * The number itself moved once already, off what the corpus originally recorded:
- * `DEC-008` Task 3 renamed the contract's fee field, which is a byte under `content/`
- * like any other. That move was deliberate and reviewed, not the drift this test
- * exists to catch — the guard below is against the *next* unreviewed one.
+ * The number itself has moved twice already, off what the corpus originally recorded:
+ * `DEC-008` Task 3 renamed the contract's fee field, and Task 4 raised every file's
+ * `schema_version` and authored `negotiable_tags` on two contracts — each a byte under
+ * `content/` like any other. Both moves were deliberate and reviewed, not the drift
+ * this test exists to catch — the guard below is against the *next* unreviewed one.
  */
-const FROZEN_CONTENT_VERSION = '96aff403339c2a29';
+const FROZEN_CONTENT_VERSION = '6ec78515d096f8f9';
 const FROZEN_CONTENT_KEY_COUNT = 94;
 
 /** Every key the presentation layer can produce for the shipped content tree. */

@@ -78,6 +78,13 @@ export interface ContractDefinition {
   readonly risk: number;
   readonly requiredCrew: number;
   readonly tags: readonly ContentId[];
+  /**
+   * The pair of mutually exclusive method tags the player chooses one of
+   * (`NEGOTIATION_SPEC` §2.4). `[]`, never `undefined`, for a contract whose file
+   * omits `negotiable_tags` — such a contract is negotiated on money and promise
+   * only, and that is a definite fact about it, not an absent one.
+   */
+  readonly negotiableTags: readonly ContentId[];
 }
 
 export interface ContentSet {
@@ -171,7 +178,8 @@ function toContractDefinition(file: ContractFile): ContractDefinition {
     patronFee: file.patron_fee,
     risk: file.risk,
     requiredCrew: file.required_crew,
-    tags: file.tags.map((tag) => parseContentId(tag))
+    tags: file.tags.map((tag) => parseContentId(tag)),
+    negotiableTags: (file.negotiable_tags ?? []).map((tag) => parseContentId(tag))
   };
 }
 

@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
 import { parseContentId } from '@oath-and-coin/simulation';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -23,10 +23,16 @@ const shippedContent = join(repoRoot, 'content');
  * this repository's own SHA-256 — reproduced a value nobody here computed.
  *
  * `DEC-008` Task 3 renamed the contract's fee field in the file format and this
- * loader's output, which moved every content-derived byte and, with it, this digest.
- * `96aff403339c2a29` is a drift guard pinned by this repository from here on, not a
+ * loader's output, which moved every content-derived byte and, with it, this digest,
+ * to `96aff403339c2a29` — a drift guard pinned by this repository from here on, not a
  * claim of byte-for-byte agreement with the frozen C# export — that parity ended the
  * moment the shipped tree changed on purpose.
+ *
+ * Task 4 moved it again, to `6ec78515d096f8f9`: every shipped file now declares
+ * `schema_version: 3`, and two contracts additionally author `negotiable_tags`
+ * (`NEGOTIATION_SPEC` §2.4). Same reason as before — the tree changed on purpose — and
+ * the same thing this pin buys: a digest that drifted only with itself, caught rather
+ * than passed by coincidence.
  */
 
 const temporaryRoots: string[] = [];
@@ -38,7 +44,7 @@ afterEach(() => {
 });
 
 const HERO = {
-  schema_version: 2,
+  schema_version: 3,
   id: 'core:bram',
   display_name_key: 'hero.core.bram.name',
   greed: 60,
@@ -50,7 +56,7 @@ const HERO = {
 };
 
 const CONTRACT = {
-  schema_version: 2,
+  schema_version: 3,
   id: 'core:cleanse_the_crypt',
   display_name_key: 'contract.core.cleanse_the_crypt.name',
   patron_fee: 70,
@@ -60,7 +66,7 @@ const CONTRACT = {
 };
 
 const TRAIT = {
-  schema_version: 2,
+  schema_version: 3,
   id: 'core:hates_the_cult',
   display_name_key: 'trait.core.hates_the_cult.name',
   kind: 'inclination',
@@ -88,6 +94,40 @@ function treeWith(overrides: Readonly<Record<string, readonly unknown[]>>): stri
   return writeTree({ heroes: [HERO], contracts: [CONTRACT], traits: [TRAIT], ...overrides });
 }
 
+const ids = {
+  crypt: parseContentId('core:cleanse_the_crypt')
+};
+
+/**
+ * `CONTRACT`, with one part replaced — so a negotiable-set test states only the
+ * field its name is about, not every field a contract file requires.
+ */
+function aContractFile(overrides: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  return { ...CONTRACT, ...overrides };
+}
+
+/**
+ * A tree holding exactly one contract, at `contracts/a.json`, plus the minimal
+ * hero and trait content every tree needs before `loadContentSet` reads past its
+ * own directory check. `files` names each file by its full, root-relative path,
+ * which lets a negotiable-set test add or replace `contracts/a.json` without
+ * also restating the tree around it.
+ */
+function sourceWith(files: Readonly<Record<string, unknown>>): string {
+  const root = mkdtempSync(join(tmpdir(), 'oath-content-'));
+  temporaryRoots.push(root);
+
+  const tree: Record<string, unknown> = { 'heroes/0.json': HERO, 'traits/0.json': TRAIT, ...files };
+
+  for (const [relativePath, content] of Object.entries(tree)) {
+    const fullPath = join(root, ...relativePath.split('/'));
+    mkdirSync(dirname(fullPath), { recursive: true });
+    writeFileSync(fullPath, JSON.stringify(content, null, 2), 'utf8');
+  }
+
+  return root;
+}
+
 describe('loadContentSet over the shipped tree', () => {
   const content = loadContentSet(shippedContent);
 
@@ -99,11 +139,12 @@ describe('loadContentSet over the shipped tree', () => {
 
   it('pins the content version this repository computes for the shipped tree', () => {
     // Was the corpus's own `inputs.content_version` for every one of its 54 entries,
-    // until `DEC-008` Task 3 renamed the contract's fee field and moved the shipped
-    // tree's bytes on purpose. What this pin buys now is the same as before the
-    // rename — a digest that drifted only with itself would let the whole segment
-    // pass parity on a coincidence — just no longer against the frozen C# export.
-    expect(content.contentVersion).toBe('96aff403339c2a29');
+    // until `DEC-008` Task 3 renamed the contract's fee field and Task 4 raised the
+    // schema version and authored `negotiable_tags`, each moving the shipped tree's
+    // bytes on purpose. What this pin buys now is the same as before either move — a
+    // digest that drifted only with itself would let the whole segment pass parity on
+    // a coincidence — just no longer against the frozen C# export.
+    expect(content.contentVersion).toBe('6ec78515d096f8f9');
   });
 
   it('keys heroes, contracts and traits in content-id order', () => {
@@ -148,7 +189,8 @@ describe('loadContentSet over the shipped tree', () => {
       patronFee: 70,
       risk: 80,
       requiredCrew: 4,
-      tags: ['target:undead', 'method:public_contract']
+      tags: ['target:undead', 'method:public_contract'],
+      negotiableTags: []
     });
   });
 
@@ -184,7 +226,7 @@ describe('loadContentSet over a tree built for this test', () => {
     const root = treeWith({
       contracts: [
         {
-          schema_version: 2,
+          schema_version: 3,
           id: 'core:cleanse_the_crypt',
           display_name_key: 'contract.core.cleanse_the_crypt.name',
           patron_fee: 55,
@@ -363,5 +405,39 @@ describe('loadContentSet refuses', () => {
     );
 
     expect(() => loadContentSet(root)).toThrow(/repeats the object key 'greed'/);
+  });
+
+  it('refuses a negotiable set that is not exactly two tags', () => {
+    expect(() =>
+      loadContentSet(
+        sourceWith({ 'contracts/a.json': aContractFile({ negotiable_tags: ['method:open'] }) })
+      )
+    ).toThrow(/exactly 2/);
+  });
+
+  it('refuses a negotiable tag the contract already carries', () => {
+    expect(() =>
+      loadContentSet(
+        sourceWith({
+          'contracts/a.json': aContractFile({
+            tags: ['method:open'],
+            negotiable_tags: ['method:open', 'method:deception']
+          })
+        })
+      )
+    ).toThrow(/already carries/);
+  });
+
+  it('refuses a file that still declares schema version 2', () => {
+    expect(() =>
+      loadContentSet(sourceWith({ 'contracts/a.json': aContractFile({ schema_version: 2 }) }))
+    ).toThrow(/schema_version/);
+  });
+
+  it('accepts a contract with no negotiable set at all', () => {
+    expect(
+      loadContentSet(sourceWith({ 'contracts/a.json': aContractFile({}) })).contracts.get(ids.crypt)!
+        .negotiableTags
+    ).toEqual([]);
   });
 });

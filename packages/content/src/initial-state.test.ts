@@ -40,7 +40,7 @@ describe('createInitialState', () => {
     expect(state.metadata).toEqual({
       saveSchemaVersion: SAVE_SCHEMA_VERSION,
       rulesetVersion: 'm1-decision/1',
-      contentVersion: '96aff403339c2a29',
+      contentVersion: '6ec78515d096f8f9',
       campaignSeed: 7n,
       stateVersion: 0,
       logicalTime: 0,

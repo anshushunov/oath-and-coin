@@ -39,6 +39,14 @@ export const RELATIONSHIP_WEIGHT_MAX = 20;
 export const REQUIRED_CREW_MIN = 1;
 export const REQUIRED_CREW_MAX = 6;
 
+/**
+ * How many tags a contract's `negotiable_tags` names, exactly — never "at least".
+ * `NEGOTIATION_SPEC` §2.4: the player chooses which one method tag the job carries,
+ * and a choice needs two mutually exclusive options to be a choice at all. One
+ * candidate leaves nothing to choose; three stop being mutually exclusive.
+ */
+export const NEGOTIABLE_TAGS_COUNT = 2;
+
 // Pride deliberately gets no constants of its own: it is a hero scale, the same
 // kind of value greed, caution and trust_in_guild are, so its range is
 // TRAIT_MIN..TRAIT_MAX. A second pair of constants carrying the same numbers

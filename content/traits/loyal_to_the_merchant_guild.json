@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "id": "core:loyal_to_the_merchant_guild",
   "display_name_key": "trait.core.loyal_to_the_merchant_guild.name",
   "kind": "inclination",
