@@ -35,6 +35,22 @@ export const MAX_RELATIONSHIPS_PER_HERO = 5;
 export const MAX_TAGS_PER_CONTRACT = 6;
 
 /**
+ * How many tags a contract's `negotiable_tags` names, exactly — never "at least".
+ * `NEGOTIATION_SPEC` §2.4: the player chooses which one method tag the job carries,
+ * and a choice needs two mutually exclusive options to be a choice at all. One
+ * candidate leaves nothing to choose; three stop being mutually exclusive.
+ *
+ * Lives here rather than in `bounds.ts`, unlike the brief that first introduced it:
+ * `bounds.ts`'s own header states it is the one place a content *range* is written
+ * down, and this is a cardinality on a collection, the same kind of fact
+ * `MAX_TRAITS_PER_HERO` and `MAX_TAGS_PER_CONTRACT` above already state here. Task 6
+ * is expected to read this constant alongside `MAX_TAGS_PER_CONTRACT` for the rule
+ * bounding the contract's effective tag count once a negotiated tag joins it, which
+ * reads better as two constants declared beside each other than two files apart.
+ */
+export const NEGOTIABLE_TAGS_COUNT = 2;
+
+/**
  * Longest artifact-safe string anything in this package accepts — authored or read
  * back off a save file.
  *

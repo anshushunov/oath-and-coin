@@ -4,7 +4,6 @@ import { z } from 'zod';
 import {
   INCLINATION_WEIGHT_MAX,
   INCLINATION_WEIGHT_MIN,
-  NEGOTIABLE_TAGS_COUNT,
   PATRON_FEE_MAX,
   PATRON_FEE_MIN,
   RELATIONSHIP_WEIGHT_MAX,
@@ -20,7 +19,8 @@ import {
   MAX_ARTIFACT_SAFE_TEXT_LENGTH,
   MAX_RELATIONSHIPS_PER_HERO,
   MAX_TAGS_PER_CONTRACT,
-  MAX_TRAITS_PER_HERO
+  MAX_TRAITS_PER_HERO,
+  NEGOTIABLE_TAGS_COUNT
 } from './limits.ts';
 import { SUPPORTED_CONTENT_SCHEMA_VERSION, SUPPORTED_LOCALE_SCHEMA_VERSION } from './versions.ts';
 
@@ -103,14 +103,17 @@ export const heroFileSchema = z.strictObject({
  * `negotiable_tags`: the pair of mutually exclusive method tags a contract offers
  * the player a choice between (`NEGOTIATION_SPEC` §2.4). Optional — most contracts
  * are negotiated on money and promise only — but when present it is exactly two
- * tags, neither of which the contract already carries in `tags`: a tag the
- * contract already has is not a choice, and a set of one or three is not the
- * either/or the spec describes.
+ * *distinct* tags, neither of which the contract already carries in `tags`: a tag
+ * the contract already has is not a choice, a set of one or three is not the
+ * either/or the spec describes, and two copies of the same tag is a choice between
+ * a thing and itself — which is the one case the field exists to rule out and the
+ * count check alone does not catch (`['x','x']` has length 2).
  *
- * Both checks live in `superRefine` rather than on the array alone, because the
- * second one — no overlap with `tags` — needs the rest of the object to check
- * against, and both messages need to name the contract's own id to be useful to
- * whoever reads them off a failed content load.
+ * All three checks live in `superRefine` rather than on the array alone: the count
+ * check could stand on its own, but the duplicate check and the intersection check
+ * both need the rest of the object (the contract's own `id`, and — for the
+ * intersection — `tags`) to produce a message that names what is wrong, not just
+ * that something is.
  */
 export const contractFileSchema = z
   .strictObject({
@@ -124,23 +127,39 @@ export const contractFileSchema = z
     negotiable_tags: z.array(contentIdString).optional()
   })
   .superRefine((file, ctx) => {
-    if (file.negotiable_tags === undefined) {
+    const negotiableTags = file.negotiable_tags;
+    if (negotiableTags === undefined) {
       return;
     }
 
-    if (file.negotiable_tags.length !== NEGOTIABLE_TAGS_COUNT) {
+    if (negotiableTags.length !== NEGOTIABLE_TAGS_COUNT) {
       ctx.addIssue({
         code: 'custom',
         path: ['negotiable_tags'],
         message:
-          `Contract '${file.id}' declares ${file.negotiable_tags.length} negotiable tag(s); ` +
+          `Contract '${file.id}' declares ${negotiableTags.length} negotiable tag(s); ` +
           `'negotiable_tags' must name exactly ${NEGOTIABLE_TAGS_COUNT} — a player choice needs ` +
           'two mutually exclusive options, not one and not three (NEGOTIATION_SPEC §2.4).'
       });
       return;
     }
 
-    for (const tag of file.negotiable_tags) {
+    const repeated = negotiableTags.find(
+      (tag, index) => negotiableTags.indexOf(tag) !== index
+    );
+    if (repeated !== undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['negotiable_tags'],
+        message:
+          `Contract '${file.id}' names tag '${repeated}' twice in 'negotiable_tags'; the two ` +
+          'entries must be distinct, or the player would be offered a choice between one thing ' +
+          'and itself.'
+      });
+      return;
+    }
+
+    for (const tag of negotiableTags) {
       if (file.tags.includes(tag)) {
         ctx.addIssue({
           code: 'custom',

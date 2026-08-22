@@ -407,12 +407,27 @@ describe('loadContentSet refuses', () => {
     expect(() => loadContentSet(root)).toThrow(/repeats the object key 'greed'/);
   });
 
-  it('refuses a negotiable set that is not exactly two tags', () => {
+  it.each([
+    { name: 'one tag', negotiable_tags: ['method:open'] },
+    { name: 'three tags', negotiable_tags: ['method:open', 'method:deception', 'method:bribe'] }
+  ])('refuses a negotiable set that is not exactly two tags ($name)', ({ negotiable_tags }) => {
+    expect(() =>
+      loadContentSet(sourceWith({ 'contracts/a.json': aContractFile({ negotiable_tags }) }))
+    ).toThrow(/exactly 2/);
+  });
+
+  it('refuses a negotiable set naming the same tag twice', () => {
+    // The count check alone does not catch this: `['method:open', 'method:open']` has
+    // length 2, so it passes `!== NEGOTIABLE_TAGS_COUNT`. Left uncaught, it would be a
+    // legal negotiable set offering the player a choice between a tag and itself —
+    // exactly the one thing the field exists to prevent.
     expect(() =>
       loadContentSet(
-        sourceWith({ 'contracts/a.json': aContractFile({ negotiable_tags: ['method:open'] }) })
+        sourceWith({
+          'contracts/a.json': aContractFile({ negotiable_tags: ['method:open', 'method:open'] })
+        })
       )
-    ).toThrow(/exactly 2/);
+    ).toThrow(/twice/);
   });
 
   it('refuses a negotiable tag the contract already carries', () => {
@@ -429,9 +444,14 @@ describe('loadContentSet refuses', () => {
   });
 
   it('refuses a file that still declares schema version 2', () => {
+    // Not the loosely matching `/schema_version/`: that also matches this same
+    // loader's *other* schema_version diagnostic — "has no integer 'schema_version'
+    // property" — so a test using it would stay green even if the version-mismatch
+    // branch were mutated away. `scenarios/scenario-files.test.ts` already pins the
+    // analogous manifest-version case the same, tighter way.
     expect(() =>
       loadContentSet(sourceWith({ 'contracts/a.json': aContractFile({ schema_version: 2 }) }))
-    ).toThrow(/schema_version/);
+    ).toThrow(/declares schema_version 2/);
   });
 
   it('accepts a contract with no negotiable set at all', () => {

@@ -145,8 +145,8 @@ const expectations = {
     'properties.required_crew.maximum': bounds.REQUIRED_CREW_MAX,
     'properties.tags.maxItems': limits.MAX_TAGS_PER_CONTRACT,
     'properties.tags.items.pattern': CONTENT_ID_PATTERN,
-    'properties.negotiable_tags.minItems': bounds.NEGOTIABLE_TAGS_COUNT,
-    'properties.negotiable_tags.maxItems': bounds.NEGOTIABLE_TAGS_COUNT,
+    'properties.negotiable_tags.minItems': limits.NEGOTIABLE_TAGS_COUNT,
+    'properties.negotiable_tags.maxItems': limits.NEGOTIABLE_TAGS_COUNT,
     'properties.negotiable_tags.items.pattern': CONTENT_ID_PATTERN,
     additionalProperties: false
   },
