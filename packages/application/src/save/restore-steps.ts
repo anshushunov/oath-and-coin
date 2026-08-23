@@ -50,14 +50,21 @@ export function restoreDecidedSteps(state: GameState): readonly DecidedStep[] {
 }
 
 /**
- * Narrows `DomainEvent` to the members a hero actually decided. Every helper below this
- * point in the file takes {@link DecisionEvent}, not `DomainEvent` — so a future event kind
- * that is not a hero decision fails to compile at its own call site inside `actionOf`
- * (`never` in the exhaustive switch) rather than reaching `heroDefinitionOf` and throwing
- * at restore time, which is what `offer_revised` did before this filter existed.
+ * Narrows `DomainEvent` to the members a hero actually decided. **Written as an
+ * allow-list of the two decision kinds, not as a denial of `offer_revised`** — a
+ * type-predicate body is not checked against `DomainEvent`'s own exhaustiveness, so a
+ * negated predicate (`kind !== 'offer_revised'`) would happily admit any *future* fourth
+ * member too (a tick, the reason `DomainEventBase.causalTraceId` is nullable at all),
+ * and TypeScript would not catch it: `actionOf`'s `satisfies never` only protects call
+ * sites that still see the full `DomainEvent` union, and once this predicate narrows to
+ * the hand-written `DecisionEvent` alias, `actionOf` is checked against that alias
+ * instead. Written positively, a fourth member is excluded by construction — it never
+ * matches either literal — and reaches neither `heroDefinitionOf` nor `actionOf` at all,
+ * rather than compiling its way through both and throwing at restore time on
+ * `state.heroes.get(undefined)`.
  */
 function isDecisionEvent(event: DomainEvent): event is DecisionEvent {
-  return event.kind !== 'offer_revised';
+  return event.kind === 'hero_accepted_contract' || event.kind === 'hero_declined_contract';
 }
 
 function heroDefinitionOf(state: GameState, event: DecisionEvent): ContentId {

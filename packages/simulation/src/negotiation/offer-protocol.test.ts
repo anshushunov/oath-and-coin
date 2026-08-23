@@ -183,15 +183,29 @@ describe('composeOffer', () => {
     // Kills an implementation that checks only `negotiableTags` membership and lets a
     // legal-but-capacity-breaking tag reach `createContractState`, which throws instead
     // of refusing (the hazard Task 6's review handed this task by name).
-    expect(composeOffer(atCeiling, aCompose({ methodTag: ids.deception })).rejectionCode).toBe(
-      RejectionCodes.OfferTermsOutOfBounds
-    );
+    const result = composeOffer(atCeiling, aCompose({ methodTag: ids.deception }));
+    expect(result.rejectionCode).toBe(RejectionCodes.OfferTermsOutOfBounds);
+    // §6.1: a refusal changes nothing at all, and that is a property of the *object*,
+    // not merely of its fields — the reference test the brief itself warns is easy to
+    // get vacuously right (`expect(result.state).toBe(lockedAndCrewed())` would be red
+    // forever). Named by review as missing here specifically.
+    expect(result.state).toBe(atCeiling);
   });
 
   it('refuses a non-integer advance', () => {
     // Kills `command.advance < 0 || command.advance > patronFee`, which both read
     // `Number.NaN` as "in range" — the bound must check `Number.isInteger` too.
     expect(composeOffer(aCampaign(), aCompose({ advance: Number.NaN })).rejectionCode).toBe(
+      RejectionCodes.OfferTermsOutOfBounds
+    );
+  });
+
+  it('refuses a non-integer promisedBonus', () => {
+    // The `advance` test above only ever tries `Number.NaN`, and `promisedBonus` has no
+    // `Number.isInteger` test at all — delete that guard and the whole file stays
+    // green. A genuine fraction (not NaN) also proves the guard is really
+    // `Number.isInteger`, not merely a NaN special-case.
+    expect(composeOffer(aCampaign(), aCompose({ promisedBonus: 2.5 })).rejectionCode).toBe(
       RejectionCodes.OfferTermsOutOfBounds
     );
   });

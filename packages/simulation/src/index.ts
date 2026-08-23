@@ -53,7 +53,7 @@ export {
   drawMood,
   type HeroDecision
 } from './decisions/contract-decision-rule.ts';
-export { proposeContractToHero } from './engine.ts';
+export { composeOffer, proposeContractToHero } from './engine.ts';
 export { divideTowardZero, multiplyInt32, toInt32 } from './integer-division.ts';
 
 export {
@@ -72,7 +72,8 @@ export {
 export type {
   DomainEvent,
   HeroAcceptedContract,
-  HeroDeclinedContract
+  HeroDeclinedContract,
+  OfferRevised
 } from './events/domain-event.ts';
 
 export { ContractStatus, type ContractState } from './state/contract-state.ts';
@@ -96,10 +97,12 @@ export {
 export {
   RejectionCodes,
   fromDecisions,
+  fromEvent,
   rejected,
   type CommandResult,
   type RejectionCode
 } from './commands/command-result.ts';
+export type { ComposeOffer } from './commands/compose-offer.ts';
 export type { ProposeContractToHero } from './commands/propose-contract-to-hero.ts';
 
 export {

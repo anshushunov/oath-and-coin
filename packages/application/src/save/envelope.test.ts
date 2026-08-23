@@ -9,6 +9,7 @@ import {
   memoryFileSource
 } from '@oath-and-coin/content';
 import {
+  composeOffer,
   deepEqual,
   proposeContractToHero,
   type ContentId,
@@ -116,6 +117,33 @@ function aDecidedState(): GameState {
     heroId: heroKey!,
     contractId: contractKey!,
     expectedStateVersion: base.metadata.stateVersion
+  });
+
+  return result.state;
+}
+
+/**
+ * `aDecidedState()`, then that same offer revised — `respondedBy` cleared while the
+ * hero's `hero_accepted_contract`/`hero_declined_contract` event stays in `history`
+ * (`NEGOTIATION_SPEC` §3.3, `composeOffer`). Named by review: the first campaign
+ * `composeOffer` (`DEC-008` Task 10) can actually build, and the one
+ * `checkResponseBookkeeping`'s response-bookkeeping invariant refused before it was
+ * taught that a revision resets the window a hero can answer only once in — measured
+ * directly, `buildSave` on this exact campaign threw `SAVE_INCONSISTENT` before that fix.
+ */
+function aDecidedThenRevisedState(): GameState {
+  const decided = aDecidedState();
+  const [heroKey] = decided.heroes.keys();
+  const [contractKey] = decided.contracts.keys();
+
+  const result = composeOffer(decided, {
+    commandId: 2,
+    contractId: contractKey!,
+    keyHero: heroKey!,
+    advance: 10,
+    methodTag: null,
+    promisedBonus: 0,
+    expectedStateVersion: decided.metadata.stateVersion
   });
 
   return result.state;
@@ -862,6 +890,36 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
     });
 
     expect(deepEqual(readSave(bytes, versions).state, decided)).toBe(true);
+  });
+
+  it('carries a campaign whose offer was answered, then revised, through save and read', () => {
+    // The scenario review named directly: a hero answers, the player revises the
+    // package, and the campaign must still be a campaign this build can save and load —
+    // not only through `encodeSnapshot`/`decodeSnapshot` in isolation
+    // (`snapshot-codec.test.ts` covers that byte-level round trip already), but through
+    // `buildSave`'s own `validateGameState` call and `readSave`'s matching one, both of
+    // which sit between the codec and the campaign a player actually has.
+    const revised = aDecidedThenRevisedState();
+    // Two events in history — the original answer, then the revision — while
+    // `respondedBy` on the current offer is empty again: exactly the shape that used to
+    // trip `checkResponseBookkeeping`'s "one history event per name in respondedBy"
+    // reading, before it was taught that a revision resets the window.
+    expect(revised.history).toHaveLength(2);
+    expect(revised.history[1]!.kind).toBe('offer_revised');
+
+    const versions = {
+      rulesetVersion: revised.metadata.rulesetVersion,
+      contentVersion: revised.metadata.contentVersion
+    };
+    const [focusedContract] = revised.contracts.keys();
+
+    const bytes = buildSave({
+      state: revised,
+      focusedContract: focusedContract!,
+      createdAt: CREATED_AT
+    });
+
+    expect(deepEqual(readSave(bytes, versions).state, revised)).toBe(true);
   });
 });
 

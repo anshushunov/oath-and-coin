@@ -129,13 +129,14 @@ function checkReferentialIntegrity(state: GameState): void {
  * "why" and `restoreDecidedSteps` answers `null` — and the second let the interface show a
  * hero *accepting* a contract that its own trace says a red line closed.
  *
- * **Why every event, with no exception for a future tick.** `DomainEvent` is a closed
- * union of two members and both are decisions (`domain-event.ts`), so today "an event
- * with no trace" is exactly "a decision with no explanation". The nullability on
- * `DomainEventBase.causalTraceId` is there for a tick event that does not exist yet; the
- * day one is added, this loop is where the exception has to be written, and it will say
- * so by refusing the first tick anybody produces rather than by silently admitting an
- * unexplained decision in the meantime.
+ * **Why every event, with the one exception a non-decision event now needs.**
+ * `DomainEvent` is a closed union of three members (`domain-event.ts`); two are hero
+ * decisions and the third, `offer_revised`, is the player's own choice and carries no
+ * trace by construction. The loop below writes that exception explicitly — refusing an
+ * `offer_revised` event that *does* carry a `causalTraceId`, rather than silently
+ * admitting an unexplained decision — and treats every other kind as a decision that
+ * must carry one. The nullability on `DomainEventBase.causalTraceId` exists for exactly
+ * this shape of event.
  *
  * **Coverage is a bijection, in both directions.** An event names exactly one trace, and
  * a trace explains exactly one event. The counters next door already force
@@ -282,11 +283,24 @@ function total(factors: readonly TraceFactor[]): number {
  *    only in the same expression that adds to `respondedBy` (`engine.ts`), so a hero in
  *    one and not the other is a state no command produced.
  * 2. **A contract's `respondedBy` is exactly the set of heroes with a history event on
- *    it, one event each,** and the kind of that event says which of the two sets the
- *    hero is in. `respondedBy.has` is what refuses a hero a second decision on the same
- *    contract, ever, so the log and the set are two spellings of the same fact — and a
- *    file where they disagree is a file that reopens a decision the campaign already
- *    made.
+ *    it *since the offer's last revision*, one event each,** and the kind of that event
+ *    says which of the two sets the hero is in. `respondedBy.has` is what refuses a hero
+ *    a second decision on the *current version*, so the log since the last `offer_revised`
+ *    and the set are two spellings of the same fact — and a file where they disagree,
+ *    over that window, is a file that reopens a decision the campaign already made.
+ *
+ *    **"Since the last revision", not "ever" — and that qualifier is load-bearing, not
+ *    decorative.** This invariant predates offer versions: it was written when a
+ *    contract's `respondedBy` was the whole history's answer set, because there was
+ *    only ever one version to answer. `composeOffer` (`DEC-008` Task 10) empties
+ *    `respondedBy`/`acceptedBy` on every revision while leaving the *history* alone —
+ *    the log is what happened, not what the current package can still be answered
+ *    about — so a hero who answered version 1 and sees version 2 revised is, correctly,
+ *    no longer in `respondedBy`, while their `hero_accepted_contract` event from version
+ *    1 is still sitting in `state.history`. Counting the whole history against the
+ *    current `respondedBy` therefore refuses every save `composeOffer` can produce after
+ *    a single answered, then revised, offer — measured directly: `buildSave` on exactly
+ *    that campaign threw `SAVE_INCONSISTENT` before this fix.
  * 3. **`Crewed` means exactly "enough heroes accepted".** The status moves to `Crewed`
  *    in the same expression, from `acceptedBy.size >= requiredCrew`, and no further
  *    response is admitted once it has (`ContractAlreadyResolved`), so the biconditional
@@ -298,8 +312,13 @@ function checkResponseBookkeeping(state: GameState): void {
   const respondedInHistory = new Map<ContentId, Map<HeroId, boolean>>();
 
   for (const event of state.history) {
-    // Not a hero response — see the `offer_revised` note in `checkDecisionTraces`.
     if (event.kind === 'offer_revised') {
+      // A revision clears the contract's `respondedBy`/`acceptedBy` (`engine.ts`'s
+      // `composeOffer`), so every response bookkeeping fact above this point in the
+      // log is about a package that no longer exists. Reset this contract's window
+      // here, at the point the campaign itself reset it, rather than counting across
+      // it.
+      respondedInHistory.set(event.contractId, new Map<HeroId, boolean>());
       continue;
     }
 
@@ -312,7 +331,8 @@ function checkResponseBookkeeping(state: GameState): void {
     if (perContract.has(event.heroId)) {
       throw inconsistent(
         `history records hero#${String(event.heroId)} answering contract '${event.contractId}' ` +
-          'more than once, but a hero may answer an offer exactly once.'
+          'more than once since its last revision, but a hero may answer a given offer version ' +
+          'exactly once.'
       );
     }
 

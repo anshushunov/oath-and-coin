@@ -8,6 +8,7 @@ import {
   Actions,
   SortedMap,
   compareHeroIds,
+  composeOffer,
   parseContentId,
   type GameState,
   type HeroId,
@@ -183,6 +184,29 @@ describe('rebuilding the answered steps from a state', () => {
     );
 
     expect(restoreDecidedSteps({ ...state, history: [] })).toEqual([]);
+  });
+
+  it("drops offer_revised from the step list — it is the player's choice, not a hero's", () => {
+    const decided = aStateWithOneAcceptedContract();
+    const [heroKey] = decided.heroes.keys();
+    const [contractKey] = decided.contracts.keys();
+    const revised = composeOffer(decided, {
+      commandId: 2,
+      contractId: contractKey!,
+      keyHero: heroKey!,
+      advance: 10,
+      methodTag: null,
+      promisedBonus: 0,
+      expectedStateVersion: decided.metadata.stateVersion
+    }).state;
+
+    // The revision is in history alongside the earlier acceptance — two events — but
+    // restoring must not throw on the one with no hero, and must not manufacture a
+    // step for it either.
+    expect(revised.history).toHaveLength(2);
+    const steps = restoreDecidedSteps(revised);
+    expect(steps).toHaveLength(1);
+    expect(steps[0]?.heroDefinition).toBe(parseContentId('core:bram'));
   });
 
   it('names the hero the campaign no longer has rather than answering a step without one', () => {
