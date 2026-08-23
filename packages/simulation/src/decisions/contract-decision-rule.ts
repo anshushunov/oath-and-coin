@@ -2,6 +2,7 @@ import { compareContentIds, type ContentId } from '../ids/content-id.ts';
 import { divideTowardZero, multiplyInt32, toInt32 } from '../integer-division.ts';
 import { drawInt32, type Int32Draw } from '../random/deterministic-rng.ts';
 import { RngStream } from '../random/rng-stream.ts';
+import { effectiveTags } from '../state/offer-state.ts';
 
 import { Actions } from './actions.ts';
 import {
@@ -64,35 +65,56 @@ const TRUST_DIVISOR = 10;
 const CONSIDERED: readonly ContentId[] = Object.freeze([Actions.Accept, Actions.Decline]);
 
 /**
- * How a hero answers a contract offer (`TDD` §8, `DEC-010`, `HERO_DECISION_SPEC` §2).
+ * How a hero answers a contract offer (`TDD` §8, `DEC-010`, `HERO_DECISION_SPEC` §2,
+ * `NEGOTIATION_SPEC` §4).
  *
- * `score = patronFee*greed/TRAIT_SCALE − risk*caution/TRAIT_SCALE − insult + inclinations
- * + trust/10 + bonds + mood`; refused below zero, taken above it, and at exactly zero
- * settled by an explicit tie-break. `insult` is `(risk − patronFee)*pride/TRAIT_SCALE`
- * when the patron fee is below risk, and otherwise absent entirely — not a zero term.
+ * `score = advance*greed/TRAIT_SCALE + bonus*greed/TRAIT_SCALE − risk*caution/TRAIT_SCALE
+ * − insult + inclinations + trust/10 + bonds − grievance + mood`; refused below zero,
+ * taken above it, and at exactly zero settled by an explicit tie-break. `insult` is
+ * `(risk − expected)*pride/TRAIT_SCALE` when `expected = advance + bonus` is below risk,
+ * and otherwise absent entirely — not a zero term. The patron fee itself never appears:
+ * what a hero weighs is what the offer actually promises to pay, not the ceiling that
+ * bounds it (`NEGOTIATION_SPEC` §4).
+ *
+ * `bonus` here is `trustedBonus` (`NEGOTIATION_SPEC` §4): `contract.offer.promisedBonus`
+ * when this hero is `contract.offer.keyHero` and still `hero.believesGuildPromises`,
+ * zero otherwise. Computed once and read in both the benefit term and `expected` — a
+ * promise the hero has stopped believing, or one made to someone else, moves nothing
+ * and shields nothing.
  *
  * Every term divides on its own, before being added into the sum: dividing the sum
  * instead rounds differently under integer division (`HERO_DECISION_SPEC` §2.3), and the
  * difference reaches the decision at the boundary. Every term is integer arithmetic
- * (`TDD` §7.4) — {@link divideTowardZero}, never `/`.
+ * (`TDD` §7.4) — {@link divideTowardZero}, never `/`. `grievance` is not divided at all:
+ * `NEGOTIATION_SPEC` §4 states it as a flat `−hero.grievance`, present only while it is
+ * above zero.
  *
  * Every term that contributed also appears in the trace, with the magnitude the score
  * used, never negative: which list a factor lives in already says which way it pulled.
  * The explanation is not reconstructed after the fact from the outcome — it is the
- * arithmetic itself, written down (`DEC-004`, `DEC-006`).
+ * arithmetic itself, written down (`DEC-004`, `DEC-006`). The promised bonus is its own
+ * factor, never folded into the advance's — a player who saw only one enlarged payment
+ * line could not tell a promise moved this hero rather than money already on the table.
  *
- * The gate runs first, before any arithmetic: a violated principle closes the decision
- * on the spot, with no score and **no mood draw**. Nothing after the gate can overturn
- * it because nothing after the gate runs at all — a red line is not a very large
- * negative contribution money could outweigh, it is the absence of a sum to outweigh
- * (`HERO_DECISION_SPEC` §2.2).
+ * The gate runs first, before any arithmetic, against {@link effectiveTags} — the
+ * contract's authored tags plus the offer's chosen method tag, if any
+ * (`NEGOTIATION_SPEC` §2.4): a violated principle closes the decision on the spot, with
+ * no score and **no mood draw**. Nothing after the gate can overturn it because nothing
+ * after the gate runs at all — a red line is not a very large negative contribution
+ * money could outweigh, it is the absence of a sum to outweigh (`HERO_DECISION_SPEC`
+ * §2.2). Inclinations are checked against the same effective tags, for the same reason:
+ * a chosen method has to move a hero exactly like an authored one, not through a second
+ * code path.
  */
 export function decide(context: DecisionContext): HeroDecision {
   assertTraitsAreSortedById(context.traits);
 
+  const { hero, contract } = context;
+  const tags = effectiveTags(contract);
+
   const blocks: TraceBlock[] = [];
   for (const trait of context.traits) {
-    if (trait.isPrinciple && context.contract.tags.has(trait.tag)) {
+    if (trait.isPrinciple && tags.has(trait.tag)) {
       blocks.push({ reasonCode: ReasonCodes.PrincipleForbids, sourceEntity: trait.id });
     }
   }
@@ -117,27 +139,50 @@ export function decide(context: DecisionContext): HeroDecision {
     return { result: blockedResult, ordinalsConsumed: 0n };
   }
 
-  const { hero, contract } = context;
-
   const positive: TraceFactor[] = [];
   const negative: TraceFactor[] = [];
 
-  // The order below is the `HERO_DECISION_SPEC` §2.3 table, verbatim: patron fee, risk,
-  // insult, inclinations (by trait id — already the order `traits` is sorted in), trust,
-  // bonds (by hero id), mood last. That order is not cosmetic: it is what ends up in the
-  // trace, and the trace is a canonical artifact.
+  // The order below is the `NEGOTIATION_SPEC` §4 table, verbatim: advance, promised
+  // bonus, risk, insult, inclinations (by trait id — already the order `traits` is
+  // sorted in), trust, bonds (by hero id), the guild's broken word, mood last. That
+  // order is not cosmetic: it is what ends up in the trace, and the trace is a
+  // canonical artifact.
 
-  // Выгода: what the contract pays, pulled toward acceptance by greed. The contract is
-  // the source of the money, and a factor points at the thing a player could go look at.
-  const patronFeePull = divideTowardZero(
-    multiplyInt32(contract.patronFee, hero.greed),
+  // Everything the promise does flows through this one value, computed once: a
+  // promise moves only the hero it was made to, and only while that hero still
+  // believes it (`NEGOTIATION_SPEC` §4). Zero for everyone else — the bonus contributes
+  // nothing to their benefit and shields nothing in their insult, exactly as if it had
+  // never been offered.
+  const trustedBonus =
+    hero.id === contract.offer.keyHero && hero.believesGuildPromises
+      ? contract.offer.promisedBonus
+      : 0;
+
+  // Выгода: what the offer actually pays every hero who accepts, pulled toward
+  // acceptance by greed. The patron fee is a ceiling on the offer, not itself a term —
+  // `NEGOTIATION_SPEC` §4 replaces it here with `offer.advance`.
+  const advancePull = divideTowardZero(
+    multiplyInt32(contract.offer.advance, hero.greed),
     TRAIT_SCALE
   );
-  if (patronFeePull > 0) {
+  if (advancePull > 0) {
     positive.push({
       reasonCode: ReasonCodes.PaymentAttractive,
       sourceEntity: contract.id,
-      magnitude: patronFeePull
+      magnitude: advancePull
+    });
+  }
+
+  // Надбавка: a separate contribution, never added into the advance before dividing —
+  // folding the two would leave only one enlarged "payment" line, and the player could
+  // no longer see that a promise, not money already on the table, moved this hero
+  // (`NEGOTIATION_SPEC` §4).
+  const bonusPull = divideTowardZero(multiplyInt32(trustedBonus, hero.greed), TRAIT_SCALE);
+  if (bonusPull > 0) {
+    positive.push({
+      reasonCode: ReasonCodes.PromiseOfABonus,
+      sourceEntity: contract.id,
+      magnitude: bonusPull
     });
   }
 
@@ -151,14 +196,15 @@ export function decide(context: DecisionContext): HeroDecision {
     });
   }
 
-  // Обида: only when the patron fee does not even cover the risk being asked — paid
-  // fairly or better there is no insult at all, not a zero-magnitude one.
+  // Обида: only when what the hero actually stands to receive — the advance plus a
+  // trusted bonus — does not even cover the risk being asked. A believed promise
+  // defends against the insult exactly as hard cash would, because the hero it was
+  // made to counts it as already theirs (`NEGOTIATION_SPEC` §4). Paid fairly or better
+  // there is no insult at all, not a zero-magnitude one.
+  const expected = toInt32(contract.offer.advance + trustedBonus);
   const insult =
-    contract.patronFee < contract.risk
-      ? divideTowardZero(
-          multiplyInt32(toInt32(contract.risk - contract.patronFee), hero.pride),
-          TRAIT_SCALE
-        )
+    expected < contract.risk
+      ? divideTowardZero(multiplyInt32(toInt32(contract.risk - expected), hero.pride), TRAIT_SCALE)
       : 0;
   if (insult > 0) {
     negative.push({
@@ -168,12 +214,13 @@ export function decide(context: DecisionContext): HeroDecision {
     });
   }
 
-  // Склонности: every non-principle trait whose tag the contract carries, walked in the
-  // hero's own trait order (id-sorted, asserted above). Principles were consumed by the
-  // gate and never reach here.
+  // Склонности: every non-principle trait whose tag the contract's *effective* tags
+  // carry, walked in the hero's own trait order (id-sorted, asserted above). A chosen
+  // method tag reaches this loop exactly like an authored one (`NEGOTIATION_SPEC`
+  // §2.4). Principles were consumed by the gate and never reach here.
   let inclinationSum = 0;
   for (const trait of context.traits) {
-    if (trait.isPrinciple || !contract.tags.has(trait.tag)) {
+    if (trait.isPrinciple || !tags.has(trait.tag)) {
       continue;
     }
 
@@ -241,6 +288,20 @@ export function decide(context: DecisionContext): HeroDecision {
     }
   }
 
+  // Слово: the guild's own broken promise, weighed against this hero specifically.
+  // Not divided by `TRAIT_SCALE` — `NEGOTIATION_SPEC` §4 states it as a flat
+  // `−hero.grievance` — and present only while the grievance is above zero, the same
+  // rule every other term here follows: a hero never betrayed carries no such factor,
+  // not one at strength zero.
+  const grievance = hero.grievance;
+  if (grievance > 0) {
+    negative.push({
+      reasonCode: ReasonCodes.GuildBrokeItsWord,
+      sourceEntity: hero.definition,
+      magnitude: grievance
+    });
+  }
+
   const mood = drawMood(context.campaignSeed, context.decisionOrdinal);
 
   // Magnitudes are strengths, never signed contributions: which list a factor is in
@@ -265,7 +326,15 @@ export function decide(context: DecisionContext): HeroDecision {
   // `46116860141324210` where C# answers `0` on inputs C# accepts (external review's
   // counterexample: the patron fee and greed both `2147483647`).
   const score = toInt32(
-    patronFeePull - riskAversion - insult + inclinationSum + guildTrust + bondSum + mood.value
+    advancePull +
+      bonusPull -
+      riskAversion -
+      insult +
+      inclinationSum +
+      guildTrust +
+      bondSum -
+      grievance +
+      mood.value
   );
 
   // Exactly zero is a tie, not an acceptance with a very small margin: nothing weighed

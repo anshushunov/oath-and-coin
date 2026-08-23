@@ -10,6 +10,11 @@ import type { HeldTrait } from './held-trait.ts';
  * Everything a single decision is computable from (`HERO_DECISION_SPEC` §2.1).
  * Assembled by the caller, never fetched: the rule holds no reference to `GameState`,
  * so a test can pose a question without building a world.
+ *
+ * `contract.offer` and `hero.believesGuildPromises`/`hero.grievance` are already part
+ * of {@link ContractState} and {@link HeroState} (`DEC-008` Tasks 6, 7) — this shape
+ * needed no new field for the decision rule to read the advance, the promised bonus,
+ * the chosen method tag and a broken word (`NEGOTIATION_SPEC` §4).
  */
 export interface DecisionContext {
   readonly hero: HeroState;

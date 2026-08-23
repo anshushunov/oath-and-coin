@@ -1,9 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
+import { SortedMap } from '../collections/sorted-map.ts';
 import { Actions } from '../decisions/actions.ts';
 import { proposeContractToHero } from '../engine.ts';
 import { heroId } from '../ids/hero-id.ts';
-import { aState, anAcceptance, ids } from '../testing/fixtures.ts';
+import {
+  aContract,
+  aState,
+  anAcceptance,
+  anOffer,
+  compareContentIds,
+  ids
+} from '../testing/fixtures.ts';
 
 import type { ProposeContractToHero } from './propose-contract-to-hero.ts';
 import { fromDecisions } from './command-result.ts';
@@ -27,7 +35,17 @@ function aProposal(overrides: Partial<ProposeContractToHero> = {}): ProposeContr
 
 describe('a command result carries every decision it produced', () => {
   it('carries every decision a command produced, in event order', () => {
-    const result = proposeContractToHero(aState(), aProposal());
+    // `aState()`'s default contract carries no advance (`DEC-008` Tasks 10-14 are what
+    // wire a command that would compose one), so this test states one itself — the
+    // same 70 the default `patronFee` used to contribute before `NEGOTIATION_SPEC` §4
+    // moved the benefit term onto `offer.advance` — to keep the hero accepting, which
+    // is the only thing this test is about.
+    const contract = aContract({ offer: anOffer({ advance: 70 }) });
+    const state = aState({
+      contracts: SortedMap.from(compareContentIds, [[contract.id, contract]])
+    });
+
+    const result = proposeContractToHero(state, aProposal());
 
     expect(result.decisions).toHaveLength(1);
     expect(result.decisions[0]!.selectedAction).toBe(Actions.Accept);

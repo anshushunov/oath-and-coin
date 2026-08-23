@@ -84,14 +84,20 @@ const content = loadContentSet(shippedContent);
  * would quietly weaken the other. Task 19 retires **both**, not only this one; `ADR-012`
  * records that.
  *
- * The number itself has moved twice already, off what the corpus originally recorded:
- * `DEC-008` Task 3 renamed the contract's fee field, and Task 4 raised every file's
- * `schema_version` and authored `negotiable_tags` on two contracts — each a byte under
- * `content/` like any other. Both moves were deliberate and reviewed, not the drift
- * this test exists to catch — the guard below is against the *next* unreviewed one.
+ * The number itself has moved three times already, off what the corpus originally
+ * recorded: `DEC-008` Task 3 renamed the contract's fee field, Task 4 raised every
+ * file's `schema_version` and authored `negotiable_tags` on two contracts, and Task 8
+ * added the two reason-code keys the decision rule's new factors need —
+ * `hero.decision.promise_of_a_bonus` and `hero.decision.guild_broke_its_word` — the
+ * first keys this file's `content/locale/ru.json` half has grown since `ADR-012` froze
+ * it, because Task 8 is the first point in the plan where a producer exists for them
+ * (`vocabulary.test.ts` holds every reason code to a localization key, and the closed
+ * engine vocabulary those two codes belong in has nowhere else to be translated). Each
+ * move was deliberate and reviewed, not the drift this test exists to catch — the guard
+ * below is against the *next* unreviewed one.
  */
-const FROZEN_CONTENT_VERSION = '6ec78515d096f8f9';
-const FROZEN_CONTENT_KEY_COUNT = 94;
+const FROZEN_CONTENT_VERSION = '3b2b90cfffa3bb47';
+const FROZEN_CONTENT_KEY_COUNT = 96;
 
 /** Every key the presentation layer can produce for the shipped content tree. */
 function everyKeyTheScreenCanShow(): readonly string[] {

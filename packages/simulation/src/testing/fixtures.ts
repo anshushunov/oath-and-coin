@@ -37,7 +37,9 @@ export const ids = {
   hatesUndead: parseContentId('core:fears_undeath'),
   /** A negotiated-tag pair (`NEGOTIATION_SPEC` §2.4): a target and a chosen method. */
   cult: parseContentId('target:cult'),
-  deception: parseContentId('method:deception')
+  deception: parseContentId('method:deception'),
+  /** A principle whose tag only ever arrives as a chosen method tag, never authored. */
+  refusesDeception: parseContentId('core:refuses_deception')
 };
 
 /** A `SortedSet<HeroId>` built from raw ids, for tests posing questions about a crew. */

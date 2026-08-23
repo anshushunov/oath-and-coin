@@ -4,11 +4,12 @@ import { SortedMap } from '../collections/sorted-map.ts';
 import { SortedSet } from '../collections/sorted-set.ts';
 import { compareContentIds, type ContentId } from '../ids/content-id.ts';
 import { compareHeroIds, heroId, type HeroId } from '../ids/hero-id.ts';
-import { aContext, aContract, aHero, anOffer, aTrait, ids } from '../testing/fixtures.ts';
+import { aContext, aContract, aHero, anOffer, aTrait, ids, setOf } from '../testing/fixtures.ts';
 
 import { Actions } from './actions.ts';
+import type { TraceFactor } from './causal-trace.ts';
 import type { DecisionContext } from './context.ts';
-import { decide, drawMood } from './contract-decision-rule.ts';
+import { decide, drawMood, type HeroDecision } from './contract-decision-rule.ts';
 import { ReasonCodes } from './reason-codes.ts';
 
 /**
@@ -100,13 +101,13 @@ describe('the gate runs before any arithmetic', () => {
 
 describe('every term divides on its own', () => {
   it('is not the same number as dividing the combined sum', () => {
-    // patronFee*greed = 150 and risk*caution = 90. Term by term: 1 − 0 = 1. Sum first:
+    // advance*greed = 150 and risk*caution = 90. Term by term: 1 − 0 = 1. Sum first:
     // trunc(60/100) = 0. The two answers differ, and this context is the boundary where
     // they do.
     const decision = decide(
       aContext({
         hero: aHero({ greed: 10, caution: 10, pride: 0, trustInGuild: 0 }),
-        contract: aContract({ patronFee: 15, risk: 9 }),
+        contract: aContract({ patronFee: 15, risk: 9, offer: anOffer({ advance: 15 }) }),
         decisionOrdinal: 6n
       })
     );
@@ -155,7 +156,10 @@ describe('the trace is the arithmetic, written down', () => {
           patronFee: 40,
           risk: 80,
           tags: SortedSet.from(compareContentIds, [ids.temple, ids.undead]),
-          offer: anOffer({ acceptedBy: SortedSet.from(compareHeroIds, [heroId(1), heroId(2)]) })
+          offer: anOffer({
+            advance: 40,
+            acceptedBy: SortedSet.from(compareHeroIds, [heroId(1), heroId(2)])
+          })
         }),
         traits: [
           aTrait({ id: ids.loyal, tag: ids.undead, weight: 7 }),
@@ -208,7 +212,7 @@ describe('the trace is the arithmetic, written down', () => {
     const decision = decide(
       aContext({
         hero: aHero({ greed: 0, caution: 0, pride: 100, trustInGuild: 0 }),
-        contract: aContract({ patronFee: 80, risk: 40 }),
+        contract: aContract({ patronFee: 80, risk: 40, offer: anOffer({ advance: 80 }) }),
         decisionOrdinal: 6n
       })
     );
@@ -225,7 +229,7 @@ describe('the trace is the arithmetic, written down', () => {
     const decisive = decide(
       aContext({
         hero: aHero({ greed: 100, caution: 0, pride: 0, trustInGuild: 0 }),
-        contract: aContract({ patronFee: 100, risk: 0 })
+        contract: aContract({ patronFee: 100, risk: 0, offer: anOffer({ advance: 100 }) })
       })
     );
 
@@ -457,5 +461,173 @@ describe('trait order is checked, not assumed', () => {
         })
       )
     ).toThrow(/strictly sorted by id/);
+  });
+});
+
+/** The reason code a factor with `reasonCode` carries, from whichever list holds it. */
+function factorOf(decision: HeroDecision, reasonCode: string): TraceFactor | undefined {
+  return (
+    decision.result.trace.positiveFactors.find((factor) => factor.reasonCode === reasonCode) ??
+    decision.result.trace.negativeFactors.find((factor) => factor.reasonCode === reasonCode)
+  );
+}
+
+/**
+ * The `NEGOTIATION_SPEC` §4 table order, verbatim: advance, promised bonus, risk,
+ * insult, inclinations, trust, bonds, the guild's broken word, mood last. Which of the
+ * two factor lists a code lands in says which way it pulled (`HERO_DECISION_SPEC` §3);
+ * it says nothing about *when* it was computed, and this order is a claim about the
+ * latter — one a trace split across two lists by sign cannot state on its own, so it is
+ * stated here once and held codes present in the trace to it.
+ */
+const FACTOR_ORDER: readonly string[] = [
+  ReasonCodes.PaymentAttractive,
+  ReasonCodes.PromiseOfABonus,
+  ReasonCodes.RiskTooHigh,
+  ReasonCodes.PaymentInsulting,
+  ReasonCodes.PersonalConviction,
+  ReasonCodes.PersonalAversion,
+  ReasonCodes.TrustsTheGuild,
+  ReasonCodes.StandsWithComrade,
+  ReasonCodes.WillNotWorkWith,
+  ReasonCodes.GuildBrokeItsWord,
+  ReasonCodes.UnpredictableMood
+];
+
+/** Every reason code the decision actually recorded, in `FACTOR_ORDER`. */
+function reasonCodesInOrder(decision: HeroDecision): readonly string[] {
+  const present = new Set([
+    ...decision.result.trace.positiveFactors.map((factor) => factor.reasonCode),
+    ...decision.result.trace.negativeFactors.map((factor) => factor.reasonCode)
+  ]);
+
+  return FACTOR_ORDER.filter((code) => present.has(code));
+}
+
+/**
+ * A context where every motive `NEGOTIATION_SPEC` §4 names fires exactly once: the
+ * advance, the trusted bonus, the risk, the insult, one inclination, trust, one bond,
+ * the guild's broken word, and — at the fixture campaign's default seed and ordinal
+ * (`aContext`) — a mood of `−2`, established by the mood contrast in `'the trace is the
+ * arithmetic, written down'` above.
+ */
+function aFullyMotivatedContext(): DecisionContext {
+  return aContext({
+    hero: aHero({
+      greed: 100,
+      caution: 100,
+      pride: 100,
+      trustInGuild: 50,
+      grievance: 25,
+      relationships: SortedMap.from(compareContentIds, [[ids.doran, 5]])
+    }),
+    contract: aContract({
+      risk: 80,
+      tags: SortedSet.from(compareContentIds, [ids.undead]),
+      offer: anOffer({
+        keyHero: heroId(0),
+        advance: 10,
+        promisedBonus: 20,
+        acceptedBy: SortedSet.from(compareHeroIds, [heroId(1)])
+      })
+    }),
+    traits: [aTrait({ id: ids.loyal, tag: ids.undead, weight: 7 })],
+    crew: crewOf([[1, ids.doran]])
+  });
+}
+
+describe('the offer, the promise and a broken word reach the decision', () => {
+  it('pulls on the advance, not on the patron fee', () => {
+    const decision = decide(
+      aContext({
+        hero: aHero({ greed: 100 }),
+        contract: aContract({ patronFee: 100, risk: 0, offer: anOffer({ advance: 10 }) })
+      })
+    );
+    expect(factorOf(decision, ReasonCodes.PaymentAttractive)?.magnitude).toBe(10);
+  });
+
+  it('names the promised bonus as its own reason, never folded into the payment', () => {
+    const decision = decide(
+      aContext({
+        hero: aHero({ id: heroId(0), greed: 100 }),
+        contract: aContract({
+          risk: 0,
+          offer: anOffer({ keyHero: heroId(0), advance: 10, promisedBonus: 20 })
+        })
+      })
+    );
+    expect(factorOf(decision, ReasonCodes.PaymentAttractive)?.magnitude).toBe(10);
+    expect(factorOf(decision, ReasonCodes.PromiseOfABonus)?.magnitude).toBe(20);
+  });
+
+  it('moves nobody but the hero the promise was given to', () => {
+    const decision = decide(
+      aContext({
+        hero: aHero({ id: heroId(1), greed: 100 }),
+        contract: aContract({ risk: 0, offer: anOffer({ keyHero: heroId(0), promisedBonus: 100 }) })
+      })
+    );
+    expect(factorOf(decision, ReasonCodes.PromiseOfABonus)).toBeUndefined();
+  });
+
+  it('ignores the promise entirely once the hero stopped believing', () => {
+    const decision = decide(
+      aContext({
+        hero: aHero({ id: heroId(0), greed: 100, believesGuildPromises: false }),
+        contract: aContract({ risk: 0, offer: anOffer({ keyHero: heroId(0), promisedBonus: 100 }) })
+      })
+    );
+    expect(factorOf(decision, ReasonCodes.PromiseOfABonus)).toBeUndefined();
+  });
+
+  it('counts the trusted bonus against the risk when weighing the insult', () => {
+    const decision = decide(
+      aContext({
+        hero: aHero({ id: heroId(0), pride: 100, greed: 0, caution: 0 }),
+        contract: aContract({
+          risk: 50,
+          offer: anOffer({ keyHero: heroId(0), advance: 20, promisedBonus: 30 })
+        })
+      })
+    );
+    expect(factorOf(decision, ReasonCodes.PaymentInsulting)).toBeUndefined();
+  });
+
+  it('remembers a broken word as its own negative reason', () => {
+    const decision = decide(aContext({ hero: aHero({ grievance: 25 }) }));
+    expect(factorOf(decision, ReasonCodes.GuildBrokeItsWord)?.magnitude).toBe(25);
+  });
+
+  it('lets the chosen method tag close the gate exactly like an authored one', () => {
+    const decision = decide(
+      aContext({
+        contract: aContract({
+          tags: setOf(ids.cult),
+          offer: anOffer({ methodTag: ids.deception })
+        }),
+        traits: [
+          aTrait({ id: ids.refusesDeception, tag: ids.deception, isPrinciple: true, weight: 0 })
+        ]
+      })
+    );
+    expect(decision.result.selectedAction).toBe(Actions.Decline);
+    expect(decision.result.selectedScore).toBeNull();
+    expect(decision.ordinalsConsumed).toBe(0n);
+  });
+
+  it('keeps the factor order the artifact relies on', () => {
+    const decision = decide(aFullyMotivatedContext());
+    expect(reasonCodesInOrder(decision)).toEqual([
+      ReasonCodes.PaymentAttractive,
+      ReasonCodes.PromiseOfABonus,
+      ReasonCodes.RiskTooHigh,
+      ReasonCodes.PaymentInsulting,
+      ReasonCodes.PersonalConviction,
+      ReasonCodes.TrustsTheGuild,
+      ReasonCodes.StandsWithComrade,
+      ReasonCodes.GuildBrokeItsWord,
+      ReasonCodes.UnpredictableMood
+    ]);
   });
 });

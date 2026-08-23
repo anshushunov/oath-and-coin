@@ -56,7 +56,13 @@ const CRYPT_FILE = {
   id: 'core:cleanse_the_crypt',
   display_name_key: 'contract.core.cleanse_the_crypt.name',
   patron_fee: 70,
-  risk: 30,
+  // Risk 0, not 30: `ScenarioCommand`/`proposeContractToHero` here has no way to compose
+  // an offer (`composeOffer` arrives in `DEC-008` Tasks 10-14), so every propose in this
+  // file reaches Bram with `advance = 0` — the patron fee itself no longer contributes at
+  // all (`NEGOTIATION_SPEC` §4). Zero risk keeps both risk-aversion and the insult term
+  // out of the way, so trust still carries this fixture to an acceptance rather than the
+  // whole suite needing a second lever this command surface cannot supply.
+  risk: 0,
   required_crew: 1,
   tags: []
 };
@@ -662,7 +668,7 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
         // the *second* contract as well: its `respondedBy` gets him, its `acceptedBy`
         // does not, it stays `offered`, and a second trace is stored under the next free
         // id. That second trace is the first one's factor lists swapped: the campaign's
-        // one real decision sums to +36, so the mirror of it sums to −36 — a refusal
+        // one real decision sums to +3, so the mirror of it sums to −3 — a refusal
         // whose motives explain a refusal. A verbatim copy would be an acceptance's
         // trace under a refusal's event, which is refused a step earlier now, and this
         // case is about the clock rather than about the explanation. The only thing
@@ -756,7 +762,7 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
     [
       'принятие объяснено следом, чьи мотивы складываются в минус',
       (snapshot) => {
-        // The one real decision sums to +36; swapping the lists mirrors it to −36 while
+        // The one real decision sums to +3; swapping the lists mirrors it to −3 while
         // the history still says the hero took the contract.
         const trace = snapshot.traces[0]!.value;
         const positive = trace.positiveFactors;

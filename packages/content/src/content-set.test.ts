@@ -33,6 +33,12 @@ const shippedContent = join(repoRoot, 'content');
  * (`NEGOTIATION_SPEC` §2.4). Same reason as before — the tree changed on purpose — and
  * the same thing this pin buys: a digest that drifted only with itself, caught rather
  * than passed by coincidence.
+ *
+ * Task 8 moved it a third time, to `3b2b90cfffa3bb47`: the decision rule's two new
+ * factors (`hero.decision.promise_of_a_bonus`, `hero.decision.guild_broke_its_word`)
+ * needed localization keys, and `content/locale/ru.json` — under `content/`, so inside
+ * this digest like any other byte — is where every other reason code is already
+ * translated.
  */
 
 const temporaryRoots: string[] = [];
@@ -144,7 +150,7 @@ describe('loadContentSet over the shipped tree', () => {
     // bytes on purpose. What this pin buys now is the same as before either move — a
     // digest that drifted only with itself would let the whole segment pass parity on
     // a coincidence — just no longer against the frozen C# export.
-    expect(content.contentVersion).toBe('6ec78515d096f8f9');
+    expect(content.contentVersion).toBe('3b2b90cfffa3bb47');
   });
 
   it('keys heroes, contracts and traits in content-id order', () => {

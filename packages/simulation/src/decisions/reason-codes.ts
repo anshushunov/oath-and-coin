@@ -56,7 +56,24 @@ export const ReasonCodes = Object.freeze({
    * reason attached, and an optimistic default passed off as character. What the rule
    * chooses is unchanged; what changed is that it says so.
    */
-  NoReasonToRefuse: 'hero.decision.no_reason_to_refuse'
+  NoReasonToRefuse: 'hero.decision.no_reason_to_refuse',
+
+  /**
+   * A bonus the guild promised this hero specifically, and the hero still believes it
+   * will be paid (`NEGOTIATION_SPEC` §4: `trustedBonus`). A contribution in its own
+   * right, never folded into {@link PaymentAttractive}'s advance — a player who saw only
+   * one enlarged "payment" line would have no way to tell that a promise, not money
+   * already on the table, is what moved this hero.
+   */
+  PromiseOfABonus: 'hero.decision.promise_of_a_bonus',
+
+  /**
+   * The guild broke its word to this hero before, and the grudge has not faded
+   * (`NEGOTIATION_SPEC` §2.2, §3.3, §4). Present only while `HeroState.grievance` is
+   * above zero — a hero never betrayed carries no such factor, not one at strength
+   * zero.
+   */
+  GuildBrokeItsWord: 'hero.decision.guild_broke_its_word'
 });
 
 export type ReasonCode = (typeof ReasonCodes)[keyof typeof ReasonCodes];
@@ -102,6 +119,7 @@ export const REASON_CODES: readonly ReasonCode[] = Object.freeze(Object.values(R
  */
 export const FACTOR_REASON_CODES: readonly ReasonCode[] = Object.freeze([
   ReasonCodes.PaymentAttractive,
+  ReasonCodes.PromiseOfABonus,
   ReasonCodes.RiskTooHigh,
   ReasonCodes.TrustsTheGuild,
   ReasonCodes.UnpredictableMood,
@@ -109,7 +127,8 @@ export const FACTOR_REASON_CODES: readonly ReasonCode[] = Object.freeze([
   ReasonCodes.PersonalConviction,
   ReasonCodes.PersonalAversion,
   ReasonCodes.StandsWithComrade,
-  ReasonCodes.WillNotWorkWith
+  ReasonCodes.WillNotWorkWith,
+  ReasonCodes.GuildBrokeItsWord
 ]);
 
 /** The codes that may appear in {@link CausalTrace.blockedBy}. See

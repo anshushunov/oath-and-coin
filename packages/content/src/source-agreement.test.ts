@@ -41,8 +41,10 @@ const shippedContent = join(repoRoot, 'content');
  * Was the content version the corpus recorded for the shipped tree in all 54 entries,
  * until `DEC-008` Task 3 renamed the contract's fee field, and Task 4 raised the schema
  * version and authored `negotiable_tags`, each moving the shipped tree's bytes on
- * purpose. What this constant still buys is what both sources have to answer — not
- * merely each other — just no longer corpus parity.
+ * purpose. Task 8 moved it a third time, authoring the two `hero.decision.*`
+ * localization keys its new decision factors need in `content/locale/ru.json`. What
+ * this constant still buys is what both sources have to answer — not merely each
+ * other — just no longer corpus parity.
  *
  * The same hash is pinned a second time, in `tests/locale/catalogue.test.ts` as
  * `FROZEN_CONTENT_VERSION`, where it states a different claim: that nothing has been
@@ -50,7 +52,7 @@ const shippedContent = join(repoRoot, 'content');
  * purpose — neither file may own the other's claim — and Task 19 retires **both** when
  * the corpus stops being the oracle.
  */
-const RECORDED_CONTENT_VERSION = '6ec78515d096f8f9';
+const RECORDED_CONTENT_VERSION = '3b2b90cfffa3bb47';
 
 /** Every file under `directory`, root-relative and POSIX, by this test's own walk. */
 function everyFileUnder(directory: string, prefix = ''): readonly string[] {

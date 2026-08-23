@@ -44,10 +44,12 @@ import {
  *
  * Was the corpus's own value for the shipped tree in all 54 entries, until `DEC-008`
  * Task 3 renamed the contract's fee field, and Task 4 raised the schema version and
- * authored `negotiable_tags`, each moving the shipped tree's bytes on purpose —
- * pinned here from now on as a drift guard, not as corpus parity.
+ * authored `negotiable_tags`, each moving the shipped tree's bytes on purpose. Task 8
+ * moved it again, authoring the two `hero.decision.*` reason-code keys its new decision
+ * factors need in `content/locale/ru.json` — pinned here from now on as a drift guard,
+ * not as corpus parity.
  */
-const SHIPPED_CONTENT_VERSION = '6ec78515d096f8f9';
+const SHIPPED_CONTENT_VERSION = '3b2b90cfffa3bb47';
 
 /**
  * The content version the corpus recorded for `screen_empty`'s own fixture root,
