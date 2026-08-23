@@ -51,9 +51,19 @@ const SCREEN_SCENARIOS = [
  * Scenarios carrying the markup branches no `screen_*` scenario produces.
  *
  * The seed is part of each entry rather than a constant: `zero_sum_tie` settles a dead
- * heat on seed 7 and not on 424242, and `grey_zone_flip` flips a hero's answer on 7
- * and not on 424242. A matrix that fixed the seed would have listed the right
- * scenarios and still tested neither branch.
+ * heat on seed 7 and not on 424242. A matrix that fixed the seed would have listed the
+ * right scenario and still not tested the branch.
+ *
+ * **The `wavered` branch — a hero whose mood turned the answer the other factors would
+ * have given — has no entry here.** It used to, as `grey_zone_flip` at seed 7. `DEC-008`
+ * Task 8 moved the decision rule's benefit term from `contract.patronFee` onto
+ * `contract.offer.advance` (`NEGOTIATION_SPEC` §4), and no shipped scenario can give an
+ * offer a nonzero advance yet — that needs `composeOffer`, a command `DEC-008` Tasks
+ * 10-14 have not built. Every scenario here still starts every contract on
+ * `advance = 0`, so `grey_zone_flip`'s pre-mood score, tuned to land inside the grey
+ * band under the old `patronFee`-driven benefit, moved outside it, and mood no longer
+ * flips the answer. Task 20 restores this branch once a shipped scenario can compose a
+ * real offer.
  */
 const BRANCH_SCENARIOS = [
   {
@@ -74,14 +84,6 @@ const BRANCH_SCENARIOS = [
       model.responses.some((response) => response.tieBreakCode !== null) &&
       model.contract !== null &&
       model.contract.tagKeys.length === 0
-  },
-  {
-    scenario: 'grey_zone_flip',
-    checkpoint: 'final',
-    seed: 7n,
-    branch: 'a hero whose mood turned the answer the other factors would have given',
-    covers: (model: ContractOfferScreenModel) =>
-      model.responses.some((response) => response.wavered)
   },
   {
     scenario: 'two_principles_blocked',
