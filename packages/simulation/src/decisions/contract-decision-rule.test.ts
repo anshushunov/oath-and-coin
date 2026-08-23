@@ -5,19 +5,7 @@ import { SortedSet } from '../collections/sorted-set.ts';
 import { compareContentIds } from '../ids/content-id.ts';
 import { compareHeroIds, heroId } from '../ids/hero-id.ts';
 import { aContext, aContract, aHero, anOffer, aTrait, ids, setOf } from '../testing/fixtures.ts';
-import {
-  GRIEVANCES,
-  HERO_SCALE_PROFILES,
-  INCLINATION_WEIGHTS,
-  METHOD_TAGS,
-  MOOD_ORDINALS,
-  OFFER_TERM_FLAGS,
-  OFFER_TERM_VALUES,
-  RELATIONSHIP_WEIGHTS,
-  RISKS,
-  crewOf,
-  fullContextSweep
-} from '../testing/generators.ts';
+import { FULL_CONTEXT_SWEEP_SIZE, crewOf, fullContextSweep } from '../testing/generators.ts';
 
 import { Actions } from './actions.ts';
 import type { TraceFactor } from './causal-trace.ts';
@@ -344,21 +332,11 @@ describe('the recorded score is the recorded factors', () => {
     // загрузчик, проверяет тест в `packages/content`.
     const contexts = fullContextSweep();
 
-    // Названо произведением перебираемых осей, не унаследовано: молчаливо
-    // сжавшаяся ось прошла бы `toHaveLength` целиком, если бы число здесь не было
-    // выведено из тех же констант, которые определяют перебор.
-    expect(contexts).toHaveLength(
-      HERO_SCALE_PROFILES.length *
-        OFFER_TERM_VALUES.length *
-        RISKS.length *
-        INCLINATION_WEIGHTS.length *
-        RELATIONSHIP_WEIGHTS.length *
-        OFFER_TERM_FLAGS.length *
-        GRIEVANCES.length *
-        METHOD_TAGS.length *
-        MOOD_ORDINALS.length +
-        MOOD_ORDINALS.length
-    );
+    // `FULL_CONTEXT_SWEEP_SIZE` is `generators.ts`'s own product of the axis
+    // lengths `fullContextSweep()` walks — computed once there rather than
+    // restated here, so an axis that shrinks moves both. The pinned literal
+    // catches that shared computation itself silently drifting.
+    expect(contexts).toHaveLength(FULL_CONTEXT_SWEEP_SIZE);
     expect(contexts).toHaveLength(60003);
 
     let scored = 0;

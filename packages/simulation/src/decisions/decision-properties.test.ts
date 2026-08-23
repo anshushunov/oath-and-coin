@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { deepEqual } from '../collections/deep-equal.ts';
 import { heroId } from '../ids/hero-id.ts';
 import {
+  FULL_CONTEXT_SWEEP_SIZE,
   GRIEVANCES,
   HERO_SCALE_PROFILES,
   INCLINATION_WEIGHTS,
@@ -19,6 +20,7 @@ import {
 
 import { Actions } from './actions.ts';
 import { decide, type HeroDecision } from './contract-decision-rule.ts';
+import { ReasonCodes } from './reason-codes.ts';
 
 /**
  * `NEGOTIATION_SPEC` §10.1's properties — the five this task is scoped to. These
@@ -328,6 +330,12 @@ describe('§10.1: the same inputs produce the same decision, offer included', ()
     const first = fullContextSweep();
     const second = fullContextSweep();
 
+    // `FULL_CONTEXT_SWEEP_SIZE` is a product of the same axis lengths
+    // `fullContextSweep()` walks, computed once in `generators.ts` rather than
+    // restated here; the pinned literal below catches that shared computation
+    // itself silently drifting.
+    expect(first).toHaveLength(FULL_CONTEXT_SWEEP_SIZE);
+    expect(second).toHaveLength(FULL_CONTEXT_SWEEP_SIZE);
     expect(first).toHaveLength(60003);
     expect(second).toHaveLength(60003);
 
@@ -347,5 +355,100 @@ describe('§10.1: the same inputs produce the same decision, offer included', ()
       expect(decisionB).toEqual(decisionA);
       expect(decisionB.ordinalsConsumed).toBe(decisionA.ordinalsConsumed);
     }
+  });
+});
+
+describe('§10.1: the promised bonus is ignored exactly when the hero stopped believing', () => {
+  it('PromisedBonusIsIgnoredExactlyWhenTheHeroStoppedBelieving', () => {
+    let combos = 0;
+
+    // A key hero deliberately not `heroId(0)` — `contextAt`'s own default for
+    // both `hero.id` and `offer.keyHero` — so this exercises
+    // `ContextDecider.keyHero` as well as `.believesGuildPromises`, and a
+    // mutant that only special-cased `heroId(0) === keyHero` cannot pass by
+    // coincidence.
+    const decider = heroId(3);
+
+    // Fixed at `OFFER_TERM_VALUES`'s ceiling (`TRAIT_SCALE`, `100`): `bonusPull
+    // = divideTowardZero(promisedBonus * greed, TRAIT_SCALE)` divides exactly
+    // at this one value, `100 * greed / 100 = greed` with no truncation for
+    // any `greed` in `HERO_SCALE_PROFILES`. So whether `PromiseOfABonus`
+    // should appear is decidable from `greed` alone below, without a second,
+    // independent implementation of the rule's own division.
+    const promisedBonus = OFFER_TERM_VALUES[OFFER_TERM_VALUES.length - 1]!;
+
+    for (const heroScales of HERO_SCALE_PROFILES) {
+      const [greed] = heroScales;
+
+      for (const risk of RISKS) {
+        for (const traitWeight of INCLINATION_WEIGHTS) {
+          for (const bondWeight of RELATIONSHIP_WEIGHTS) {
+            for (const advance of OFFER_TERM_FLAGS) {
+              for (const grievance of GRIEVANCES) {
+                for (const methodTag of METHOD_TAGS) {
+                  for (const decisionOrdinal of MOOD_ORDINALS) {
+                    combos += 1;
+
+                    const axes = {
+                      heroScales,
+                      advance,
+                      risk,
+                      traitWeight,
+                      bondWeight,
+                      promisedBonus,
+                      grievance,
+                      methodTag,
+                      decisionOrdinal
+                    };
+
+                    const believing = decide(
+                      contextAt(axes, {
+                        heroId: decider,
+                        keyHero: decider,
+                        believesGuildPromises: true
+                      })
+                    );
+                    const disbelieving = decide(
+                      contextAt(axes, {
+                        heroId: decider,
+                        keyHero: decider,
+                        believesGuildPromises: false
+                      })
+                    );
+
+                    const hasBonusFactor = (decision: HeroDecision): boolean =>
+                      decision.result.trace.positiveFactors.some(
+                        (factor) => factor.reasonCode === ReasonCodes.PromiseOfABonus
+                      );
+
+                    // Necessary direction, unconditional on `greed`: a hero who
+                    // stopped believing never carries the promise.
+                    expect(hasBonusFactor(disbelieving)).toBe(false);
+
+                    // Sufficient direction: at this one `promisedBonus`,
+                    // `bonusPull` is exactly `greed` — present iff `greed > 0`,
+                    // an algebraic fact of the fixture above, not an
+                    // assumption about `decide()`.
+                    expect(hasBonusFactor(believing)).toBe(greed > 0);
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    expect(combos).toBe(
+      HERO_SCALE_PROFILES.length *
+        RISKS.length *
+        INCLINATION_WEIGHTS.length *
+        RELATIONSHIP_WEIGHTS.length *
+        OFFER_TERM_FLAGS.length *
+        GRIEVANCES.length *
+        METHOD_TAGS.length *
+        MOOD_ORDINALS.length
+    );
+    expect(combos).toBe(15000);
   });
 });

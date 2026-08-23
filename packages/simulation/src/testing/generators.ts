@@ -96,12 +96,6 @@ export function crewOf(
   );
 }
 
-/** The two comrades every sweep context below carries, always in this crew. */
-const SWEEP_CREW: SortedMap<HeroId, ContentId> = crewOf([
-  [1, ids.doran],
-  [2, ids.zara]
-]);
-
 /**
  * The nine axes a scored (non-gated) sweep context varies: the deciding hero's
  * four scales, `contract.risk`, one inclination weight (mirrored across two
@@ -173,7 +167,18 @@ export function contextAt(axes: ContextAxes, decider: ContextDecider = {}): Deci
       aTrait({ id: ids.loyal, tag: ids.undead, weight: axes.traitWeight }),
       aTrait({ id: ids.squeamish, tag: ids.temple, weight: -axes.traitWeight })
     ],
-    crew: SWEEP_CREW,
+    // A fresh `SortedMap` on every call, not a shared module constant: `decide()`
+    // never mutates it, but `SameInputsProduceTheSameDecision`
+    // (`decision-properties.test.ts`) exists precisely to catch a `decide()` that
+    // secretly reads something other than the values on its `DecisionContext` —
+    // a check a crew shared by reference across every context in a sweep cannot
+    // perform on the `crew` channel, because every pair it compares would share
+    // that one reference instead of two structurally-equal, independently-built
+    // maps.
+    crew: crewOf([
+      [1, ids.doran],
+      [2, ids.zara]
+    ]),
     decisionOrdinal: axes.decisionOrdinal
   });
 }
@@ -207,20 +212,39 @@ export function aGatedContext(axes: GatedContextAxes): DecisionContext {
 }
 
 /**
- * The full nine-axis sweep, `contract-decision-rule.test.ts`'s
- * `'записанный счёт равен сумме записанных факторов'` and `decision-properties.
- * test.ts`'s `'the same inputs produce the same decision, offer included'` both
- * walk — the score-equals-factors identity over every scored context this
- * generator can build, plus the gate closing three of its own regardless of
- * `decisionOrdinal` (`HERO_DECISION_SPEC` §2.2 trap 3).
+ * {@link fullContextSweep}'s own length, computed once here rather than
+ * restated as a formula at each call site: two independent statements of the
+ * same product are two places for a changed axis to update only one of them,
+ * which is exactly how a silently-collapsed axis would go unnoticed. Every
+ * caller that pins this sweep's size imports this constant and then also
+ * asserts the pinned literal it currently equals — the constant catches an
+ * axis shrinking, the literal catches this constant itself silently drifting.
  *
  * `HERO_SCALE_PROFILES.length * OFFER_TERM_VALUES.length * RISKS.length *
  * INCLINATION_WEIGHTS.length * RELATIONSHIP_WEIGHTS.length *
  * OFFER_TERM_FLAGS.length * GRIEVANCES.length * METHOD_TAGS.length *
- * MOOD_ORDINALS.length + MOOD_ORDINALS.length` = `5*4*5*5*5*2*2*2*3 + 3` = `60003`.
- * Named as a product at both call sites rather than assumed here: a caller that
- * only checked `.length > 0` would not notice an axis silently collapsing to one
- * point.
+ * MOOD_ORDINALS.length + MOOD_ORDINALS.length` = `5*4*5*5*5*2*2*2*3 + 3` = `60003`
+ * — the score-equals-factors identity over every scored context this generator
+ * can build, plus the gate closing three of its own regardless of
+ * `decisionOrdinal` (`HERO_DECISION_SPEC` §2.2 trap 3).
+ */
+export const FULL_CONTEXT_SWEEP_SIZE =
+  HERO_SCALE_PROFILES.length *
+    OFFER_TERM_VALUES.length *
+    RISKS.length *
+    INCLINATION_WEIGHTS.length *
+    RELATIONSHIP_WEIGHTS.length *
+    OFFER_TERM_FLAGS.length *
+    GRIEVANCES.length *
+    METHOD_TAGS.length *
+    MOOD_ORDINALS.length +
+  MOOD_ORDINALS.length;
+
+/**
+ * The full nine-axis sweep, `contract-decision-rule.test.ts`'s
+ * `'записанный счёт равен сумме записанных факторов'` and `decision-properties.
+ * test.ts`'s `'the same inputs produce the same decision, offer included'` both
+ * walk. Its length is {@link FULL_CONTEXT_SWEEP_SIZE}.
  */
 export function fullContextSweep(): readonly DecisionContext[] {
   const contexts: DecisionContext[] = [];
