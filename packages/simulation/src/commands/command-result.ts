@@ -79,7 +79,20 @@ export const RejectionCodes = Object.freeze({
    * whose answer could still change anything — the next legal move is
    * `settleContract`.
    */
-  CrewAlreadyFilled: 'rejected.crew_already_filled'
+  CrewAlreadyFilled: 'rejected.crew_already_filled',
+  /**
+   * `pollCrew` refuses a locked package every hero in the roster has already
+   * answered — checked after {@link CrewAlreadyFilled}, since that code covers the
+   * one case §6 names where `requiredCrew` fills before the roster is exhausted,
+   * and this one covers the other: every seat still open, but nobody left to ask.
+   * §6's own edge-case table sends an unfilled crew back to `composeOffer` for a
+   * new package, not to a second `pollCrew` of the same one — external review of
+   * Task 13 found that without this, a player (or a replayed command log) could
+   * call `pollCrew` on an already-fully-polled package any number of times, each
+   * one a legal, applied command that appended zero events and grew
+   * `appliedCommandIds` without bound.
+   */
+  NobodyLeftToPoll: 'rejected.nobody_left_to_poll'
 });
 
 export type RejectionCode = (typeof RejectionCodes)[keyof typeof RejectionCodes];

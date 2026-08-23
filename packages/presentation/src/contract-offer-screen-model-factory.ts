@@ -185,9 +185,7 @@ export function contractOfferScreenModel(
   const responses = steps
     .filter((step) => step.command.contract === contract.id)
     .flatMap((step) =>
-      step.decisions.map((decision, index) =>
-        toResponseLine(step, decision, index, heroDisplayNameKeys)
-      )
+      step.decisions.map((decision) => toResponseLine(step, decision, heroDisplayNameKeys))
     );
 
   return createContractOfferScreenModel({
@@ -292,24 +290,23 @@ function resolveTrait(
 }
 
 /**
- * The hero behind `step.decisions[index]` (`DecidedStep.heroDefinitions`'s own doc):
- * that per-decision override when the step supplies one, `step.heroDefinition`
- * otherwise. Every step but a `pollCrew` one answers a single hero and never
- * supplies the override, so this is `step.heroDefinition` for every existing caller
- * — the override exists for the one step shape where a single hero cannot name every
- * decision.
+ * The hero behind `decision` (`DecidedOutcome.heroDefinition`'s own doc): that
+ * decision's own hero when it names one, `step.heroDefinition` otherwise. Every
+ * decision but a `pollCrew` one names no hero of its own and falls through to the
+ * step's single hero, so this is `step.heroDefinition` for every existing caller —
+ * the per-decision field exists for the one step shape where a single hero cannot
+ * name every decision.
  */
-function heroDefinitionOf(step: DecidedStep, index: number): ContentId | null {
-  return step.heroDefinitions?.[index] ?? step.heroDefinition;
+function heroDefinitionOf(step: DecidedStep, decision: DecidedOutcome): ContentId | null {
+  return decision.heroDefinition ?? step.heroDefinition;
 }
 
 function toResponseLine(
   step: DecidedStep,
   decision: DecidedOutcome,
-  index: number,
   heroDisplayNameKeys: ReadonlyMap<ContentId, string>
 ): ResponseLine {
-  const hero = heroDefinitionOf(step, index);
+  const hero = heroDefinitionOf(step, decision);
 
   if (hero === null) {
     throw new Error(

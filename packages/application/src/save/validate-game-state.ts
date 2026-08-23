@@ -412,9 +412,22 @@ function checkOneContract(
     // not stop once the crew is full, so a hero who accepts after every seat is taken
     // still gets a full decision and a trace, and stays in `respondedBy` without ever
     // entering `acceptedBy`. That shape is only reachable once the contract's own
-    // seats are exhausted — with room still open, every accepted hero has already
-    // taken one, because nothing in this engine seats a later hero ahead of an
-    // earlier one who also said yes.
+    // seats are exhausted, so an accepted-but-unseated hero found with room still
+    // open is still a genuine contradiction.
+    //
+    // **What this no longer catches, named rather than left implicit.** `pollCrew`
+    // seats the *lowest* `HeroId` acceptors first, but only among the heroes it
+    // itself polls — the key hero's own seat comes from `proposeContractToHero`,
+    // in the draft phase, before `pollCrew` ever runs, and carries no such ordering
+    // relative to the rest of the roster (`keyHero` can be any id). So this check
+    // states only "an accepted, unseated hero exists only once the seats are
+    // full" — a real fact, and the one this file can check without re-deriving
+    // `pollCrew`'s whole per-poll ordering from a snapshot that does not record
+    // poll order at all. It does **not** say *which* accepted heroes hold the
+    // seats: a file where two heroes both accepted, the seats are full, and the
+    // "wrong" one by `HeroId` order was recorded as seated passes this check.
+    // Catching that would need the campaign's own command log, not the state a
+    // save carries.
     if (accepted && !inAcceptedBy && contract.offer.acceptedBy.size < contract.requiredCrew) {
       throw inconsistent(
         `contract '${contractId}' and the history disagree about hero#${String(heroId)}: the ` +
@@ -455,21 +468,22 @@ function checkOneContract(
  * there. So the equalities below are properties of that one function, not of any
  * particular command.
  *
- * **`appliedCommandIds.size` is deliberately not checked against `history.length` here
- * any more.** It used to be — `appliedCommandIds.size === history.length` — back when
- * every command that could apply appended exactly one event in the same transition it
+ * **`appliedCommandIds.size === history.length` no longer holds — it is
+ * `appliedCommandIds.size <= history.length` now.** The equality held while every
+ * command that could apply appended exactly one event in the same transition it
  * recorded its id under (`composeOffer`, `lockOffer`, `proposeContractToHero`).
- * `pollCrew` (`DEC-008` Task 13) is the one command that breaks the premise on both
- * sides at once: one `commandId` can leave *several* events behind — one per hero the
- * poll actually asked — and, on a contract whose whole remaining roster had already
- * answered before the poll ran, it can legitimately leave *none* at all
- * (`NEGOTIATION_SPEC` §6 — `pollCrew` asking a locked package nobody was left to
- * answer is a real, reachable state, not a defect). So the same field can now
- * disagree with `history.length` in either direction on a save this build's own
- * engine produced, and an equality — or any single-direction inequality — written
- * against it would refuse a legitimate campaign rather than catch a tampered one.
- * There is no cheaper fact this function can state instead: which `commandId`
- * produced how many events is not itself recorded anywhere a save carries.
+ * `pollCrew` (`DEC-008` Task 13) is the one command that breaks it: one `commandId`
+ * can leave *several* events behind — one per hero the poll actually asked — so a
+ * command id can now correspond to more than one history event. It can never
+ * correspond to *zero*, though: `pollCrew` itself refuses to apply against a locked
+ * package every hero has already answered (`RejectionCodes.NobodyLeftToPoll`,
+ * `engine.ts`) — a rejection records no command id at all, so the one shape that
+ * would have driven `appliedCommandIds.size` *above* `history.length` (a command
+ * applying with nothing to show for it) is not reachable through this build's own
+ * engine. `<=` is therefore still a real invariant, not merely a weaker one settled
+ * for: every applied command id accounts for at least one history event, and this
+ * still refuses the same tampered file external review priced this against — an
+ * `appliedCommandIds` list padded with an id nothing in `history` explains.
  */
 function checkCounters(state: GameState): void {
   const { metadata, history } = state;
@@ -486,6 +500,14 @@ function checkCounters(state: GameState): void {
       `stateVersion is ${String(metadata.stateVersion)} but the history holds ` +
         `${String(history.length)} events; the version advances by one per campaign transition, ` +
         'and every transition appends exactly one event.'
+    );
+  }
+
+  if (state.appliedCommandIds.size > history.length) {
+    throw inconsistent(
+      `the save records ${String(state.appliedCommandIds.size)} applied commands, more than the ` +
+        `${String(history.length)} history events it holds; every applied command appends at ` +
+        'least one event.'
     );
   }
 

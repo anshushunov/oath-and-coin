@@ -648,18 +648,18 @@ describe('the read-model hash', () => {
     // not Task 5's: `pollCrew` is the one command that puts *several different*
     // heroes' decisions inside a single step, and `DecidedStep.heroDefinition` alone
     // cannot name all of them (`contract-offer-screen-model.ts`'s own note on
-    // `heroDefinitions`). The test above reuses one hero for all three decisions, so
-    // an implementation that quietly stamped every decision with the step's single
-    // `heroDefinition` would still pass it — the three response lines would already
-    // agree on the hero by construction. This one gives each decision a *different*
-    // hero and checks the response lines name them correctly, which only
-    // `heroDefinitions` can make true.
+    // `DecidedOutcome.heroDefinition`). The test above reuses one hero for all three
+    // decisions, so an implementation that quietly stamped every decision with the
+    // step's single `heroDefinition` would still pass it — the three response lines
+    // would already agree on the hero by construction. This one gives each decision a
+    // *different* hero of its own and checks the response lines name them correctly,
+    // which only reading `decision.heroDefinition` can make true.
     const roster = heroes(ids.bram, ids.doran, ids.zara);
     const state = withContracts(withHeroes(aState(), roster), [
       aContract({ offer: anOffer({ respondedBy: responded(0, 1, 2) }) })
     ]);
 
-    const decisions = [
+    const rawDecisions = [
       aDecision({
         selectedAction: Actions.Accept,
         selectedScore: 5,
@@ -696,8 +696,20 @@ describe('the read-model hash', () => {
     ];
     const heroDefinitions: readonly ContentId[] = [ids.bram, ids.doran, ids.zara];
 
-    const oneStepWithThree = [aStep({ decisions, heroDefinitions })];
-    const threeStepsWithOne = decisions.map((decision, index) =>
+    // One step, three decisions, each carrying its own hero — the shape only
+    // `pollCrew` produces.
+    const oneStepWithThree = [
+      aStep({
+        decisions: rawDecisions.map((decision, index) => ({
+          ...decision,
+          heroDefinition: heroDefinitions[index]!
+        }))
+      })
+    ];
+    // Three ordinary single-hero steps, each relying on the step's own
+    // `heroDefinition` — the shape every other command produces — built from the
+    // same raw decisions, with no per-decision override at all.
+    const threeStepsWithOne = rawDecisions.map((decision, index) =>
       aStep({ decisions: [decision], heroDefinition: heroDefinitions[index]! })
     );
 
@@ -706,8 +718,8 @@ describe('the read-model hash', () => {
 
     expect(collapsed.responses).toHaveLength(3);
     // Names each hero correctly — the assertion a same-hero fixture cannot make: a
-    // factory that ignored `heroDefinitions` and stamped every line with the step's
-    // one `heroDefinition` would show `bram, bram, bram` here instead.
+    // factory that ignored the decision's own hero and stamped every line with the
+    // step's one `heroDefinition` would show `bram, bram, bram` here instead.
     expect(collapsed.responses.map((response) => response.heroDefinition)).toEqual(heroDefinitions);
     expect(collapsed.responses).toEqual(spread.responses);
     expect(readModelHash(collapsed)).toBe(readModelHash(spread));

@@ -148,6 +148,39 @@ function gatedThenScoredThenGated(): GameState {
   });
 }
 
+/**
+ * A locked, unfilled package every hero has already answered — the shape a second
+ * `pollCrew` call on an already-fully-polled roster would produce, if the engine let
+ * it apply. `requiredCrew` (3) is deliberately above `acceptedBy.size` (1, the key
+ * hero alone): every seat is still open, but nobody is left to fill one.
+ */
+function fullyRespondedButUncrewedCampaign(): GameState {
+  const heroes = heroesFor(false);
+  const keyOnly = SortedSet.from(compareHeroIds, [KEY_HERO]);
+  const everyone = SortedSet.from(compareHeroIds, [0, 1, 2, 3].map(heroId));
+
+  const contract = createContractState(
+    aContract({
+      requiredCrew: 3,
+      status: ContractStatus.Offered,
+      offer: anOffer({
+        keyHero: KEY_HERO,
+        phase: OfferPhase.Locked,
+        respondedBy: everyone,
+        acceptedBy: keyOnly
+      })
+    })
+  );
+
+  return aState({
+    heroes: SortedMap.from(
+      compareHeroIds,
+      heroes.map((hero) => [hero.id, hero] as const)
+    ),
+    contracts: SortedMap.from(compareContentIds, [[contract.id, contract]])
+  });
+}
+
 function aPoll(overrides: Partial<PollCrew> = {}): PollCrew {
   return {
     commandId: 1,
@@ -169,7 +202,18 @@ describe('pollCrew', () => {
   });
 
   it('does not stop asking once the seats are full', () => {
-    expect(pollCrew(lockedCampaign({ requiredCrew: 2 }), aPoll()).decisions).toHaveLength(3);
+    // `everyoneAcceptsCampaign`, not the plain `lockedCampaign` the brief's own
+    // fixture would have used: with every polled hero tuned toward acceptance,
+    // seats genuinely fill partway through the roster (the key hero plus one more
+    // of two required), so this test is only discharged by an implementation that
+    // keeps asking past that point. Against `lockedCampaign`'s untuned heroes —
+    // review of `DEC-008` Task 13 found this — every polled hero declines (advance
+    // 0 against risk 80), `acceptedBy` never grows past the key hero alone, and
+    // `toHaveLength(3)` holds just as well for a `pollCrew` that stops the moment
+    // seats fill, since none ever do.
+    expect(pollCrew(everyoneAcceptsCampaign({ requiredCrew: 2 }), aPoll()).decisions).toHaveLength(
+      3
+    );
   });
 
   it('seats only as many as the contract has room for', () => {
@@ -195,9 +239,27 @@ describe('pollCrew', () => {
     expect(after.metadata.nextDecisionOrdinal - before.metadata.nextDecisionOrdinal).toBe(1n);
   });
 
-  it('gives one trace id per scored decision and none for a gated one', () => {
+  it('gives every decision — gated or scored — its own sequential trace id', () => {
+    // `HERO_DECISION_SPEC` §5 exempts a gated decision from spending an *ordinal*
+    // (test above), never from being explained: `decide()` builds a full trace —
+    // `blockedBy` populated, `traceId` assigned — on the gated path exactly as on
+    // the scored one, and `withEvent` stores every one of them under the
+    // campaign's next free trace id, gated or not (`engine.test.ts`'s "a decision
+    // the gate closed still happened" already pins this for a single hero; this is
+    // the same fact for three in one command).
     const result = pollCrew(gatedThenScoredThenGated(), aPoll());
     expect(result.events.map((e) => e.causalTraceId)).toEqual([0, 1, 2]);
+  });
+
+  it('refuses to poll a locked package every hero has already answered', () => {
+    // §6's edge-case table sends an unfilled crew back to `composeOffer`, not to a
+    // second `pollCrew` of the one already fully answered — external review of
+    // Task 13: without this, the same command could be issued any number of times
+    // against a roster with nobody left to ask, each one legally applying and
+    // growing `appliedCommandIds` without ever appending an event.
+    expect(pollCrew(fullyRespondedButUncrewedCampaign(), aPoll()).rejectionCode).toBe(
+      RejectionCodes.NobodyLeftToPoll
+    );
   });
 
   it('refuses to poll a package that is not locked', () => {

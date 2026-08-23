@@ -517,7 +517,10 @@ export function lockOffer(state: GameState, command: LockOffer): CommandResult {
  *
  * Checks run in §6.1's order: the three general checks, then this command's own
  * phase and status preconditions (§3.1's table — `pollCrew` is legal only against a
- * `locked` package whose crew has not already filled).
+ * `locked` package whose crew has not already filled, and only against a roster
+ * that still has somebody left to ask — §6's own edge-case table sends an unfilled
+ * crew back to `composeOffer` for a new package, not to a second poll of the one
+ * already fully answered).
  *
  * **The poll asks `state.heroes.keys()`, in that order — already sorted by
  * `HeroId` — skipping anyone already in `offer.respondedBy`.** That excludes the key
@@ -572,6 +575,18 @@ export function pollCrew(state: GameState, command: PollCrew): CommandResult {
   // silently.
   if (contract.status === ContractStatus.Crewed) {
     return rejected(state, RejectionCodes.CrewAlreadyFilled);
+  }
+
+  // §6's own edge-case table sends an unfilled crew back to `composeOffer` for a
+  // new package, not to a second `pollCrew` of the one already fully answered — a
+  // roster every hero has already responded to has nothing left this command could
+  // still decide. Refused here, before the loop below ever runs, rather than let a
+  // legal, applied command append zero events: `validate-game-state.ts`'s
+  // `checkCounters` relies on every applied command producing at least one
+  // (`appliedCommandIds.size <= history.length`), and a `pollCrew` that could apply
+  // with nobody left to ask is what would have broken that.
+  if (state.heroes.keys().every((heroId) => contract.offer.respondedBy.has(heroId))) {
+    return rejected(state, RejectionCodes.NobodyLeftToPoll);
   }
 
   let currentState = state;

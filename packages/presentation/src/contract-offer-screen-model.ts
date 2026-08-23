@@ -208,6 +208,35 @@ export interface DecidedOutcome {
   readonly selectedAction: ContentId;
   readonly selectedScore: number | null;
   readonly trace: CausalTrace;
+  /**
+   * The hero this decision belongs to, when a step's decisions do not all belong to
+   * `DecidedStep.heroDefinition` — `pollCrew` (`NEGOTIATION_SPEC` §3.1) is the one
+   * command that produces this shape, several heroes answering inside a single step.
+   * `undefined` for every step every other command produces: `composeOffer`,
+   * `proposeContractToHero` and `lockOffer` each answer at most one hero, already
+   * named by `DecidedStep.heroDefinition`, and restating it per decision there would
+   * just be a second place for that one fact to drift from itself.
+   *
+   * Lives on the decision, not on a second, parallel array of the step's own —
+   * review of `DEC-008` Task 13 found that the array design let a short array
+   * silently fall back to the step's single hero on the entries it didn't cover
+   * (`undefined ?? heroDefinition`), which is exactly the misattribution the
+   * per-decision hero exists to prevent, returned as a silent default instead of a
+   * loud one. Carried on the decision itself, a short list is not expressible: there
+   * is no index to under-run.
+   *
+   * Optional rather than replacing `heroDefinition` outright, or making this field
+   * required: `StepOutcome` (`packages/content/src/scenarios/scenario-runner.ts`) is
+   * `readonly DecidedStep[]`-assignable today only because its fields line up with
+   * these, and its own `decisions: readonly DecisionResult[]` (`@oath-and-coin/
+   * simulation`) mentions no such field at all. An optional addition costs that
+   * nothing — a source type that never mentions an optional field is still
+   * assignable to a target where the field may be missing — while a required one
+   * would have forced `StepOutcome` and every builder of one (`scenario-runner.ts`,
+   * `restore-steps.ts`) to supply a hero per decision too, which is `pollCrew`'s
+   * wiring into `ScenarioCommand` — explicitly not this task's to do.
+   */
+  readonly heroDefinition?: ContentId;
 }
 
 /**
@@ -236,32 +265,10 @@ export interface DecidedStep {
   readonly heroDefinition: ContentId | null;
   /**
    * Every decision this step's events explain, in the same order `StepOutcome.decisions`
-   * carries them — empty for a rejected step.
+   * carries them — empty for a rejected step. A decision whose own
+   * {@link DecidedOutcome.heroDefinition} is set names its hero directly; one that
+   * doesn't is answered by this step's own {@link heroDefinition} — see that field's
+   * own doc for why the per-decision hero lives there and not in a second array here.
    */
   readonly decisions: readonly DecidedOutcome[];
-  /**
-   * The hero behind each entry of {@link decisions}, index for index, when a step's
-   * decisions do not all belong to {@link heroDefinition} — `pollCrew`
-   * (`NEGOTIATION_SPEC` §3.1) is the one command that produces this shape, six heroes
-   * answering inside a single step. `undefined` — not merely absent per index — for
-   * every step every other command produces: `composeOffer`, `proposeContractToHero`
-   * and `lockOffer` each answer at most one hero, already named by
-   * {@link heroDefinition}, and restating it per decision here would just be a second
-   * place for that one fact to drift from itself.
-   *
-   * Optional, on purpose, rather than widening {@link heroDefinition} itself into a
-   * list: `StepOutcome` (`packages/content`) is `readonly DecidedStep[]`-assignable
-   * today only because every field it declares lines up with one of these, and an
-   * optional addition here costs it nothing — a source type that never mentions this
-   * field is still assignable to a target where the field is allowed to be missing.
-   * Making it required, or replacing {@link heroDefinition} outright, would demand
-   * `StepOutcome` and every builder of one (`scenario-runner.ts`,
-   * `restore-steps.ts`) supply a hero per decision too, which is `pollCrew`'s wiring
-   * into `ScenarioCommand` — explicitly not this task's to do.
-   *
-   * When present, `heroDefinitions[i]` is read for `decisions[i]` **instead of**
-   * {@link heroDefinition}, never merged with it — a step naming six heroes has no
-   * single hero of its own to fall back to for the one entry that forgot to say so.
-   */
-  readonly heroDefinitions?: readonly (ContentId | null)[];
 }

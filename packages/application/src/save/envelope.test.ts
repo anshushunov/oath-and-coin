@@ -683,11 +683,21 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
       },
       'the version advances by one per campaign transition'
     ],
-    // A case asserting `appliedCommandIds.size !== history.length` refuses used to sit
-    // here. `pollCrew` (`DEC-008` Task 13) retired the check it exercised:
-    // `validate-game-state.ts`'s own `checkCounters` doc explains why one `commandId`
-    // no longer implies one event, in either direction, on a save this build's own
-    // engine can produce.
+    [
+      'применённых команд больше, чем событий',
+      (snapshot) => {
+        // `pollCrew` (`DEC-008` Task 13) retired the equality this used to exercise
+        // (`appliedCommandIds.size === history.length`) — one `commandId` can now
+        // leave several events behind — but `<=` still holds, because a `pollCrew`
+        // with nobody left to poll is refused rather than applied
+        // (`RejectionCodes.NobodyLeftToPoll`), and every other command still
+        // appends exactly one event per id. A padded `appliedCommandIds` — an id
+        // nothing in `history` explains — is still `size > length` and still
+        // refused.
+        snapshot.appliedCommandIds = [1, 2];
+      },
+      'every applied command appends at least one event'
+    ],
     [
       'nextTraceId не равен числу хранимых следов',
       (snapshot) => {
