@@ -9,16 +9,20 @@ import {
 } from './commands/command-result.ts';
 import type { ComposeOffer } from './commands/compose-offer.ts';
 import type { LockOffer } from './commands/lock-offer.ts';
+import type { PollCrew } from './commands/poll-crew.ts';
 import type { ProposeContractToHero } from './commands/propose-contract-to-hero.ts';
 import { Actions } from './decisions/actions.ts';
-import { decide } from './decisions/contract-decision-rule.ts';
+import type { DecisionResult } from './decisions/causal-trace.ts';
+import { decide, type HeroDecision } from './decisions/contract-decision-rule.ts';
 import type { HeldTrait } from './decisions/held-trait.ts';
 import type { DomainEvent } from './events/domain-event.ts';
 import { compareContentIds, type ContentId } from './ids/content-id.ts';
 import { compareHeroIds, type HeroId } from './ids/hero-id.ts';
 import { canCover } from './negotiation/commitments.ts';
+import type { ContractState } from './state/contract-state.ts';
 import { ContractStatus } from './state/contract-state.ts';
-import { withEvent, type GameState } from './state/game-state.ts';
+import { heroOf, withEvent, type GameState } from './state/game-state.ts';
+import type { HeroState } from './state/hero-state.ts';
 import { createContractState, MAX_TAGS_PER_CONTRACT, OfferPhase } from './state/offer-state.ts';
 
 /**
@@ -38,55 +42,41 @@ import { createContractState, MAX_TAGS_PER_CONTRACT, OfferPhase } from './state/
  * before.
  */
 
+/** What one hero's answer to `contract`'s current offer cost the campaign. */
+interface HeroResponse {
+  readonly decision: HeroDecision;
+  /**
+   * `contract.moodOrdinals`, updated to record this hero's draw if this was the
+   * first time it happened — untouched otherwise. The caller carries this straight
+   * into the next `createContractState` call; it is not a second place the pin
+   * lives.
+   */
+  readonly moodOrdinals: SortedMap<HeroId, bigint>;
+  /** What `withEvent` should be told this decision cost — `0n` for a pinned mood. */
+  readonly ordinalsConsumed: bigint;
+}
+
 /**
- * Offers a contract to a hero and records what the hero decided.
+ * One hero's answer to `contract`'s current offer, and what it cost the campaign's
+ * randomness — the context assembly, mood pinning and `decide` call that
+ * `proposeContractToHero` and `pollCrew` both need. Factored out once so the two
+ * commands cannot drift apart on either: a `pollCrew` that rebuilt this logic by hand
+ * would be a second place `NEGOTIATION_SPEC` §2.1.1's pinning rule could be gotten
+ * subtly wrong, in a command whose whole point is to run it several times in a row.
  *
- * Checks run cheapest-first, and every one of them returns the state it was handed, by
- * reference. The order is not cosmetic: version and duplicate-id checks are properties
- * of the command itself, so they answer before anything is looked up in state, and the
- * decision — the only step that consumes randomness — happens once nothing can still
- * refuse it. A rejection that had already advanced the RNG ordinal would make the
- * campaign's randomness depend on failed commands.
+ * `NEGOTIATION_SPEC` §2.1.1: a hero's mood is pinned to this contract the first time
+ * it is drawn, not redrawn on every revised package — otherwise raising the advance
+ * and lowering it back would be a free reroll of the one input the hero's answer
+ * isn't determined by. A recorded ordinal is passed straight to `decide`, which draws
+ * the identical mood from it every time (a pure function of `(campaignSeed,
+ * ordinal)`) — the caller declares `0n` spent regardless of what `decide` itself
+ * reports, because reading a mood already drawn is not new randomness.
  */
-export function proposeContractToHero(
+function decideHeroResponse(
   state: GameState,
-  command: ProposeContractToHero
-): CommandResult {
-  if (command.expectedStateVersion !== state.metadata.stateVersion) {
-    return rejected(state, RejectionCodes.StaleState);
-  }
-
-  if (state.appliedCommandIds.has(command.commandId)) {
-    return rejected(state, RejectionCodes.DuplicateCommand);
-  }
-
-  const hero = state.heroes.get(command.heroId);
-  if (hero === undefined) {
-    return rejected(state, RejectionCodes.UnknownHero);
-  }
-
-  const contract = state.contracts.get(command.contractId);
-  if (contract === undefined) {
-    return rejected(state, RejectionCodes.UnknownContract);
-  }
-
-  if (contract.status !== ContractStatus.Offered) {
-    return rejected(state, RejectionCodes.ContractAlreadyResolved);
-  }
-
-  // §3.1, §6: only the offer's key hero may answer while the package is a draft —
-  // everyone else's turn is `pollCrew`, once the package is `locked` (Task 13), not
-  // before. `keyHero` is `null` until the first `composeOffer`, so this refuses every
-  // hero, key or not, until a package actually names one — a hero cannot be the key
-  // hero of an offer nobody has composed yet.
-  if (contract.offer.phase === OfferPhase.Draft && command.heroId !== contract.offer.keyHero) {
-    return rejected(state, RejectionCodes.NotTheKeyHero);
-  }
-
-  if (contract.offer.respondedBy.has(command.heroId)) {
-    return rejected(state, RejectionCodes.AlreadyResponded);
-  }
-
+  hero: HeroState,
+  contract: ContractState
+): HeroResponse {
   // The hero's traits, resolved through the campaign's own trait rulebook
   // (`GameState.traitRules` — filled once, at content-load time, on the other side of
   // the boundary this package cannot cross). Sorted by id rather than merely copied in
@@ -140,7 +130,7 @@ export function proposeContractToHero(
   // draws the identical mood from it every time (a pure function of `(campaignSeed,
   // ordinal)`) — the engine below declares `0n` spent regardless of what `decide`
   // itself reports, because reading a mood already drawn is not new randomness.
-  const knownMoodOrdinal = contract.moodOrdinals.get(command.heroId);
+  const knownMoodOrdinal = contract.moodOrdinals.get(hero.id);
   const decisionOrdinal = knownMoodOrdinal ?? state.metadata.nextDecisionOrdinal;
 
   const decision = decide({
@@ -152,8 +142,6 @@ export function proposeContractToHero(
     decisionOrdinal,
     traceId: state.metadata.nextTraceId
   });
-
-  const accepted = decision.result.selectedAction === Actions.Accept;
 
   // A mood ordinal is recorded only on the draw that actually happened: `decide`
   // itself reports `0n` on the gated path — its own `HeroDecision.ordinalsConsumed`
@@ -168,9 +156,64 @@ export function proposeContractToHero(
   // happened — exactly the failure this task exists to close.
   const moodDrawnJustNow = knownMoodOrdinal === undefined && decision.ordinalsConsumed > 0n;
   const moodOrdinals = moodDrawnJustNow
-    ? contract.moodOrdinals.set(command.heroId, decisionOrdinal)
+    ? contract.moodOrdinals.set(hero.id, decisionOrdinal)
     : contract.moodOrdinals;
   const ordinalsConsumed = knownMoodOrdinal !== undefined ? 0n : decision.ordinalsConsumed;
+
+  return { decision, moodOrdinals, ordinalsConsumed };
+}
+
+/**
+ * Offers a contract to a hero and records what the hero decided.
+ *
+ * Checks run cheapest-first, and every one of them returns the state it was handed, by
+ * reference. The order is not cosmetic: version and duplicate-id checks are properties
+ * of the command itself, so they answer before anything is looked up in state, and the
+ * decision — the only step that consumes randomness — happens once nothing can still
+ * refuse it. A rejection that had already advanced the RNG ordinal would make the
+ * campaign's randomness depend on failed commands.
+ */
+export function proposeContractToHero(
+  state: GameState,
+  command: ProposeContractToHero
+): CommandResult {
+  if (command.expectedStateVersion !== state.metadata.stateVersion) {
+    return rejected(state, RejectionCodes.StaleState);
+  }
+
+  if (state.appliedCommandIds.has(command.commandId)) {
+    return rejected(state, RejectionCodes.DuplicateCommand);
+  }
+
+  const hero = state.heroes.get(command.heroId);
+  if (hero === undefined) {
+    return rejected(state, RejectionCodes.UnknownHero);
+  }
+
+  const contract = state.contracts.get(command.contractId);
+  if (contract === undefined) {
+    return rejected(state, RejectionCodes.UnknownContract);
+  }
+
+  if (contract.status !== ContractStatus.Offered) {
+    return rejected(state, RejectionCodes.ContractAlreadyResolved);
+  }
+
+  // §3.1, §6: only the offer's key hero may answer while the package is a draft —
+  // everyone else's turn is `pollCrew`, once the package is `locked` (Task 13), not
+  // before. `keyHero` is `null` until the first `composeOffer`, so this refuses every
+  // hero, key or not, until a package actually names one — a hero cannot be the key
+  // hero of an offer nobody has composed yet.
+  if (contract.offer.phase === OfferPhase.Draft && command.heroId !== contract.offer.keyHero) {
+    return rejected(state, RejectionCodes.NotTheKeyHero);
+  }
+
+  if (contract.offer.respondedBy.has(command.heroId)) {
+    return rejected(state, RejectionCodes.AlreadyResponded);
+  }
+
+  const { decision, moodOrdinals, ordinalsConsumed } = decideHeroResponse(state, hero, contract);
+  const accepted = decision.result.selectedAction === Actions.Accept;
 
   // Declining adds the hero to `offer.respondedBy` and leaves the offer open — the
   // contract's own status is about the contract, not about who said no to it. Without
@@ -463,4 +506,145 @@ export function lockOffer(state: GameState, command: LockOffer): CommandResult {
   );
 
   return fromEvent(nextState, domainEvent);
+}
+
+/**
+ * Lets the rest of the roster answer a contract's locked package, once each, in one
+ * command (`NEGOTIATION_SPEC` §3.1, §3.3, §6.1) — the reason `CommandResult.decisions`
+ * is a list (Task 5) rather than a single field: `settleContract` is the only other
+ * command still to come, and this is the one that produces several decisions from a
+ * single player action.
+ *
+ * Checks run in §6.1's order: the three general checks, then this command's own
+ * phase and status preconditions (§3.1's table — `pollCrew` is legal only against a
+ * `locked` package whose crew has not already filled).
+ *
+ * **The poll asks `state.heroes.keys()`, in that order — already sorted by
+ * `HeroId` — skipping anyone already in `offer.respondedBy`.** That excludes the key
+ * hero, who answered this exact version before `lockOffer` froze it and is not asked
+ * again: `lockOffer` never raises the offer's version, so the acceptance the package
+ * was locked on is an answer to the package `pollCrew` is polling, not a stale one.
+ *
+ * **The poll does not stop once the crew's seats are full**
+ * (`NEGOTIATION_SPEC` §3.3): stopping early would make a hero's answer depend on how
+ * many seats happened to remain when their turn came, not on their own character,
+ * which `DEC-001` does not allow. Every hero not yet in `respondedBy` gets a full
+ * decision and a trace; only the first `requiredCrew` acceptances, in the same
+ * `HeroId` order, take a seat in `acceptedBy` — `hasRoom` below is recomputed on
+ * every iteration precisely so a seat already taken by an earlier hero in this same
+ * poll cannot be taken twice.
+ *
+ * **Each decision gets its own `drawsConsumed`, threaded one hero at a time.**
+ * `decideHeroResponse` reports `0n` for a decision the gate closed or whose mood was
+ * already pinned by an earlier answer to this contract, and the real cost of a fresh
+ * draw otherwise — `pollCrew`'s total across the whole roster is the sum of those,
+ * never a flat per-hero constant. Threading `currentState`/`currentContract` through
+ * the loop, rather than collecting decisions first and applying them after, is what
+ * lets a later hero's decision see an earlier one's acceptance already in
+ * `acceptedBy` — the same connections motive `proposeContractToHero` already reads
+ * this way.
+ */
+export function pollCrew(state: GameState, command: PollCrew): CommandResult {
+  if (command.expectedStateVersion !== state.metadata.stateVersion) {
+    return rejected(state, RejectionCodes.StaleState);
+  }
+
+  if (state.appliedCommandIds.has(command.commandId)) {
+    return rejected(state, RejectionCodes.DuplicateCommand);
+  }
+
+  const contract = state.contracts.get(command.contractId);
+  if (contract === undefined) {
+    return rejected(state, RejectionCodes.UnknownContract);
+  }
+
+  // §3.1's table: `pollCrew` is legal only once a package is `locked`. Checked before
+  // the crew-status check below, the same order `lockOffer` checks its own phase
+  // before its own acceptance precondition: a package that is not locked at all
+  // answers with this rejection regardless of what its (draft) `acceptedBy` holds.
+  if (contract.offer.phase !== OfferPhase.Locked) {
+    return rejected(state, RejectionCodes.OfferNotLocked);
+  }
+
+  // §3.1, §6: `requiredCrew = 1` fills the crew from the key hero's own draft
+  // acceptance, before `pollCrew` ever runs — there is nobody left whose answer
+  // could still change anything, so this refuses rather than iterating zero heroes
+  // silently.
+  if (contract.status === ContractStatus.Crewed) {
+    return rejected(state, RejectionCodes.CrewAlreadyFilled);
+  }
+
+  let currentState = state;
+  let currentContract = contract;
+  const events: DomainEvent[] = [];
+  const decisions: DecisionResult[] = [];
+
+  for (const heroId of state.heroes.keys()) {
+    if (currentContract.offer.respondedBy.has(heroId)) {
+      continue;
+    }
+
+    const hero = heroOf(currentState, heroId);
+    const { decision, moodOrdinals, ordinalsConsumed } = decideHeroResponse(
+      currentState,
+      hero,
+      currentContract
+    );
+
+    const accepted = decision.result.selectedAction === Actions.Accept;
+    // A seat is taken only while room remains — recomputed against
+    // `currentContract`, which already reflects every seat an earlier hero in this
+    // same poll took, so the cap applies across the whole poll, not per hero.
+    const hasRoom = currentContract.offer.acceptedBy.size < currentContract.requiredCrew;
+    const acceptedBy =
+      accepted && hasRoom
+        ? currentContract.offer.acceptedBy.add(heroId)
+        : currentContract.offer.acceptedBy;
+
+    currentContract = createContractState({
+      ...currentContract,
+      status:
+        acceptedBy.size >= currentContract.requiredCrew
+          ? ContractStatus.Crewed
+          : currentContract.status,
+      offer: {
+        ...currentContract.offer,
+        acceptedBy,
+        respondedBy: currentContract.offer.respondedBy.add(heroId)
+      },
+      moodOrdinals
+    });
+
+    const domainEvent: DomainEvent = {
+      kind: accepted ? 'hero_accepted_contract' : 'hero_declined_contract',
+      eventId: currentState.metadata.nextEventId,
+      logicalTime: currentState.metadata.logicalTime,
+      causalTraceId: decision.result.trace.traceId,
+      heroId,
+      contractId: command.contractId
+    };
+
+    // Every hero answering within this one command shares the campaign's current
+    // logical time — the same reason `proposeContractToHero` allows it: advancing
+    // the clock is a tick's job, not a poll's.
+    currentState = withEvent(
+      {
+        ...currentState,
+        contracts: currentState.contracts.set(currentContract.id, currentContract)
+      },
+      domainEvent,
+      decision.result.trace,
+      ordinalsConsumed
+    );
+
+    events.push(domainEvent);
+    decisions.push(decision.result);
+  }
+
+  currentState = {
+    ...currentState,
+    appliedCommandIds: currentState.appliedCommandIds.add(command.commandId)
+  };
+
+  return fromDecisions(currentState, events, decisions);
 }

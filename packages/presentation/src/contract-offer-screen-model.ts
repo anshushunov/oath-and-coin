@@ -236,8 +236,32 @@ export interface DecidedStep {
   readonly heroDefinition: ContentId | null;
   /**
    * Every decision this step's events explain, in the same order `StepOutcome.decisions`
-   * carries them — empty for a rejected step. One entry today: every step this factory
-   * sees answered a single hero.
+   * carries them — empty for a rejected step.
    */
   readonly decisions: readonly DecidedOutcome[];
+  /**
+   * The hero behind each entry of {@link decisions}, index for index, when a step's
+   * decisions do not all belong to {@link heroDefinition} — `pollCrew`
+   * (`NEGOTIATION_SPEC` §3.1) is the one command that produces this shape, six heroes
+   * answering inside a single step. `undefined` — not merely absent per index — for
+   * every step every other command produces: `composeOffer`, `proposeContractToHero`
+   * and `lockOffer` each answer at most one hero, already named by
+   * {@link heroDefinition}, and restating it per decision here would just be a second
+   * place for that one fact to drift from itself.
+   *
+   * Optional, on purpose, rather than widening {@link heroDefinition} itself into a
+   * list: `StepOutcome` (`packages/content`) is `readonly DecidedStep[]`-assignable
+   * today only because every field it declares lines up with one of these, and an
+   * optional addition here costs it nothing — a source type that never mentions this
+   * field is still assignable to a target where the field is allowed to be missing.
+   * Making it required, or replacing {@link heroDefinition} outright, would demand
+   * `StepOutcome` and every builder of one (`scenario-runner.ts`,
+   * `restore-steps.ts`) supply a hero per decision too, which is `pollCrew`'s wiring
+   * into `ScenarioCommand` — explicitly not this task's to do.
+   *
+   * When present, `heroDefinitions[i]` is read for `decisions[i]` **instead of**
+   * {@link heroDefinition}, never merged with it — a step naming six heroes has no
+   * single hero of its own to fall back to for the one entry that forgot to say so.
+   */
+  readonly heroDefinitions?: readonly (ContentId | null)[];
 }

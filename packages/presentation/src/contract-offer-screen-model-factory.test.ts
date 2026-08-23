@@ -643,6 +643,76 @@ describe('the read-model hash', () => {
     expect(readModelHash(collapsed)).toBe(readModelHash(spread));
   });
 
+  it('does not depend on whether N heroes answer in one step or in N steps of their own', () => {
+    // The multi-hero version of the test above — `DEC-008` Task 13's own obligation,
+    // not Task 5's: `pollCrew` is the one command that puts *several different*
+    // heroes' decisions inside a single step, and `DecidedStep.heroDefinition` alone
+    // cannot name all of them (`contract-offer-screen-model.ts`'s own note on
+    // `heroDefinitions`). The test above reuses one hero for all three decisions, so
+    // an implementation that quietly stamped every decision with the step's single
+    // `heroDefinition` would still pass it — the three response lines would already
+    // agree on the hero by construction. This one gives each decision a *different*
+    // hero and checks the response lines name them correctly, which only
+    // `heroDefinitions` can make true.
+    const roster = heroes(ids.bram, ids.doran, ids.zara);
+    const state = withContracts(withHeroes(aState(), roster), [
+      aContract({ offer: anOffer({ respondedBy: responded(0, 1, 2) }) })
+    ]);
+
+    const decisions = [
+      aDecision({
+        selectedAction: Actions.Accept,
+        selectedScore: 5,
+        trace: {
+          traceId: 0,
+          positiveFactors: [aFactor({ reasonCode: ReasonCodes.PaymentAttractive, magnitude: 5 })],
+          negativeFactors: [],
+          blockedBy: [],
+          tieBreak: null
+        }
+      }),
+      aDecision({
+        selectedAction: Actions.Decline,
+        selectedScore: -40,
+        trace: {
+          traceId: 1,
+          positiveFactors: [],
+          negativeFactors: [aFactor({ reasonCode: ReasonCodes.RiskTooHigh, magnitude: 40 })],
+          blockedBy: [],
+          tieBreak: null
+        }
+      }),
+      aDecision({
+        selectedAction: Actions.Accept,
+        selectedScore: 0,
+        trace: {
+          traceId: 2,
+          positiveFactors: [],
+          negativeFactors: [],
+          blockedBy: [],
+          tieBreak: ReasonCodes.NoReasonToRefuse
+        }
+      })
+    ];
+    const heroDefinitions: readonly ContentId[] = [ids.bram, ids.doran, ids.zara];
+
+    const oneStepWithThree = [aStep({ decisions, heroDefinitions })];
+    const threeStepsWithOne = decisions.map((decision, index) =>
+      aStep({ decisions: [decision], heroDefinition: heroDefinitions[index]! })
+    );
+
+    const collapsed = contractOfferScreenModel(state, oneStepWithThree);
+    const spread = contractOfferScreenModel(state, threeStepsWithOne);
+
+    expect(collapsed.responses).toHaveLength(3);
+    // Names each hero correctly — the assertion a same-hero fixture cannot make: a
+    // factory that ignored `heroDefinitions` and stamped every line with the step's
+    // one `heroDefinition` would show `bram, bram, bram` here instead.
+    expect(collapsed.responses.map((response) => response.heroDefinition)).toEqual(heroDefinitions);
+    expect(collapsed.responses).toEqual(spread.responses);
+    expect(readModelHash(collapsed)).toBe(readModelHash(spread));
+  });
+
   it('distinguishes two screens that differ only in state', () => {
     // Incomplete and Normal can carry an identical roster and identical responses. If
     // the state were outside the hash, a screen still waiting on a hero would be

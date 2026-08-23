@@ -185,7 +185,9 @@ export function contractOfferScreenModel(
   const responses = steps
     .filter((step) => step.command.contract === contract.id)
     .flatMap((step) =>
-      step.decisions.map((decision) => toResponseLine(step, decision, heroDisplayNameKeys))
+      step.decisions.map((decision, index) =>
+        toResponseLine(step, decision, index, heroDisplayNameKeys)
+      )
     );
 
   return createContractOfferScreenModel({
@@ -289,12 +291,25 @@ function resolveTrait(
   return trait;
 }
 
+/**
+ * The hero behind `step.decisions[index]` (`DecidedStep.heroDefinitions`'s own doc):
+ * that per-decision override when the step supplies one, `step.heroDefinition`
+ * otherwise. Every step but a `pollCrew` one answers a single hero and never
+ * supplies the override, so this is `step.heroDefinition` for every existing caller
+ * — the override exists for the one step shape where a single hero cannot name every
+ * decision.
+ */
+function heroDefinitionOf(step: DecidedStep, index: number): ContentId | null {
+  return step.heroDefinitions?.[index] ?? step.heroDefinition;
+}
+
 function toResponseLine(
   step: DecidedStep,
   decision: DecidedOutcome,
+  index: number,
   heroDisplayNameKeys: ReadonlyMap<ContentId, string>
 ): ResponseLine {
-  const hero = step.heroDefinition;
+  const hero = heroDefinitionOf(step, index);
 
   if (hero === null) {
     throw new Error(

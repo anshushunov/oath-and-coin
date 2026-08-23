@@ -683,13 +683,11 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
       },
       'the version advances by one per campaign transition'
     ],
-    [
-      'применённых команд больше, чем событий',
-      (snapshot) => {
-        snapshot.appliedCommandIds = [1, 2];
-      },
-      'every applied command appends exactly one'
-    ],
+    // A case asserting `appliedCommandIds.size !== history.length` refuses used to sit
+    // here. `pollCrew` (`DEC-008` Task 13) retired the check it exercised:
+    // `validate-game-state.ts`'s own `checkCounters` doc explains why one `commandId`
+    // no longer implies one event, in either direction, on a save this build's own
+    // engine can produce.
     [
       'nextTraceId не равен числу хранимых следов',
       (snapshot) => {

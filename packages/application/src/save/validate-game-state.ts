@@ -396,11 +396,30 @@ function checkOneContract(
       );
     }
 
-    if (accepted !== contract.offer.acceptedBy.has(heroId)) {
+    const inAcceptedBy = contract.offer.acceptedBy.has(heroId);
+
+    // Declining and being listed in `acceptedBy` is a contradiction in every case —
+    // a hero joins the crew only by saying yes.
+    if (!accepted && inAcceptedBy) {
       throw inconsistent(
         `contract '${contractId}' and the history disagree about hero#${String(heroId)}: the ` +
-          `history says the hero ${accepted ? 'accepted' : 'declined'}, the contract says the ` +
-          `hero is ${contract.offer.acceptedBy.has(heroId) ? '' : 'not '}in acceptedBy.`
+          'history says the hero declined, but the contract lists them in acceptedBy.'
+      );
+    }
+
+    // Accepting without a seat is a contradiction too, *except* the one shape
+    // `pollCrew` legitimately produces (`NEGOTIATION_SPEC` §2.1, §3.3): the poll does
+    // not stop once the crew is full, so a hero who accepts after every seat is taken
+    // still gets a full decision and a trace, and stays in `respondedBy` without ever
+    // entering `acceptedBy`. That shape is only reachable once the contract's own
+    // seats are exhausted — with room still open, every accepted hero has already
+    // taken one, because nothing in this engine seats a later hero ahead of an
+    // earlier one who also said yes.
+    if (accepted && !inAcceptedBy && contract.offer.acceptedBy.size < contract.requiredCrew) {
+      throw inconsistent(
+        `contract '${contractId}' and the history disagree about hero#${String(heroId)}: the ` +
+          'history says the hero accepted while the contract still had an open seat, but they ' +
+          'are not in acceptedBy.'
       );
     }
   }
@@ -436,11 +455,21 @@ function checkOneContract(
  * there. So the equalities below are properties of that one function, not of any
  * particular command.
  *
- * `appliedCommandIds.size === history.length` is the one statement here that belongs to
- * a *command* rather than to `withEvent`: `proposeContractToHero` records a command id
- * and appends exactly one event, in the same transition, and it is the only command
- * there is. The day a command applies without producing an event, this line is the one
- * that has to change, and it will say so by reddening.
+ * **`appliedCommandIds.size` is deliberately not checked against `history.length` here
+ * any more.** It used to be — `appliedCommandIds.size === history.length` — back when
+ * every command that could apply appended exactly one event in the same transition it
+ * recorded its id under (`composeOffer`, `lockOffer`, `proposeContractToHero`).
+ * `pollCrew` (`DEC-008` Task 13) is the one command that breaks the premise on both
+ * sides at once: one `commandId` can leave *several* events behind — one per hero the
+ * poll actually asked — and, on a contract whose whole remaining roster had already
+ * answered before the poll ran, it can legitimately leave *none* at all
+ * (`NEGOTIATION_SPEC` §6 — `pollCrew` asking a locked package nobody was left to
+ * answer is a real, reachable state, not a defect). So the same field can now
+ * disagree with `history.length` in either direction on a save this build's own
+ * engine produced, and an equality — or any single-direction inequality — written
+ * against it would refuse a legitimate campaign rather than catch a tampered one.
+ * There is no cheaper fact this function can state instead: which `commandId`
+ * produced how many events is not itself recorded anywhere a save carries.
  */
 function checkCounters(state: GameState): void {
   const { metadata, history } = state;
@@ -457,13 +486,6 @@ function checkCounters(state: GameState): void {
       `stateVersion is ${String(metadata.stateVersion)} but the history holds ` +
         `${String(history.length)} events; the version advances by one per campaign transition, ` +
         'and every transition appends exactly one event.'
-    );
-  }
-
-  if (state.appliedCommandIds.size !== history.length) {
-    throw inconsistent(
-      `the save records ${String(state.appliedCommandIds.size)} applied commands and ` +
-        `${String(history.length)} history events; every applied command appends exactly one.`
     );
   }
 

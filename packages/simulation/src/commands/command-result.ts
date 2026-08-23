@@ -62,7 +62,24 @@ export const RejectionCodes = Object.freeze({
    * (`commitmentOf` — `advance × requiredCrew + promisedBonus`, the full crew the
    * contract has room for, not merely who has answered so far).
    */
-  TreasuryCannotCoverTheOffer: 'rejected.treasury_cannot_cover_the_offer'
+  TreasuryCannotCoverTheOffer: 'rejected.treasury_cannot_cover_the_offer',
+  /**
+   * `pollCrew` only asks the rest of the roster once a package is `locked`
+   * (`NEGOTIATION_SPEC` §3.1's table) — a package still `draft` has no answer from
+   * its key hero to poll against yet, and one already `settled` has nothing left to
+   * ask. Checked before {@link CrewAlreadyFilled}: a package that is not locked at
+   * all answers with this code regardless of what its (draft) `acceptedBy` happens
+   * to hold.
+   */
+  OfferNotLocked: 'rejected.offer_not_locked',
+  /**
+   * `pollCrew` refuses a contract whose crew is already complete
+   * (`NEGOTIATION_SPEC` §3.1, §6): `requiredCrew = 1` fills the crew from the key
+   * hero's own draft acceptance, before `pollCrew` ever runs, so there is nobody left
+   * whose answer could still change anything — the next legal move is
+   * `settleContract`.
+   */
+  CrewAlreadyFilled: 'rejected.crew_already_filled'
 });
 
 export type RejectionCode = (typeof RejectionCodes)[keyof typeof RejectionCodes];

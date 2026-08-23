@@ -53,7 +53,7 @@ export {
   drawMood,
   type HeroDecision
 } from './decisions/contract-decision-rule.ts';
-export { composeOffer, lockOffer, proposeContractToHero } from './engine.ts';
+export { composeOffer, lockOffer, pollCrew, proposeContractToHero } from './engine.ts';
 export { divideTowardZero, multiplyInt32, toInt32 } from './integer-division.ts';
 
 export {
@@ -105,6 +105,7 @@ export {
 } from './commands/command-result.ts';
 export type { ComposeOffer } from './commands/compose-offer.ts';
 export type { LockOffer } from './commands/lock-offer.ts';
+export type { PollCrew } from './commands/poll-crew.ts';
 export type { ProposeContractToHero } from './commands/propose-contract-to-hero.ts';
 
 export {
