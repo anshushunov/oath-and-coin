@@ -27,6 +27,20 @@ export const GRIEVANCE_VICTIM = 30;
  * (`NEGOTIATION_SPEC` §3.3): a witness watched the guild break its word to someone
  * else, so the wound is real but never the victim's own. `ASSUMPTION`, same as
  * {@link GRIEVANCE_MAX}.
+ *
+ * **A note for whoever next reads `NEGOTIATION_SPEC` §2.2 and §12 closely, not
+ * something this code silently works around:** those two sections name the witness
+ * side of the invariant `GRIEVANCE_WITNESS` — an absolute grievance value, the same
+ * kind of number `GRIEVANCE_VICTIM` is. §3.3's own worked formula, and the brief this
+ * module implements, instead compute the witness's share as a *percentage* of the
+ * victim's raw grievance (`WITNESS_SHARE = 40`), which is what this file follows. Read
+ * literally over the *constants*, `0 < GRIEVANCE_WITNESS ≤ GRIEVANCE_VICTIM` is false
+ * for these values — there is no fixed `GRIEVANCE_WITNESS` here, and `WITNESS_SHARE`
+ * (40) is not even the same kind of quantity as `GRIEVANCE_VICTIM` (30), let alone
+ * bounded by it. The invariant is true, and is proven true below, over the *returned
+ * pair* `{ victim, witness }` for every input this function accepts — which is the
+ * reading that actually matters to the decision rule. The mismatch in the spec's own
+ * text is for the spec's owner to resolve, not this implementation.
  */
 export const WITNESS_SHARE = 40;
 
@@ -39,31 +53,67 @@ export const WITNESS_SHARE = 40;
  * `settleContract`'s own arithmetic, and no command wires it yet (`NEGOTIATION_SPEC`
  * §3.3 names the command; nothing in this package invokes it).
  *
- * Three steps, in this exact order, and the order is load-bearing rather than
- * cosmetic: {@link divideTowardZero} first, `Math.max(…, 1)` second,
- * {@link GRIEVANCE_MAX} last. Reversing the last two would let the ceiling clip a value
- * on its way down before the floor ever ran — irrelevant only for a `promisedBonus`
- * large enough to already sit above the ceiling before flooring, and load-bearing for
- * the case the floor exists to catch: a one-coin promise on a hundred-coin fee divides
- * to `0`, and `max(0, 1)` is the only thing standing between that and a broken promise
- * costing nothing at all — which `NEGOTIATION_SPEC` §3.3 is explicit is not a promise,
- * it is a free line of dialogue.
+ * Divides before flooring: {@link divideTowardZero} first, `Math.max(…, 1)` second —
+ * load-bearing, because flooring the raw ratio and only then dividing would be a
+ * different number entirely. The floor is what stops a broken promise costing nothing:
+ * a one-coin promise on a hundred-coin fee divides to `0`, and `max(0, 1)` is the only
+ * thing standing between that and a promise breaking for free —
+ * `NEGOTIATION_SPEC` §3.3 is explicit that this is not a promise, it is a free line of
+ * dialogue. (The floor and the {@link GRIEVANCE_MAX} ceiling that follows it, by
+ * contrast, commute — `min(max(b, 1), 60) === max(min(b, 60), 1)` for any integer `b`,
+ * since `1 ≤ 60` — so their relative order is not itself a fact worth leaning on; only
+ * "divide happens before either clamp" is.)
  *
- * Both results are clamped to {@link GRIEVANCE_MAX} independently, not only as part of
- * a later addition to an existing `grievance` — so `0 < witness ≤ victim ≤ GRIEVANCE_MAX`
- * (`NEGOTIATION_SPEC` §2.2's constant invariant) holds on the pair this function alone
- * hands back, for every `promisedBonus` and `patronFee` the offer protocol can produce.
+ * The {@link GRIEVANCE_MAX} clamp inside this function is a safety net against a
+ * caller this function cannot see, not a live step of the spec's own arithmetic: on
+ * every input this function accepts (`0 < promisedBonus ≤ patronFee`, enforced below),
+ * `broken ≤ GRIEVANCE_VICTIM` (30), already under the ceiling (60), so the clamp never
+ * actually fires here. The spec's real ceiling is on the *running total*
+ * (`min(grievance + max(broken, 1), GRIEVANCE_MAX)`, §3.3) — that addition, and the
+ * ceiling that matters, belong to `settleContract` (a later task), not to this
+ * function.
  *
- * `patronFee > 0` is assumed, never checked: `createContractState` (`NEGOTIATION_SPEC`
- * §2.1) already holds `0 ≤ promisedBonus ≤ patronFee` on every `ContractState` this
- * package can construct, so a promise (`promisedBonus > 0`, the only case
- * `settleContract` calls this for) can only exist on a contract whose `patronFee` is
- * positive too — the state this function is fed can never carry a zero divisor here.
+ * Both results are nonetheless clamped independently, so `0 < witness ≤ victim ≤
+ * GRIEVANCE_MAX` holds on the pair this function alone hands back for every input in
+ * its domain — see this function's own test suite for the proof this comment
+ * summarizes.
+ *
+ * @throws if `promisedBonus` is not positive — there is no promise to have broken, and
+ * `NEGOTIATION_SPEC` §3.3 states that not promising costs nothing *by construction*,
+ * not by this function returning a computed zero it never actually produces — or if
+ * `patronFee` is not positive while `promisedBonus` is. `createContractState`
+ * (`NEGOTIATION_SPEC` §2.1) holds `0 ≤ promisedBonus ≤ patronFee` on every
+ * `ContractState` this package can build in memory, so a positive `promisedBonus`
+ * paired with a non-positive `patronFee` is a state invariant already broken upstream
+ * of this call — and, unlike that in-memory door, `decodeSnapshot`
+ * (`packages/content/src/save/snapshot-codec.ts`) reads `advance`/`promisedBonus`
+ * against the patron-fee *range*, not the sibling contract's own `patronFee`, so a
+ * tampered or malformed save is exactly the kind of caller this guard exists to catch
+ * before it reaches a division.
  */
 export function grievanceForBrokenPromise(
   promisedBonus: number,
   patronFee: number
 ): { readonly victim: number; readonly witness: number } {
+  if (promisedBonus <= 0) {
+    throw new Error(
+      `grievanceForBrokenPromise received promisedBonus ${String(promisedBonus)}, which is not ` +
+        'positive; a promise must have been made to have been broken, and NEGOTIATION_SPEC §3.3 ' +
+        'holds that not promising costs nothing by construction — the caller must not reach this ' +
+        'function for promisedBonus ≤ 0.'
+    );
+  }
+
+  if (patronFee <= 0) {
+    throw new Error(
+      `grievanceForBrokenPromise received patronFee ${String(patronFee)} with promisedBonus ` +
+        `${String(promisedBonus)}; createContractState (NEGOTIATION_SPEC §2.1) holds ` +
+        '0 ≤ promisedBonus ≤ patronFee on every ContractState this package can build, so a ' +
+        'positive promisedBonus paired with a non-positive patronFee names a state invariant ' +
+        'already broken upstream of this call, not a promise this function can price.'
+    );
+  }
+
   const broken = divideTowardZero(GRIEVANCE_VICTIM * promisedBonus, patronFee);
 
   const victim = Math.min(Math.max(broken, 1), GRIEVANCE_MAX);

@@ -28,6 +28,12 @@ function contractWithPhase(
 ): ContractState {
   return aContract({
     ...(id === undefined ? {} : { id }),
+    // `aContract`'s own default patronFee (70) is below the advance (100) every case
+    // in this file exercises, and `0 ≤ advance ≤ patronFee` (`offer-state.ts`) is a
+    // real protocol invariant — `NEGOTIATION_SPEC` §2.3's own counterexample states
+    // patronFee = 100 too, so this fixture reproduces it rather than an offer the
+    // protocol would refuse to build.
+    patronFee: 100,
     requiredCrew: terms.requiredCrew ?? 1,
     offer: anOffer({
       phase,
@@ -97,8 +103,11 @@ describe('reservedCommitments', () => {
 describe('canCover', () => {
   it('refuses to cover an offer the other locked contracts already spent', () => {
     const state = aStateWithOneLocked({ advance: 100, requiredCrew: 6 }, { treasury: 600 });
-    expect(canCover(state, aContract({ requiredCrew: 6, offer: anOffer({ advance: 100 }) }))).toBe(
-      false
-    );
+    expect(
+      canCover(
+        state,
+        aContract({ patronFee: 100, requiredCrew: 6, offer: anOffer({ advance: 100 }) })
+      )
+    ).toBe(false);
   });
 });

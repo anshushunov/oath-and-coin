@@ -6,10 +6,10 @@ import {
   CONTENT_ID_PATTERN,
   ContractStatus,
   FACTOR_REASON_CODES,
+  GRIEVANCE_MAX,
   HERO_ID_MAX,
   HERO_ID_MIN,
   OfferPhase,
-  STARTING_TREASURY,
   SortedMap,
   SortedSet,
   TIE_BREAK_REASON_CODES,
@@ -190,7 +190,12 @@ const heroValueSchema = z.strictObject({
   pride: z.int().min(TRAIT_MIN).max(TRAIT_MAX),
   trustInGuild: z.int().min(TRAIT_MIN).max(TRAIT_MAX),
   traits: z.array(contentId).max(MAX_TRAITS_PER_HERO),
-  relationships: relationshipsSchema
+  relationships: relationshipsSchema,
+  // `NEGOTIATION_SPEC` §2.2. `grievance` is bounded by `GRIEVANCE_MAX` itself, the way
+  // every other field above is bounded by the true ceiling `decide()`/`settleContract`
+  // can produce, not left as an unbounded int the way a campaign counter is.
+  believesGuildPromises: z.boolean(),
+  grievance: z.int().min(0).max(GRIEVANCE_MAX)
 });
 
 const contractStatusSchema = z.union([
@@ -370,7 +375,11 @@ const snapshotSchema = z.strictObject({
   // states the fact instead of leaving `traces` under `entries()`'s own
   // generic 4096, a cap 40x looser than what this map can actually hold.
   traces: entries(z.int().min(0), causalTraceValueSchema).max(MAX_APPLIED_COMMANDS),
-  history: z.array(domainEventSchema).max(MAX_APPLIED_COMMANDS)
+  history: z.array(domainEventSchema).max(MAX_APPLIED_COMMANDS),
+  // `NEGOTIATION_SPEC` §2.3 — never negative, and otherwise unbounded above the same
+  // way `stateVersion`/`nextEventId`/`logicalTime` are: it is a campaign counter, not
+  // a value content shapes, so there is no true ceiling to state here.
+  treasury: z.int().min(0)
 });
 
 type SnapshotShape = z.infer<typeof snapshotSchema>;
@@ -431,7 +440,9 @@ export function encodeSnapshot(state: GameState): unknown {
         traits: value.traits,
         relationships: value.relationships
           .entries()
-          .map(([relationshipKey, weight]) => ({ key: relationshipKey, value: weight }))
+          .map(([relationshipKey, weight]) => ({ key: relationshipKey, value: weight })),
+        believesGuildPromises: value.believesGuildPromises,
+        grievance: value.grievance
       }
     })),
     contracts: state.contracts.entries().map(([key, value]) => ({
@@ -478,7 +489,8 @@ export function encodeSnapshot(state: GameState): unknown {
         tieBreak: value.tieBreak
       }
     })),
-    history: state.history
+    history: state.history,
+    treasury: state.treasury
   };
 }
 
@@ -507,14 +519,13 @@ export function decodeSnapshot(value: unknown): GameState {
       trustInGuild: raw.trustInGuild,
       traits: raw.traits.map((trait) => parseContentId(trait)),
       relationships: buildRelationships(raw.relationships),
-      // `HeroState.believesGuildPromises`/`grievance` (`NEGOTIATION_SPEC` §2.2) are not
-      // yet part of this codec's shape — `SAVE_SCHEMA_VERSION` was not bumped for them
-      // (Task 7 declares the fields; no command moves them yet), so a save carries no
-      // opinion about either and every hero decodes back to the campaign-start values.
-      // This stops being correct the day a command actually changes one of them, which
-      // is the task that must also give this codec a shape for what it wrote.
-      believesGuildPromises: true,
-      grievance: 0
+      // `HeroState.believesGuildPromises`/`grievance` (`NEGOTIATION_SPEC` §2.2) —
+      // persisted the same way every other hero field is: no command changes either
+      // yet, but the save format does not get to assume that stays true, the same
+      // reason `moodOrdinals` (below, on a contract) is a real schema field and not a
+      // hard-coded default despite nothing writing to it yet either.
+      believesGuildPromises: raw.believesGuildPromises,
+      grievance: raw.grievance
     }),
     'heroes'
   );
@@ -606,11 +617,9 @@ export function decodeSnapshot(value: unknown): GameState {
     traitRules,
     traces,
     history: parsed.history.map((domainEvent) => toDomainEvent(domainEvent)),
-    // `GameState.treasury` (`NEGOTIATION_SPEC` §2.3) is not yet part of this codec's
-    // shape, for the same reason as `believesGuildPromises`/`grievance` above — no
-    // command moves it yet, so every save decodes back to the campaign's starting
-    // treasury.
-    treasury: STARTING_TREASURY
+    // `GameState.treasury` (`NEGOTIATION_SPEC` §2.3) — persisted, same as
+    // `believesGuildPromises`/`grievance` above.
+    treasury: parsed.treasury
   };
 
   return freezeDeep(state);
