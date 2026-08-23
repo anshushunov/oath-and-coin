@@ -39,6 +39,15 @@ const repoRoot = resolve(import.meta.dirname, '..', '..', '..', '..');
  * about what was projected.
  *
  * So the subject is asserted here, once, where every test in the file passes through.
+ *
+ * **Two conditions, not one**, and the second was added by review of Task 11a. "Decided
+ * something" does not imply "did what it was asked": `accept_by_comrade` shipped for one
+ * commit with two commands after its poll carrying the state version the poll had *begun*
+ * on, so both came back `rejected.stale_state` while the scenario still produced five
+ * decisions and looked healthy from here. Neither scenario this file runs expects any
+ * refusal, so the check is simply that every step applied — the general form, where a
+ * scenario may legitimately expect one, lives in `tests/oracle/src/restored-read-model.test.ts`,
+ * which is the only place that sweeps all of them.
  */
 function ran(scenario: string, seed = 7n): RanResult {
   const result = loadAndRunScenario({
@@ -52,17 +61,25 @@ function ran(scenario: string, seed = 7n): RanResult {
     throw new Error(`Scenario '${scenario}' did not run: ${result.kind}`);
   }
 
+  const refusals = result.outcome.steps
+    .filter((step) => !step.applied)
+    .map((step) => `#${String(step.command.commandId)} ${step.rejectionCode ?? 'unknown'}`);
+
   const decisions = result.outcome.steps.reduce((count, step) => count + step.decisions.length, 0);
   if (decisions === 0) {
-    const refusals = result.outcome.steps
-      .filter((step) => !step.applied)
-      .map((step) => step.rejectionCode ?? 'unknown')
-      .join(', ');
-
     throw new Error(
       `Scenario '${scenario}' at seed ${String(seed)} ran but decided nothing, so every ` +
         'comparison taken over its artifact would agree by being empty rather than by being ' +
-        `right. Refusals: ${refusals === '' ? 'none — the scenario applied and still decided nothing' : refusals}.`
+        `right. Refusals: ${refusals.length === 0 ? 'none — the scenario applied and still decided nothing' : refusals.join(', ')}.`
+    );
+  }
+
+  if (refusals.length > 0) {
+    throw new Error(
+      `Scenario '${scenario}' at seed ${String(seed)} had a command refused: ` +
+        `${refusals.join(', ')}. Neither scenario this file runs expects one, so this is the ` +
+        'scenario file disagreeing with the protocol — most likely an `expected_state_version` ' +
+        'that did not follow a command producing more than one event.'
     );
   }
 
@@ -131,6 +148,48 @@ describe('a score that does not exist is absent, not null', () => {
     );
 
     expect(renderDecision(scored!.decisions[0]!)).toContain('selected_score');
+  });
+});
+
+describe('a command reaches the artifact with the keys the scenario wrote it with', () => {
+  it('keeps a chosen-no-method-tag as null, where a missing score is an absent key', () => {
+    // The two absences in this projection are not the same absence, and this is the one
+    // test holding them apart at the artifact. `selected_score` is *elided* on a blocked
+    // decision because no score exists; `method_tag` is written `null` because a package
+    // that chose no method is not a package that was never asked — the wire format
+    // already refuses to conflate them (`method_tag` is required and nullable), and the
+    // artifact must not undo that on the way out.
+    const artifact = JSON.parse(toCanonicalJson(ran('gate0').outcome)) as {
+      steps: readonly Record<string, unknown>[];
+    };
+
+    const composed = artifact.steps
+      .map((step) => step['command'] as Record<string, unknown>)
+      .filter((command) => command['command'] === 'compose_offer');
+
+    expect(composed.length).toBeGreaterThan(0);
+    for (const command of composed) {
+      expect(command).toHaveProperty('method_tag');
+      expect(command['method_tag']).toBeNull();
+    }
+  });
+
+  it('writes no hero index on a command that names no hero', () => {
+    // `lock_offer` and `poll_crew` carry none, and a projection that wrote `null` anyway
+    // would have the artifact stating a fact the command never carried.
+    const artifact = JSON.parse(toCanonicalJson(ran('screen_normal').outcome)) as {
+      steps: readonly Record<string, unknown>[];
+    };
+
+    const heroless = artifact.steps
+      .map((step) => step['command'] as Record<string, unknown>)
+      .filter((command) => command['command'] === 'lock_offer' || command['command'] === 'poll_crew');
+
+    expect(heroless).toHaveLength(2);
+    for (const command of heroless) {
+      expect(command).not.toHaveProperty('hero_index');
+      expect(command).not.toHaveProperty('key_hero_index');
+    }
   });
 });
 

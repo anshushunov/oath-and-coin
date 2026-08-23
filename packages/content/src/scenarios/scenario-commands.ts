@@ -7,6 +7,7 @@ import {
 } from '@oath-and-coin/simulation';
 import { z } from 'zod';
 
+import { PATRON_FEE_MAX } from '../bounds.ts';
 import type { ContentFileSource } from '../file-source.ts';
 import { readFile } from '../strict-json.ts';
 
@@ -118,6 +119,23 @@ const contentIdString = z.string().regex(new RegExp(CONTENT_ID_PATTERN));
 // an index outside the roster.
 const heroIndexNumber = z.int().min(HERO_ID_MIN).max(HERO_ID_MAX);
 
+// Money is bounded here the way `hero_index` is bounded above, and for the same reason
+// stated the other way round. The engine's own rule is `0 ≤ advance ≤ patronFee`
+// (`NEGOTIATION_SPEC` §3.3) and it is content-dependent, so this contract cannot state
+// it — `patronFee` is a property of the contract the command names, which the parser has
+// not loaded. What it *can* state is the domain money lives in at all: `PATRON_FEE_MAX`
+// is the ceiling every authored `patron_fee` is already held to (`bounds.ts`), so no
+// legal advance can exceed it whatever contract is named.
+//
+// The lower bound is the part that matters. `hero_index` deliberately admits `-1`,
+// because the engine records `UNKNOWN_HERO` for it and a scenario reproducing that
+// rejection is a scenario doing its job. A negative advance has no such twin: it is
+// refused by `composeOffer` for being outside `0..patronFee`, and the *same* rejection
+// is reachable from above — an advance of 100 against a contract paying 40 — so nothing
+// a scenario can legitimately demonstrate is lost by refusing it here, while "an offer
+// of minus forty coins" stops being expressible at all.
+const offerMoneyNumber = z.int().min(0).max(PATRON_FEE_MAX);
+
 const commandBaseFields = {
   command_id: z.int(),
   contract: contentIdString,
@@ -128,9 +146,9 @@ const composeOfferFileSchema = z.strictObject({
   command: z.literal(ScenarioCommandKind.ComposeOffer),
   ...commandBaseFields,
   key_hero_index: heroIndexNumber,
-  advance: z.int(),
+  advance: offerMoneyNumber,
   method_tag: contentIdString.nullable(),
-  promised_bonus: z.int()
+  promised_bonus: offerMoneyNumber
 });
 
 const proposeFileSchema = z.strictObject({

@@ -145,7 +145,14 @@ function describeCommand(command: ScenarioCommand): CanonicalValue {
         ...base,
         key_hero_index: command.keyHeroIndex,
         advance: command.advance,
-        method_tag: command.methodTag ?? undefined,
+        // `null`, never elided. Everywhere else in this projection an absent key means
+        // "there is no such thing" (`selected_score` on a blocked decision, `key_hero` on
+        // an uncomposed offer), and `method_tag` is the one field where the two readings
+        // come apart: a package that chose no method is not a package that was never
+        // asked. The wire format already refuses to conflate them — `method_tag` is
+        // required and nullable, with its own test — and this function promises the same
+        // keys the scenario wrote it with.
+        method_tag: command.methodTag,
         promised_bonus: command.promisedBonus
       };
     case ScenarioCommandKind.ProposeContractToHero:

@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { PATRON_FEE_MAX } from '../bounds.ts';
 import { loadScenarioCommands, loadScenarioManifest } from '../node/index.ts';
 
 import { commandsUpTo, resolveCheckpoint } from './checkpoint-resolver.ts';
@@ -259,6 +260,57 @@ describe('a command list is refused rather than read on a guess', () => {
     );
 
     expect(commands[0]).toMatchObject({ kind: 'compose_offer', methodTag: null });
+  });
+
+  it.each(['advance', 'promised_bonus'])('refuses a negative %s', (field) => {
+    // The engine's own bound is `0 ≤ x ≤ patronFee` and is content-dependent, so this
+    // contract cannot state it — but "minus forty coins" is outside the domain money
+    // lives in at all, whatever contract is named, and a scenario has no legitimate use
+    // for it: the same `OfferTermsOutOfBounds` refusal is reachable from above, by
+    // offering more than the contract pays.
+    const path = writeCommands({
+      commands: [
+        {
+          command: 'compose_offer',
+          command_id: 1,
+          contract: 'core:job',
+          key_hero_index: 0,
+          advance: 0,
+          method_tag: null,
+          promised_bonus: 0,
+          expected_state_version: 0,
+          [field]: -1
+        }
+      ]
+    });
+
+    expect(() => loadScenarioCommands(path)).toThrow(
+      new RegExp(`\\$\\.commands\\[0\\]\\.${field}`)
+    );
+  });
+
+  it('still admits an advance larger than some contract pays, which the engine refuses', () => {
+    // The bound above must not swallow the refusal it leaves to the engine. `advance`
+    // may reach `PATRON_FEE_MAX`, and every shipped contract pays less than that, so
+    // `rejected.offer_terms_out_of_bounds` stays reachable from a scenario file.
+    const commands = loadScenarioCommands(
+      writeCommands({
+        commands: [
+          {
+            command: 'compose_offer',
+            command_id: 1,
+            contract: 'core:job',
+            key_hero_index: 0,
+            advance: PATRON_FEE_MAX,
+            method_tag: null,
+            promised_bonus: 0,
+            expected_state_version: 0
+          }
+        ]
+      })
+    );
+
+    expect(commands[0]).toMatchObject({ advance: PATRON_FEE_MAX });
   });
 
   it('refuses a command this build cannot issue, rather than reading it as another', () => {

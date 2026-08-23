@@ -51,12 +51,49 @@ const SCENARIOS: readonly string[] = readdirSync(join(repoRoot, 'scenarios'))
   .map((name) => name.slice(0, name.indexOf('.')))
   .sort();
 
+/**
+ * The refusals a scenario is *supposed* to contain, by name.
+ *
+ * `expected_outcome: "success"` tolerates a refused command on purpose — a scenario whose
+ * whole point is a rejection is still a scenario that ran — so "did every command apply"
+ * cannot be asserted flatly. But the tolerance was also blanket, and that is what let
+ * `accept_by_comrade` ship for one commit with its last two commands silently refused as
+ * `rejected.stale_state`: its `poll_crew` moves `stateVersion` by one *per event*, five
+ * heroes answered, and the two commands after it still declared the version the poll had
+ * begun on. Nothing was red. It had five decisions, a screen, and a checkpoint.
+ *
+ * So the tolerance is now itemised. A scenario listed here may contain exactly the
+ * refusals named; every other scenario must apply every command; and a refusal nobody
+ * declared is a scenario file disagreeing with the protocol, reported as that.
+ */
+const EXPECTED_REFUSALS: Readonly<Record<string, readonly string[]>> = {
+  // The one scenario built on a refusal: the same hero is offered the same package
+  // twice, and the second answer is refused because nobody is asked twice.
+  duplicate_response_attempt: ['rejected.already_responded']
+};
+
 function ran(scenario: string, seed: bigint): ScenarioOutcome | null {
   const result = loadAndRunScenario({ repositoryRoot: repoRoot, scenario, checkpoint: null, seed });
 
   // `screen_loading` never reads content and `screen_error` never loads it: neither
   // reaches a state, so neither has a screen to rebuild.
-  return result.kind === 'ran' ? result.outcome : null;
+  if (result.kind !== 'ran') {
+    return null;
+  }
+
+  const refused = result.outcome.steps
+    .filter((step) => !step.applied)
+    .map((step) => step.rejectionCode ?? 'unknown');
+
+  expect(
+    refused,
+    `'${scenario}' at seed ${String(seed)} refused a command it does not declare. A scenario ` +
+      'may expect refusals — name them in EXPECTED_REFUSALS — but an undeclared one is the ' +
+      'file disagreeing with the protocol, most often an `expected_state_version` that did ' +
+      'not follow a command producing more than one event.'
+  ).toEqual(EXPECTED_REFUSALS[scenario] ?? []);
+
+  return result.outcome;
 }
 
 /**
@@ -98,17 +135,45 @@ describe('the screen a reloaded campaign draws', () => {
         );
         const steps = restoreDecidedSteps(reloaded);
 
+        // The whole campaign, not only the screen drawn from it. The screen is a lossy
+        // projection by design — it shows no `offer.phase`, no `acceptedBy`, no treasury
+        // — so a codec that dropped any of them would leave the comparison below green.
+        // This is the round trip the retired `save-round-trip.test.ts` held, restored
+        // over strictly more: it ran the frozen corpus's own drafts, and these 50 states
+        // include locked and polled offers, which no corpus record could ever contain.
+        expect(reloaded, `${scenario}/seed-${String(seed)}`).toEqual(outcome.finalState);
+
+        // Live, this counts the shape the two sides disagree about: one `pollCrew` step
+        // holding several decisions. Restored, that same poll is one step per decision,
+        // so the count has to be taken here or it would not be taken at all.
         for (const step of outcome.steps) {
           if (step.decisions.length > 1) {
             polledStepsSeen += 1;
           }
+        }
+
+        for (const step of steps) {
+          if (step.decisions.length === 0) {
+            throw new Error(
+              `a step restored from '${scenario}'/seed-${String(seed)} carries no decision, but ` +
+                'every event in the history of a campaign was produced by one'
+            );
+          }
 
           for (const decision of step.decisions) {
-            // A score exists exactly when no red line closed the decision — asserted on
-            // the decisions the shipped scenarios actually produce, not only on
-            // hand-built ones. Without this line the screen comparison below is blind to
-            // it: a blocked response shows no score at all, so zero-instead-of-`null`
-            // would never reach the markup.
+            // **On the restored score, which is the one this file exists for.** Live,
+            // `selectedScore` arrives from the engine verbatim and asserting it here
+            // would be asking the engine to agree with itself; restored, it has been
+            // recomputed out of the trace's factors, and a blocked trace has both factor
+            // lists empty — so a recovery that summed unconditionally would answer `0`
+            // where the answer is "there is no score", and under "accept at score ≥ 0"
+            // that reads as consent (`TDD` §8).
+            //
+            // The screen comparison below cannot see it: a blocked response shows no
+            // score at all, so `0`-instead-of-`null` never reaches the markup and both
+            // sides would draw the same thing while disagreeing about the number behind
+            // it. Task 11a moved this loop onto the live side by mistake and review
+            // moved it back.
             const blocked = decision.trace.blockedBy.length > 0;
             expect(decision.selectedScore === null, `${scenario}/seed-${String(seed)}`).toBe(
               blocked
@@ -119,15 +184,6 @@ describe('the screen a reloaded campaign draws', () => {
             } else {
               scoredSeen += 1;
             }
-          }
-        }
-
-        for (const step of steps) {
-          if (step.decisions.length === 0) {
-            throw new Error(
-              `a step restored from '${scenario}'/seed-${String(seed)} carries no decision, but ` +
-                'every event in the history of a campaign was produced by one'
-            );
           }
         }
 
@@ -146,7 +202,7 @@ describe('the screen a reloaded campaign draws', () => {
     // crew, at two seeds each.
     expect(ranCount).toBe(50);
     expect(blockedSeen).toBe(10);
-    expect(scoredSeen).toBe(112);
+    expect(scoredSeen).toBe(114);
     expect(polledStepsSeen).toBe(10);
   });
 });
