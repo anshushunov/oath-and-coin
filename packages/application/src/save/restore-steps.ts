@@ -4,9 +4,14 @@ import {
   type ContentId,
   type DomainEvent,
   type GameState,
+  type HeroAcceptedContract,
+  type HeroDeclinedContract,
   type TraceFactor
 } from '@oath-and-coin/simulation';
 import type { DecidedOutcome, DecidedStep } from '@oath-and-coin/presentation';
+
+/** An event a hero decided, as opposed to one the player chose outright (`isDecisionEvent`). */
+type DecisionEvent = HeroAcceptedContract | HeroDeclinedContract;
 
 /**
  * The answered steps of a campaign, rebuilt from the campaign itself.
@@ -24,9 +29,16 @@ import type { DecidedOutcome, DecidedStep } from '@oath-and-coin/presentation';
  * from a live run's step list, and it is why {@link import('@oath-and-coin/presentation').contractOfferScreenModel}
  * takes the focused contract as an argument: after a reload, "the contract the first step
  * named" is a question about a different first step.
+ *
+ * **`DecidedStep` is a hero's answer, and only a hero's answer.** `offer_revised` is the
+ * player's own choice, not a decision a hero made (`domain-event.ts`'s `OfferRevised`), so
+ * it is filtered out here rather than forced into a shape built for "who answered, and
+ * why". That is the same kind of difference from a live run's step list the paragraph
+ * above already names for a refused command — not a new exception, an instance of the one
+ * already documented.
  */
 export function restoreDecidedSteps(state: GameState): readonly DecidedStep[] {
-  return state.history.map((event) => {
+  return state.history.filter(isDecisionEvent).map((event) => {
     const decision = restoreOutcome(state, event);
 
     return {
@@ -37,16 +49,18 @@ export function restoreDecidedSteps(state: GameState): readonly DecidedStep[] {
   });
 }
 
-function heroDefinitionOf(state: GameState, event: DomainEvent): ContentId {
-  if (event.kind === 'offer_revised') {
-    throw new Error(
-      `Event ${String(event.eventId)} ('offer_revised') names no hero — composing an offer is the ` +
-        "player's own choice, not a decision a hero made. restoreDecidedSteps does not yet " +
-        'describe a step with no hero behind it; DecidedStep.heroDefinition growing a null case ' +
-        'is presentation-layer work this command does not do.'
-    );
-  }
+/**
+ * Narrows `DomainEvent` to the members a hero actually decided. Every helper below this
+ * point in the file takes {@link DecisionEvent}, not `DomainEvent` — so a future event kind
+ * that is not a hero decision fails to compile at its own call site inside `actionOf`
+ * (`never` in the exhaustive switch) rather than reaching `heroDefinitionOf` and throwing
+ * at restore time, which is what `offer_revised` did before this filter existed.
+ */
+function isDecisionEvent(event: DomainEvent): event is DecisionEvent {
+  return event.kind !== 'offer_revised';
+}
 
+function heroDefinitionOf(state: GameState, event: DecisionEvent): ContentId {
   const hero = state.heroes.get(event.heroId);
 
   if (hero === undefined) {
@@ -64,10 +78,10 @@ function heroDefinitionOf(state: GameState, event: DomainEvent): ContentId {
  * The decision behind one event, or `null` for an event that explains itself.
  *
  * `causalTraceId` is nullable on every event because a tick is not a decision; today both
- * members of the union carry one, and a step with no decision is filtered out by the
- * screen factory rather than guessed at here.
+ * members of {@link DecisionEvent} carry one, and a step with no decision is filtered out
+ * by the screen factory rather than guessed at here.
  */
-function restoreOutcome(state: GameState, event: DomainEvent): DecidedOutcome | null {
+function restoreOutcome(state: GameState, event: DecisionEvent): DecidedOutcome | null {
   if (event.causalTraceId === null) {
     return null;
   }
@@ -121,17 +135,12 @@ function total(factors: readonly TraceFactor[]): number {
  * from the score. The event is what the campaign recorded happening; a sign test on a
  * recomputed number would be this layer deciding the rule again.
  */
-function actionOf(event: DomainEvent): ContentId {
+function actionOf(event: DecisionEvent): ContentId {
   switch (event.kind) {
     case 'hero_accepted_contract':
       return Actions.Accept;
     case 'hero_declined_contract':
       return Actions.Decline;
-    case 'offer_revised':
-      throw new Error(
-        `actionOf was given an 'offer_revised' event (${String(event.eventId)}); its causalTraceId ` +
-          'is always null, so restoreOutcome returns before this function is ever called on one.'
-      );
     default:
       return event satisfies never;
   }

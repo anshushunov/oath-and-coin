@@ -357,6 +357,18 @@ const domainEventSchema = z.discriminatedUnion('kind', [
     causalTraceId: z.int().min(0).nullable(),
     heroId: heroIdSchema,
     contractId: contentId
+  }),
+  // No `heroId` — composing an offer is the player's own choice, not a hero's
+  // (`domain-event.ts`'s `OfferRevised`). A new member of an existing discriminated
+  // union, not a shape change to either of the two above: a save this exact schema
+  // version already accepts still decodes the same way, so this did not need to move
+  // `SAVE_SCHEMA_VERSION`.
+  z.strictObject({
+    kind: z.literal('offer_revised'),
+    eventId: z.int().min(0),
+    logicalTime: z.int().min(0),
+    causalTraceId: z.int().min(0).nullable(),
+    contractId: contentId
   })
 ]);
 
@@ -783,6 +795,16 @@ function toTraceBlock(block: RawBlock): TraceBlock {
 }
 
 function toDomainEvent(domainEvent: RawDomainEvent): DomainEvent {
+  if (domainEvent.kind === 'offer_revised') {
+    return {
+      kind: 'offer_revised',
+      eventId: domainEvent.eventId,
+      logicalTime: domainEvent.logicalTime,
+      causalTraceId: domainEvent.causalTraceId,
+      contractId: parseContentId(domainEvent.contractId)
+    };
+  }
+
   return {
     kind: domainEvent.kind,
     eventId: domainEvent.eventId,

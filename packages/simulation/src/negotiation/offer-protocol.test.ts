@@ -10,7 +10,7 @@ import { compareHeroIds, heroId, type HeroId } from '../ids/hero-id.ts';
 import { ContractStatus, type ContractState } from '../state/contract-state.ts';
 import { contractOf, type GameState } from '../state/game-state.ts';
 import { OfferPhase, type OfferState } from '../state/offer-state.ts';
-import { aContract, aHero, anOffer, aState, ids } from '../testing/fixtures.ts';
+import { aContract, aHero, anOffer, aState, ids, sixTags } from '../testing/fixtures.ts';
 
 /**
  * `composeOffer` (`NEGOTIATION_SPEC` §3.1, §3.3, §6.1) — the first command of the
@@ -20,13 +20,19 @@ import { aContract, aHero, anOffer, aState, ids } from '../testing/fixtures.ts';
  */
 
 const KEY_HERO: HeroId = heroId(0);
+/** A second hero, distinct from {@link KEY_HERO} — for tests proving a revision names
+ * the *command's* key hero, not whichever one the package already had. */
+const OTHER_HERO: HeroId = heroId(1);
 
 function aCampaign(
   stateOverrides: Partial<GameState> = {},
   contractOverrides: Partial<ContractState> = {}
 ): GameState {
   return aState({
-    heroes: SortedMap.from(compareHeroIds, [[KEY_HERO, aHero({ id: KEY_HERO })]]),
+    heroes: SortedMap.from(compareHeroIds, [
+      [KEY_HERO, aHero({ id: KEY_HERO })],
+      [OTHER_HERO, aHero({ id: OTHER_HERO })]
+    ]),
     contracts: SortedMap.from(compareContentIds, [[ids.crypt, aContract(contractOverrides)]]),
     ...stateOverrides
   });
@@ -133,12 +139,83 @@ function offerOf(state: GameState): OfferState {
 }
 
 describe('composeOffer', () => {
-  it('raises the version and leaves no answer behind', () => {
-    const revised = composeOffer(accepted(aCampaign()), aCompose({ advance: 50 })).state;
+  it('raises the version, leaves no answer behind, and carries the new terms', () => {
+    const revised = composeOffer(
+      accepted(aCampaign()),
+      aCompose({ advance: 50, keyHero: OTHER_HERO, promisedBonus: 5 })
+    ).state;
     const offer = offerOf(revised);
     expect(offer.version).toBe(2);
     expect(offer.respondedBy.values()).toEqual([]);
     expect(offer.acceptedBy.values()).toEqual([]);
+    // Kills an implementation that writes `advance: 0`, keeps the package's previous
+    // `keyHero` instead of the command's, or drops `promisedBonus` — `accepted()`'s
+    // package is keyed to `KEY_HERO`, so reusing the old value instead of the command's
+    // `OTHER_HERO` would be visible here, unlike a test that never changes the key hero.
+    expect(offer.advance).toBe(50);
+    expect(offer.keyHero).toBe(OTHER_HERO);
+    expect(offer.promisedBonus).toBe(5);
+    expect(offer.methodTag).toBeNull();
+  });
+
+  it('accepts a method tag the contract does offer, and carries it into the revised offer', () => {
+    const withNegotiableTag = aCampaign(
+      {},
+      { negotiableTags: SortedSet.from(compareContentIds, [ids.deception, ids.temple]) }
+    );
+    // Kills an implementation whose bounds check refuses every non-null methodTag
+    // regardless of `negotiableTags` — the sibling "refuses a method tag the contract
+    // does not offer" test alone cannot tell that shape apart from a correct one,
+    // because its contract's `negotiableTags` is empty either way.
+    const result = composeOffer(withNegotiableTag, aCompose({ methodTag: ids.deception }));
+    expect(result.rejectionCode).toBeNull();
+    expect(offerOf(result.state).methodTag).toBe(ids.deception);
+  });
+
+  it('refuses a method tag that would push the contract past the tag ceiling', () => {
+    const atCeiling = aCampaign(
+      {},
+      {
+        tags: sixTags(),
+        negotiableTags: SortedSet.from(compareContentIds, [ids.deception, ids.temple])
+      }
+    );
+    // Kills an implementation that checks only `negotiableTags` membership and lets a
+    // legal-but-capacity-breaking tag reach `createContractState`, which throws instead
+    // of refusing (the hazard Task 6's review handed this task by name).
+    expect(composeOffer(atCeiling, aCompose({ methodTag: ids.deception })).rejectionCode).toBe(
+      RejectionCodes.OfferTermsOutOfBounds
+    );
+  });
+
+  it('refuses a non-integer advance', () => {
+    // Kills `command.advance < 0 || command.advance > patronFee`, which both read
+    // `Number.NaN` as "in range" — the bound must check `Number.isInteger` too.
+    expect(composeOffer(aCampaign(), aCompose({ advance: Number.NaN })).rejectionCode).toBe(
+      RejectionCodes.OfferTermsOutOfBounds
+    );
+  });
+
+  it('checks the phase before value bounds', () => {
+    const state = lockedAndCrewed();
+    // Kills an implementation that swaps §6.1's step 4 (phase/status) and step 5
+    // (value bounds): both this contract's phase and this command's advance are
+    // broken at once, and only `OfferNotInDraft` is the cheaper, earlier check.
+    expect(composeOffer(state, aCompose({ advance: 999 })).rejectionCode).toBe(
+      RejectionCodes.OfferNotInDraft
+    );
+  });
+
+  it('carries moodOrdinals forward untouched', () => {
+    const withMood = aCampaign(
+      {},
+      { moodOrdinals: SortedMap.from(compareHeroIds, [[KEY_HERO, 3n]]) }
+    );
+    // Kills an implementation that rebuilds the revised contract's `moodOrdinals` as a
+    // fresh empty map instead of carrying the existing one forward — nothing in the
+    // other six tests reads this field at all.
+    const revised = composeOffer(withMood, aCompose()).state;
+    expect(contractOf(revised, ids.crypt).moodOrdinals.get(KEY_HERO)).toBe(3n);
   });
 
   it('returns the contract to offered when the crew it had is cleared', () => {

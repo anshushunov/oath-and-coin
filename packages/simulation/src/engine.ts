@@ -17,7 +17,7 @@ import { compareContentIds, type ContentId } from './ids/content-id.ts';
 import { compareHeroIds, type HeroId } from './ids/hero-id.ts';
 import { ContractStatus } from './state/contract-state.ts';
 import { withEvent, type GameState } from './state/game-state.ts';
-import { createContractState, OfferPhase } from './state/offer-state.ts';
+import { createContractState, MAX_TAGS_PER_CONTRACT, OfferPhase } from './state/offer-state.ts';
 
 /**
  * Applies commands to a {@link GameState} and returns the state that results.
@@ -229,19 +229,45 @@ export function composeOffer(state: GameState, command: ComposeOffer): CommandRe
     return rejected(state, RejectionCodes.OfferNotInDraft);
   }
 
-  if (command.advance < 0 || command.advance > contract.patronFee) {
+  // `Number.isInteger` first, and separately from the range: `x < 0 || x > patronFee`
+  // is false for `Number.NaN` on both sides, so a NaN advance would otherwise read as
+  // "in range" and settle into state, poison the decision arithmetic downstream, and
+  // only ever be caught by `z.int()` at the save boundary — an exception, not the
+  // refusal §6.1 requires. §3.3's range is inclusive of integers only.
+  if (
+    !Number.isInteger(command.advance) ||
+    command.advance < 0 ||
+    command.advance > contract.patronFee
+  ) {
     return rejected(state, RejectionCodes.OfferTermsOutOfBounds);
   }
 
-  if (command.promisedBonus < 0 || command.promisedBonus > contract.patronFee) {
+  if (
+    !Number.isInteger(command.promisedBonus) ||
+    command.promisedBonus < 0 ||
+    command.promisedBonus > contract.patronFee
+  ) {
     return rejected(state, RejectionCodes.OfferTermsOutOfBounds);
   }
 
-  // `undefined` and an empty set both read as "nothing negotiable" — see
-  // `ContractState.negotiableTags`'s own doc for why the field is optional.
-  const negotiableTags = contract.negotiableTags ?? SortedSet.empty<ContentId>(compareContentIds);
-  if (command.methodTag !== null && !negotiableTags.has(command.methodTag)) {
-    return rejected(state, RejectionCodes.OfferTermsOutOfBounds);
+  if (command.methodTag !== null) {
+    // `undefined` and an empty set both read as "nothing negotiable" — see
+    // `ContractState.negotiableTags`'s own doc for why the field is optional.
+    const negotiableTags = contract.negotiableTags ?? SortedSet.empty<ContentId>(compareContentIds);
+    if (!negotiableTags.has(command.methodTag)) {
+      return rejected(state, RejectionCodes.OfferTermsOutOfBounds);
+    }
+
+    // §2.4's ceiling: authored `tags` plus one chosen method tag must not exceed
+    // `MAX_TAGS_PER_CONTRACT`. `negotiableTags` membership alone does not guarantee
+    // this — a contract can author six tags *and* declare a disjoint, valid
+    // `negotiable_tags` pair, and nothing at content-load time refuses that
+    // combination (it is caught by the shipped-content check, `Task 18`, not the
+    // loader). Left unchecked here, `createContractState` below would throw instead
+    // of refusing — the hazard `Task 6`'s review handed this task by name.
+    if (contract.tags.add(command.methodTag).size > MAX_TAGS_PER_CONTRACT) {
+      return rejected(state, RejectionCodes.OfferTermsOutOfBounds);
+    }
   }
 
   // A revision always answers `version + 1` with both answer sets empty (`NEGOTIATION_SPEC`
