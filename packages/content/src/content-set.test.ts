@@ -39,6 +39,12 @@ const shippedContent = join(repoRoot, 'content');
  * needed localization keys, and `content/locale/ru.json` — under `content/`, so inside
  * this digest like any other byte — is where every other reason code is already
  * translated.
+ *
+ * Review of that same task moved it a fourth time, to `08975dbb0d527f6e`: the broken-word
+ * key's Russian text read as the odd one out among its neighbours (the only phrase in
+ * the past tense with an explicit subject; every other `hero.decision.*` entry is either
+ * a noun phrase or names the guild's action against an implied hero) and was reworded to
+ * match — `content/locale/ru.json` moved again, so the digest did too.
  */
 
 const temporaryRoots: string[] = [];
@@ -150,7 +156,7 @@ describe('loadContentSet over the shipped tree', () => {
     // bytes on purpose. What this pin buys now is the same as before either move — a
     // digest that drifted only with itself would let the whole segment pass parity on
     // a coincidence — just no longer against the frozen C# export.
-    expect(content.contentVersion).toBe('3b2b90cfffa3bb47');
+    expect(content.contentVersion).toBe('08975dbb0d527f6e');
   });
 
   it('keys heroes, contracts and traits in content-id order', () => {

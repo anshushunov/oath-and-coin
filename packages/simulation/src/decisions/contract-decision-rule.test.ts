@@ -334,52 +334,75 @@ const PROFILES: readonly (readonly [number, number, number, number])[] = [
  * from a generator: global randomness is banned in this package, and an enumeration is
  * reproducible on top of that — a failure names the same context on every run.
  *
- * Every term of `HERO_DECISION_SPEC` §2.3 is moved by something in here: the patron fee
+ * Every term `NEGOTIATION_SPEC` §4 names is moved by something in here: `offer.advance`
  * and risk (which also drives the insult term on and off, since insult exists only while
- * the patron fee is below risk), the four hero scales, an inclination pulling each way, a bond
- * pulling each way, and three mood ordinals. The traits carry both tags the contract
- * does, so both fire.
+ * `advance + trustedBonus` falls short of risk), `offer.promisedBonus` (against a
+ * `keyHero` fixed to this sweep's one hero, so it always reaches a `trustedBonus`),
+ * `hero.grievance`, the four hero scales, an inclination pulling each way, a bond pulling
+ * each way, three mood ordinals, and a chosen method tag that turns a third inclination
+ * on and off. `contract.patronFee` is deliberately **not** swept — `decide()` no longer
+ * reads it at all, and external review of this task's first pass found it still varied
+ * here, standing in for `advance` in the comment but not in the code, while the four new
+ * terms sat pinned at zero and the identity below went untested wherever any of them was
+ * the term that would have broken it.
  */
 function localContexts(): readonly DecisionContext[] {
   const contexts: DecisionContext[] = [];
 
   for (const [greed, caution, pride, trustInGuild] of PROFILES) {
-    for (const patronFee of [0, 15, 40, 100]) {
+    for (const advance of [0, 15, 40, 100]) {
       for (const risk of [0, 9, 55, 80, 100]) {
         for (const traitWeight of [-30, -3, 0, 7, 30]) {
           for (const bondWeight of [-20, -5, 0, 5, 20]) {
-            for (const decisionOrdinal of [0n, 3n, 6n]) {
-              contexts.push(
-                aContext({
-                  hero: aHero({
-                    greed,
-                    caution,
-                    pride,
-                    trustInGuild,
-                    relationships: SortedMap.from(compareContentIds, [
-                      [ids.doran, bondWeight],
-                      [ids.zara, -bondWeight]
-                    ])
-                  }),
-                  contract: aContract({
-                    patronFee,
-                    risk,
-                    tags: SortedSet.from(compareContentIds, [ids.temple, ids.undead]),
-                    offer: anOffer({
-                      acceptedBy: SortedSet.from(compareHeroIds, [heroId(1), heroId(2)])
-                    })
-                  }),
-                  traits: [
-                    aTrait({ id: ids.loyal, tag: ids.undead, weight: traitWeight }),
-                    aTrait({ id: ids.squeamish, tag: ids.temple, weight: -traitWeight })
-                  ],
-                  crew: crewOf([
-                    [1, ids.doran],
-                    [2, ids.zara]
-                  ]),
-                  decisionOrdinal
-                })
-              );
+            for (const promisedBonus of [0, 30]) {
+              for (const grievance of [0, 25]) {
+                for (const methodTag of [null, ids.cult] as const) {
+                  for (const decisionOrdinal of [0n, 3n, 6n]) {
+                    contexts.push(
+                      aContext({
+                        hero: aHero({
+                          greed,
+                          caution,
+                          pride,
+                          trustInGuild,
+                          grievance,
+                          relationships: SortedMap.from(compareContentIds, [
+                            [ids.doran, bondWeight],
+                            [ids.zara, -bondWeight]
+                          ])
+                        }),
+                        contract: aContract({
+                          risk,
+                          tags: SortedSet.from(compareContentIds, [ids.temple, ids.undead]),
+                          offer: anOffer({
+                            keyHero: heroId(0),
+                            advance,
+                            promisedBonus,
+                            methodTag,
+                            acceptedBy: SortedSet.from(compareHeroIds, [heroId(1), heroId(2)])
+                          })
+                        }),
+                        traits: [
+                          // Tagged `cult`, which is never among `contract.tags` above —
+                          // it fires only when `methodTag` adds it to `effectiveTags`,
+                          // which is exactly the distinction this axis exists to catch:
+                          // a rule that matched inclinations against `contract.tags`
+                          // alone would never push this factor, and the sum identity
+                          // below would still hold trivially over one less term.
+                          aTrait({ id: ids.cultCurious, tag: ids.cult, weight: 12 }),
+                          aTrait({ id: ids.loyal, tag: ids.undead, weight: traitWeight }),
+                          aTrait({ id: ids.squeamish, tag: ids.temple, weight: -traitWeight })
+                        ],
+                        crew: crewOf([
+                          [1, ids.doran],
+                          [2, ids.zara]
+                        ]),
+                        decisionOrdinal
+                      })
+                    );
+                  }
+                }
+              }
             }
           }
         }
@@ -416,7 +439,7 @@ describe('the recorded score is the recorded factors', () => {
 
     // Названо числом: молчаливо сжавшийся перебор прошёл бы эту проверку целиком, и
     // «зелено» означало бы «нечего было проверять».
-    expect(contexts).toHaveLength(7503);
+    expect(contexts).toHaveLength(60003);
 
     let scored = 0;
     let blocked = 0;
@@ -438,7 +461,7 @@ describe('the recorded score is the recorded factors', () => {
     }
 
     expect(blocked).toBe(3);
-    expect(scored).toBe(7500);
+    expect(scored).toBe(60000);
   });
 });
 
@@ -470,38 +493,6 @@ function factorOf(decision: HeroDecision, reasonCode: string): TraceFactor | und
     decision.result.trace.positiveFactors.find((factor) => factor.reasonCode === reasonCode) ??
     decision.result.trace.negativeFactors.find((factor) => factor.reasonCode === reasonCode)
   );
-}
-
-/**
- * The `NEGOTIATION_SPEC` §4 table order, verbatim: advance, promised bonus, risk,
- * insult, inclinations, trust, bonds, the guild's broken word, mood last. Which of the
- * two factor lists a code lands in says which way it pulled (`HERO_DECISION_SPEC` §3);
- * it says nothing about *when* it was computed, and this order is a claim about the
- * latter — one a trace split across two lists by sign cannot state on its own, so it is
- * stated here once and held codes present in the trace to it.
- */
-const FACTOR_ORDER: readonly string[] = [
-  ReasonCodes.PaymentAttractive,
-  ReasonCodes.PromiseOfABonus,
-  ReasonCodes.RiskTooHigh,
-  ReasonCodes.PaymentInsulting,
-  ReasonCodes.PersonalConviction,
-  ReasonCodes.PersonalAversion,
-  ReasonCodes.TrustsTheGuild,
-  ReasonCodes.StandsWithComrade,
-  ReasonCodes.WillNotWorkWith,
-  ReasonCodes.GuildBrokeItsWord,
-  ReasonCodes.UnpredictableMood
-];
-
-/** Every reason code the decision actually recorded, in `FACTOR_ORDER`. */
-function reasonCodesInOrder(decision: HeroDecision): readonly string[] {
-  const present = new Set([
-    ...decision.result.trace.positiveFactors.map((factor) => factor.reasonCode),
-    ...decision.result.trace.negativeFactors.map((factor) => factor.reasonCode)
-  ]);
-
-  return FACTOR_ORDER.filter((code) => present.has(code));
 }
 
 /**
@@ -561,6 +552,27 @@ describe('the offer, the promise and a broken word reach the decision', () => {
     expect(factorOf(decision, ReasonCodes.PromiseOfABonus)?.magnitude).toBe(20);
   });
 
+  it('divides the promised bonus on its own, not the same number as folding it into the advance first', () => {
+    // At greed 100 every case above is the identity — ×100÷100 — so `bonusPull =
+    // trustedBonus` unscaled would still pass them, and so would combining advance and
+    // bonus into one division before splitting the result back apart. Greed 10 tells the
+    // three apart: divided separately, advance 15 × 10 ÷ 100 = 1 and bonus 25 × 10 ÷ 100
+    // = 2. Folded into one division first, (15 + 25) × 10 ÷ 100 = 4 — a different
+    // `PaymentAttractive` and no separate bonus factor at all. Left unscaled, the bonus
+    // factor would read 25, not 2.
+    const decision = decide(
+      aContext({
+        hero: aHero({ id: heroId(0), greed: 10 }),
+        contract: aContract({
+          risk: 0,
+          offer: anOffer({ keyHero: heroId(0), advance: 15, promisedBonus: 25 })
+        })
+      })
+    );
+    expect(factorOf(decision, ReasonCodes.PaymentAttractive)?.magnitude).toBe(1);
+    expect(factorOf(decision, ReasonCodes.PromiseOfABonus)?.magnitude).toBe(2);
+  });
+
   it('moves nobody but the hero the promise was given to', () => {
     const decision = decide(
       aContext({
@@ -594,9 +606,63 @@ describe('the offer, the promise and a broken word reach the decision', () => {
     expect(factorOf(decision, ReasonCodes.PaymentInsulting)).toBeUndefined();
   });
 
+  it('does not let a promise nobody but the key hero can bank on shield the insult either', () => {
+    // Same terms as the shielding case above — advance 20, promisedBonus 30, risk 50 —
+    // except this hero is not the key hero, so `trustedBonus` is 0 and `expected` is 20:
+    // (50 − 20) × pride 100 ÷ 100 = 30. A shield computed from the raw `promisedBonus`
+    // instead of `trustedBonus` would read `expected` as 50, find nothing left for the
+    // insult to bite on, and this factor would be absent.
+    const decision = decide(
+      aContext({
+        hero: aHero({ id: heroId(1), pride: 100, greed: 0, caution: 0 }),
+        contract: aContract({
+          risk: 50,
+          offer: anOffer({ keyHero: heroId(0), advance: 20, promisedBonus: 30 })
+        })
+      })
+    );
+    expect(factorOf(decision, ReasonCodes.PaymentInsulting)?.magnitude).toBe(30);
+  });
+
+  it('does not let a promise the hero stopped believing shield the insult either', () => {
+    // Same shape again, this time with the key hero herself, but she no longer believes
+    // the guild — `trustedBonus` is 0 for the same reason as `ignores the promise
+    // entirely once the hero stopped believing` above, and the insult is exposed exactly
+    // as it is when the promise went to someone else.
+    const decision = decide(
+      aContext({
+        hero: aHero({
+          id: heroId(0),
+          pride: 100,
+          greed: 0,
+          caution: 0,
+          believesGuildPromises: false
+        }),
+        contract: aContract({
+          risk: 50,
+          offer: anOffer({ keyHero: heroId(0), advance: 20, promisedBonus: 30 })
+        })
+      })
+    );
+    expect(factorOf(decision, ReasonCodes.PaymentInsulting)?.magnitude).toBe(30);
+  });
+
   it('remembers a broken word as its own negative reason', () => {
     const decision = decide(aContext({ hero: aHero({ grievance: 25 }) }));
-    expect(factorOf(decision, ReasonCodes.GuildBrokeItsWord)?.magnitude).toBe(25);
+    expect(decision.result.trace.negativeFactors).toContainEqual({
+      reasonCode: ReasonCodes.GuildBrokeItsWord,
+      sourceEntity: ids.bram,
+      magnitude: 25
+    });
+    // The direction is the whole point of the name "negative reason": a factor list is
+    // not searched by code alone, because which list a code lands in is what says
+    // whether grievance moved this hero toward the guild or away from it
+    // (`HERO_DECISION_SPEC` §3). A push that landed the same entry in `positiveFactors`
+    // instead — turning a grudge into a reason to take the contract — would satisfy the
+    // assertion above just as well; this one catches exactly that.
+    expect(decision.result.trace.positiveFactors).not.toContainEqual(
+      expect.objectContaining({ reasonCode: ReasonCodes.GuildBrokeItsWord })
+    );
   });
 
   it('lets the chosen method tag close the gate exactly like an authored one', () => {
@@ -616,16 +682,42 @@ describe('the offer, the promise and a broken word reach the decision', () => {
     expect(decision.ordinalsConsumed).toBe(0n);
   });
 
+  it('lets the chosen method tag move an inclination exactly like an authored one', () => {
+    // The gate case above cannot tell "inclinations still read `contract.tags` alone"
+    // apart from a correct implementation: a principle trait never reaches the
+    // inclination loop at all, blocked or not. This one uses a plain inclination on the
+    // method tag, with nothing authored on the contract for it to coincide with — a
+    // revert of the inclination loop's `effectiveTags` back to `contract.tags` leaves
+    // this factor unpushed.
+    const decision = decide(
+      aContext({
+        contract: aContract({
+          tags: setOf(ids.cult),
+          offer: anOffer({ methodTag: ids.deception })
+        }),
+        traits: [aTrait({ id: ids.loyal, tag: ids.deception, isPrinciple: false, weight: 15 })]
+      })
+    );
+    expect(factorOf(decision, ReasonCodes.PersonalConviction)?.magnitude).toBe(15);
+  });
+
   it('keeps the factor order the artifact relies on', () => {
+    // `positiveFactors` and `negativeFactors` are the two lists the canonical artifact
+    // actually serializes (`HERO_DECISION_SPEC` §3) — asserted as ordered arrays each,
+    // not merged and re-sorted by a table stated in the test itself. A merge-and-sort
+    // would hold by construction regardless of what order the rule actually pushed in;
+    // these two `toEqual` calls do not.
     const decision = decide(aFullyMotivatedContext());
-    expect(reasonCodesInOrder(decision)).toEqual([
+    expect(decision.result.trace.positiveFactors.map((factor) => factor.reasonCode)).toEqual([
       ReasonCodes.PaymentAttractive,
       ReasonCodes.PromiseOfABonus,
-      ReasonCodes.RiskTooHigh,
-      ReasonCodes.PaymentInsulting,
       ReasonCodes.PersonalConviction,
       ReasonCodes.TrustsTheGuild,
-      ReasonCodes.StandsWithComrade,
+      ReasonCodes.StandsWithComrade
+    ]);
+    expect(decision.result.trace.negativeFactors.map((factor) => factor.reasonCode)).toEqual([
+      ReasonCodes.RiskTooHigh,
+      ReasonCodes.PaymentInsulting,
       ReasonCodes.GuildBrokeItsWord,
       ReasonCodes.UnpredictableMood
     ]);

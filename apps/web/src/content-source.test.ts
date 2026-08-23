@@ -46,10 +46,11 @@ import {
  * Task 3 renamed the contract's fee field, and Task 4 raised the schema version and
  * authored `negotiable_tags`, each moving the shipped tree's bytes on purpose. Task 8
  * moved it again, authoring the two `hero.decision.*` reason-code keys its new decision
- * factors need in `content/locale/ru.json` — pinned here from now on as a drift guard,
- * not as corpus parity.
+ * factors need in `content/locale/ru.json`, and once more in review of that task, when
+ * one of those two keys' Russian text was reworded to match its neighbours — pinned
+ * here from now on as a drift guard, not as corpus parity.
  */
-const SHIPPED_CONTENT_VERSION = '3b2b90cfffa3bb47';
+const SHIPPED_CONTENT_VERSION = '08975dbb0d527f6e';
 
 /**
  * The content version the corpus recorded for `screen_empty`'s own fixture root,

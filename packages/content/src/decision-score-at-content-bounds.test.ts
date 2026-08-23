@@ -1,5 +1,6 @@
 import {
   ContractStatus,
+  GRIEVANCE_MAX,
   SortedMap,
   SortedSet,
   compareContentIds,
@@ -47,29 +48,63 @@ import {
  * and `@oath-and-coin/simulation` — so this is where the two meet.
  *
  * The distinction matters because the identity is not free. It holds only while every
- * one-sided term the score subtracts is non-negative: a negative patron-fee pull, risk
- * aversion, insult or trust would be *subtracted from* the score while appearing in
- * neither factor list, and the two paths would part. That non-negativity is a property of
- * the ranges below, and it is the property the sweep here measures — one decision per
- * corner of the space the loader admits, at the maximum trait, relationship and tag
- * counts `limits.ts` allows.
+ * one-sided term the score subtracts is non-negative: a negative advance pull, promised
+ * bonus, risk aversion, insult, trust or grievance would be *subtracted from* the score
+ * while appearing in neither factor list, and the two paths would part. That
+ * non-negativity is a property of the ranges below, and it is the property the sweep here
+ * measures — one decision per corner of the space the loader admits, at the maximum
+ * trait, relationship and tag counts `limits.ts` allows.
+ *
+ * `DEC-008` Task 8 moved the benefit term from `patronFee` onto `offer.advance`, added a
+ * promised-bonus term, and added a flat `grievance` subtraction (`NEGOTIATION_SPEC` §4);
+ * external review of that task found this sweep still varying only the now-inert
+ * `patronFee` and pinning `advance`, `promisedBonus` and `grievance` at zero, which held
+ * the identity over a strictly narrower space than the sweep claimed to cover — the four
+ * new terms never went negative because they never went anywhere. `advance` and
+ * `promisedBonus` now sweep the same edges `patronFee` used to (both live in `0..patronFee`
+ * per `NEGOTIATION_SPEC` §2.1), against a contract whose own `patronFee` sits fixed at
+ * `PATRON_FEE_MAX` so neither is ever asked to exceed it; `grievance` sweeps its own
+ * `0..GRIEVANCE_MAX`. `offer.keyHero` is fixed at the sweep's one hero id, so a nonzero
+ * `promisedBonus` always reaches a nonzero `trustedBonus` — whether a promise reaches the
+ * *right* hero is a question this sweep was never in the business of asking; that is
+ * `contract-decision-rule.test.ts`'s own dedicated cases.
+ *
+ * `offer.methodTag` does **not** join this sweep. `TAG_IDS` below already authors
+ * `MAX_TAGS_PER_CONTRACT` tags, one per trait, so every inclination fires — the ceiling
+ * `limits.ts` sets and the third case below asserts this fixture sits exactly on. A
+ * method tag added on top would carry the contract past that ceiling, which is not a
+ * corner the loader admits at all (`createContractState` refuses it) — sweeping it here
+ * would be measuring a shape no campaign can produce, not a wider one it can.
+ * `NEGOTIATION_SPEC` §2.4's method-tag-joins-the-gate claim is `contract-decision-rule.
+ * test.ts`'s "lets the chosen method tag..." cases to hold, not this file's.
  *
  * A frozen-corpus measurement is a different claim and a weaker one: §1.3 of the segment
  * spec asks for the mechanism, not for 88 observations of it.
  */
 
-/** Both ends of a range and its middle — the middle because `insult` exists only while
- * the patron fee is below risk, so an enumeration of the ends alone would never switch
- * that term off and on inside one sweep. */
+/** Both ends of a range and its middle — every axis below reuses this rather than only
+ * stating its two ends, because `insult` exists only while what a hero actually stands to
+ * receive falls short of the risk, and an enumeration of the ends alone would not
+ * necessarily switch that term off and on inside one sweep. */
 function edgesOf(min: number, max: number): readonly number[] {
   return [min, Math.trunc((min + max) / 2), max];
 }
 
 const HERO_SCALES = edgesOf(TRAIT_MIN, TRAIT_MAX);
-const PATRON_FEES = edgesOf(PATRON_FEE_MIN, PATRON_FEE_MAX);
+/** `offer.advance` and `offer.promisedBonus` share this domain — both live in
+ * `0..patronFee` (`NEGOTIATION_SPEC` §2.1), and this contract's own `patronFee` is fixed
+ * at `PATRON_FEE_MAX`, so both terms may reach as high as `PATRON_FEE_MAX` without ever
+ * exceeding it. */
+const OFFER_TERM_EDGES = edgesOf(PATRON_FEE_MIN, PATRON_FEE_MAX);
+const ADVANCES = OFFER_TERM_EDGES;
+const PROMISED_BONUSES = OFFER_TERM_EDGES;
 const RISKS = edgesOf(RISK_MIN, RISK_MAX);
 const INCLINATION_WEIGHTS = edgesOf(INCLINATION_WEIGHT_MIN, INCLINATION_WEIGHT_MAX);
 const RELATIONSHIP_WEIGHTS = edgesOf(RELATIONSHIP_WEIGHT_MIN, RELATIONSHIP_WEIGHT_MAX);
+/** `HeroState.grievance`'s own domain (`0..GRIEVANCE_MAX`) — `bounds.ts` states no
+ * `GRIEVANCE_MIN`, because there is nothing content-authored about it to bound: every
+ * hero starts a campaign at `0`, and only `settleContract` ever raises it. */
+const GRIEVANCES = edgesOf(0, GRIEVANCE_MAX);
 
 /** Three ordinals, so mood contributes positively, negatively and not at all. */
 const ORDINALS: readonly bigint[] = [0n, 3n, 6n];
@@ -96,15 +131,21 @@ const COMRADES: readonly (readonly [HeroId, ContentId])[] = Array.from(
 
 const CREW = SortedMap.from<HeroId, ContentId>(compareHeroIds, COMRADES);
 
+/** The one hero this sweep ever decides for — also `aContractAt`'s `offer.keyHero`, so a
+ * swept `promisedBonus` always reaches a `trustedBonus` and never goes moot on a hero-id
+ * mismatch this file is not asking about. */
+const DECIDER = heroId(0);
+
 function aHeroAt(scales: {
   readonly greed: number;
   readonly caution: number;
   readonly pride: number;
   readonly trustInGuild: number;
   readonly bondWeight: number;
+  readonly grievance: number;
 }): HeroState {
   return {
-    id: heroId(0),
+    id: DECIDER,
     definition: parseContentId('core:decider'),
     displayNameKey: 'hero.core.decider.name',
     greed: scales.greed,
@@ -121,26 +162,33 @@ function aHeroAt(scales: {
         index % 2 === 0 ? scales.bondWeight : -scales.bondWeight
       ])
     ),
-    // `NEGOTIATION_SPEC` §2.2's starting values — this sweep is not about a promise.
+    // `NEGOTIATION_SPEC` §2.2's starting value — this sweep is not about a promise this
+    // hero has stopped believing, only about the ones still standing.
     believesGuildPromises: true,
-    grievance: 0
+    grievance: scales.grievance
   };
 }
 
-function aContractAt(patronFee: number, risk: number): ContractState {
+function aContractAt(risk: number, advance: number, promisedBonus: number): ContractState {
   // Built as a raw literal and handed straight to `decide()`, never through
   // `createContractState` — this sweep poses a question about the decision rule's
   // arithmetic, not about offer invariants, and `acceptedBy` here deliberately holds
   // more heroes than `requiredCrew` allows so every comrade contributes a bond.
   return {
     id: parseContentId('core:the_offer'),
-    patronFee,
+    // Fixed at the ceiling, not swept: `advance` and `promisedBonus` are what the score
+    // reads now (`NEGOTIATION_SPEC` §4), and both need patronFee held at its own maximum
+    // so neither is ever asked to exceed the offer's ceiling while sweeping up to it.
+    patronFee: PATRON_FEE_MAX,
     risk,
     requiredCrew: 1,
     tags: SortedSet.from(compareContentIds, TAG_IDS),
     status: ContractStatus.Offered,
     offer: {
       ...initialOffer(),
+      keyHero: DECIDER,
+      advance,
+      promisedBonus,
       respondedBy: SortedSet.empty<HeroId>(compareHeroIds),
       acceptedBy: SortedSet.from(
         compareHeroIds,
@@ -170,20 +218,24 @@ function contextsAtBounds(): readonly DecisionContext[] {
     for (const caution of HERO_SCALES) {
       for (const pride of HERO_SCALES) {
         for (const trustInGuild of HERO_SCALES) {
-          for (const patronFee of PATRON_FEES) {
-            for (const risk of RISKS) {
-              for (const traitWeight of INCLINATION_WEIGHTS) {
-                for (const bondWeight of RELATIONSHIP_WEIGHTS) {
-                  for (const decisionOrdinal of ORDINALS) {
-                    contexts.push({
-                      hero: aHeroAt({ greed, caution, pride, trustInGuild, bondWeight }),
-                      contract: aContractAt(patronFee, risk),
-                      traits: traitsAt(traitWeight),
-                      crew: CREW,
-                      campaignSeed: CAMPAIGN_SEED,
-                      decisionOrdinal,
-                      traceId: 0
-                    });
+          for (const advance of ADVANCES) {
+            for (const promisedBonus of PROMISED_BONUSES) {
+              for (const risk of RISKS) {
+                for (const traitWeight of INCLINATION_WEIGHTS) {
+                  for (const bondWeight of RELATIONSHIP_WEIGHTS) {
+                    for (const grievance of GRIEVANCES) {
+                      for (const decisionOrdinal of ORDINALS) {
+                        contexts.push({
+                          hero: aHeroAt({ greed, caution, pride, trustInGuild, bondWeight, grievance }),
+                          contract: aContractAt(risk, advance, promisedBonus),
+                          traits: traitsAt(traitWeight),
+                          crew: CREW,
+                          campaignSeed: CAMPAIGN_SEED,
+                          decisionOrdinal,
+                          traceId: 0
+                        });
+                      }
+                    }
                   }
                 }
               }
@@ -205,13 +257,15 @@ describe('the score equals its factors everywhere the loader admits', () => {
     // целиком, и «зелено» означало бы «нечего было проверять».
     expect(contexts).toHaveLength(
       HERO_SCALES.length ** 4 *
-        PATRON_FEES.length *
+        ADVANCES.length *
+        PROMISED_BONUSES.length *
         RISKS.length *
         INCLINATION_WEIGHTS.length *
         RELATIONSHIP_WEIGHTS.length *
+        GRIEVANCES.length *
         ORDINALS.length
     );
-    expect(contexts).toHaveLength(19683);
+    expect(contexts).toHaveLength(177147);
 
     for (const context of contexts) {
       const { result } = decide(context);
@@ -229,15 +283,18 @@ describe('the score equals its factors everywhere the loader admits', () => {
 
   it('перебирает именно края диапазонов из bounds.ts, а не просто столько же точек', () => {
     // Внешнее ревью вскрыло дыру мутантом: замена `edgesOf` на `[min + 1, mid, max - 1]`
-    // оставляла проверку выше зелёной, потому что и формула, и число 19683 считают
+    // оставляла проверку выше зелёной, потому что и формула, и число точек считают
     // количество точек, а не то, что среди них есть края. Тест, который не краснеет на
     // подмене того самого свойства, ради которого написан, проверкой не считается —
     // поэтому принадлежность краёв утверждается прямо.
     expect(HERO_SCALES).toContain(TRAIT_MIN);
     expect(HERO_SCALES).toContain(TRAIT_MAX);
 
-    expect(PATRON_FEES).toContain(PATRON_FEE_MIN);
-    expect(PATRON_FEES).toContain(PATRON_FEE_MAX);
+    expect(ADVANCES).toContain(PATRON_FEE_MIN);
+    expect(ADVANCES).toContain(PATRON_FEE_MAX);
+
+    expect(PROMISED_BONUSES).toContain(PATRON_FEE_MIN);
+    expect(PROMISED_BONUSES).toContain(PATRON_FEE_MAX);
 
     expect(RISKS).toContain(RISK_MIN);
     expect(RISKS).toContain(RISK_MAX);
@@ -247,6 +304,9 @@ describe('the score equals its factors everywhere the loader admits', () => {
 
     expect(RELATIONSHIP_WEIGHTS).toContain(RELATIONSHIP_WEIGHT_MIN);
     expect(RELATIONSHIP_WEIGHTS).toContain(RELATIONSHIP_WEIGHT_MAX);
+
+    expect(GRIEVANCES).toContain(0);
+    expect(GRIEVANCES).toContain(GRIEVANCE_MAX);
   });
 
   it('перебирает ровно те длины, которые разрешает limits.ts', () => {

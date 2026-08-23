@@ -39,7 +39,15 @@ export const ids = {
   cult: parseContentId('target:cult'),
   deception: parseContentId('method:deception'),
   /** A principle whose tag only ever arrives as a chosen method tag, never authored. */
-  refusesDeception: parseContentId('core:refuses_deception')
+  refusesDeception: parseContentId('core:refuses_deception'),
+  /**
+   * An ordinary inclination whose tag only ever arrives as a chosen method tag, never
+   * authored — the non-principle counterpart to {@link refusesDeception}, for tests
+   * distinguishing "the gate reads `effectiveTags`" from "inclinations do too". Sorts
+   * before {@link loyal} and {@link squeamish}, so a context naming all three keeps
+   * `DecisionContext.traits` in the strict id order the rule requires.
+   */
+  cultCurious: parseContentId('core:cult_curious')
 };
 
 /** A `SortedSet<HeroId>` built from raw ids, for tests posing questions about a crew. */
