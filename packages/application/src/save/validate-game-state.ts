@@ -92,7 +92,7 @@ function checkReferentialIntegrity(state: GameState): void {
   }
 
   for (const [contractId, contract] of state.contracts.entries()) {
-    for (const heroId of contract.respondedBy.values()) {
+    for (const heroId of contract.offer.respondedBy.values()) {
       if (!state.heroes.has(heroId)) {
         throw inconsistent(
           `contract '${contractId}' lists hero#${String(heroId)} in respondedBy, but the save ` +
@@ -101,7 +101,7 @@ function checkReferentialIntegrity(state: GameState): void {
       }
     }
 
-    for (const heroId of contract.acceptedBy.values()) {
+    for (const heroId of contract.offer.acceptedBy.values()) {
       if (!state.heroes.has(heroId)) {
         throw inconsistent(
           `contract '${contractId}' lists hero#${String(heroId)} in acceptedBy, but the save ` +
@@ -309,8 +309,8 @@ function checkOneContract(
   contract: ContractState,
   answeredInHistory: ReadonlyMap<HeroId, boolean>
 ): void {
-  for (const heroId of contract.acceptedBy.values()) {
-    if (!contract.respondedBy.has(heroId)) {
+  for (const heroId of contract.offer.acceptedBy.values()) {
+    if (!contract.offer.respondedBy.has(heroId)) {
       throw inconsistent(
         `contract '${contractId}' lists hero#${String(heroId)} in acceptedBy but not in ` +
           'respondedBy; a hero accepts an offer only by answering it.'
@@ -318,7 +318,7 @@ function checkOneContract(
     }
   }
 
-  for (const heroId of contract.respondedBy.values()) {
+  for (const heroId of contract.offer.respondedBy.values()) {
     const accepted = answeredInHistory.get(heroId);
 
     // **This branch adds no refusing power, and that is deliberate rather than
@@ -338,17 +338,17 @@ function checkOneContract(
       );
     }
 
-    if (accepted !== contract.acceptedBy.has(heroId)) {
+    if (accepted !== contract.offer.acceptedBy.has(heroId)) {
       throw inconsistent(
         `contract '${contractId}' and the history disagree about hero#${String(heroId)}: the ` +
           `history says the hero ${accepted ? 'accepted' : 'declined'}, the contract says the ` +
-          `hero is ${contract.acceptedBy.has(heroId) ? '' : 'not '}in acceptedBy.`
+          `hero is ${contract.offer.acceptedBy.has(heroId) ? '' : 'not '}in acceptedBy.`
       );
     }
   }
 
   for (const heroId of answeredInHistory.keys()) {
-    if (!contract.respondedBy.has(heroId)) {
+    if (!contract.offer.respondedBy.has(heroId)) {
       throw inconsistent(
         `history records hero#${String(heroId)} answering contract '${contractId}', but the ` +
           "contract's respondedBy does not carry that hero."
@@ -357,12 +357,12 @@ function checkOneContract(
   }
 
   const crewed = contract.status === ContractStatus.Crewed;
-  const enough = contract.acceptedBy.size >= contract.requiredCrew;
+  const enough = contract.offer.acceptedBy.size >= contract.requiredCrew;
 
   if (crewed !== enough) {
     throw inconsistent(
       `contract '${contractId}' is ${crewed ? 'crewed' : 'offered'} with ` +
-        `${String(contract.acceptedBy.size)} of ${String(contract.requiredCrew)} seats filled; ` +
+        `${String(contract.offer.acceptedBy.size)} of ${String(contract.requiredCrew)} seats filled; ` +
         'a contract is crewed exactly when its required crew has accepted.'
     );
   }

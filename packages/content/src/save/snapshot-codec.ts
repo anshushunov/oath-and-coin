@@ -8,6 +8,7 @@ import {
   FACTOR_REASON_CODES,
   HERO_ID_MAX,
   HERO_ID_MIN,
+  OfferPhase,
   SortedMap,
   SortedSet,
   TIE_BREAK_REASON_CODES,
@@ -196,6 +197,33 @@ const contractStatusSchema = z.union([
   z.literal(ContractStatus.Crewed)
 ]);
 
+const offerPhaseSchema = z.union([
+  z.literal(OfferPhase.Draft),
+  z.literal(OfferPhase.Locked),
+  z.literal(OfferPhase.Settled)
+]);
+
+/**
+ * `ContractState.offer`'s own shape (`NEGOTIATION_SPEC` §2.1), nested exactly where
+ * `respondedBy`/`acceptedBy` used to sit flat on the contract — Task 6 moved the
+ * fields, this codec follows them to their new address. `advance`/`promisedBonus`
+ * bound by the patron-fee range rather than by the specific contract's own
+ * `patronFee`: the tighter, per-contract relationship (`0 ≤ advance ≤ patronFee`) is
+ * `createContractState`'s invariant, not a shape this schema can state without
+ * cross-referencing a sibling field, and this codec — like the rest of it — bounds
+ * shape, not the domain invariants layered on top of it.
+ */
+const offerValueSchema = z.strictObject({
+  version: z.int().min(1),
+  keyHero: heroIdSchema.nullable(),
+  advance: z.int().min(PATRON_FEE_MIN).max(PATRON_FEE_MAX),
+  methodTag: contentId.nullable(),
+  promisedBonus: z.int().min(PATRON_FEE_MIN).max(PATRON_FEE_MAX),
+  phase: offerPhaseSchema,
+  respondedBy: z.array(heroIdSchema).max(MAX_HEROES_PER_CONTRACT),
+  acceptedBy: z.array(heroIdSchema).max(MAX_HEROES_PER_CONTRACT)
+});
+
 const contractValueSchema = z.strictObject({
   id: contentId,
   patronFee: z.int().min(PATRON_FEE_MIN).max(PATRON_FEE_MAX),
@@ -203,8 +231,8 @@ const contractValueSchema = z.strictObject({
   requiredCrew: z.int().min(REQUIRED_CREW_MIN).max(REQUIRED_CREW_MAX),
   tags: z.array(contentId).max(MAX_TAGS_PER_CONTRACT),
   status: contractStatusSchema,
-  respondedBy: z.array(heroIdSchema).max(MAX_HEROES_PER_CONTRACT),
-  acceptedBy: z.array(heroIdSchema).max(MAX_HEROES_PER_CONTRACT)
+  offer: offerValueSchema,
+  moodOrdinals: entries(heroIdSchema, uint64).max(MAX_HEROES_PER_CONTRACT)
 });
 
 const traitRuleValueSchema = z.strictObject({
@@ -404,8 +432,19 @@ export function encodeSnapshot(state: GameState): unknown {
         requiredCrew: value.requiredCrew,
         tags: value.tags.values(),
         status: value.status,
-        respondedBy: value.respondedBy.values(),
-        acceptedBy: value.acceptedBy.values()
+        offer: {
+          version: value.offer.version,
+          keyHero: value.offer.keyHero,
+          advance: value.offer.advance,
+          methodTag: value.offer.methodTag,
+          promisedBonus: value.offer.promisedBonus,
+          phase: value.offer.phase,
+          respondedBy: value.offer.respondedBy.values(),
+          acceptedBy: value.offer.acceptedBy.values()
+        },
+        moodOrdinals: value.moodOrdinals
+          .entries()
+          .map(([heroKey, ordinal]) => ({ key: heroKey, value: String(ordinal) }))
       }
     })),
     appliedCommandIds: state.appliedCommandIds.values(),
@@ -473,8 +512,17 @@ export function decodeSnapshot(value: unknown): GameState {
       requiredCrew: raw.requiredCrew,
       tags: SortedSet.from(compareContentIds, raw.tags.map((tag) => parseContentId(tag))),
       status: raw.status,
-      respondedBy: SortedSet.from(compareHeroIds, raw.respondedBy.map((id) => heroId(id))),
-      acceptedBy: SortedSet.from(compareHeroIds, raw.acceptedBy.map((id) => heroId(id)))
+      offer: {
+        version: raw.offer.version,
+        keyHero: raw.offer.keyHero === null ? null : heroId(raw.offer.keyHero),
+        advance: raw.offer.advance,
+        methodTag: raw.offer.methodTag === null ? null : parseContentId(raw.offer.methodTag),
+        promisedBonus: raw.offer.promisedBonus,
+        phase: raw.offer.phase,
+        respondedBy: SortedSet.from(compareHeroIds, raw.offer.respondedBy.map((id) => heroId(id))),
+        acceptedBy: SortedSet.from(compareHeroIds, raw.offer.acceptedBy.map((id) => heroId(id)))
+      },
+      moodOrdinals: buildMoodOrdinals(raw.moodOrdinals)
     }),
     'contracts'
   );
@@ -608,6 +656,21 @@ function buildRelationships(
   return fromEntriesOrInconsistent(
     compareContentIds,
     raw.map((entry) => [parseContentId(entry.key), entry.value] as const)
+  );
+}
+
+/**
+ * `ContractState.moodOrdinals`, the same plain-map shape as
+ * {@link buildRelationships} — a hero id key with no separate identity inside the
+ * value to check it against — except the value is a decision ordinal, written as a
+ * decimal string like every other 64-bit value this codec carries.
+ */
+function buildMoodOrdinals(
+  raw: readonly { key: number; value: string }[]
+): SortedMap<HeroId, bigint> {
+  return fromEntriesOrInconsistent(
+    compareHeroIds,
+    raw.map((entry) => [heroId(entry.key), BigInt(entry.value)] as const)
   );
 }
 

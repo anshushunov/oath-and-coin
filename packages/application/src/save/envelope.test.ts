@@ -406,8 +406,8 @@ describe('referential integrity across the snapshot’s own maps', () => {
     [
       'контракт называет отсутствующего героя в respondedBy',
       (snapshot) => {
-        snapshot.contracts[0]!.value.respondedBy = [
-          ...snapshot.contracts[0]!.value.respondedBy,
+        snapshot.contracts[0]!.value.offer.respondedBy = [
+          ...snapshot.contracts[0]!.value.offer.respondedBy,
           999
         ];
       },
@@ -419,7 +419,10 @@ describe('referential integrity across the snapshot’s own maps', () => {
         // `respondedBy` намеренно НЕ трогается: добавь 999 в оба множества — и первой
         // отвечает проверка `respondedBy` двумя строками выше, а эта не измеряется
         // вовсе. Ровно так она и оставалась непокрытой до второго раунда ревью на шве.
-        snapshot.contracts[0]!.value.acceptedBy = [...snapshot.contracts[0]!.value.acceptedBy, 999];
+        snapshot.contracts[0]!.value.offer.acceptedBy = [
+          ...snapshot.contracts[0]!.value.offer.acceptedBy,
+          999
+        ];
       },
       'in acceptedBy, but the save carries no such hero'
     ]
@@ -479,7 +482,11 @@ interface RawSnapshot {
   heroes: { value: { traits: string[] } }[];
   contracts: {
     key: string;
-    value: { requiredCrew: number; status: string; respondedBy: number[]; acceptedBy: number[] };
+    value: {
+      requiredCrew: number;
+      status: string;
+      offer: { respondedBy: number[]; acceptedBy: number[] };
+    };
   }[];
   appliedCommandIds: number[];
   traces: {
@@ -521,8 +528,8 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
       'ответ стёрт из контракта, а событие о нём осталось — файл из внешнего ревью',
       (snapshot) => {
         const contract = snapshot.contracts[0]!.value;
-        contract.respondedBy = [];
-        contract.acceptedBy = [];
+        contract.offer.respondedBy = [];
+        contract.offer.acceptedBy = [];
         contract.status = 'offered';
       },
       'respondedBy does not carry that hero'
@@ -530,7 +537,7 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
     [
       'герой в acceptedBy, но не в respondedBy',
       (snapshot) => {
-        snapshot.contracts[0]!.value.respondedBy = [];
+        snapshot.contracts[0]!.value.offer.respondedBy = [];
         snapshot.contracts[0]!.value.status = 'offered';
       },
       'in acceptedBy but not in respondedBy'
@@ -538,7 +545,7 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
     [
       'история говорит «принял», контракт — «не в составе»',
       (snapshot) => {
-        snapshot.contracts[0]!.value.acceptedBy = [];
+        snapshot.contracts[0]!.value.offer.acceptedBy = [];
         snapshot.contracts[0]!.value.status = 'offered';
       },
       'and the history disagree about'
@@ -686,7 +693,7 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
           }
         ];
         const other = snapshot.contracts.find((entry) => entry.key === OTHER_CONTRACT)!;
-        other.value.respondedBy = [first!.heroId];
+        other.value.offer.respondedBy = [first!.heroId];
         snapshot.appliedCommandIds = [1, 2];
         snapshot.metadata.nextEventId = 2;
         snapshot.metadata.stateVersion = 2;
@@ -723,7 +730,7 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
         // A refusal, so the block and the action agree — what remains wrong is that the
         // trace both closes the path and weighs terms along it.
         snapshot.history[0]!.kind = 'hero_declined_contract';
-        snapshot.contracts[0]!.value.acceptedBy = [];
+        snapshot.contracts[0]!.value.offer.acceptedBy = [];
         snapshot.contracts[0]!.value.status = 'offered';
         snapshot.traces[0]!.value.blockedBy = [
           { reasonCode: 'hero.decision.principle_forbids', sourceEntity: 'core:greedy' }
@@ -735,7 +742,7 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
       'заблокированное решение вдобавок разрешает ничью',
       (snapshot) => {
         snapshot.history[0]!.kind = 'hero_declined_contract';
-        snapshot.contracts[0]!.value.acceptedBy = [];
+        snapshot.contracts[0]!.value.offer.acceptedBy = [];
         snapshot.contracts[0]!.value.status = 'offered';
         snapshot.traces[0]!.value.positiveFactors = [];
         snapshot.traces[0]!.value.negativeFactors = [];
@@ -800,9 +807,8 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
             contractId: OTHER_CONTRACT
           }
         ];
-        snapshot.contracts.find((entry) => entry.key === OTHER_CONTRACT)!.value.respondedBy = [
-          first!.heroId
-        ];
+        snapshot.contracts.find((entry) => entry.key === OTHER_CONTRACT)!.value.offer.respondedBy =
+          [first!.heroId];
         snapshot.appliedCommandIds = [1, 2];
         snapshot.metadata.nextEventId = 2;
         snapshot.metadata.stateVersion = 2;

@@ -11,6 +11,7 @@ import {
   type GameState,
   type HeldTrait,
   type HeroState,
+  type OfferState,
   type TraceBlock,
   type TraceFactor
 } from '@oath-and-coin/simulation';
@@ -45,15 +46,23 @@ import type { ScenarioOutcome, StepOutcome } from './scenario-runner.ts';
  * It steps together with the artifact's own shape, not with the rules a run applies:
  * `ADR-013` retired byte parity with the frozen C# corpus as a property the port owes,
  * so a rule change that leaves `describeOutcome`'s fields and their types alone is not a
- * reason to move this number. It still holds at 3 for now — `FULL_TYPESCRIPT_MIGRATION`
- * §7.2 found the RFC 8785 writer and the C# one differing only on inputs no artifact
- * contains — but that is a fact about the artifacts written so far, not a promise about
- * the ones after. What now stands in for the parity evidence this version used to
- * protect is the canonical snapshots committed under `scenarios/`: a rule change that
- * alters the shape or the content of an artifact must update its `.canonical.json`
+ * reason to move this number. What now stands in for the parity evidence this version
+ * used to protect is the canonical snapshots committed under `scenarios/`: a rule change
+ * that alters the shape or the content of an artifact must update its `.canonical.json`
  * alongside it, and that diff is where the change is reviewed.
+ *
+ * **4, not 3, and bumped once for two shifts already inside this unreleased slice.**
+ * `describeStep`'s `decisions` replaced the singular `decision` in Task 5, and
+ * `describeContract` nested `respondedBy`/`acceptedBy` under `offer` and added
+ * `mood_ordinals` in Task 6 — both are shape changes this number exists to describe, and
+ * both landed before this artifact ever shipped. The plan's own final value for this
+ * constant is `4`; one bump covering both shifts reaches it without an intermediate,
+ * momentarily-false `3` sitting in the tree for the eight tasks between this one and
+ * Task 14, which is where the schedule originally placed the move. **Task 14 must not
+ * bump this again** — `ARTIFACT_VERSION` is already at the plan's target, and a second
+ * increment there would move it to `5` for no shape change of its own.
  */
-export const ARTIFACT_VERSION = 3;
+export const ARTIFACT_VERSION = 4;
 
 /** The canonical text of a whole run. */
 export function toCanonicalJson(outcome: ScenarioOutcome): string {
@@ -181,8 +190,29 @@ function describeContract(contract: ContractState): CanonicalValue {
     required_crew: contract.requiredCrew,
     tags: contract.tags.values(),
     status: contract.status,
-    responded_by: contract.respondedBy.values(),
-    accepted_by: contract.acceptedBy.values()
+    offer: describeOffer(contract.offer),
+    // Keyed the same way `describeHero`'s `relationships` already is — a
+    // `SortedMap` becomes a canonical object, key order preserved because the map
+    // was already sorted (`NEGOTIATION_SPEC` §2.1.1).
+    mood_ordinals: Object.fromEntries(contract.moodOrdinals.entries())
+  };
+}
+
+/**
+ * `ContractState.offer`'s own projection, nested exactly where `responded_by`/
+ * `accepted_by` used to sit flat on the contract — Task 6 moved the fields into
+ * `OfferState`, and this is that move followed into the artifact.
+ */
+function describeOffer(offer: OfferState): CanonicalValue {
+  return {
+    version: offer.version,
+    key_hero: offer.keyHero ?? undefined,
+    advance: offer.advance,
+    method_tag: offer.methodTag ?? undefined,
+    promised_bonus: offer.promisedBonus,
+    phase: offer.phase,
+    responded_by: offer.respondedBy.values(),
+    accepted_by: offer.acceptedBy.values()
   };
 }
 

@@ -40,10 +40,14 @@ function ran(scenario: string, seed = 7n): RanResult {
 }
 
 describe('the artifact says which shape it is', () => {
-  it('declares version 3, the version the frozen corpus was recorded under', () => {
-    expect(ARTIFACT_VERSION).toBe(3);
+  it('declares version 4 — bumped in Task 6 for the decisions list and the offer shape', () => {
+    // The frozen corpus was recorded under 3; `ADR-013` retired byte parity with it as a
+    // property this port owes, so a shape version disagreeing with a frozen recording is
+    // not, on its own, a determinism failure. See `ARTIFACT_VERSION`'s own comment for
+    // why this moved now rather than at Task 14, where the plan originally placed it.
+    expect(ARTIFACT_VERSION).toBe(4);
     expect(JSON.parse(toCanonicalJson(ran('gate0').outcome))).toMatchObject({
-      artifact_version: 3,
+      artifact_version: 4,
       rng_algorithm: 'splitmix64-composed/1',
       ruleset_version: 'm1-decision/1'
     });

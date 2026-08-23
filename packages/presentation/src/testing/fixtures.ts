@@ -9,6 +9,7 @@ import {
   compareNumbers,
   createDecisionResult,
   heroId,
+  initialOffer,
   parseContentId,
   type CausalTrace,
   type ContentId,
@@ -18,6 +19,7 @@ import {
   type HeldTrait,
   type HeroId,
   type HeroState,
+  type OfferState,
   type TraceFactor
 } from '@oath-and-coin/simulation';
 
@@ -66,6 +68,11 @@ export function aHero(overrides: Partial<HeroState> = {}): HeroState {
   };
 }
 
+/** An `OfferState`, for tests overriding just the answers or terms they need. */
+export function anOffer(overrides: Partial<OfferState> = {}): OfferState {
+  return { ...initialOffer(), ...overrides };
+}
+
 export function aContract(overrides: Partial<ContractState> = {}): ContractState {
   return {
     id: ids.caravan,
@@ -74,8 +81,8 @@ export function aContract(overrides: Partial<ContractState> = {}): ContractState
     requiredCrew: 2,
     tags: SortedSet.from(compareContentIds, [ids.merchants]),
     status: ContractStatus.Offered,
-    respondedBy: SortedSet.empty<HeroId>(compareHeroIds),
-    acceptedBy: SortedSet.empty<HeroId>(compareHeroIds),
+    offer: anOffer(),
+    moodOrdinals: SortedMap.empty<HeroId, bigint>(compareHeroIds),
     ...overrides
   };
 }

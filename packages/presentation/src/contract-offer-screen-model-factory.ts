@@ -189,7 +189,10 @@ export function contractOfferScreenModel(
     );
 
   return createContractOfferScreenModel({
-    state: contract.respondedBy.size >= roster.length ? ScreenState.Normal : ScreenState.Incomplete,
+    state:
+      contract.offer.respondedBy.size >= roster.length
+        ? ScreenState.Normal
+        : ScreenState.Incomplete,
     titleKey: TITLE_KEY,
     contract: toContractLine(contract),
     roster,
@@ -231,7 +234,7 @@ function toContractLine(contract: ContractState): ContractLine {
     risk: gradeForValue(contract.risk),
     tagKeys: [...contract.tags.values()].map(tagKey),
     requiredCrew: contract.requiredCrew,
-    acceptedCount: contract.acceptedBy.size
+    acceptedCount: contract.offer.acceptedBy.size
   };
 }
 

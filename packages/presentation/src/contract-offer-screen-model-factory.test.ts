@@ -27,6 +27,7 @@ import {
   aDecision,
   aFactor,
   aHero,
+  anOffer,
   aState,
   aStep,
   aTrait,
@@ -156,7 +157,7 @@ describe('whether everyone has answered', () => {
 
   it('is Normal when the contract records an answer from every hero', () => {
     const state = withContracts(withHeroes(aState(), roster), [
-      aContract({ respondedBy: responded(0, 1) })
+      aContract({ offer: anOffer({ respondedBy: responded(0, 1) }) })
     ]);
 
     expect(contractOfferScreenModel(state, [aStep()]).state).toBe(ScreenState.Normal);
@@ -164,7 +165,7 @@ describe('whether everyone has answered', () => {
 
   it('is Incomplete while one hero has not answered', () => {
     const state = withContracts(withHeroes(aState(), roster), [
-      aContract({ respondedBy: responded(0) })
+      aContract({ offer: anOffer({ respondedBy: responded(0) }) })
     ]);
 
     expect(contractOfferScreenModel(state, [aStep()]).state).toBe(ScreenState.Incomplete);
@@ -175,7 +176,7 @@ describe('whether everyone has answered', () => {
     // the filtered list — two lines, two heroes in the roster, "everyone answered"
     // while one of them never did.
     const state = withContracts(withHeroes(aState(), roster), [
-      aContract({ respondedBy: responded(0) })
+      aContract({ offer: anOffer({ respondedBy: responded(0) }) })
     ]);
     const twice = [aStep({ heroDefinition: ids.bram }), aStep({ heroDefinition: ids.bram })];
 
@@ -190,7 +191,7 @@ describe('the contract line', () => {
         patronFee: 40,
         risk: 55,
         requiredCrew: 4,
-        acceptedBy: responded(0, 1, 2),
+        offer: anOffer({ acceptedBy: responded(0, 1, 2) }),
         tags: SortedSet.from(compareContentIds, [ids.merchants, ids.undead])
       })
     ]);
@@ -588,7 +589,7 @@ describe('the read-model hash', () => {
     // away with the rest of its code; this is the test that makes the number
     // reproducible from the repository rather than resting on a discarded run.
     const state = withContracts(withHeroes(aState(), heroes(ids.bram)), [
-      aContract({ respondedBy: responded(0) })
+      aContract({ offer: anOffer({ respondedBy: responded(0) }) })
     ]);
 
     // Three distinct decisions — different actions, different traces — so a projection
@@ -648,10 +649,10 @@ describe('the read-model hash', () => {
     // indistinguishable from one that finished.
     const roster = heroes(ids.bram, ids.doran);
     const incomplete = withContracts(withHeroes(aState(), roster), [
-      aContract({ respondedBy: responded(0) })
+      aContract({ offer: anOffer({ respondedBy: responded(0) }) })
     ]);
     const complete = withContracts(withHeroes(aState(), roster), [
-      aContract({ respondedBy: responded(0, 1) })
+      aContract({ offer: anOffer({ respondedBy: responded(0, 1) }) })
     ]);
 
     const left = contractOfferScreenModel(incomplete, [aStep()]);
