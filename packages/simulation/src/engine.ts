@@ -3,9 +3,11 @@ import { SortedSet } from './collections/sorted-set.ts';
 import {
   rejected,
   fromDecisions,
+  fromEvent,
   RejectionCodes,
   type CommandResult
 } from './commands/command-result.ts';
+import type { ComposeOffer } from './commands/compose-offer.ts';
 import type { ProposeContractToHero } from './commands/propose-contract-to-hero.ts';
 import { Actions } from './decisions/actions.ts';
 import { decide } from './decisions/contract-decision-rule.ts';
@@ -15,6 +17,7 @@ import { compareContentIds, type ContentId } from './ids/content-id.ts';
 import { compareHeroIds, type HeroId } from './ids/hero-id.ts';
 import { ContractStatus } from './state/contract-state.ts';
 import { withEvent, type GameState } from './state/game-state.ts';
+import { createContractState, OfferPhase } from './state/offer-state.ts';
 
 /**
  * Applies commands to a {@link GameState} and returns the state that results.
@@ -177,4 +180,114 @@ export function proposeContractToHero(
   );
 
   return fromDecisions(nextState, [domainEvent], [decision.result]);
+}
+
+/**
+ * Revises a contract's negotiation package (`NEGOTIATION_SPEC` §3.1, §3.3, §6.1).
+ *
+ * Checks run in exactly the order §6.1 states — cheaper and more general first,
+ * value bounds last — because the order is itself part of the canonical result: two
+ * broken preconditions at once must answer with the *same* one, not whichever this
+ * function happened to test first.
+ *
+ * **Bounds are checked before `createContractState` ever sees the revised
+ * contract.** That function is the one door a `ContractState` is built or rebuilt
+ * through, and it *throws* on an invariant violation — including the tag ceiling a
+ * bad `methodTag` could push past. §6.1 requires an out-of-bounds package to be
+ * *refused* (`rejected.offer_terms_out_of_bounds`, the same state back by
+ * reference), not to surface as an exception, so every bound the command itself can
+ * violate is checked here first. A content defect (a six-tag contract that also
+ * declares `negotiableTags`) still throws — that is a loudly-broken authoring
+ * invariant, not a value this command's own caller chose.
+ */
+export function composeOffer(state: GameState, command: ComposeOffer): CommandResult {
+  if (command.expectedStateVersion !== state.metadata.stateVersion) {
+    return rejected(state, RejectionCodes.StaleState);
+  }
+
+  if (state.appliedCommandIds.has(command.commandId)) {
+    return rejected(state, RejectionCodes.DuplicateCommand);
+  }
+
+  const contract = state.contracts.get(command.contractId);
+  if (contract === undefined) {
+    return rejected(state, RejectionCodes.UnknownContract);
+  }
+
+  const keyHero = state.heroes.get(command.keyHero);
+  if (keyHero === undefined) {
+    return rejected(state, RejectionCodes.UnknownHero);
+  }
+
+  // §3.1's table: composeOffer is legal in `draft`, or in `locked` for as long as the
+  // crew it had has not filled. Once the crew has filled, the deal is struck and a
+  // revision would undo it out from under `settleContract`.
+  const revisable =
+    contract.offer.phase === OfferPhase.Draft ||
+    (contract.offer.phase === OfferPhase.Locked && contract.status === ContractStatus.Offered);
+  if (!revisable) {
+    return rejected(state, RejectionCodes.OfferNotInDraft);
+  }
+
+  if (command.advance < 0 || command.advance > contract.patronFee) {
+    return rejected(state, RejectionCodes.OfferTermsOutOfBounds);
+  }
+
+  if (command.promisedBonus < 0 || command.promisedBonus > contract.patronFee) {
+    return rejected(state, RejectionCodes.OfferTermsOutOfBounds);
+  }
+
+  // `undefined` and an empty set both read as "nothing negotiable" — see
+  // `ContractState.negotiableTags`'s own doc for why the field is optional.
+  const negotiableTags = contract.negotiableTags ?? SortedSet.empty<ContentId>(compareContentIds);
+  if (command.methodTag !== null && !negotiableTags.has(command.methodTag)) {
+    return rejected(state, RejectionCodes.OfferTermsOutOfBounds);
+  }
+
+  // A revision always answers `version + 1` with both answer sets empty (`NEGOTIATION_SPEC`
+  // §6.1's starting-`OfferState` shape, carried forward by every later revision): an
+  // acceptance given to the package this replaces is not an acceptance of this one.
+  const revisedOffer = {
+    version: contract.offer.version + 1,
+    keyHero: command.keyHero,
+    advance: command.advance,
+    methodTag: command.methodTag,
+    promisedBonus: command.promisedBonus,
+    phase: OfferPhase.Draft,
+    respondedBy: SortedSet.empty<HeroId>(compareHeroIds),
+    acceptedBy: SortedSet.empty<HeroId>(compareHeroIds)
+  };
+
+  // Clearing every answer empties `acceptedBy` too, so the contract can never still
+  // read `crewed` after a revision — it goes back to `offered`, `requiredCrew` being
+  // at least 1 (`REQUIRED_CREW_MIN`) rules out the degenerate case of a contract
+  // already crewed with zero acceptances.
+  const revisedContract = createContractState({
+    ...contract,
+    status: ContractStatus.Offered,
+    offer: revisedOffer
+  });
+
+  const domainEvent: DomainEvent = {
+    kind: 'offer_revised',
+    eventId: state.metadata.nextEventId,
+    logicalTime: state.metadata.logicalTime,
+    causalTraceId: null,
+    contractId: command.contractId
+  };
+
+  // No decision, no trace, no randomness spent — composing an offer is the player's
+  // own choice (`NEGOTIATION_SPEC` §3.3 point 3).
+  const nextState = withEvent(
+    {
+      ...state,
+      contracts: state.contracts.set(revisedContract.id, revisedContract),
+      appliedCommandIds: state.appliedCommandIds.add(command.commandId)
+    },
+    domainEvent,
+    null,
+    0n
+  );
+
+  return fromEvent(nextState, domainEvent);
 }

@@ -82,6 +82,31 @@ export interface ContractState {
    * `HeroState.traits`.
    */
   readonly tags: SortedSet<ContentId>;
+  /**
+   * The mutually-exclusive method tags a player may choose between when composing an
+   * offer (`NEGOTIATION_SPEC` §2.4) — exactly `NEGOTIABLE_TAGS_COUNT` (2) entries, or
+   * absent/empty for a contract that trades on money and promise only. `composeOffer`
+   * (`commands/compose-offer.ts`) is this field's one reader today: absent and empty
+   * both mean "nothing negotiable", so a chosen `methodTag` is only ever legal when it
+   * is a member of this set.
+   *
+   * **Optional on the type, not on the data.** Every contract this build can produce
+   * carries a real set — the content loader fills it from `ContractDefinition.negotiableTags`
+   * (`initial-state.ts`), a revision carries its contract's existing set forward
+   * (`composeOffer`), and `snapshot-codec.ts` round-trips it (an `.optional()` schema
+   * key rather than a required one, so this addition did not have to move
+   * `SAVE_SCHEMA_VERSION`). The type is optional only so that hand-built `ContractState`
+   * literals elsewhere in the tree — tests and fixtures predating this field — are not
+   * forced to supply it; reading code should treat absence exactly like an empty set,
+   * never as "unknown".
+   *
+   * **Not (yet) in the canonical artifact.** `determinism-artifact.ts`'s `describeContract`
+   * does not project this field — adding it would be a real shape change, and this task
+   * is explicitly told not to move `ARTIFACT_VERSION` or re-record `scenarios/*.canonical.json`
+   * (`ADR-013`, Task 20). A scenario that never composes an offer with a `methodTag`
+   * cannot observe the omission; one that does is Task 20's problem to pick up.
+   */
+  readonly negotiableTags?: SortedSet<ContentId>;
   readonly status: ContractStatus;
   /**
    * This contract's current negotiation package and its lifecycle

@@ -268,5 +268,7 @@ function describeEvent(domainEvent: DomainEvent): CanonicalValue {
     case 'hero_accepted_contract':
     case 'hero_declined_contract':
       return { ...base, hero_id: domainEvent.heroId, contract_id: domainEvent.contractId };
+    case 'offer_revised':
+      return { ...base, contract_id: domainEvent.contractId };
   }
 }

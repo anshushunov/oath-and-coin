@@ -33,6 +33,17 @@ export interface HeroDeclinedContract extends DomainEventBase {
 }
 
 /**
+ * A player revised a contract's offer package (`composeOffer`, `NEGOTIATION_SPEC`
+ * §3.3). `causalTraceId` is always `null`: composing an offer is the player's own
+ * choice, not a hero's decision, so there is no explanation to store for it — the
+ * same reason a tick event would carry none.
+ */
+export interface OfferRevised extends DomainEventBase {
+  readonly kind: 'offer_revised';
+  readonly contractId: ContentId;
+}
+
+/**
  * A discriminated union rather than an abstract base class with subtypes, and the
  * discriminant is the exact string the canonical artifact writes.
  *
@@ -44,4 +55,4 @@ export interface HeroDeclinedContract extends DomainEventBase {
  * `noImplicitReturns` see to it — and the projection cannot even reach the payload
  * fields without narrowing on `kind` first.
  */
-export type DomainEvent = HeroAcceptedContract | HeroDeclinedContract;
+export type DomainEvent = HeroAcceptedContract | HeroDeclinedContract | OfferRevised;

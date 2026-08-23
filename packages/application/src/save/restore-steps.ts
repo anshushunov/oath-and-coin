@@ -38,6 +38,15 @@ export function restoreDecidedSteps(state: GameState): readonly DecidedStep[] {
 }
 
 function heroDefinitionOf(state: GameState, event: DomainEvent): ContentId {
+  if (event.kind === 'offer_revised') {
+    throw new Error(
+      `Event ${String(event.eventId)} ('offer_revised') names no hero — composing an offer is the ` +
+        "player's own choice, not a decision a hero made. restoreDecidedSteps does not yet " +
+        'describe a step with no hero behind it; DecidedStep.heroDefinition growing a null case ' +
+        'is presentation-layer work this command does not do.'
+    );
+  }
+
   const hero = state.heroes.get(event.heroId);
 
   if (hero === undefined) {
@@ -118,6 +127,11 @@ function actionOf(event: DomainEvent): ContentId {
       return Actions.Accept;
     case 'hero_declined_contract':
       return Actions.Decline;
+    case 'offer_revised':
+      throw new Error(
+        `actionOf was given an 'offer_revised' event (${String(event.eventId)}); its causalTraceId ` +
+          'is always null, so restoreOutcome returns before this function is ever called on one.'
+      );
     default:
       return event satisfies never;
   }

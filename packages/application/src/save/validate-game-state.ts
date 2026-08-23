@@ -60,7 +60,10 @@ export function validateGameState(state: GameState): void {
  */
 function checkReferentialIntegrity(state: GameState): void {
   for (const event of state.history) {
-    if (!state.heroes.has(event.heroId)) {
+    // `offer_revised` names no hero — composing an offer is the player's own choice,
+    // not a decision a hero made (`domain-event.ts`). Every other event kind today is
+    // a hero's response, and does.
+    if (event.kind !== 'offer_revised' && !state.heroes.has(event.heroId)) {
       throw inconsistent(
         `history event ${String(event.eventId)} names hero#${String(event.heroId)}, but the ` +
           'save carries no such hero.'
@@ -154,6 +157,24 @@ function checkDecisionTraces(state: GameState): void {
   const explains = new Map<number, number>();
 
   for (const event of state.history) {
+    // The one non-decision event this build produces today: composing an offer is
+    // the player's own choice, so it explains itself and carries no trace
+    // (`domain-event.ts`'s `OfferRevised`). This is the exception
+    // `DomainEventBase.causalTraceId`'s own doc anticipated the day a non-decision
+    // event arrived — refusing the first tick or player-choice event that carries an
+    // explanation it should not, rather than silently admitting an unexplained
+    // decision.
+    if (event.kind === 'offer_revised') {
+      if (event.causalTraceId !== null) {
+        throw inconsistent(
+          `history event ${String(event.eventId)} ('offer_revised') carries causalTraceId ` +
+            `${String(event.causalTraceId)}; composing an offer is the player's own choice, not ` +
+            'a decision, and explains itself.'
+        );
+      }
+      continue;
+    }
+
     if (event.causalTraceId === null) {
       throw inconsistent(
         `history event ${String(event.eventId)} records a decision ('${event.kind}') carrying no ` +
@@ -277,6 +298,11 @@ function checkResponseBookkeeping(state: GameState): void {
   const respondedInHistory = new Map<ContentId, Map<HeroId, boolean>>();
 
   for (const event of state.history) {
+    // Not a hero response — see the `offer_revised` note in `checkDecisionTraces`.
+    if (event.kind === 'offer_revised') {
+      continue;
+    }
+
     let perContract = respondedInHistory.get(event.contractId);
     if (perContract === undefined) {
       perContract = new Map<HeroId, boolean>();

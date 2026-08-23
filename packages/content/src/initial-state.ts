@@ -105,6 +105,10 @@ export function createInitialState(
         risk: definition.risk,
         requiredCrew: definition.requiredCrew,
         tags: SortedSet.from(compareContentIds, definition.tags),
+        // Already resolved by the content loader (`content-set.ts`, `DEC-012`/Task 4);
+        // simply not carried into simulation state until now. `composeOffer`
+        // (`NEGOTIATION_SPEC` §3.3) is the first reader.
+        negotiableTags: SortedSet.from(compareContentIds, definition.negotiableTags),
         status: ContractStatus.Offered,
         offer: initialOffer(),
         moodOrdinals: SortedMap.empty<HeroId, bigint>(compareHeroIds)

@@ -51,7 +51,8 @@ import {
   MAX_ARTIFACT_SAFE_TEXT_LENGTH,
   MAX_RELATIONSHIPS_PER_HERO,
   MAX_TAGS_PER_CONTRACT,
-  MAX_TRAITS_PER_HERO
+  MAX_TRAITS_PER_HERO,
+  NEGOTIABLE_TAGS_COUNT
 } from '../limits.ts';
 
 import { SaveErrorCodes, SaveReadError, type SaveErrorCode } from './save-error-codes.ts';
@@ -246,6 +247,13 @@ const contractValueSchema = z.strictObject({
   risk: z.int().min(RISK_MIN).max(RISK_MAX),
   requiredCrew: z.int().min(REQUIRED_CREW_MIN).max(REQUIRED_CREW_MAX),
   tags: z.array(contentId).max(MAX_TAGS_PER_CONTRACT),
+  // Optional, not `ContractState.negotiableTags`'s own default made required: this key
+  // is new (`DEC-008` Task 10), and declaring it optional rather than required keeps a
+  // save this exact schema version already accepts still accepting — the field is
+  // additive, not a shape this schema version ever promised was absent. Absent decodes
+  // to "nothing negotiable", the same as an authored contract with no `negotiable_tags`
+  // (`NEGOTIATION_SPEC` §2.4).
+  negotiableTags: z.array(contentId).max(NEGOTIABLE_TAGS_COUNT).optional(),
   status: contractStatusSchema,
   offer: offerValueSchema,
   moodOrdinals: entries(heroIdSchema, uint64).max(MAX_HEROES_PER_CONTRACT)
@@ -453,6 +461,7 @@ export function encodeSnapshot(state: GameState): unknown {
         risk: value.risk,
         requiredCrew: value.requiredCrew,
         tags: value.tags.values(),
+        negotiableTags: value.negotiableTags?.values(),
         status: value.status,
         offer: {
           version: value.offer.version,
@@ -554,6 +563,12 @@ export function decodeSnapshot(value: unknown): GameState {
       risk: raw.risk,
       requiredCrew: raw.requiredCrew,
       tags: SortedSet.from(compareContentIds, raw.tags.map((tag) => parseContentId(tag))),
+      // Absent reads as "nothing negotiable" — see `contractValueSchema`'s own comment
+      // on why this key is optional rather than required.
+      negotiableTags: SortedSet.from(
+        compareContentIds,
+        (raw.negotiableTags ?? []).map((tag) => parseContentId(tag))
+      ),
       status: raw.status,
       offer: {
         version: raw.offer.version,

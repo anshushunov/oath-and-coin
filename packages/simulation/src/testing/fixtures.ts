@@ -109,6 +109,7 @@ export function aContract(overrides: Partial<ContractState> = {}): ContractState
     risk: 80,
     requiredCrew: 1,
     tags: SortedSet.from(compareContentIds, [ids.undead]),
+    negotiableTags: SortedSet.empty<ContentId>(compareContentIds),
     status: ContractStatus.Offered,
     offer: anOffer(),
     moodOrdinals: SortedMap.empty<HeroId, bigint>(compareHeroIds),
