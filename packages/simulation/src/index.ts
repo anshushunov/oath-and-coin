@@ -56,6 +56,19 @@ export {
 export { proposeContractToHero } from './engine.ts';
 export { divideTowardZero, multiplyInt32, toInt32 } from './integer-division.ts';
 
+export {
+  GRIEVANCE_MAX,
+  GRIEVANCE_VICTIM,
+  WITNESS_SHARE,
+  grievanceForBrokenPromise
+} from './negotiation/grievance.ts';
+export {
+  STARTING_TREASURY,
+  canCover,
+  commitmentOf,
+  reservedCommitments
+} from './negotiation/commitments.ts';
+
 export type {
   DomainEvent,
   HeroAcceptedContract,

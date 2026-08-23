@@ -2,6 +2,7 @@ import {
   Actions,
   ContractStatus,
   ReasonCodes,
+  STARTING_TREASURY,
   SortedMap,
   SortedSet,
   compareContentIds,
@@ -64,6 +65,8 @@ export function aHero(overrides: Partial<HeroState> = {}): HeroState {
     trustInGuild: 50,
     traits: [],
     relationships: SortedMap.empty<ContentId, number>(compareContentIds),
+    believesGuildPromises: true,
+    grievance: 0,
     ...overrides
   };
 }
@@ -122,6 +125,7 @@ export function aState(overrides: Partial<GameState> = {}): GameState {
     traitRules: SortedMap.empty<ContentId, HeldTrait>(compareContentIds),
     traces: SortedMap.empty<number, CausalTrace>(compareNumbers),
     history: [],
+    treasury: STARTING_TREASURY,
     ...overrides
   };
 }

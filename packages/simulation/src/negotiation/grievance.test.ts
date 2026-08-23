@@ -1,0 +1,29 @@
+import { describe, expect, it } from 'vitest';
+
+import { GRIEVANCE_MAX, grievanceForBrokenPromise } from './grievance.ts';
+
+/**
+ * `grievanceForBrokenPromise` (`NEGOTIATION_SPEC` §3.3): what breaking a promise costs
+ * the victim and every witness, before either amount is added to an existing
+ * `HeroState.grievance` — that addition is `settleContract`'s, and no command wires it
+ * yet.
+ */
+describe('grievanceForBrokenPromise', () => {
+  it('scales the victim grievance with how much of the fee was withheld', () => {
+    expect(grievanceForBrokenPromise(100, 100).victim).toBe(30);
+    expect(grievanceForBrokenPromise(50, 100).victim).toBe(15);
+  });
+
+  it('never lets a broken promise cost nothing, however small', () => {
+    // 30 * 1 / 100 divides toward zero to 0 — Math.max(…, 1) is the only thing standing
+    // between that and a promise breaking for free.
+    expect(grievanceForBrokenPromise(1, 100)).toEqual({ victim: 1, witness: 1 });
+  });
+
+  it('keeps the witness below the victim and both inside the ceiling', () => {
+    const { victim, witness } = grievanceForBrokenPromise(100, 100);
+    expect(witness).toBeGreaterThan(0);
+    expect(witness).toBeLessThanOrEqual(victim);
+    expect(victim).toBeLessThanOrEqual(GRIEVANCE_MAX);
+  });
+});

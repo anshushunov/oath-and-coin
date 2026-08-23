@@ -7,6 +7,7 @@ import type { HeldTrait } from '../decisions/held-trait.ts';
 import type { DomainEvent } from '../events/domain-event.ts';
 import { compareContentIds, parseContentId, type ContentId } from '../ids/content-id.ts';
 import { compareHeroIds, heroId, type HeroId } from '../ids/hero-id.ts';
+import { STARTING_TREASURY } from '../negotiation/commitments.ts';
 import { ContractStatus, type ContractState } from '../state/contract-state.ts';
 import type { GameState } from '../state/game-state.ts';
 import type { HeroState } from '../state/hero-state.ts';
@@ -85,6 +86,8 @@ export function aHero(overrides: Partial<HeroState> = {}): HeroState {
     trustInGuild: 50,
     traits: [],
     relationships: SortedMap.empty<ContentId, number>(compareContentIds),
+    believesGuildPromises: true,
+    grievance: 0,
     ...overrides
   };
 }
@@ -181,6 +184,7 @@ export function aState(overrides: Partial<GameState> = {}): GameState {
     traitRules: SortedMap.empty<ContentId, HeldTrait>(compareContentIds),
     traces: SortedMap.empty<number, CausalTrace>(compareNumbers),
     history: [],
+    treasury: STARTING_TREASURY,
     ...overrides
   };
 }

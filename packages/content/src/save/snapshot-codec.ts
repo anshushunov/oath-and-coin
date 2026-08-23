@@ -9,6 +9,7 @@ import {
   HERO_ID_MAX,
   HERO_ID_MIN,
   OfferPhase,
+  STARTING_TREASURY,
   SortedMap,
   SortedSet,
   TIE_BREAK_REASON_CODES,
@@ -505,7 +506,15 @@ export function decodeSnapshot(value: unknown): GameState {
       pride: raw.pride,
       trustInGuild: raw.trustInGuild,
       traits: raw.traits.map((trait) => parseContentId(trait)),
-      relationships: buildRelationships(raw.relationships)
+      relationships: buildRelationships(raw.relationships),
+      // `HeroState.believesGuildPromises`/`grievance` (`NEGOTIATION_SPEC` §2.2) are not
+      // yet part of this codec's shape — `SAVE_SCHEMA_VERSION` was not bumped for them
+      // (Task 7 declares the fields; no command moves them yet), so a save carries no
+      // opinion about either and every hero decodes back to the campaign-start values.
+      // This stops being correct the day a command actually changes one of them, which
+      // is the task that must also give this codec a shape for what it wrote.
+      believesGuildPromises: true,
+      grievance: 0
     }),
     'heroes'
   );
@@ -596,7 +605,12 @@ export function decodeSnapshot(value: unknown): GameState {
     appliedCommandIds: SortedSet.from(compareNumbers, parsed.appliedCommandIds),
     traitRules,
     traces,
-    history: parsed.history.map((domainEvent) => toDomainEvent(domainEvent))
+    history: parsed.history.map((domainEvent) => toDomainEvent(domainEvent)),
+    // `GameState.treasury` (`NEGOTIATION_SPEC` §2.3) is not yet part of this codec's
+    // shape, for the same reason as `believesGuildPromises`/`grievance` above — no
+    // command moves it yet, so every save decodes back to the campaign's starting
+    // treasury.
+    treasury: STARTING_TREASURY
   };
 
   return freezeDeep(state);

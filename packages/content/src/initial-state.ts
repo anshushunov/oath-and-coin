@@ -1,5 +1,6 @@
 import {
   ContractStatus,
+  STARTING_TREASURY,
   SortedMap,
   SortedSet,
   compareContentIds,
@@ -84,7 +85,11 @@ export function createInitialState(
             definition.relationships.map(
               (relationship) => [relationship.hero, relationship.weight] as const
             )
-          )
+          ),
+          // `NEGOTIATION_SPEC` §2.2's starting values — campaign state, not content, so
+          // no hero definition carries them.
+          believesGuildPromises: true,
+          grievance: 0
         }
       ];
     })
@@ -139,7 +144,9 @@ export function createInitialState(
     appliedCommandIds: SortedSet.empty<number>(compareNumbers),
     traitRules,
     traces: SortedMap.empty<number, CausalTrace>(compareNumbers),
-    history: []
+    history: [],
+    // `NEGOTIATION_SPEC` §2.3's starting treasury; no command moves it yet.
+    treasury: STARTING_TREASURY
   });
 }
 

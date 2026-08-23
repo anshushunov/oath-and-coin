@@ -120,7 +120,10 @@ function aHeroAt(scales: {
         definition,
         index % 2 === 0 ? scales.bondWeight : -scales.bondWeight
       ])
-    )
+    ),
+    // `NEGOTIATION_SPEC` §2.2's starting values — this sweep is not about a promise.
+    believesGuildPromises: true,
+    grievance: 0
   };
 }
 
