@@ -233,10 +233,7 @@ describe('an applied command records what the hero decided', () => {
     const accepted = proposeContractToHero(
       aCampaign({
         contracts: SortedMap.from(compareContentIds, [
-          [
-            ids.crypt,
-            aContract({ patronFee: 100, risk: 0, offer: anOffer({ keyHero: bram.id }) })
-          ]
+          [ids.crypt, aContract({ patronFee: 100, risk: 0, offer: anOffer({ keyHero: bram.id }) })]
         ])
       }),
       aProposal()

@@ -1,4 +1,9 @@
-import { RULESET_VERSION, createInitialState, loadContentSet, memoryFileSource } from '@oath-and-coin/content';
+import {
+  RULESET_VERSION,
+  createInitialState,
+  loadContentSet,
+  memoryFileSource
+} from '@oath-and-coin/content';
 import {
   Actions,
   SortedMap,
