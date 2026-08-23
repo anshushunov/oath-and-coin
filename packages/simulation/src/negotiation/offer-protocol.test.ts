@@ -318,7 +318,17 @@ describe('proposeContractToHero — the key hero, and the mood pinned to the con
   function aCampaign(): GameState {
     return aState({
       heroes: SortedMap.from(compareHeroIds, [
-        [KEY_HERO, aHero({ id: KEY_HERO, traits: [ids.refusesDeception] })],
+        // Every scale but `trustInGuild` zeroed, and `trustInGuild` picked so the
+        // non-mood score is exactly `1`: at seed `7n`, `drawMood` is `-2` on ordinal 0
+        // and `4` on ordinal 2 (computed, not guessed) — `1 - 2 = -1` declines, `1 + 4
+        // = 5` accepts. A mutant that redraws mood instead of reusing the pinned
+        // ordinal genuinely flips the answer here; a hero whose other motives already
+        // decided the case regardless of mood would not — and did not, until this was
+        // tuned (an earlier draft used `aHero()`'s untouched defaults, and the "cycled
+        // away and back" test passed against the ignore-`moodOrdinals` mutant purely
+        // because greed/caution/pride left the score too lopsided for any mood to move
+        // it).
+        [KEY_HERO, aHero({ id: KEY_HERO, greed: 0, caution: 0, pride: 0, trustInGuild: 10, traits: [ids.refusesDeception] })],
         [OTHER_HERO, aHero({ id: OTHER_HERO })]
       ]),
       contracts: SortedMap.from(compareContentIds, [
