@@ -40,7 +40,7 @@ describe('a command result carries every decision it produced', () => {
     // same 70 the default `patronFee` used to contribute before `NEGOTIATION_SPEC` §4
     // moved the benefit term onto `offer.advance` — to keep the hero accepting, which
     // is the only thing this test is about.
-    const contract = aContract({ offer: anOffer({ advance: 70 }) });
+    const contract = aContract({ offer: anOffer({ keyHero: heroId(0), advance: 70 }) });
     const state = aState({
       contracts: SortedMap.from(compareContentIds, [[contract.id, contract]])
     });

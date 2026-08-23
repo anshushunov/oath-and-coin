@@ -12,6 +12,7 @@ import { compareContentIds, parseContentId, type ContentId } from './ids/content
 import { compareHeroIds, heroId } from './ids/hero-id.ts';
 import { ContractStatus } from './state/contract-state.ts';
 import type { GameState } from './state/game-state.ts';
+import { OfferPhase } from './state/offer-state.ts';
 import { aContract, aHero, anOffer, aState, aTrait, ids } from './testing/fixtures.ts';
 
 /**
@@ -58,10 +59,34 @@ function aCampaign(overrides: Partial<GameState> = {}): GameState {
       [bram.id, bram],
       [zara.id, zara]
     ]),
-    contracts: SortedMap.from(compareContentIds, [[ids.crypt, aContract()]]),
+    // Keyed to `bram` by default (`aProposal`'s own default `heroId`) — `NEGOTIATION_SPEC`
+    // §3.1, §6 (Task 11) lets only the offer's key hero answer while the package is a
+    // draft, and every test in this file predates that rule.
+    contracts: SortedMap.from(compareContentIds, [
+      [ids.crypt, aContract({ offer: anOffer({ keyHero: bram.id }) })]
+    ]),
     traitRules,
     ...overrides
   });
+}
+
+/**
+ * `state`'s one contract, with its offer already `locked` — for tests where a hero
+ * other than the key hero answers. `proposeContractToHero` only gates *draft*
+ * responses to the key hero (Task 11); the rest of the roster answering once the
+ * package is locked is `pollCrew`'s job (Task 13, not built), so this stands in for it
+ * by hand rather than by running a command this task does not build.
+ */
+function locked(state: GameState): GameState {
+  const contract = state.contracts.get(ids.crypt)!;
+
+  return {
+    ...state,
+    contracts: state.contracts.set(ids.crypt, {
+      ...contract,
+      offer: { ...contract.offer, phase: OfferPhase.Locked }
+    })
+  };
 }
 
 function aProposal(overrides: Partial<ProposeContractToHero> = {}): ProposeContractToHero {
@@ -111,7 +136,9 @@ describe('a refused command changes nothing at all', () => {
     // Two seats, so the offer is still open after the first acceptance — otherwise the
     // command would be refused as already-resolved and this case would never be reached.
     const twoSeats = aCampaign({
-      contracts: SortedMap.from(compareContentIds, [[ids.crypt, aContract({ requiredCrew: 2 })]])
+      contracts: SortedMap.from(compareContentIds, [
+        [ids.crypt, aContract({ requiredCrew: 2, offer: anOffer({ keyHero: bram.id }) })]
+      ])
     });
 
     const first = proposeContractToHero(twoSeats, aProposal());
@@ -206,7 +233,10 @@ describe('an applied command records what the hero decided', () => {
     const accepted = proposeContractToHero(
       aCampaign({
         contracts: SortedMap.from(compareContentIds, [
-          [ids.crypt, aContract({ patronFee: 100, risk: 0 })]
+          [
+            ids.crypt,
+            aContract({ patronFee: 100, risk: 0, offer: anOffer({ keyHero: bram.id }) })
+          ]
         ])
       }),
       aProposal()
@@ -221,7 +251,7 @@ describe('an applied command records what the hero decided', () => {
     const declined = proposeContractToHero(
       aCampaign({
         contracts: SortedMap.from(compareContentIds, [
-          [ids.crypt, aContract({ patronFee: 0, risk: 100 })]
+          [ids.crypt, aContract({ patronFee: 0, risk: 100, offer: anOffer({ keyHero: bram.id }) })]
         ])
       }),
       aProposal()
@@ -239,15 +269,26 @@ describe('an applied command records what the hero decided', () => {
   it('crews the offer only when every seat is filled', () => {
     const twoSeats = aCampaign({
       contracts: SortedMap.from(compareContentIds, [
-        [ids.crypt, aContract({ patronFee: 100, risk: 0, requiredCrew: 2 })]
+        [
+          ids.crypt,
+          aContract({
+            patronFee: 100,
+            risk: 0,
+            requiredCrew: 2,
+            offer: anOffer({ keyHero: bram.id })
+          })
+        ]
       ])
     });
 
     const first = proposeContractToHero(twoSeats, aProposal());
     expect(first.state.contracts.get(ids.crypt)!.status).toBe(ContractStatus.Offered);
 
+    // The rest of the roster answers once the package is locked (`pollCrew`, Task 13),
+    // not while it is still a draft (`NEGOTIATION_SPEC` §3.1, §6) — simulated by hand
+    // here since `lockOffer` is not this task's to build.
     const second = proposeContractToHero(
-      first.state,
+      locked(first.state),
       aProposal({ commandId: 2, heroId: zara.id, expectedStateVersion: 1 })
     );
 
@@ -261,7 +302,10 @@ describe('an applied command records what the hero decided', () => {
         [
           ids.crypt,
           aContract({
-            offer: anOffer({ acceptedBy: SortedSet.from(compareHeroIds, [heroId(7)]) })
+            offer: anOffer({
+              keyHero: bram.id,
+              acceptedBy: SortedSet.from(compareHeroIds, [heroId(7)])
+            })
           })
         ]
       ])
@@ -280,13 +324,21 @@ describe('an applied command records what the hero decided', () => {
     // equivalence stops being quietly false.
     const threeSeats = aCampaign({
       contracts: SortedMap.from(compareContentIds, [
-        [ids.crypt, aContract({ patronFee: 0, risk: 100, requiredCrew: 3 })]
+        [
+          ids.crypt,
+          aContract({
+            patronFee: 0,
+            risk: 100,
+            requiredCrew: 3,
+            offer: anOffer({ keyHero: bram.id })
+          })
+        ]
       ])
     });
 
     const first = proposeContractToHero(threeSeats, aProposal());
     const second = proposeContractToHero(
-      first.state,
+      locked(first.state),
       aProposal({ commandId: 2, heroId: zara.id, expectedStateVersion: 1 })
     );
 
@@ -317,13 +369,21 @@ describe('an applied command records what the hero decided', () => {
         [zaraLikesBram.id, zaraLikesBram]
       ]),
       contracts: SortedMap.from(compareContentIds, [
-        [ids.crypt, aContract({ patronFee: 100, risk: 0, requiredCrew: 2 })]
+        [
+          ids.crypt,
+          aContract({
+            patronFee: 100,
+            risk: 0,
+            requiredCrew: 2,
+            offer: anOffer({ keyHero: bram.id })
+          })
+        ]
       ])
     });
 
     const first = proposeContractToHero(state, aProposal());
     const second = proposeContractToHero(
-      first.state,
+      locked(first.state),
       aProposal({ commandId: 2, heroId: zaraLikesBram.id, expectedStateVersion: 1 })
     );
 
@@ -339,7 +399,13 @@ describe('a decision the gate closed still happened', () => {
   it('advances the campaign but spends no randomness', () => {
     const state = aCampaign({
       contracts: SortedMap.from(compareContentIds, [
-        [ids.crypt, aContract({ tags: SortedSet.from(compareContentIds, [ids.temple]) })]
+        [
+          ids.crypt,
+          aContract({
+            tags: SortedSet.from(compareContentIds, [ids.temple]),
+            offer: anOffer({ keyHero: zara.id })
+          })
+        ]
       ])
     });
 

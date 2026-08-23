@@ -38,6 +38,9 @@ export const ids = {
   /** A negotiated-tag pair (`NEGOTIATION_SPEC` §2.4): a target and a chosen method. */
   cult: parseContentId('target:cult'),
   deception: parseContentId('method:deception'),
+  /** The other half of a negotiated-tag pair — a method a `refusesDeception` principle
+   * does not name, so choosing it stops that principle from gating the hero. */
+  open: parseContentId('method:open'),
   /** A principle whose tag only ever arrives as a chosen method tag, never authored. */
   refusesDeception: parseContentId('core:refuses_deception'),
   /**

@@ -4,13 +4,25 @@ import { SortedMap } from '../collections/sorted-map.ts';
 import { SortedSet } from '../collections/sorted-set.ts';
 import { RejectionCodes } from '../commands/command-result.ts';
 import type { ComposeOffer } from '../commands/compose-offer.ts';
-import { composeOffer } from '../engine.ts';
+import type { ProposeContractToHero } from '../commands/propose-contract-to-hero.ts';
+import { Actions } from '../decisions/actions.ts';
+import { drawMood } from '../decisions/contract-decision-rule.ts';
+import { composeOffer, proposeContractToHero } from '../engine.ts';
 import { compareContentIds } from '../ids/content-id.ts';
 import { compareHeroIds, heroId, type HeroId } from '../ids/hero-id.ts';
 import { ContractStatus, type ContractState } from '../state/contract-state.ts';
 import { contractOf, type GameState } from '../state/game-state.ts';
 import { OfferPhase, type OfferState } from '../state/offer-state.ts';
-import { aContract, aHero, anOffer, aState, ids, sixTags } from '../testing/fixtures.ts';
+import {
+  aContract,
+  aHero,
+  anOffer,
+  aState,
+  aTrait,
+  compareNumbers,
+  ids,
+  sixTags
+} from '../testing/fixtures.ts';
 
 /**
  * `composeOffer` (`NEGOTIATION_SPEC` §3.1, §3.3, §6.1) — the first command of the
@@ -271,5 +283,181 @@ describe('composeOffer', () => {
     expect(composeOffer(state, aCompose({ advance: 999, keyHero: heroId(99) })).rejectionCode).toBe(
       RejectionCodes.UnknownHero
     );
+  });
+});
+
+describe('proposeContractToHero — the key hero, and the mood pinned to the contract', () => {
+  /**
+   * `NEGOTIATION_SPEC` §2.1.1 (mood pinned to the contract, not the offer version) and
+   * §6 (only the key hero answers a draft). Every helper below runs the *real*
+   * `proposeContractToHero` and `composeOffer` — the mood-pinning bookkeeping this task
+   * adds lives in `engine.ts`, not in `decide()`, which was already a pure function of
+   * `(campaignSeed, ordinal)` before this task touched it.
+   *
+   * `accepted()` resets only the protocol plumbing its own internal call consumes
+   * (`stateVersion`, `appliedCommandIds`) back to the fixed baseline a fresh campaign
+   * starts on, so every helper below can keep composing further commands against the
+   * default `expectedStateVersion`/`commandId` a fresh campaign would also accept —
+   * exactly as a player revising a package one command at a time would. What it does
+   * *not* reset is `contracts` (so `moodOrdinals`, `respondedBy`, `acceptedBy` are
+   * exactly what the engine wrote) or `metadata.nextDecisionOrdinal` (so a real draw's
+   * cost survives) — the two things every test below actually reads.
+   */
+
+  const KEY_HERO: HeroId = heroId(0);
+  /** Exists only to be refused — never a legal respondent while the package is a draft. */
+  const OTHER_HERO: HeroId = heroId(3);
+
+  const proposeTraitRules = SortedMap.from(compareContentIds, [
+    [
+      ids.refusesDeception,
+      aTrait({ id: ids.refusesDeception, tag: ids.deception, isPrinciple: true, weight: 0 })
+    ]
+  ]);
+
+  function aCampaign(): GameState {
+    return aState({
+      heroes: SortedMap.from(compareHeroIds, [
+        [KEY_HERO, aHero({ id: KEY_HERO, traits: [ids.refusesDeception] })],
+        [OTHER_HERO, aHero({ id: OTHER_HERO })]
+      ]),
+      contracts: SortedMap.from(compareContentIds, [
+        [
+          ids.crypt,
+          aContract({
+            // Two seats: one acceptance never crews the offer, so `ContractAlreadyResolved`
+            // cannot pre-empt the checks these tests are actually about.
+            requiredCrew: 2,
+            negotiableTags: SortedSet.from(compareContentIds, [ids.deception, ids.open]),
+            offer: anOffer({ keyHero: KEY_HERO })
+          })
+        ]
+      ]),
+      traitRules: proposeTraitRules
+    });
+  }
+
+  function aProposal(overrides: Partial<ProposeContractToHero> = {}): ProposeContractToHero {
+    return {
+      commandId: 1,
+      heroId: KEY_HERO,
+      contractId: ids.crypt,
+      expectedStateVersion: 0,
+      ...overrides
+    };
+  }
+
+  function aCompose(overrides: Partial<ComposeOffer> = {}): ComposeOffer {
+    return {
+      commandId: 2,
+      contractId: ids.crypt,
+      keyHero: KEY_HERO,
+      advance: 0,
+      methodTag: null,
+      promisedBonus: 0,
+      expectedStateVersion: 0,
+      ...overrides
+    };
+  }
+
+  /**
+   * The key hero answers the current draft, for real, through `proposeContractToHero`
+   * — the function this task changes. Only the protocol bookkeeping a chain of these
+   * calls would otherwise exhaust (`stateVersion`, `appliedCommandIds`) is reset on the
+   * way out, back to what a fresh campaign starts on; `contracts` and
+   * `nextDecisionOrdinal` are carried forward exactly as the engine produced them.
+   */
+  function accepted(state: GameState): GameState {
+    const result = proposeContractToHero(
+      state,
+      aProposal({ expectedStateVersion: state.metadata.stateVersion })
+    );
+
+    return {
+      ...state,
+      contracts: result.state.contracts,
+      appliedCommandIds: SortedSet.empty<number>(compareNumbers),
+      metadata: {
+        ...state.metadata,
+        stateVersion: 0,
+        nextDecisionOrdinal: result.state.metadata.nextDecisionOrdinal
+      }
+    };
+  }
+
+  /**
+   * The key hero's own answer to this contract's current package — read off the
+   * contract's own bookkeeping rather than re-decided, so asking twice never risks a
+   * stale second answer.
+   */
+  function actionOf(state: GameState): string {
+    return contractOf(state, ids.crypt).offer.acceptedBy.has(KEY_HERO)
+      ? Actions.Accept
+      : Actions.Decline;
+  }
+
+  /**
+   * The mood the key hero's pinned ordinal draws for this contract — the same pure
+   * `drawMood` the rule itself calls, read from whichever ordinal `moodOrdinals`
+   * actually pinned (or `nextDecisionOrdinal`, when none is pinned yet).
+   */
+  function moodFactorOf(state: GameState): number {
+    const contract = contractOf(state, ids.crypt);
+    const ordinal = contract.moodOrdinals.get(KEY_HERO) ?? state.metadata.nextDecisionOrdinal;
+    return drawMood(state.metadata.campaignSeed, ordinal).value;
+  }
+
+  /**
+   * A package the key hero's own principle forbids (`method:deception`), answered —
+   * the gate closes before any score exists and no mood is drawn.
+   */
+  function declinedByPrinciple(state: GameState): GameState {
+    const composed = composeOffer(state, aCompose({ methodTag: ids.deception })).state;
+    return accepted(composed);
+  }
+
+  it('refuses anyone but the key hero while the package is a draft', () => {
+    expect(proposeContractToHero(aCampaign(), aProposal({ heroId: heroId(3) })).rejectionCode).toBe(
+      RejectionCodes.NotTheKeyHero
+    );
+  });
+
+  it('refuses a second answer to the same version', () => {
+    expect(
+      proposeContractToHero(accepted(aCampaign()), aProposal({ commandId: 2 })).rejectionCode
+    ).toBe(RejectionCodes.AlreadyResponded);
+  });
+
+  it('gives the same hero the same mood after the package was revised', () => {
+    const first = accepted(aCampaign());
+    const again = accepted(composeOffer(first, aCompose({ advance: 50 })).state);
+    expect(moodFactorOf(again)).toEqual(moodFactorOf(first));
+  });
+
+  it('gives the same answer after a package is cycled away and back', () => {
+    const a = accepted(aCampaign());
+    const back = composeOffer(
+      accepted(composeOffer(a, aCompose({ advance: 50 })).state),
+      aCompose({ advance: 40 })
+    ).state;
+    expect(actionOf(accepted(back))).toBe(actionOf(a));
+  });
+
+  it('spends no new ordinal on a hero who already drew a mood for this contract', () => {
+    const first = accepted(aCampaign());
+    const again = accepted(composeOffer(first, aCompose({ advance: 50 })).state);
+    expect(again.metadata.nextDecisionOrdinal).toBe(first.metadata.nextDecisionOrdinal);
+  });
+
+  it('records no mood ordinal for a decision the gate closed', () => {
+    const gated = declinedByPrinciple(aCampaign());
+    expect(contractOf(gated, ids.crypt).moodOrdinals.has(heroId(0))).toBe(false);
+    expect(gated.metadata.nextDecisionOrdinal).toBe(0n);
+  });
+
+  it('lets a hero who was gated draw a fresh mood once the package stops violating the principle', () => {
+    const gated = declinedByPrinciple(aCampaign());
+    const scored = accepted(composeOffer(gated, aCompose({ methodTag: ids.open })).state);
+    expect(contractOf(scored, ids.crypt).moodOrdinals.has(heroId(0))).toBe(true);
   });
 });

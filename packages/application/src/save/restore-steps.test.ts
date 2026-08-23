@@ -1,15 +1,11 @@
-import {
-  loadContentSet,
-  memoryFileSource,
-  runScenario,
-  type ScenarioCommand
-} from '@oath-and-coin/content';
+import { RULESET_VERSION, createInitialState, loadContentSet, memoryFileSource } from '@oath-and-coin/content';
 import {
   Actions,
   SortedMap,
   compareHeroIds,
   composeOffer,
   parseContentId,
+  proposeContractToHero,
   type GameState,
   type HeroId,
   type HeroState
@@ -100,15 +96,38 @@ const CRYPT_FILE = {
   tags: ['target:undead']
 };
 
+/**
+ * Builds the initial state from `files` and proposes `contract` to the roster's first
+ * hero — directly, not through `runScenario`/`ScenarioCommand`. That frozen scenario
+ * format has no way to compose an offer (`composeOffer` arrives in `DEC-008` Tasks
+ * 10-14, and the format was never extended to name it), and `proposeContractToHero`
+ * (Task 11) now lets only the offer's key hero answer while the package is a draft —
+ * so this keys the offer to that one hero by hand before proposing, rather than
+ * routing through a command this fixture has no way to issue. The resulting state is
+ * identical either way: `runScenario` was never anything but this same single call.
+ */
 function ran(files: Record<string, string>, contract: string): GameState {
-  const command: ScenarioCommand = {
-    commandId: 1,
-    heroIndex: 0,
-    contract: parseContentId(contract),
-    expectedStateVersion: 0
+  const base = createInitialState(loadContentSet(memoryFileSource(files)), SEED, RULESET_VERSION);
+  const [heroKey] = base.heroes.keys();
+  const contractId = parseContentId(contract);
+  const target = base.contracts.get(contractId)!;
+
+  const keyed: GameState = {
+    ...base,
+    contracts: base.contracts.set(contractId, {
+      ...target,
+      offer: { ...target.offer, keyHero: heroKey! }
+    })
   };
 
-  return runScenario(loadContentSet(memoryFileSource(files)), [command], SEED).finalState;
+  const result = proposeContractToHero(keyed, {
+    commandId: 1,
+    heroId: heroKey!,
+    contractId,
+    expectedStateVersion: keyed.metadata.stateVersion
+  });
+
+  return result.state;
 }
 
 /**

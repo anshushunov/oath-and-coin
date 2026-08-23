@@ -72,6 +72,15 @@ export function proposeContractToHero(
     return rejected(state, RejectionCodes.ContractAlreadyResolved);
   }
 
+  // §3.1, §6: only the offer's key hero may answer while the package is a draft —
+  // everyone else's turn is `pollCrew`, once the package is `locked` (Task 13), not
+  // before. `keyHero` is `null` until the first `composeOffer`, so this refuses every
+  // hero, key or not, until a package actually names one — a hero cannot be the key
+  // hero of an offer nobody has composed yet.
+  if (contract.offer.phase === OfferPhase.Draft && command.heroId !== contract.offer.keyHero) {
+    return rejected(state, RejectionCodes.NotTheKeyHero);
+  }
+
   if (contract.offer.respondedBy.has(command.heroId)) {
     return rejected(state, RejectionCodes.AlreadyResponded);
   }
@@ -122,17 +131,40 @@ export function proposeContractToHero(
     })
   );
 
+  // `NEGOTIATION_SPEC` §2.1.1: a hero's mood is pinned to this contract the first time
+  // it is drawn, not redrawn on every revised package — otherwise raising the advance
+  // and lowering it back would be a free reroll of the one input the hero's answer
+  // isn't determined by. A recorded ordinal is passed straight to `decide`, which
+  // draws the identical mood from it every time (a pure function of `(campaignSeed,
+  // ordinal)`) — the engine below declares `0n` spent regardless of what `decide`
+  // itself reports, because reading a mood already drawn is not new randomness.
+  const knownMoodOrdinal = contract.moodOrdinals.get(command.heroId);
+  const decisionOrdinal = knownMoodOrdinal ?? state.metadata.nextDecisionOrdinal;
+
   const decision = decide({
     hero,
     contract,
     traits,
     crew,
     campaignSeed: state.metadata.campaignSeed,
-    decisionOrdinal: state.metadata.nextDecisionOrdinal,
+    decisionOrdinal,
     traceId: state.metadata.nextTraceId
   });
 
   const accepted = decision.result.selectedAction === Actions.Accept;
+
+  // A mood ordinal is recorded only on the draw that actually happened: the gate
+  // closes before any mood is drawn (`decide`'s own `blockedBy` says so), and a hero
+  // who already has a recorded ordinal keeps exactly that one — a later revision that
+  // stops violating this hero's principle must still read the mood already drawn, not
+  // a fresh one drawn now that nothing blocks it. Recording on the gated path would
+  // make the record mean "a draw happened" for a hero it never did.
+  const gateClosed = decision.result.trace.blockedBy.length > 0;
+  const moodDrawnJustNow = knownMoodOrdinal === undefined && !gateClosed;
+  const moodOrdinals = moodDrawnJustNow
+    ? contract.moodOrdinals.set(command.heroId, decisionOrdinal)
+    : contract.moodOrdinals;
+  const ordinalsConsumed = knownMoodOrdinal !== undefined ? 0n : decision.ordinalsConsumed;
 
   // Declining adds the hero to `offer.respondedBy` and leaves the offer open — the
   // contract's own status is about the contract, not about who said no to it. Without
@@ -145,15 +177,21 @@ export function proposeContractToHero(
   const acceptedBy = accepted
     ? contract.offer.acceptedBy.add(command.heroId)
     : contract.offer.acceptedBy;
-  const respondedContract = {
+  // Routed through `createContractState` — the one door a `ContractState` is built or
+  // rebuilt through (`offer-state.ts`) — rather than a plain spread. §3.1's own gate
+  // just above is what makes this safe: only the key hero can ever land in
+  // `respondedBy` while `phase = 'draft'`, so `respondedBy ⊆ {keyHero}` cannot be
+  // broken by the transition this function performs.
+  const respondedContract = createContractState({
     ...contract,
     status: acceptedBy.size >= contract.requiredCrew ? ContractStatus.Crewed : contract.status,
     offer: {
       ...contract.offer,
       acceptedBy,
       respondedBy: contract.offer.respondedBy.add(command.heroId)
-    }
-  };
+    },
+    moodOrdinals
+  });
 
   const domainEvent: DomainEvent = {
     kind: accepted ? 'hero_accepted_contract' : 'hero_declined_contract',
@@ -176,7 +214,7 @@ export function proposeContractToHero(
     },
     domainEvent,
     decision.result.trace,
-    decision.ordinalsConsumed
+    ordinalsConsumed
   );
 
   return fromDecisions(nextState, [domainEvent], [decision.result]);

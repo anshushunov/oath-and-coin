@@ -20,6 +20,14 @@ export const RejectionCodes = Object.freeze({
   /** This hero already answered this offer; nobody is asked twice. */
   AlreadyResponded: 'rejected.already_responded',
   /**
+   * `proposeContractToHero` only lets the offer's key hero answer while the package is
+   * still a draft (`NEGOTIATION_SPEC` §3.1, §6) — everyone else's turn comes once the
+   * package is `locked` (`pollCrew`, Task 13), never before. `keyHero` starts `null`
+   * (`initialOffer`), so before the first `composeOffer` this refuses every hero, key
+   * or not — there is no key hero yet to be.
+   */
+  NotTheKeyHero: 'rejected.not_the_key_hero',
+  /**
    * `composeOffer` only revises a package in `draft`, or in `locked` while the crew it
    * had has not filled (`NEGOTIATION_SPEC` §3.1) — a locked, crewed offer is a deal
    * already struck.

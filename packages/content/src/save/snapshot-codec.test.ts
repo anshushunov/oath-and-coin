@@ -63,11 +63,24 @@ describe('snapshot codec', () => {
     const base = createInitialState(content, 7n, 'm1-decision/1');
     const [heroKey] = base.heroes.keys();
     const [contractKey] = base.contracts.keys();
-    const result = proposeContractToHero(base, {
+    // `proposeContractToHero` (`DEC-008` Task 11) only lets the offer's key hero
+    // answer while the package is a draft — this fixture keys the offer to the one
+    // hero it proposes to directly, by hand, rather than through a real `composeOffer`
+    // command, so the shape this test checks (`history`/`traces`/`appliedCommandIds`
+    // each non-empty) is unchanged by a command this test is not about.
+    const contract = base.contracts.get(contractKey!)!;
+    const keyed = {
+      ...base,
+      contracts: base.contracts.set(contractKey!, {
+        ...contract,
+        offer: { ...contract.offer, keyHero: heroKey! }
+      })
+    };
+    const result = proposeContractToHero(keyed, {
       commandId: 1,
       heroId: heroKey!,
       contractId: contractKey!,
-      expectedStateVersion: base.metadata.stateVersion
+      expectedStateVersion: keyed.metadata.stateVersion
     });
 
     expect(result.applied).toBe(true);

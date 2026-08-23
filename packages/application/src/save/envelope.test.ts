@@ -112,11 +112,26 @@ function aDecidedState(): GameState {
   const base = aState();
   const [heroKey] = base.heroes.keys();
   const [contractKey] = base.contracts.keys();
-  const result = proposeContractToHero(base, {
+  const contract = base.contracts.get(contractKey!)!;
+  // `proposeContractToHero` (`DEC-008` Task 11) only lets the offer's key hero answer
+  // while the package is a draft — the offer is keyed to the one hero this fixture
+  // proposes to directly, rather than through a real `composeOffer` command, so every
+  // event id, trace id and history index this file's tamper table pins by number stays
+  // exactly where it was: this fixture is about the envelope, not the negotiation
+  // protocol's own commands.
+  const keyed: GameState = {
+    ...base,
+    contracts: base.contracts.set(contractKey!, {
+      ...contract,
+      offer: { ...contract.offer, keyHero: heroKey! }
+    })
+  };
+
+  const result = proposeContractToHero(keyed, {
     commandId: 1,
     heroId: heroKey!,
     contractId: contractKey!,
-    expectedStateVersion: base.metadata.stateVersion
+    expectedStateVersion: keyed.metadata.stateVersion
   });
 
   return result.state;
