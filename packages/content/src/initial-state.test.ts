@@ -1,11 +1,20 @@
 import { join, resolve } from 'node:path';
 
-import { ContractStatus, parseContentId } from '@oath-and-coin/simulation';
-import { describe, expect, it } from 'vitest';
+import { ContractStatus, createContractState, parseContentId } from '@oath-and-coin/simulation';
+import { describe, expect, it, vi } from 'vitest';
 
 import { loadContentSet } from './node/index.ts';
 import { createInitialState } from './initial-state.ts';
 import { SAVE_SCHEMA_VERSION } from './versions.ts';
+
+// A spy that calls through to the real implementation by default, so every other
+// test in this file exercises the genuine function. Only the one test below that
+// asks for a one-time override sees anything different — see its own comment for
+// why a spy, rather than a content fixture, is what this claim needs.
+vi.mock('@oath-and-coin/simulation', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@oath-and-coin/simulation')>();
+  return { ...actual, createContractState: vi.fn(actual.createContractState) };
+});
 
 const repoRoot = resolve(import.meta.dirname, '..', '..', '..');
 const content = loadContentSet(join(repoRoot, 'content'));
@@ -147,5 +156,25 @@ describe('createInitialState', () => {
     expect(() => {
       (built.metadata as { stateVersion: number }).stateVersion = 99;
     }).toThrow(TypeError);
+  });
+
+  it('builds every contract through createContractState, not a literal that skips it', () => {
+    // The claim `offer-state.ts`'s own doc makes for this call site — "the door every
+    // fresh-from-content contract is forced through" — has no test proving it on its
+    // own: `initialOffer()` is always the trivial valid draft, so no `patronFee`,
+    // `requiredCrew` or `tags` this loader accepts (all already bounded by the content
+    // schema) can drive a real §2.1 violation through this call. Wrapping
+    // `createContractState({...})` in `{...}` and dropping the wrapper would leave every
+    // other test in this file green. A spy is what proves the wiring where the
+    // behaviour cannot: replace one call with a function that throws its own message,
+    // and the loader must surface exactly that message — which only happens if it
+    // called the real (now spied) function rather than assembling the object by hand.
+    const spy = vi.mocked(createContractState);
+    const sentinel = 'createContractState was not called for the first contract built';
+    spy.mockImplementationOnce(() => {
+      throw new Error(sentinel);
+    });
+
+    expect(() => createInitialState(content, 7n, 'm1-decision/1')).toThrow(sentinel);
   });
 });

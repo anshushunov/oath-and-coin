@@ -67,13 +67,32 @@ export function effectiveTags(contract: ContractState): SortedSet<ContentId> {
 }
 
 /**
- * The one door a {@link ContractState} may be built or rebuilt through. Every
- * invariant `NEGOTIATION_SPEC` §2.1 states is checked here and nowhere else — not
- * left to be maintained by discipline at each of the several places a contract is
- * assembled, because a literal `{ ...contract, offer: revised }` has no invariant to
- * fail on. The only way any of these relationships means something is if the sole
- * function that hands back a complete, usable `ContractState` is the one every
- * caller is forced through, including the content loader (`initial-state.ts`).
+ * The one production caller today is the content loader (`initial-state.ts`), which
+ * builds every contract of a freshly loaded campaign through here — so every
+ * invariant `NEGOTIATION_SPEC` §2.1 states holds for a campaign at the moment it is
+ * first assembled from content.
+ *
+ * **It is not yet the door for everything else that builds or rebuilds a
+ * `ContractState`, and both gaps are known rather than merely unnoticed:**
+ *
+ * - `engine.ts`'s `proposeContractToHero` assembles the post-response `ContractState`
+ *   with a plain spread, not through here — that predates this function and is
+ *   negotiation-protocol work (`NEGOTIATION_SPEC` §3) this task does not do; closing
+ *   it is Task 11's.
+ * - `snapshot-codec.ts`'s `decodeSnapshot` was routed through here once, in review,
+ *   and reverted: today's `proposeContractToHero` never sets `offer.keyHero`, so
+ *   *any* save this build's own engine can currently produce, the moment one hero
+ *   has answered, already violates "`phase = 'draft'` ⇒ `respondedBy ⊆ {keyHero}`" —
+ *   measured directly, wiring it in made a real engine-produced save unreadable.
+ *   That is `engine.ts`'s gap reaching the save format, not a save-format gap of its
+ *   own, so it waits on the same Task 11 rework rather than being patched here or in
+ *   the codec. See `snapshot-codec.ts`'s own comment at that call site for the
+ *   measurement.
+ *
+ * A literal `{ ...contract, offer: revised }` has no invariant to fail on, so until
+ * every construction and transition is routed through this door, an invariant a
+ * future transition breaks can go unnoticed in memory and survive a save/load round
+ * trip too — the round trip is only as strong as what actually calls this function.
  *
  * Returns `contract` itself — this function validates, it does not copy.
  *
@@ -84,6 +103,21 @@ export function effectiveTags(contract: ContractState): SortedSet<ContentId> {
  */
 export function createContractState(contract: ContractState): ContractState {
   const { offer } = contract;
+
+  // version ≥ 1 — `initialOffer` starts every contract on 1 and `composeOffer` only
+  // ever adds to it (`NEGOTIATION_SPEC` §2.1, §6.1); a version below that is not a
+  // package any command in this protocol could have produced. Checked first and
+  // independently of every other field: unlike the checks below, nothing else in
+  // this function reads `offer.version` at all, so this is the one invariant that
+  // was previously enforced nowhere but the save schema's own `z.int().min(1)`
+  // (`snapshot-codec.ts`) — a state built or revised in memory, never round-tripped
+  // through a save, had no check on it whatsoever.
+  if (offer.version < 1) {
+    throw new Error(
+      `Contract '${contract.id}' offer has version ${String(offer.version)}, which is below 1; ` +
+        'every contract starts on version 1 and a revision only ever adds to it.'
+    );
+  }
 
   // acceptedBy ⊆ respondedBy — a hero cannot have accepted a version it never
   // answered.

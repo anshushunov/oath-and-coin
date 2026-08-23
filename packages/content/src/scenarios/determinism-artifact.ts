@@ -192,8 +192,14 @@ function describeContract(contract: ContractState): CanonicalValue {
     status: contract.status,
     offer: describeOffer(contract.offer),
     // Keyed the same way `describeHero`'s `relationships` already is — a
-    // `SortedMap` becomes a canonical object, key order preserved because the map
-    // was already sorted (`NEGOTIATION_SPEC` §2.1.1).
+    // `SortedMap` becomes a canonical object (`NEGOTIATION_SPEC` §2.1.1). Not because
+    // the map's own order survives into the artifact: `canonicalize` (`canonical-json.ts`)
+    // re-sorts every object's keys by UTF-16 code unit regardless of the order they
+    // arrive in, so once Task 11 fills this map, hero#10 will sort ahead of hero#2 in
+    // the written bytes even though the map itself orders them the other way. That
+    // re-sort is deterministic, so nothing here threatens determinism — it just means
+    // this object's insertion order is not the reason the output is reproducible; the
+    // canonicalizer's own rule is.
     mood_ordinals: Object.fromEntries(contract.moodOrdinals.entries())
   };
 }

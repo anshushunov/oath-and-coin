@@ -161,7 +161,11 @@ export function aState(overrides: Partial<GameState> = {}): GameState {
 
   return {
     metadata: {
-      saveSchemaVersion: 1,
+      // Literal, not imported: `packages/simulation` cannot depend on
+      // `packages/content` (`simulation-depends-on-nothing`), so this cannot read
+      // `SAVE_SCHEMA_VERSION` symbolically the way `initial-state.test.ts` does.
+      // Kept in step with it by hand — currently 2 (`DEC-008` Task 6 fix round).
+      saveSchemaVersion: 2,
       rulesetVersion: 'm1-decision/1',
       contentVersion: '5d03734fd9c7abaa',
       campaignSeed: 7n,

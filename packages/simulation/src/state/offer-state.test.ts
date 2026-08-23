@@ -30,6 +30,15 @@ describe('initialOffer', () => {
 });
 
 describe('createContractState invariants (NEGOTIATION_SPEC §2.1)', () => {
+  it('refuses a version below 1', () => {
+    // Enforced nowhere in memory before this: only the save schema's own
+    // `z.int().min(1)` (`snapshot-codec.ts`) ever bounded it, so a state built or
+    // revised without ever round-tripping through a save had no check on it at all.
+    expect(() => createContractState(aContract({ offer: anOffer({ version: 0 }) }))).toThrow(
+      /version/
+    );
+  });
+
   it('refuses an acceptance from someone who never responded', () => {
     expect(() =>
       createContractState(

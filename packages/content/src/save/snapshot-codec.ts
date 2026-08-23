@@ -207,11 +207,21 @@ const offerPhaseSchema = z.union([
  * `ContractState.offer`'s own shape (`NEGOTIATION_SPEC` §2.1), nested exactly where
  * `respondedBy`/`acceptedBy` used to sit flat on the contract — Task 6 moved the
  * fields, this codec follows them to their new address. `advance`/`promisedBonus`
- * bound by the patron-fee range rather than by the specific contract's own
+ * bound by the patron-fee *range* rather than by the specific contract's own
  * `patronFee`: the tighter, per-contract relationship (`0 ≤ advance ≤ patronFee`) is
- * `createContractState`'s invariant, not a shape this schema can state without
- * cross-referencing a sibling field, and this codec — like the rest of it — bounds
- * shape, not the domain invariants layered on top of it.
+ * not a shape this schema can state without cross-referencing a sibling field.
+ *
+ * **This schema bounds shape only, and — unlike `contractStatusSchema`'s sibling
+ * fields — the domain invariants above that shape are not enforced anywhere in this
+ * module.** `createContractState` (`NEGOTIATION_SPEC` §2.1) was routed in here once,
+ * in review, and reverted: `engine.ts`'s current `proposeContractToHero` predates the
+ * offer protocol and never sets `offer.keyHero`, so a save this build's own engine
+ * genuinely produces already violates the draft invariant the moment one hero has
+ * answered — wiring the check in here made a real engine-produced save refuse to
+ * decode. See `decodeSnapshot`'s contract builder, a few dozen lines down, for the
+ * full account and the task this now waits on. `advance > patronFee`, `settled` on
+ * an uncrewed contract, `acceptedBy.size > requiredCrew` and the rest of §2.1
+ * therefore currently read back from a save unchecked.
  */
 const offerValueSchema = z.strictObject({
   version: z.int().min(1),
@@ -505,6 +515,19 @@ export function decodeSnapshot(value: unknown): GameState {
     parsed.contracts,
     (rawKey) => parseContentId(rawKey),
     (raw) => parseContentId(raw.id),
+    // NOT routed through `createContractState` — tried, and reverted. See
+    // `createContractState`'s own doc (`offer-state.ts`) and the comment a few dozen
+    // lines below this one (where the wrapper that would have done it once stood) for
+    // why: today's `engine.ts` (`proposeContractToHero`, pre-`DEC-008` offer protocol)
+    // records a response without ever setting `offer.keyHero`, so *every* save this
+    // build's own engine can currently produce, the moment one hero has answered,
+    // already violates "phase = 'draft' ⇒ respondedBy ⊆ {keyHero}". Measured
+    // directly: wiring this in made `envelope.test.ts`'s own guard-over-guards case —
+    // "accepts the campaign the engine actually produced" — refuse a save built from
+    // a real engine run. That is not a shape this codec can close; it needs
+    // `engine.ts`'s negotiation-protocol rework (Task 11) to stop producing states
+    // that violate the invariant in the first place. Left as a plain literal, exactly
+    // as before this task.
     (raw) => ({
       id: parseContentId(raw.id),
       patronFee: raw.patronFee,
@@ -696,6 +719,15 @@ function fromEntriesOrInconsistent<K, V>(
     );
   }
 }
+
+// A `requireConsistentContract` function stood here — a `createContractState`
+// wrapper mirroring `fromEntriesOrInconsistent` above, rethrowing as
+// `SaveReadError(SaveErrorCodes.Inconsistent, ...)` the same way. It was wired into
+// `decodeSnapshot`'s contract builder and reverted; see that call site's own comment
+// for the measurement and `createContractState`'s doc (`offer-state.ts`) for the
+// task this waits on. Not resurrected as dead code here: deleting the function
+// along with the wiring does not lose the reason, which is recorded at both of
+// those places instead.
 
 function toTraceFactor(factor: RawFactor): TraceFactor {
   return {

@@ -95,7 +95,8 @@ const contract = {
 
 const state = {
   metadata: {
-    saveSchemaVersion: 1,
+    // Literal — currently 2 (`DEC-008` Task 6 fix round), kept in step by hand.
+    saveSchemaVersion: 2,
     rulesetVersion: 'm1-decision/1',
     contentVersion: '5d03734fd9c7abaa',
     campaignSeed: 424242n,
