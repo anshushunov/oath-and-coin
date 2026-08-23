@@ -2,9 +2,22 @@ import { describe, expect, it } from 'vitest';
 
 import { SortedMap } from '../collections/sorted-map.ts';
 import { SortedSet } from '../collections/sorted-set.ts';
-import { compareContentIds, type ContentId } from '../ids/content-id.ts';
-import { compareHeroIds, heroId, type HeroId } from '../ids/hero-id.ts';
+import { compareContentIds } from '../ids/content-id.ts';
+import { compareHeroIds, heroId } from '../ids/hero-id.ts';
 import { aContext, aContract, aHero, anOffer, aTrait, ids, setOf } from '../testing/fixtures.ts';
+import {
+  GRIEVANCES,
+  HERO_SCALE_PROFILES,
+  INCLINATION_WEIGHTS,
+  METHOD_TAGS,
+  MOOD_ORDINALS,
+  OFFER_TERM_FLAGS,
+  OFFER_TERM_VALUES,
+  RELATIONSHIP_WEIGHTS,
+  RISKS,
+  crewOf,
+  fullContextSweep
+} from '../testing/generators.ts';
 
 import { Actions } from './actions.ts';
 import type { TraceFactor } from './causal-trace.ts';
@@ -24,12 +37,6 @@ import { ReasonCodes } from './reason-codes.ts';
  * hero listed in `acceptedBy` but missing from `crew`. Corpus parity is Task 10's job;
  * these are the properties parity would agree with while being wrong about.
  */
-
-const crewOf = (entries: readonly (readonly [number, ContentId])[]): SortedMap<HeroId, ContentId> =>
-  SortedMap.from<HeroId, ContentId>(
-    compareHeroIds,
-    entries.map(([id, definition]) => [heroId(id), definition] as const)
-  );
 
 describe('the gate runs before any arithmetic', () => {
   it('declines outright when a principle tag is on the contract, with no score', () => {
@@ -317,114 +324,14 @@ describe('bonds', () => {
   });
 });
 
-/**
- * Hero profiles the sweep below walks, chosen to put each scale at both ends of its own
- * behaviour and at an ordinary middle — not to reproduce any authored hero.
- */
-const PROFILES: readonly (readonly [number, number, number, number])[] = [
-  [0, 0, 0, 0],
-  [100, 100, 100, 100],
-  [60, 30, 45, 50],
-  [99, 1, 1, 9],
-  [1, 99, 99, 91]
-];
-
-/**
- * A deterministic sweep of contexts, built here from {@link aContext} rather than drawn
- * from a generator: global randomness is banned in this package, and an enumeration is
- * reproducible on top of that — a failure names the same context on every run.
- *
- * Every term `NEGOTIATION_SPEC` §4 names is moved by something in here: `offer.advance`
- * and risk (which also drives the insult term on and off, since insult exists only while
- * `advance + trustedBonus` falls short of risk), `offer.promisedBonus` (against a
- * `keyHero` fixed to this sweep's one hero, so it always reaches a `trustedBonus`),
- * `hero.grievance`, the four hero scales, an inclination pulling each way, a bond pulling
- * each way, three mood ordinals, and a chosen method tag that turns a third inclination
- * on and off. `contract.patronFee` is deliberately **not** swept — `decide()` no longer
- * reads it at all, and external review of this task's first pass found it still varied
- * here, standing in for `advance` in the comment but not in the code, while the four new
- * terms sat pinned at zero and the identity below went untested wherever any of them was
- * the term that would have broken it.
- */
-function localContexts(): readonly DecisionContext[] {
-  const contexts: DecisionContext[] = [];
-
-  for (const [greed, caution, pride, trustInGuild] of PROFILES) {
-    for (const advance of [0, 15, 40, 100]) {
-      for (const risk of [0, 9, 55, 80, 100]) {
-        for (const traitWeight of [-30, -3, 0, 7, 30]) {
-          for (const bondWeight of [-20, -5, 0, 5, 20]) {
-            for (const promisedBonus of [0, 30]) {
-              for (const grievance of [0, 25]) {
-                for (const methodTag of [null, ids.cult] as const) {
-                  for (const decisionOrdinal of [0n, 3n, 6n]) {
-                    contexts.push(
-                      aContext({
-                        hero: aHero({
-                          greed,
-                          caution,
-                          pride,
-                          trustInGuild,
-                          grievance,
-                          relationships: SortedMap.from(compareContentIds, [
-                            [ids.doran, bondWeight],
-                            [ids.zara, -bondWeight]
-                          ])
-                        }),
-                        contract: aContract({
-                          risk,
-                          tags: SortedSet.from(compareContentIds, [ids.temple, ids.undead]),
-                          offer: anOffer({
-                            keyHero: heroId(0),
-                            advance,
-                            promisedBonus,
-                            methodTag,
-                            acceptedBy: SortedSet.from(compareHeroIds, [heroId(1), heroId(2)])
-                          })
-                        }),
-                        traits: [
-                          // Tagged `cult`, which is never among `contract.tags` above —
-                          // it fires only when `methodTag` adds it to `effectiveTags`,
-                          // which is exactly the distinction this axis exists to catch:
-                          // a rule that matched inclinations against `contract.tags`
-                          // alone would never push this factor, and the sum identity
-                          // below would still hold trivially over one less term.
-                          aTrait({ id: ids.cultCurious, tag: ids.cult, weight: 12 }),
-                          aTrait({ id: ids.loyal, tag: ids.undead, weight: traitWeight }),
-                          aTrait({ id: ids.squeamish, tag: ids.temple, weight: -traitWeight })
-                        ],
-                        crew: crewOf([
-                          [1, ids.doran],
-                          [2, ids.zara]
-                        ]),
-                        decisionOrdinal
-                      })
-                    );
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  // A red line closes the decision before any score exists, so these carry the score the
-  // sweep must skip rather than sum. Present on purpose: an invariant stated only over
-  // scored decisions would not say what it does about the other kind.
-  for (const decisionOrdinal of [0n, 3n, 6n]) {
-    contexts.push(
-      aContext({
-        contract: aContract({ tags: SortedSet.from(compareContentIds, [ids.temple]) }),
-        traits: [aTrait({ id: ids.refusesTemples, tag: ids.temple, isPrinciple: true, weight: 0 })],
-        decisionOrdinal
-      })
-    );
-  }
-
-  return contexts;
-}
+// The nine-axis sweep this identity walks — hero profiles, `offer.advance`, risk,
+// an inclination weight, a bond weight, `offer.promisedBonus`, `hero.grievance`, a
+// chosen method tag, the mood ordinal, plus three gated contexts — now lives in
+// `../testing/generators.ts`'s `fullContextSweep()`. Moved there, not duplicated,
+// so `decision-properties.test.ts`'s §10.1 properties pose their questions over
+// the same admissible input this identity does rather than a second guess at what
+// "a context" means. `contract.patronFee` is deliberately **not** swept —
+// `decide()` no longer reads it at all.
 
 describe('the recorded score is the recorded factors', () => {
   it('записанный счёт равен сумме записанных факторов', () => {
@@ -432,13 +339,26 @@ describe('the recorded score is the recorded factors', () => {
     // параллельных пути. Восстановление шагов из сохранения опирается на их совпадение,
     // поэтому оно проверяется, а не подразумевается.
     //
-    // Контексты строятся локально, из `aContext` — этот тест не знает про границы
+    // Контексты строятся через `fullContextSweep()` — этот тест не знает про границы
     // контента и знать не может. Что тождество держится на всём, что пропускает
     // загрузчик, проверяет тест в `packages/content`.
-    const contexts = localContexts();
+    const contexts = fullContextSweep();
 
-    // Названо числом: молчаливо сжавшийся перебор прошёл бы эту проверку целиком, и
-    // «зелено» означало бы «нечего было проверять».
+    // Названо произведением перебираемых осей, не унаследовано: молчаливо
+    // сжавшаяся ось прошла бы `toHaveLength` целиком, если бы число здесь не было
+    // выведено из тех же констант, которые определяют перебор.
+    expect(contexts).toHaveLength(
+      HERO_SCALE_PROFILES.length *
+        OFFER_TERM_VALUES.length *
+        RISKS.length *
+        INCLINATION_WEIGHTS.length *
+        RELATIONSHIP_WEIGHTS.length *
+        OFFER_TERM_FLAGS.length *
+        GRIEVANCES.length *
+        METHOD_TAGS.length *
+        MOOD_ORDINALS.length +
+        MOOD_ORDINALS.length
+    );
     expect(contexts).toHaveLength(60003);
 
     let scored = 0;
