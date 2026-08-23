@@ -75,12 +75,24 @@ function aDecidedCampaign(): { readonly state: GameState; readonly focused: Cont
   const base = createInitialState(content, 7n, RULESET_VERSION);
   const [heroKey] = base.heroes.keys();
   const [contractKey] = base.contracts.keys();
+  // `proposeContractToHero` (`DEC-008` Task 11) only lets the offer's key hero answer
+  // while the package is a draft — this fixture keys the offer to the one hero it
+  // proposes to directly, by hand, rather than through a real `composeOffer` command,
+  // so the recorded decision this file's tamper cases need still exists.
+  const contract = base.contracts.get(contractKey!)!;
+  const keyed: GameState = {
+    ...base,
+    contracts: base.contracts.set(contractKey!, {
+      ...contract,
+      offer: { ...contract.offer, keyHero: heroKey! }
+    })
+  };
 
-  const { state } = proposeContractToHero(base, {
+  const { state } = proposeContractToHero(keyed, {
     commandId: 1,
     heroId: heroKey!,
     contractId: contractKey!,
-    expectedStateVersion: base.metadata.stateVersion
+    expectedStateVersion: keyed.metadata.stateVersion
   });
 
   return { state, focused: contractKey! };
