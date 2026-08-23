@@ -1,106 +1,152 @@
-import { restoreDecidedSteps } from '@oath-and-coin/application';
-import { decodeSnapshot, encodeSnapshot } from '@oath-and-coin/content';
-import { contractOfferScreenModel } from '@oath-and-coin/presentation';
-import { describe, expect, it } from 'vitest';
+import { readdirSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 
-import { allCorpusRecords, focusedContractOf, runCorpusRecord } from './corpus.ts';
+import { restoreDecidedSteps } from '@oath-and-coin/application';
+import { decodeSnapshot, encodeSnapshot, type ScenarioOutcome } from '@oath-and-coin/content';
+import { loadAndRunScenario } from '@oath-and-coin/content/node';
+import { contractOfferScreenModel } from '@oath-and-coin/presentation';
+import type { ContentId } from '@oath-and-coin/simulation';
+import { describe, expect, it } from 'vitest';
 
 /**
  * The screen a reloaded campaign draws, measured against the screen a continuous run of
- * the same commands draws — on every corpus entry that reached a state.
+ * the same commands draws — on every shipped scenario that reaches a state, at both
+ * recorded seeds.
  *
- * `save-round-trip.test.ts` (Task 16.2) already shows that a state survives the codec.
- * This file asks the other question, the one a player actually sees: after a reload there
- * is no step list any more, only history and traces, and the screen has to be rebuilt out
- * of them. The two are not the same claim — the artifact carries `selectedScore` verbatim,
- * while `restoreDecidedSteps` has to recover it from the trace's factors, and the read
- * model is where that recovered number becomes a visible sentence ("wavered", and which
- * reasons rank above which).
+ * The claim: after a reload there is no step list any more, only history and traces, and
+ * the screen has to be rebuilt out of them. The two sides are not the same computation —
+ * the live artifact carries `selectedScore` verbatim, while `restoreDecidedSteps` has to
+ * recover it from the trace's factors, and the read model is where that recovered number
+ * becomes a visible sentence ("wavered", and which reasons rank above which). A
+ * `pollCrew` step widens the gap further: live, it is *one* step holding six decisions,
+ * each naming its own hero; restored, it is *six* steps of one decision each, named by
+ * the step. Both must draw the identical screen.
  *
- * **The comparison below is against a live, freshly computed screen, not against the
- * corpus's own frozen `read_model.sha256`.** It was against that frozen hash once;
- * `DEC-008` Task 3 renamed the contract's fee field in the read-model projection
- * (`describeContract` in `contract-offer-screen-model-factory.ts`), which moved every
- * byte that hash was taken over, and the corpus that recorded it is frozen and cannot be
- * rewritten. That frozen comparison was already a remnant of the byte-for-byte parity
- * `ADR-013` retired — it compared this build with itself, not with an independent
- * implementation — so what is checked here now is the same claim stated the other way:
- * a reloaded screen agrees with a screen that never stopped. Task 20 restores an external
- * comparison, once `scenarios/*.canonical.json` is rebuilt under the new field name and
- * can again supply an expected value this build did not itself compute.
+ * **The fixture is the shipped `scenarios/` corpus, not `migration/oracle/v1` any more.**
+ * `ADR-013` retired the frozen corpus's replay in two steps: byte parity first (2026-08-22),
+ * then the replay itself (2026-08-23), once `DEC-008`'s key-hero rule made the corpus's
+ * recorded commands invalid input — every one of them is a bare `propose_contract_to_hero`
+ * against a package nobody composed, and the engine now refuses all of them
+ * (`rejected.not_the_key_hero`). A corpus is frozen by definition and cannot gain a
+ * `compose_offer`, so it stopped being a replayable input at all. What replaced it is the
+ * corpus this repository authors and can keep faithful: 25 runnable scenarios, two seeds.
  *
- * **One test, not two.** This file used to carry a second `it`, comparing the same two
- * screens a second time over the same 50 records — a distinct claim while the first test
- * compared against the frozen hash, and a duplicate of the first the moment that hash
- * comparison came out: both loops ended up asserting the identical equality over the
- * identical records. Merged into the one loop below rather than left as two, so the file
- * still makes exactly the claims it can back and not one repeated for no reason. The
- * asymmetry the second test carried is kept: `live` omits `focusedContract` where `model`
- * states it outright, so the comparison still holds the fallback resolution (the first
- * applied contract, or the lexicographically-first with nothing applied yet) to the same
- * answer as the explicit one — `contractOfferScreenModel`'s own comment names this as
- * degenerate on the corpus, and this is what continues to measure that.
+ * **What this file does *not* claim**, stated because the same misreading has been caught
+ * twice in this slice: this is not an external oracle. Both screens are computed by this
+ * build. What makes the comparison worth running is that they are computed by *different
+ * code paths* from *different inputs* — a live step list versus an event log and a trace
+ * store that survived a round trip through the save codec. An external expected value is
+ * Task 20's, once `scenarios/*.canonical.json` is rebuilt and can supply one this build
+ * did not itself compute.
  */
 
-describe('the screen a reloaded campaign draws', () => {
-  it('восстановленный экран совпадает с экраном непрерывного прогона на тех же записях', () => {
-    // 50, а не 54: у `screen_error` и `screen_loading` `final_state` и
-    // `canonical_sha256` равны null — прогон до состояния там не доходит. Число названо,
-    // чтобы молчаливое сжатие набора не выглядело успехом.
-    const records = allCorpusRecords().filter((record) => record.final_state !== null);
-    expect(records).toHaveLength(50);
+const repoRoot = resolve(import.meta.dirname, '..', '..', '..');
 
+/** Both seeds the runner and the browser evidence use. */
+const SEEDS = [7n, 424242n] as const;
+
+/** Every scenario the repository ships, read off the directory rather than listed here. */
+const SCENARIOS: readonly string[] = readdirSync(join(repoRoot, 'scenarios'))
+  .filter((name) => name.endsWith('.manifest.json'))
+  .map((name) => name.slice(0, name.indexOf('.')))
+  .sort();
+
+function ran(scenario: string, seed: bigint): ScenarioOutcome | null {
+  const result = loadAndRunScenario({ repositoryRoot: repoRoot, scenario, checkpoint: null, seed });
+
+  // `screen_loading` never reads content and `screen_error` never loads it: neither
+  // reaches a state, so neither has a screen to rebuild.
+  return result.kind === 'ran' ? result.outcome : null;
+}
+
+/**
+ * The contract the screen is focused on: the one the run's first step named.
+ *
+ * Stated to the restored side and withheld from the live one, which is the asymmetry
+ * that makes the comparison hold the fallback resolution to the same answer as the
+ * explicit one — `contractOfferScreenModel` falls back to "the contract the first step
+ * answered", and after a reload the first step is a different step (a rejected command
+ * and a `compose_offer` leave no decision event behind, so neither survives).
+ */
+function focusOf(outcome: ScenarioOutcome): ContentId | undefined {
+  return outcome.steps[0]?.command.contract;
+}
+
+describe('the screen a reloaded campaign draws', () => {
+  it('agrees with the screen of a run that never stopped, on every shipped scenario', () => {
+    // Named as numbers so a silently shrinking corpus does not read as success. 27
+    // scenarios ship; `screen_loading` and `screen_error` reach no state, leaving 25 that
+    // run, at two seeds each — the 50 below.
+    expect(SCENARIOS).toHaveLength(27);
+
+    let ranCount = 0;
     let blockedSeen = 0;
     let scoredSeen = 0;
+    let polledStepsSeen = 0;
 
-    for (const record of records) {
-      const outcome = runCorpusRecord(record);
-      const reloaded = decodeSnapshot(
-        JSON.parse(JSON.stringify(encodeSnapshot(outcome.finalState)))
-      );
-
-      const steps = restoreDecidedSteps(reloaded);
-
-      for (const step of steps) {
-        if (step.decisions.length === 0) {
-          throw new Error(
-            `a step restored from '${record.scenario}'/seed-${record.seed} carries no decision, ` +
-              'but every event in the history of a campaign was produced by one'
-          );
+    for (const seed of SEEDS) {
+      for (const scenario of SCENARIOS) {
+        const outcome = ran(scenario, seed);
+        if (outcome === null) {
+          continue;
         }
 
-        for (const decision of step.decisions) {
-          // Счёт есть ровно тогда, когда красной линии не было — на решениях, которые
-          // корпус действительно записал, а не только на рукотворных. Без этой строки
-          // единственным сторожем правила оставался юнит-тест на выдуманной фикстуре:
-          // экран блокированного ответа счёта не показывает вовсе, поэтому сравнение
-          // экранов ниже нуль вместо `null` не видит.
-          const blocked = decision.trace.blockedBy.length > 0;
-          expect(decision.selectedScore === null).toBe(blocked);
+        ranCount += 1;
 
-          if (blocked) {
-            blockedSeen += 1;
-          } else {
-            scoredSeen += 1;
+        const reloaded = decodeSnapshot(
+          JSON.parse(JSON.stringify(encodeSnapshot(outcome.finalState)))
+        );
+        const steps = restoreDecidedSteps(reloaded);
+
+        for (const step of outcome.steps) {
+          if (step.decisions.length > 1) {
+            polledStepsSeen += 1;
+          }
+
+          for (const decision of step.decisions) {
+            // A score exists exactly when no red line closed the decision — asserted on
+            // the decisions the shipped scenarios actually produce, not only on
+            // hand-built ones. Without this line the screen comparison below is blind to
+            // it: a blocked response shows no score at all, so zero-instead-of-`null`
+            // would never reach the markup.
+            const blocked = decision.trace.blockedBy.length > 0;
+            expect(decision.selectedScore === null, `${scenario}/seed-${String(seed)}`).toBe(
+              blocked
+            );
+
+            if (blocked) {
+              blockedSeen += 1;
+            } else {
+              scoredSeen += 1;
+            }
           }
         }
+
+        for (const step of steps) {
+          if (step.decisions.length === 0) {
+            throw new Error(
+              `a step restored from '${scenario}'/seed-${String(seed)} carries no decision, but ` +
+                'every event in the history of a campaign was produced by one'
+            );
+          }
+        }
+
+        const model = contractOfferScreenModel(reloaded, steps, focusOf(outcome));
+        const live = contractOfferScreenModel(outcome.finalState, outcome.steps);
+
+        expect(model, `${scenario}/seed-${String(seed)}`).toEqual(live);
       }
-
-      // Поля `focused_contract` в корпусе нет и появиться не может — он заморожен.
-      // Ожидаемый фокус берётся из самой read model: это то, что экран показывал.
-      // `live` не называет его вовсе — так сравнение заодно проверяет, что запасной
-      // выбор (первый применённый контракт, а до этого лексикографически первый)
-      // на этом корпусе совпадает с явным.
-      const model = contractOfferScreenModel(reloaded, steps, focusedContractOf(record));
-      const live = contractOfferScreenModel(outcome.finalState, outcome.steps);
-
-      expect(model).toEqual(live);
     }
 
-    // Обе стороны правила названы числами: набор, в котором блокированных решений не
-    // осталось бы, прошёл бы цикл выше целиком и молча — а именно блокированные решения
-    // эта проверка и стережёт.
+    // Every side of the rule named by a number. A set with no blocked decision left, or
+    // one where no scenario ever polled a crew, would pass the loop above in silence —
+    // and those two shapes are exactly what this file exists to keep under the
+    // comparison. `polledStepsSeen` is the one Task 11a added: it is the only shape where
+    // the two sides genuinely disagree about what a *step* is — five scenarios poll a
+    // crew, at two seeds each.
+    expect(ranCount).toBe(50);
     expect(blockedSeen).toBe(10);
-    expect(scoredSeen).toBe(88);
+    expect(scoredSeen).toBe(112);
+    expect(polledStepsSeen).toBe(10);
   });
 });

@@ -24,6 +24,22 @@ import {
 
 const repoRoot = resolve(import.meta.dirname, '..', '..', '..', '..');
 
+/**
+ * Runs a shipped scenario, and refuses an outcome that decided nothing.
+ *
+ * The guard is the point, not a formality. `DEC-008` Task 11 made the engine refuse a
+ * proposal to anyone but the offer's key hero, and until Task 11a taught `ScenarioCommand`
+ * to compose an offer at all, every command in this directory came back
+ * `rejected.not_the_key_hero` — with `decisions: []` and `events: []`. Seven of this
+ * file's nine tests stayed green through that, because "two runs agree", "the hash is of
+ * the bytes" and "the keys are sorted" are all satisfied by two equally empty artifacts.
+ * A comparison that degenerates to comparing nothing with nothing is the most comfortable
+ * way for a determinism check to be green about nothing (`AGENTS.md` §8), and no
+ * assertion below can see it, because each of them is about the projection rather than
+ * about what was projected.
+ *
+ * So the subject is asserted here, once, where every test in the file passes through.
+ */
 function ran(scenario: string, seed = 7n): RanResult {
   const result = loadAndRunScenario({
     repositoryRoot: repoRoot,
@@ -34,6 +50,20 @@ function ran(scenario: string, seed = 7n): RanResult {
 
   if (result.kind !== 'ran') {
     throw new Error(`Scenario '${scenario}' did not run: ${result.kind}`);
+  }
+
+  const decisions = result.outcome.steps.reduce((count, step) => count + step.decisions.length, 0);
+  if (decisions === 0) {
+    const refusals = result.outcome.steps
+      .filter((step) => !step.applied)
+      .map((step) => step.rejectionCode ?? 'unknown')
+      .join(', ');
+
+    throw new Error(
+      `Scenario '${scenario}' at seed ${String(seed)} ran but decided nothing, so every ` +
+        'comparison taken over its artifact would agree by being empty rather than by being ' +
+        `right. Refusals: ${refusals === '' ? 'none — the scenario applied and still decided nothing' : refusals}.`
+    );
   }
 
   return result;

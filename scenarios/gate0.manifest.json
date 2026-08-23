@@ -3,5 +3,10 @@
   "scenario": "gate0",
   "expected_outcome": "success",
   "expected_screen_state": "incomplete",
-  "checkpoints": [{ "name": "decisions_complete", "after_command_id": 2 }]
+  "checkpoints": [
+    {
+      "name": "decisions_complete",
+      "after_command_id": 4
+    }
+  ]
 }

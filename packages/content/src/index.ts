@@ -102,7 +102,15 @@ export {
   type FaultInjection,
   type ScenarioManifest
 } from './scenarios/scenario-manifest.ts';
-export { loadScenarioCommands, type ScenarioCommand } from './scenarios/scenario-commands.ts';
+export {
+  ScenarioCommandKind,
+  loadScenarioCommands,
+  type ComposeOfferScenarioCommand,
+  type LockOfferScenarioCommand,
+  type PollCrewScenarioCommand,
+  type ProposeContractScenarioCommand,
+  type ScenarioCommand
+} from './scenarios/scenario-commands.ts';
 export { commandsUpTo, resolveCheckpoint } from './scenarios/checkpoint-resolver.ts';
 export { resolveContentRoot } from './scenarios/content-root.ts';
 export {
@@ -110,6 +118,7 @@ export {
   applyScenarioCommands,
   runScenario,
   type ScenarioOutcome,
+  type StepDecision,
   type StepOutcome
 } from './scenarios/scenario-runner.ts';
 export {

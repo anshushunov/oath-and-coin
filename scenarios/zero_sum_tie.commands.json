@@ -1,11 +1,123 @@
 {
   "commands": [
-    { "command_id": 1, "hero_index": 0, "contract": "fixture:plain_alpha", "expected_state_version": 0 },
-    { "command_id": 2, "hero_index": 0, "contract": "fixture:plain_beta", "expected_state_version": 1 },
-    { "command_id": 3, "hero_index": 0, "contract": "fixture:plain_gamma", "expected_state_version": 2 },
-    { "command_id": 4, "hero_index": 1, "contract": "fixture:plain_alpha", "expected_state_version": 3 },
-    { "command_id": 5, "hero_index": 1, "contract": "fixture:plain_beta", "expected_state_version": 4 },
-    { "command_id": 6, "hero_index": 1, "contract": "fixture:plain_gamma", "expected_state_version": 5 },
-    { "command_id": 7, "hero_index": 2, "contract": "fixture:plain_alpha", "expected_state_version": 6 }
+    {
+      "command": "compose_offer",
+      "command_id": 1,
+      "contract": "fixture:plain_alpha",
+      "key_hero_index": 0,
+      "advance": 50,
+      "method_tag": null,
+      "promised_bonus": 0,
+      "expected_state_version": 0
+    },
+    {
+      "command": "propose_contract_to_hero",
+      "command_id": 2,
+      "contract": "fixture:plain_alpha",
+      "hero_index": 0,
+      "expected_state_version": 1
+    },
+    {
+      "command": "compose_offer",
+      "command_id": 3,
+      "contract": "fixture:plain_beta",
+      "key_hero_index": 0,
+      "advance": 50,
+      "method_tag": null,
+      "promised_bonus": 0,
+      "expected_state_version": 2
+    },
+    {
+      "command": "propose_contract_to_hero",
+      "command_id": 4,
+      "contract": "fixture:plain_beta",
+      "hero_index": 0,
+      "expected_state_version": 3
+    },
+    {
+      "command": "compose_offer",
+      "command_id": 5,
+      "contract": "fixture:plain_gamma",
+      "key_hero_index": 0,
+      "advance": 50,
+      "method_tag": null,
+      "promised_bonus": 0,
+      "expected_state_version": 4
+    },
+    {
+      "command": "propose_contract_to_hero",
+      "command_id": 6,
+      "contract": "fixture:plain_gamma",
+      "hero_index": 0,
+      "expected_state_version": 5
+    },
+    {
+      "command": "compose_offer",
+      "command_id": 7,
+      "contract": "fixture:plain_alpha",
+      "key_hero_index": 1,
+      "advance": 50,
+      "method_tag": null,
+      "promised_bonus": 0,
+      "expected_state_version": 6
+    },
+    {
+      "command": "propose_contract_to_hero",
+      "command_id": 8,
+      "contract": "fixture:plain_alpha",
+      "hero_index": 1,
+      "expected_state_version": 7
+    },
+    {
+      "command": "compose_offer",
+      "command_id": 9,
+      "contract": "fixture:plain_beta",
+      "key_hero_index": 1,
+      "advance": 50,
+      "method_tag": null,
+      "promised_bonus": 0,
+      "expected_state_version": 8
+    },
+    {
+      "command": "propose_contract_to_hero",
+      "command_id": 10,
+      "contract": "fixture:plain_beta",
+      "hero_index": 1,
+      "expected_state_version": 9
+    },
+    {
+      "command": "compose_offer",
+      "command_id": 11,
+      "contract": "fixture:plain_gamma",
+      "key_hero_index": 1,
+      "advance": 50,
+      "method_tag": null,
+      "promised_bonus": 0,
+      "expected_state_version": 10
+    },
+    {
+      "command": "propose_contract_to_hero",
+      "command_id": 12,
+      "contract": "fixture:plain_gamma",
+      "hero_index": 1,
+      "expected_state_version": 11
+    },
+    {
+      "command": "compose_offer",
+      "command_id": 13,
+      "contract": "fixture:plain_alpha",
+      "key_hero_index": 2,
+      "advance": 50,
+      "method_tag": null,
+      "promised_bonus": 0,
+      "expected_state_version": 12
+    },
+    {
+      "command": "propose_contract_to_hero",
+      "command_id": 14,
+      "contract": "fixture:plain_alpha",
+      "hero_index": 2,
+      "expected_state_version": 13
+    }
   ]
 }

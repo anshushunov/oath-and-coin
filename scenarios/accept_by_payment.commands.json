@@ -1,5 +1,21 @@
 {
   "commands": [
-    { "command_id": 1, "hero_index": 3, "contract": "core:cleanse_the_crypt", "expected_state_version": 0 }
+    {
+      "command": "compose_offer",
+      "command_id": 1,
+      "contract": "core:cleanse_the_crypt",
+      "key_hero_index": 3,
+      "advance": 70,
+      "method_tag": null,
+      "promised_bonus": 0,
+      "expected_state_version": 0
+    },
+    {
+      "command": "propose_contract_to_hero",
+      "command_id": 2,
+      "contract": "core:cleanse_the_crypt",
+      "hero_index": 3,
+      "expected_state_version": 1
+    }
   ]
 }

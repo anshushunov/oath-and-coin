@@ -3,5 +3,10 @@
   "scenario": "crew_filled",
   "expected_outcome": "success",
   "content_root": "scenarios/fixtures/decision_core",
-  "checkpoints": [{ "name": "final", "after_command_id": 2 }]
+  "checkpoints": [
+    {
+      "name": "final",
+      "after_command_id": 4
+    }
+  ]
 }

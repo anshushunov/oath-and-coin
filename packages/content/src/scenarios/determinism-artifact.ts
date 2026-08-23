@@ -6,7 +6,6 @@ import {
   type CanonicalValue,
   type CausalTrace,
   type ContractState,
-  type DecisionResult,
   type DomainEvent,
   type GameState,
   type HeldTrait,
@@ -16,7 +15,8 @@ import {
   type TraceFactor
 } from '@oath-and-coin/simulation';
 
-import type { ScenarioOutcome, StepOutcome } from './scenario-runner.ts';
+import { ScenarioCommandKind, type ScenarioCommand } from './scenario-commands.ts';
+import type { ScenarioOutcome, StepDecision, StepOutcome } from './scenario-runner.ts';
 
 /**
  * The machine-readable half of a run's output (`AGENTS.md` §11): the seed, the versions,
@@ -51,16 +51,19 @@ import type { ScenarioOutcome, StepOutcome } from './scenario-runner.ts';
  * that alters the shape or the content of an artifact must update its `.canonical.json`
  * alongside it, and that diff is where the change is reviewed.
  *
- * **4, not 3, and bumped once for two shifts already inside this unreleased slice.**
- * `describeStep`'s `decisions` replaced the singular `decision` in Task 5, and
+ * **4, not 3, and bumped once for every shift inside this unreleased slice.**
+ * `describeStep`'s `decisions` replaced the singular `decision` in Task 5;
  * `describeContract` nested `respondedBy`/`acceptedBy` under `offer` and added
- * `mood_ordinals` in Task 6 — both are shape changes this number exists to describe, and
- * both landed before this artifact ever shipped. The plan's own final value for this
- * constant is `4`; one bump covering both shifts reaches it without an intermediate,
- * momentarily-false `3` sitting in the tree for the eight tasks between this one and
- * Task 14, which is where the schedule originally placed the move. **Task 14 must not
- * bump this again** — `ARTIFACT_VERSION` is already at the plan's target, and a second
- * increment there would move it to `5` for no shape change of its own.
+ * `mood_ordinals` in Task 6; and Task 11a turned `describeStep`'s `command` block into a
+ * per-command projection (`command`, and the fields that command actually carries) while
+ * `describeDecision` gained the `hero_definition` a poll's decisions need. All are shape
+ * changes this number exists to describe, and all landed before this artifact ever
+ * shipped. The plan's own final value for this constant is `4`; one bump covering every
+ * shift reaches it without an intermediate, momentarily-false `3` sitting in the tree for
+ * the tasks between Task 6 and Task 14, which is where the schedule originally placed the
+ * move. **Task 14 must not bump this again** — `ARTIFACT_VERSION` is already at the
+ * plan's target, and a second increment there would move it to `5` for no shape change of
+ * its own.
  */
 export const ARTIFACT_VERSION = 4;
 
@@ -91,7 +94,7 @@ export function renderTrace(trace: CausalTrace): string {
 }
 
 /** The canonical rendering of a single decision, on its own. See {@link renderTrace}. */
-export function renderDecision(decision: DecisionResult): string {
+export function renderDecision(decision: StepDecision): string {
   return canonicalize(describeDecision(decision));
 }
 
@@ -109,12 +112,7 @@ function describeOutcome(outcome: ScenarioOutcome): CanonicalValue {
 
 function describeStep(step: StepOutcome): CanonicalValue {
   return {
-    command: {
-      command_id: step.command.commandId,
-      hero_index: step.command.heroIndex,
-      contract: step.command.contract,
-      expected_state_version: step.command.expectedStateVersion
-    },
+    command: describeCommand(step.command),
     applied: step.applied,
     rejection_code: step.rejectionCode,
     hero_definition: step.heroDefinition,
@@ -124,18 +122,60 @@ function describeStep(step: StepOutcome): CanonicalValue {
 }
 
 /**
+ * A step's command, written with the same keys the scenario file wrote it with.
+ *
+ * Mirroring the wire format rather than flattening every command into one shape is what
+ * keeps the artifact readable as *what the run was asked to do*: a `poll_crew` step has
+ * no hero index, and a projection that wrote one anyway — `null`, or the last hero it
+ * happened to see — would be the artifact stating a fact the command never carried.
+ * The `switch` is exhaustive, so `settleContract` (Task 14) cannot reach the artifact
+ * without a decision about how it is written.
+ */
+function describeCommand(command: ScenarioCommand): CanonicalValue {
+  const base = {
+    command: command.kind,
+    command_id: command.commandId,
+    contract: command.contract,
+    expected_state_version: command.expectedStateVersion
+  };
+
+  switch (command.kind) {
+    case ScenarioCommandKind.ComposeOffer:
+      return {
+        ...base,
+        key_hero_index: command.keyHeroIndex,
+        advance: command.advance,
+        method_tag: command.methodTag ?? undefined,
+        promised_bonus: command.promisedBonus
+      };
+    case ScenarioCommandKind.ProposeContractToHero:
+      return { ...base, hero_index: command.heroIndex };
+    case ScenarioCommandKind.LockOffer:
+    case ScenarioCommandKind.PollCrew:
+      return base;
+  }
+}
+
+/**
  * A decision's projection, with `selected_score` **absent** — not written as `null` —
  * when the decision was blocked. The canonical artifact carries no empty slots: a key
  * present with a null value and a key absent must not become two different-looking ways
  * of saying "no score", or a comparison keyed on key presence would drift from one
  * keyed on value.
+ *
+ * `hero_definition` follows the same rule and for a sharper reason: it is present only
+ * on a `pollCrew` decision, because only there does a step hold answers from more than
+ * one hero. On every other step the hero is the step's own, written once above — and an
+ * artifact that restated it per decision would carry the same fact in two places that
+ * could disagree.
  */
-function describeDecision(decision: DecisionResult): CanonicalValue {
+function describeDecision(decision: StepDecision): CanonicalValue {
   return {
     selected_action: decision.selectedAction,
     considered_actions: decision.consideredActions,
     trace_id: decision.trace.traceId,
-    selected_score: decision.selectedScore ?? undefined
+    selected_score: decision.selectedScore ?? undefined,
+    hero_definition: decision.heroDefinition
   };
 }
 

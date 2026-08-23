@@ -97,11 +97,33 @@ const ranScenario: ScenarioFixture = {
     content_root: 'fixture-content',
     checkpoints: [
       { name: 'start', after_command_id: 0 },
-      { name: 'final', after_command_id: 1 }
+      { name: 'final', after_command_id: 2 }
     ]
   },
+  // The whole protocol this fixture needs: a package naming Bram as its key hero, then
+  // Bram answering it. `advance` is the contract's whole `patron_fee`, which is what
+  // `NEGOTIATION_SPEC` §4's benefit term reads — an offer of nothing would be a hero
+  // deciding about no money, and this fixture is about a run that reaches a screen.
   commands: {
-    commands: [{ command_id: 1, hero_index: 0, contract: 'core:escort', expected_state_version: 0 }]
+    commands: [
+      {
+        command: 'compose_offer',
+        command_id: 1,
+        contract: 'core:escort',
+        key_hero_index: 0,
+        advance: 70,
+        method_tag: null,
+        promised_bonus: 0,
+        expected_state_version: 0
+      },
+      {
+        command: 'propose_contract_to_hero',
+        command_id: 2,
+        contract: 'core:escort',
+        hero_index: 0,
+        expected_state_version: 1
+      }
+    ]
   }
 };
 
@@ -263,7 +285,10 @@ describe('the campaign a session carries', () => {
     const state = session(ranScenario).state;
 
     expect(state).not.toBeNull();
-    expect(state?.history).toHaveLength(1);
+    // Two, not one: `offer_revised` from the `compose_offer` this fixture now opens with,
+    // and Bram's answer to the package it composed. Both are in the campaign; only the
+    // second is in the screen, which is the lossiness this test is about.
+    expect(state?.history).toHaveLength(2);
     expect(state?.metadata.contentVersion).toBe(computeContentVersion(contentTree()));
   });
 

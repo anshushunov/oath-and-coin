@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadScenarioCommands, loadScenarioManifest } from '../node/index.ts';
 
 import { commandsUpTo, resolveCheckpoint } from './checkpoint-resolver.ts';
+import { ScenarioCommandKind, type ScenarioCommand } from './scenario-commands.ts';
 import {
   KNOWN_SCREEN_STATES,
   SUPPORTED_MANIFEST_SCHEMA_VERSION,
@@ -178,18 +179,128 @@ describe('a command list is refused rather than read on a guess', () => {
     return path;
   }
 
-  it('reads a well-formed one', () => {
+  it('reads a well-formed one, in all four commands the protocol has', () => {
+    // All four in one file rather than four one-command files: the discriminant is the
+    // point of this format, and a list that mixes commands is what every real scenario
+    // is. `settleContract` is absent because the engine has none (Task 14).
     const commands = loadScenarioCommands(
       writeCommands({
         commands: [
-          { command_id: 1, hero_index: 3, contract: 'core:job', expected_state_version: 0 }
+          {
+            command: 'compose_offer',
+            command_id: 1,
+            contract: 'core:job',
+            key_hero_index: 3,
+            advance: 40,
+            method_tag: 'method:quiet',
+            promised_bonus: 5,
+            expected_state_version: 0
+          },
+          {
+            command: 'propose_contract_to_hero',
+            command_id: 2,
+            contract: 'core:job',
+            hero_index: 3,
+            expected_state_version: 1
+          },
+          {
+            command: 'lock_offer',
+            command_id: 3,
+            contract: 'core:job',
+            expected_state_version: 2
+          },
+          { command: 'poll_crew', command_id: 4, contract: 'core:job', expected_state_version: 3 }
         ]
       })
     );
 
     expect(commands).toEqual([
-      { commandId: 1, heroIndex: 3, contract: 'core:job', expectedStateVersion: 0 }
+      {
+        kind: 'compose_offer',
+        commandId: 1,
+        contract: 'core:job',
+        keyHeroIndex: 3,
+        advance: 40,
+        methodTag: 'method:quiet',
+        promisedBonus: 5,
+        expectedStateVersion: 0
+      },
+      {
+        kind: 'propose_contract_to_hero',
+        commandId: 2,
+        contract: 'core:job',
+        heroIndex: 3,
+        expectedStateVersion: 1
+      },
+      { kind: 'lock_offer', commandId: 3, contract: 'core:job', expectedStateVersion: 2 },
+      { kind: 'poll_crew', commandId: 4, contract: 'core:job', expectedStateVersion: 3 }
     ]);
+  });
+
+  it('keeps a composed offer that chooses no method tag as null, not as an absent field', () => {
+    // `null` and "not stated" must not become two ways of saying the same thing: the
+    // engine's `composeOffer` takes `methodTag: ContentId | null` and a missing key would
+    // arrive as `undefined`, which is neither a tag nor the explicit refusal of one.
+    const commands = loadScenarioCommands(
+      writeCommands({
+        commands: [
+          {
+            command: 'compose_offer',
+            command_id: 1,
+            contract: 'core:job',
+            key_hero_index: 0,
+            advance: 0,
+            method_tag: null,
+            promised_bonus: 0,
+            expected_state_version: 0
+          }
+        ]
+      })
+    );
+
+    expect(commands[0]).toMatchObject({ kind: 'compose_offer', methodTag: null });
+  });
+
+  it('refuses a command this build cannot issue, rather than reading it as another', () => {
+    // `settle_contract` is the one a reader will reach for first, because the spec has
+    // five commands and this build implements four.
+    const path = writeCommands({
+      commands: [
+        { command: 'settle_contract', command_id: 1, contract: 'core:job', expected_state_version: 0 }
+      ]
+    });
+
+    expect(() => loadScenarioCommands(path)).toThrow(/does not satisfy its contract/);
+  });
+
+  it('refuses a step carrying another command’s fields', () => {
+    // The failure the discriminant exists to make legible: a `poll_crew` naming a hero
+    // is an author who meant `propose_contract_to_hero`, and the diagnostic has to say
+    // which command's contract was violated rather than list four failures at once.
+    const path = writeCommands({
+      commands: [
+        {
+          command: 'poll_crew',
+          command_id: 1,
+          contract: 'core:job',
+          hero_index: 2,
+          expected_state_version: 0
+        }
+      ]
+    });
+
+    expect(() => loadScenarioCommands(path)).toThrow(/does not satisfy its contract/);
+  });
+
+  it('refuses a step that names no command at all', () => {
+    // The shape every scenario in this repository had before `DEC-008` Task 11a, and the
+    // one an unmigrated file would still have. No default: a file whose most important
+    // field is the one it does not state is a file whose meaning is decided elsewhere.
+    const path = writeCommands({
+      commands: [{ command_id: 1, hero_index: 3, contract: 'core:job', expected_state_version: 0 }]
+    });
+
+    expect(() => loadScenarioCommands(path)).toThrow(/does not satisfy its contract/);
   });
 
   it('refuses an empty command list', () => {
@@ -202,7 +313,15 @@ describe('a command list is refused rather than read on a guess', () => {
 
   it('refuses a malformed content id with the file and the path, not a bare parse error', () => {
     const path = writeCommands({
-      commands: [{ command_id: 1, hero_index: 0, contract: 'Core:Job', expected_state_version: 0 }]
+      commands: [
+        {
+          command: 'propose_contract_to_hero',
+          command_id: 1,
+          hero_index: 0,
+          contract: 'Core:Job',
+          expected_state_version: 0
+        }
+      ]
     });
 
     expect(() => loadScenarioCommands(path)).toThrow(/\$\.commands\[0\]\.contract/);
@@ -211,7 +330,14 @@ describe('a command list is refused rather than read on a guess', () => {
   it('refuses an unknown property', () => {
     const path = writeCommands({
       commands: [
-        { command_id: 1, hero_index: 0, contract: 'core:job', expected_state_version: 0, why: 1 }
+        {
+          command: 'propose_contract_to_hero',
+          command_id: 1,
+          hero_index: 0,
+          contract: 'core:job',
+          expected_state_version: 0,
+          why: 1
+        }
       ]
     });
 
@@ -235,6 +361,7 @@ describe('a command list is refused rather than read on a guess', () => {
       // seed. Widening these would move `stateVersion`, `nextEventId` and the artifact's
       // own number domain, which is a decision rather than a drive-by.
       const fields: Record<string, string> = {
+        command: '"propose_contract_to_hero"',
         command_id: '1',
         hero_index: '0',
         contract: '"core:job"',
@@ -269,7 +396,8 @@ describe('resolving a checkpoint', () => {
     expectedScreenState: null
   });
 
-  const commands = [1, 2, 3].map((commandId) => ({
+  const commands: readonly ScenarioCommand[] = [1, 2, 3].map((commandId) => ({
+    kind: ScenarioCommandKind.ProposeContractToHero,
     commandId,
     heroIndex: 0,
     contract: 'core:job' as never,

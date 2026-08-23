@@ -122,15 +122,42 @@ const MANIFEST = {
   content_root: 'fixture-content',
   checkpoints: [
     { name: 'start', after_command_id: 0 },
-    { name: 'final', after_command_id: 1 }
+    { name: 'final', after_command_id: 2 }
   ]
+};
+
+/**
+ * The package every fixture below negotiates over, or tries to.
+ *
+ * `advance` is the contract's whole `patron_fee`: that is the number
+ * `NEGOTIATION_SPEC` §4's benefit term reads, and an offer of nothing would make every
+ * fixture here a hero deciding about no money.
+ */
+const composeEscort = {
+  command: 'compose_offer',
+  command_id: 1,
+  contract: 'core:escort',
+  key_hero_index: 0,
+  advance: 70,
+  method_tag: null,
+  promised_bonus: 0,
+  expected_state_version: 0
 };
 
 /** Bram answers the escort — the campaign has a history, a trace and a decided step. */
 const answeredScenario: ScenarioFixture = {
   manifest: { ...MANIFEST, expected_screen_state: 'normal' },
   commands: {
-    commands: [{ command_id: 1, hero_index: 0, contract: 'core:escort', expected_state_version: 0 }]
+    commands: [
+      composeEscort,
+      {
+        command: 'propose_contract_to_hero',
+        command_id: 2,
+        contract: 'core:escort',
+        hero_index: 0,
+        expected_state_version: 1
+      }
+    ]
   }
 };
 
@@ -146,7 +173,14 @@ const rejectedScenario: ScenarioFixture = {
   manifest: { ...MANIFEST, expected_screen_state: 'incomplete' },
   commands: {
     commands: [
-      { command_id: 1, hero_index: 0, contract: 'core:escort', expected_state_version: 99 }
+      composeEscort,
+      {
+        command: 'propose_contract_to_hero',
+        command_id: 2,
+        contract: 'core:escort',
+        hero_index: 0,
+        expected_state_version: 99
+      }
     ]
   }
 };
@@ -164,9 +198,20 @@ const unscreenableScenario: ScenarioFixture = {
   commands: {
     commands: [
       {
+        command: 'compose_offer',
         command_id: 1,
-        hero_index: 0,
         contract: 'core:contract_nobody_authored',
+        key_hero_index: 0,
+        advance: 0,
+        method_tag: null,
+        promised_bonus: 0,
+        expected_state_version: 0
+      },
+      {
+        command: 'propose_contract_to_hero',
+        command_id: 2,
+        contract: 'core:contract_nobody_authored',
+        hero_index: 0,
         expected_state_version: 0
       }
     ]

@@ -3,5 +3,10 @@
   "scenario": "screen_incomplete",
   "expected_outcome": "success",
   "expected_screen_state": "incomplete",
-  "checkpoints": [{ "name": "screen_incomplete", "after_command_id": 1 }]
+  "checkpoints": [
+    {
+      "name": "screen_incomplete",
+      "after_command_id": 2
+    }
+  ]
 }
