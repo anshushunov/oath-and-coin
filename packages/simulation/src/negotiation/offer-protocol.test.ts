@@ -601,19 +601,12 @@ describe('lockOffer', () => {
     };
   }
 
-  function aLock(overrides: Partial<LockOffer> & { readonly advance?: number } = {}): LockOffer {
-    // `advance` is not a `LockOffer` field — locking carries no terms of its own,
-    // every term it freezes already lives on the package `composeOffer` set — but
-    // it is accepted and discarded here so a call site can name, right next to the
-    // command, which of `withOneLockedContract`'s own overrides is the number that
-    // makes this particular lock fail; see that fixture's own doc.
-    const { advance: _advance, ...lockOverrides } = overrides;
-
+  function aLock(overrides: Partial<LockOffer> = {}): LockOffer {
     return {
       commandId: 1,
       contractId: ids.crypt,
       expectedStateVersion: 0,
-      ...lockOverrides
+      ...overrides
     };
   }
 
@@ -624,6 +617,16 @@ describe('lockOffer', () => {
    * locked. `ids.temple` is otherwise only ever used as a tag id in this file;
    * reused here as a second, unrelated contract's id, since nothing in this
    * isolated campaign reads it as anything else.
+   *
+   * The neighbor is locked through a *real* `lockOffer` call, not a hand-built
+   * `Locked` literal with an empty `acceptedBy` — review caught that the earlier
+   * version built exactly the shape `lockOffer` itself refuses to produce
+   * (`keyHero ∈ acceptedBy` is required to lock at all), which meant
+   * `reservedCommitments` had still never summed a contract this command actually
+   * locked. `commandId`/`stateVersion` bookkeeping from this internal call is
+   * reset back to the fresh baseline afterward, the same convention the local
+   * `composeOffer` wrapper above already uses, so the caller's own `lockOffer`
+   * call on the crypt contract can still use `aLock`'s defaults.
    */
   function withOneLockedContract(
     overrides: Partial<ContractState> & {
@@ -633,16 +636,34 @@ describe('lockOffer', () => {
     stateOverrides: Partial<GameState> = {}
   ): GameState {
     const campaign = aCampaign(stateOverrides, overrides);
-    const otherLockedContract = aContract({
+    const otherAcceptedBy = SortedSet.from(compareHeroIds, [OTHER_HERO]);
+    const otherContract = aContract({
       id: ids.temple,
       requiredCrew: 1,
-      status: ContractStatus.Offered,
-      offer: anOffer({ keyHero: OTHER_HERO, advance: 1, phase: OfferPhase.Locked })
+      status: ContractStatus.Crewed,
+      offer: anOffer({
+        keyHero: OTHER_HERO,
+        advance: 1,
+        respondedBy: otherAcceptedBy,
+        acceptedBy: otherAcceptedBy
+      })
+    });
+
+    const withOther: GameState = {
+      ...campaign,
+      contracts: campaign.contracts.set(otherContract.id, otherContract)
+    };
+
+    const result = lockOffer(withOther, {
+      commandId: 1,
+      contractId: ids.temple,
+      expectedStateVersion: withOther.metadata.stateVersion
     });
 
     return {
-      ...campaign,
-      contracts: campaign.contracts.set(otherLockedContract.id, otherLockedContract)
+      ...result.state,
+      metadata: { ...result.state.metadata, stateVersion: 0 },
+      appliedCommandIds: SortedSet.empty<number>(compareNumbers)
     };
   }
 
@@ -665,10 +686,16 @@ describe('lockOffer', () => {
   });
 
   it('counts what other locked contracts already committed', () => {
+    // `patronFee: 100` alongside `advance: 100`: `0 ≤ advance ≤ patronFee` (§2.1) is
+    // a real protocol invariant, and the default `patronFee` (70, `aContract`) would
+    // make this fixture a contract `composeOffer` could never build — review caught
+    // that the earlier version left this as an illegal state, unreachable in
+    // production, that only survived because `aContract` builds a literal rather
+    // than validating one.
     const campaign = accepted(
-      withOneLockedContract({ advance: 100, requiredCrew: 6 }, { treasury: 600 })
+      withOneLockedContract({ advance: 100, requiredCrew: 6, patronFee: 100 }, { treasury: 600 })
     );
-    expect(lockOffer(campaign, aLock({ advance: 100 })).rejectionCode).toBe(
+    expect(lockOffer(campaign, aLock()).rejectionCode).toBe(
       RejectionCodes.TreasuryCannotCoverTheOffer
     );
   });
