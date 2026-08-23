@@ -133,10 +133,9 @@ function ran(files: Record<string, string>, contract: string): GameState {
 /**
  * Bram takes the caravan job. The arithmetic, written out so the expectation below is not
  * this build agreeing with itself (`HERO_DECISION_SPEC` §2.3, `NEGOTIATION_SPEC` §4, every
- * term divided on its own): this fixture's `ScenarioCommand` has no way to compose an
- * offer (that command arrives in `DEC-008` Tasks 10-14), so the offer a bare `propose`
- * reaches Bram with is the one every contract starts on — `advance = 0`, no promised bonus
- * — and the patron fee itself no longer contributes at all. Advance 0 × greed 60 / 100 = 0
+ * term divided on its own): `ran()` above never composes an offer, so the offer Bram is
+ * proposed is the one every contract starts on — `advance = 0`, no promised bonus — and the
+ * patron fee itself no longer contributes at all. Advance 0 × greed 60 / 100 = 0
  * (no factor, not a zero one); risk 30 × caution 30 / 100 = −9; nothing offsets the risk, so
  * insult fires: (30 − 0) × pride 45 / 100 = −13; the inclination `core:greedy` matches the
  * contract's `method:escort` tag at +20; trust 50 / 10 = +5; no bonds; no grievance; mood at

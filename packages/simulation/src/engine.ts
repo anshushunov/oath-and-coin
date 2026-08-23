@@ -153,14 +153,18 @@ export function proposeContractToHero(
 
   const accepted = decision.result.selectedAction === Actions.Accept;
 
-  // A mood ordinal is recorded only on the draw that actually happened: the gate
-  // closes before any mood is drawn (`decide`'s own `blockedBy` says so), and a hero
-  // who already has a recorded ordinal keeps exactly that one — a later revision that
-  // stops violating this hero's principle must still read the mood already drawn, not
-  // a fresh one drawn now that nothing blocks it. Recording on the gated path would
-  // make the record mean "a draw happened" for a hero it never did.
-  const gateClosed = decision.result.trace.blockedBy.length > 0;
-  const moodDrawnJustNow = knownMoodOrdinal === undefined && !gateClosed;
+  // A mood ordinal is recorded only on the draw that actually happened: `decide`
+  // itself reports `0n` on the gated path — its own `HeroDecision.ordinalsConsumed`
+  // doc says as much — and a hero who already has a recorded ordinal keeps exactly
+  // that one, so a later revision that stops violating this hero's principle must
+  // still read the mood already drawn, not a fresh one drawn now that nothing blocks
+  // it. Read directly off `ordinalsConsumed` rather than off `trace.blockedBy.length`:
+  // the count is the fact this file needs ("did a draw happen"), stated once by the
+  // one function whose job it is to state it; a second path that gated without
+  // `blockedBy` growing (a red line `decide` might add outside the principle gate,
+  // say) would make a `blockedBy`-shaped proxy silently record a draw that never
+  // happened — exactly the failure this task exists to close.
+  const moodDrawnJustNow = knownMoodOrdinal === undefined && decision.ordinalsConsumed > 0n;
   const moodOrdinals = moodDrawnJustNow
     ? contract.moodOrdinals.set(command.heroId, decisionOrdinal)
     : contract.moodOrdinals;

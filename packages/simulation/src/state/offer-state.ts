@@ -72,22 +72,21 @@ export function effectiveTags(contract: ContractState): SortedSet<ContentId> {
  * invariant `NEGOTIATION_SPEC` §2.1 states holds for a campaign at the moment it is
  * first assembled from content.
  *
- * **It is not yet the door for everything else that builds or rebuilds a
- * `ContractState`, and both gaps are known rather than merely unnoticed:**
+ * **As of `DEC-008` Task 11, it is the door for both engine-side callers that build
+ * or rebuild a `ContractState` — `composeOffer` (since Task 10) and
+ * `proposeContractToHero`'s post-response contract (since Task 11).** Task 11 also
+ * closed the gap that used to sit here: `proposeContractToHero` now refuses anyone
+ * but the offer's key hero while `phase = 'draft'`
+ * (`RejectionCodes.NotTheKeyHero`, `NEGOTIATION_SPEC` §3.1, §6), so `respondedBy` can
+ * no longer gain a hero other than `offer.keyHero` in that phase — the specific
+ * violation ("`phase = 'draft'` ⇒ `respondedBy ⊆ {keyHero}`") this build's engine
+ * could previously produce is no longer reachable through either engine caller.
  *
- * - `engine.ts`'s `proposeContractToHero` assembles the post-response `ContractState`
- *   with a plain spread, not through here — that predates this function and is
- *   negotiation-protocol work (`NEGOTIATION_SPEC` §3) this task does not do; closing
- *   it is Task 11's.
- * - `snapshot-codec.ts`'s `decodeSnapshot` was routed through here once, in review,
- *   and reverted: today's `proposeContractToHero` never sets `offer.keyHero`, so
- *   *any* save this build's own engine can currently produce, the moment one hero
- *   has answered, already violates "`phase = 'draft'` ⇒ `respondedBy ⊆ {keyHero}`" —
- *   measured directly, wiring it in made a real engine-produced save unreadable.
- *   That is `engine.ts`'s gap reaching the save format, not a save-format gap of its
- *   own, so it waits on the same Task 11 rework rather than being patched here or in
- *   the codec. See `snapshot-codec.ts`'s own comment at that call site for the
- *   measurement.
+ * `snapshot-codec.ts`'s `decodeSnapshot` is **not yet** routed through here —
+ * that remains Task 14's, not because a save can still fail this invariant, but
+ * because the codec's own wiring (and its error-mapping to `SaveErrorCodes`) is
+ * a separate piece of work this task does not do. See `snapshot-codec.ts`'s own
+ * comment at that call site.
  *
  * A literal `{ ...contract, offer: revised }` has no invariant to fail on, so until
  * every construction and transition is routed through this door, an invariant a

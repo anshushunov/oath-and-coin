@@ -221,14 +221,18 @@ const offerPhaseSchema = z.union([
  * **This schema bounds shape only, and — unlike `contractStatusSchema`'s sibling
  * fields — the domain invariants above that shape are not enforced anywhere in this
  * module.** `createContractState` (`NEGOTIATION_SPEC` §2.1) was routed in here once,
- * in review, and reverted: `engine.ts`'s current `proposeContractToHero` predates the
- * offer protocol and never sets `offer.keyHero`, so a save this build's own engine
- * genuinely produces already violates the draft invariant the moment one hero has
- * answered — wiring the check in here made a real engine-produced save refuse to
- * decode. See `decodeSnapshot`'s contract builder, a few dozen lines down, for the
- * full account and the task this now waits on. `advance > patronFee`, `settled` on
- * an uncrewed contract, `acceptedBy.size > requiredCrew` and the rest of §2.1
- * therefore currently read back from a save unchecked.
+ * in review, and reverted: at the time, `engine.ts`'s `proposeContractToHero`
+ * predated the offer protocol and never restricted who could answer a draft, so a
+ * save this build's own engine genuinely produced could already violate the draft
+ * invariant the moment a non-key hero had answered — wiring the check in here made a
+ * real engine-produced save of that shape refuse to decode. `DEC-008` Task 11 closed
+ * that gap in the engine (`proposeContractToHero` now refuses anyone but the key hero
+ * while `phase = 'draft'`, `RejectionCodes.NotTheKeyHero`), so the shape that
+ * reverted this wiring can no longer be produced — but the wiring itself is not yet
+ * back in. See `decodeSnapshot`'s contract builder, a few dozen lines down, for the
+ * current state of that call site. `advance > patronFee`, `settled` on an uncrewed
+ * contract, `acceptedBy.size > requiredCrew` and the rest of §2.1 therefore still
+ * read back from a save unchecked, pending that wiring (Task 14).
  */
 const offerValueSchema = z.strictObject({
   version: z.int().min(1),
@@ -556,19 +560,23 @@ export function decodeSnapshot(value: unknown): GameState {
     parsed.contracts,
     (rawKey) => parseContentId(rawKey),
     (raw) => parseContentId(raw.id),
-    // NOT routed through `createContractState` — tried, and reverted. See
-    // `createContractState`'s own doc (`offer-state.ts`) and the comment a few dozen
-    // lines below this one (where the wrapper that would have done it once stood) for
-    // why: today's `engine.ts` (`proposeContractToHero`, pre-`DEC-008` offer protocol)
-    // records a response without ever setting `offer.keyHero`, so *every* save this
-    // build's own engine can currently produce, the moment one hero has answered,
-    // already violates "phase = 'draft' ⇒ respondedBy ⊆ {keyHero}". Measured
-    // directly: wiring this in made `envelope.test.ts`'s own guard-over-guards case —
-    // "accepts the campaign the engine actually produced" — refuse a save built from
-    // a real engine run. That is not a shape this codec can close; it needs
-    // `engine.ts`'s negotiation-protocol rework (Task 11) to stop producing states
-    // that violate the invariant in the first place. Left as a plain literal, exactly
-    // as before this task.
+    // NOT routed through `createContractState` — tried, and reverted, back when
+    // `engine.ts`'s `proposeContractToHero` (pre-`DEC-008` offer protocol) recorded a
+    // response without restricting who could answer a draft, so a save this build's
+    // engine could produce might already violate "phase = 'draft' ⇒ respondedBy ⊆
+    // {keyHero}" — measured directly at the time: wiring this in made
+    // `envelope.test.ts`'s own guard-over-guards case — "accepts the campaign the
+    // engine actually produced" — refuse a save built from a real engine run.
+    //
+    // `DEC-008` Task 11 closed that engine-side gap: `proposeContractToHero` now
+    // refuses anyone but the offer's key hero while `phase = 'draft'`
+    // (`RejectionCodes.NotTheKeyHero`), routes its post-response `ContractState`
+    // through `createContractState` itself, and — by the same review's own
+    // measurement — cannot produce the shape that reverted this wiring. The wiring
+    // is still not back in, though: routing `decodeSnapshot`'s own contract builder
+    // through the door, and mapping a violation to `SaveErrorCodes`, is separate work
+    // this task does not do (Task 14). Left as a plain literal here for that reason,
+    // not because a save could still fail this check.
     (raw) => ({
       id: parseContentId(raw.id),
       patronFee: raw.patronFee,
@@ -773,11 +781,14 @@ function fromEntriesOrInconsistent<K, V>(
 // A `requireConsistentContract` function stood here — a `createContractState`
 // wrapper mirroring `fromEntriesOrInconsistent` above, rethrowing as
 // `SaveReadError(SaveErrorCodes.Inconsistent, ...)` the same way. It was wired into
-// `decodeSnapshot`'s contract builder and reverted; see that call site's own comment
-// for the measurement and `createContractState`'s doc (`offer-state.ts`) for the
-// task this waits on. Not resurrected as dead code here: deleting the function
-// along with the wiring does not lose the reason, which is recorded at both of
-// those places instead.
+// `decodeSnapshot`'s contract builder and reverted, at a time when the engine could
+// still produce a state that wiring would refuse; `DEC-008` Task 11 closed that
+// engine-side gap (see that call site's own comment and `createContractState`'s doc,
+// `offer-state.ts`, for the current state of both). Wiring this back in — and
+// mapping what it would throw to `SaveErrorCodes` — is Task 14's, not resurrected
+// here as dead code for the same reason it wasn't kept the first time: deleting the
+// function along with the wiring does not lose the reason, which is recorded at both
+// of those places instead.
 
 function toTraceFactor(factor: RawFactor): TraceFactor {
   return {
