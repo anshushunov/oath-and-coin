@@ -44,6 +44,18 @@ export interface OfferRevised extends DomainEventBase {
 }
 
 /**
+ * The player locked a contract's current offer (`lockOffer`, `NEGOTIATION_SPEC`
+ * §3.3). `causalTraceId` is always `null` for the same reason `OfferRevised`'s is:
+ * locking is the player's own act on a package a hero has already answered, not a
+ * hero deciding anything new — the acceptance being locked against already has its
+ * own trace, recorded when it happened.
+ */
+export interface OfferLocked extends DomainEventBase {
+  readonly kind: 'offer_locked';
+  readonly contractId: ContentId;
+}
+
+/**
  * A discriminated union rather than an abstract base class with subtypes, and the
  * discriminant is the exact string the canonical artifact writes.
  *
@@ -55,4 +67,4 @@ export interface OfferRevised extends DomainEventBase {
  * `noImplicitReturns` see to it — and the projection cannot even reach the payload
  * fields without narrowing on `kind` first.
  */
-export type DomainEvent = HeroAcceptedContract | HeroDeclinedContract | OfferRevised;
+export type DomainEvent = HeroAcceptedContract | HeroDeclinedContract | OfferRevised | OfferLocked;

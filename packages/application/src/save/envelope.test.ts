@@ -11,6 +11,7 @@ import {
 import {
   composeOffer,
   deepEqual,
+  lockOffer,
   proposeContractToHero,
   type ContentId,
   type GameState
@@ -158,6 +159,29 @@ function aDecidedThenRevisedState(): GameState {
     advance: 10,
     methodTag: null,
     promisedBonus: 0,
+    expectedStateVersion: decided.metadata.stateVersion
+  });
+
+  return result.state;
+}
+
+/**
+ * `aDecidedState()`, then that same accepted offer locked (`NEGOTIATION_SPEC` §3.3,
+ * `lockOffer`) — `history` gains an `offer_locked` event alongside the acceptance,
+ * `respondedBy`/`acceptedBy` stay exactly as `proposeContractToHero` left them (locking
+ * clears neither), and the offer's `phase` moves to `locked`. Named by the same task
+ * that added `lockOffer` (`DEC-008` Task 12): `domainEventSchema`
+ * (`snapshot-codec.ts`) needs a member for this event, and `requireReadableSnapshot`
+ * re-decodes on the *write* path (`buildSave`), so a schema missing that member breaks
+ * saving this exact campaign, not only loading a file that already carries one.
+ */
+function aDecidedThenLockedState(): GameState {
+  const decided = aDecidedState();
+  const [contractKey] = decided.contracts.keys();
+
+  const result = lockOffer(decided, {
+    commandId: 2,
+    contractId: contractKey!,
     expectedStateVersion: decided.metadata.stateVersion
   });
 
@@ -935,6 +959,31 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
     });
 
     expect(deepEqual(readSave(bytes, versions).state, revised)).toBe(true);
+  });
+
+  it('carries a campaign whose offer was answered, then locked, through save and read', () => {
+    // `DEC-008` Task 12's own risk, named in its brief: `offer_locked` is a new
+    // `DomainEvent` member, and a schema that forgot it would not fail loudly at
+    // `readSave` alone — `buildSave` calls `requireReadableSnapshot`, which re-decodes
+    // on the way *out*, so a missing schema member breaks saving this campaign in the
+    // first place, before there is ever a file to read back.
+    const locked = aDecidedThenLockedState();
+    expect(locked.history).toHaveLength(2);
+    expect(locked.history[1]!.kind).toBe('offer_locked');
+
+    const versions = {
+      rulesetVersion: locked.metadata.rulesetVersion,
+      contentVersion: locked.metadata.contentVersion
+    };
+    const [focusedContract] = locked.contracts.keys();
+
+    const bytes = buildSave({
+      state: locked,
+      focusedContract: focusedContract!,
+      createdAt: CREATED_AT
+    });
+
+    expect(deepEqual(readSave(bytes, versions).state, locked)).toBe(true);
   });
 });
 

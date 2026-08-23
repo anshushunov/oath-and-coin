@@ -8,6 +8,7 @@ import {
   type CommandResult
 } from './commands/command-result.ts';
 import type { ComposeOffer } from './commands/compose-offer.ts';
+import type { LockOffer } from './commands/lock-offer.ts';
 import type { ProposeContractToHero } from './commands/propose-contract-to-hero.ts';
 import { Actions } from './decisions/actions.ts';
 import { decide } from './decisions/contract-decision-rule.ts';
@@ -15,6 +16,7 @@ import type { HeldTrait } from './decisions/held-trait.ts';
 import type { DomainEvent } from './events/domain-event.ts';
 import { compareContentIds, type ContentId } from './ids/content-id.ts';
 import { compareHeroIds, type HeroId } from './ids/hero-id.ts';
+import { canCover } from './negotiation/commitments.ts';
 import { ContractStatus } from './state/contract-state.ts';
 import { withEvent, type GameState } from './state/game-state.ts';
 import { createContractState, MAX_TAGS_PER_CONTRACT, OfferPhase } from './state/offer-state.ts';
@@ -350,6 +352,109 @@ export function composeOffer(state: GameState, command: ComposeOffer): CommandRe
     {
       ...state,
       contracts: state.contracts.set(revisedContract.id, revisedContract),
+      appliedCommandIds: state.appliedCommandIds.add(command.commandId)
+    },
+    domainEvent,
+    null,
+    0n
+  );
+
+  return fromEvent(nextState, domainEvent);
+}
+
+/**
+ * Freezes a contract's current negotiation package (`NEGOTIATION_SPEC` §3.1, §3.3,
+ * §6.1). Where a package stops being a draft the player can still walk away from and
+ * becomes money the guild has committed.
+ *
+ * Checks run in exactly §6.1's order: the three general checks, then this command's
+ * own phase and acceptance preconditions (§3.1's table — `lockOffer` is legal only
+ * against a `draft` package whose key hero is in `acceptedBy`), and the treasury
+ * check last, because it is the most expensive and the only one that reads every
+ * other contract in `state.contracts` (`canCover`, `negotiation/commitments.ts`).
+ * `lockOffer` takes no `advance`, `promisedBonus` or `methodTag` of its own — every
+ * term it locks already lives on the package `composeOffer` built — so there is no
+ * value-bounds step between the acceptance check and the treasury one; §6.1's step 5
+ * has nothing to check for this command.
+ *
+ * **The treasury is checked against the full crew, not against who has answered.**
+ * `canCover` compares `commitmentOf(contract)` — `advance × requiredCrew +
+ * promisedBonus` — against the treasury net of every other `locked` contract's own
+ * commitment (`reservedCommitments`). A contract still filling its crew has fewer
+ * acceptances than seats, and reserving against the smaller number would let a
+ * `locked` offer with empty seats free money it will owe the moment `pollCrew`
+ * (Task 13) actually fills them.
+ *
+ * **A single-seat contract is already `crewed` by the time this runs.**
+ * `proposeContractToHero` moves `status` to `Crewed` the moment `acceptedBy.size`
+ * reaches `requiredCrew` — before `lockOffer` ever sees the contract, when
+ * `requiredCrew` is 1 and the key hero's own draft acceptance is the whole crew.
+ * This command does not recompute `status`; it only moves `phase`, so a contract
+ * already `crewed` in `draft` is still `crewed` once `locked`.
+ */
+export function lockOffer(state: GameState, command: LockOffer): CommandResult {
+  if (command.expectedStateVersion !== state.metadata.stateVersion) {
+    return rejected(state, RejectionCodes.StaleState);
+  }
+
+  if (state.appliedCommandIds.has(command.commandId)) {
+    return rejected(state, RejectionCodes.DuplicateCommand);
+  }
+
+  const contract = state.contracts.get(command.contractId);
+  if (contract === undefined) {
+    return rejected(state, RejectionCodes.UnknownContract);
+  }
+
+  // §3.1's table: `lockOffer` is legal only against a `draft` package. Checked
+  // before the acceptance test below on purpose — `lockOffer` never clears
+  // `acceptedBy`, so a package already `locked` would still show its key hero
+  // accepted, and without this check a second lock of the same package would pass
+  // straight through to the treasury check instead of being refused here.
+  if (contract.offer.phase !== OfferPhase.Draft) {
+    return rejected(state, RejectionCodes.OfferNotInDraft);
+  }
+
+  // §3.1, §3.3: the key hero must have accepted this exact version. `composeOffer`
+  // empties `acceptedBy` on every revision, so an acceptance given to a package the
+  // player has since changed can never satisfy this — there is nothing else to check
+  // to tell "nobody has answered yet" apart from "the version that answered is gone".
+  const { keyHero, acceptedBy } = contract.offer;
+  if (keyHero === null || !acceptedBy.has(keyHero)) {
+    return rejected(state, RejectionCodes.KeyHeroHasNotAccepted);
+  }
+
+  // §6.1's step 6, last and most expensive because it is the only check reading
+  // every other contract in state, not just this one.
+  if (!canCover(state, contract)) {
+    return rejected(state, RejectionCodes.TreasuryCannotCoverTheOffer);
+  }
+
+  // Routed through `createContractState` — the one door a `ContractState` is built
+  // or rebuilt through — even though nothing about moving `phase` alone from `draft`
+  // to `locked` can violate an invariant this function checks: every other field is
+  // carried forward untouched, and `phase = 'draft' ⇒ respondedBy ⊆ {keyHero}` stops
+  // applying the moment phase is no longer `draft`.
+  const lockedContract = createContractState({
+    ...contract,
+    offer: { ...contract.offer, phase: OfferPhase.Locked }
+  });
+
+  const domainEvent: DomainEvent = {
+    kind: 'offer_locked',
+    eventId: state.metadata.nextEventId,
+    logicalTime: state.metadata.logicalTime,
+    causalTraceId: null,
+    contractId: command.contractId
+  };
+
+  // No decision, no trace, no randomness spent — locking an offer is the player's
+  // own act (`NEGOTIATION_SPEC` §3.3): the acceptance it locks against already has
+  // its own trace, recorded when the key hero gave it.
+  const nextState = withEvent(
+    {
+      ...state,
+      contracts: state.contracts.set(lockedContract.id, lockedContract),
       appliedCommandIds: state.appliedCommandIds.add(command.commandId)
     },
     domainEvent,

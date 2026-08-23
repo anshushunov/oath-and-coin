@@ -373,6 +373,17 @@ const domainEventSchema = z.discriminatedUnion('kind', [
     logicalTime: z.int().min(0),
     causalTraceId: z.int().min(0).nullable(),
     contractId: contentId
+  }),
+  // No `heroId`, same shape and same reason as `offer_revised`: locking a package is
+  // the player's own act (`domain-event.ts`'s `OfferLocked`), not a hero's decision.
+  // A new member of the same existing union, so this did not need to move
+  // `SAVE_SCHEMA_VERSION` either.
+  z.strictObject({
+    kind: z.literal('offer_locked'),
+    eventId: z.int().min(0),
+    logicalTime: z.int().min(0),
+    causalTraceId: z.int().min(0).nullable(),
+    contractId: contentId
   })
 ]);
 
@@ -809,6 +820,16 @@ function toDomainEvent(domainEvent: RawDomainEvent): DomainEvent {
   if (domainEvent.kind === 'offer_revised') {
     return {
       kind: 'offer_revised',
+      eventId: domainEvent.eventId,
+      logicalTime: domainEvent.logicalTime,
+      causalTraceId: domainEvent.causalTraceId,
+      contractId: parseContentId(domainEvent.contractId)
+    };
+  }
+
+  if (domainEvent.kind === 'offer_locked') {
+    return {
+      kind: 'offer_locked',
       eventId: domainEvent.eventId,
       logicalTime: domainEvent.logicalTime,
       causalTraceId: domainEvent.causalTraceId,

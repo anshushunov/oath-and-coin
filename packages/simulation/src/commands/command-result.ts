@@ -30,7 +30,13 @@ export const RejectionCodes = Object.freeze({
   /**
    * `composeOffer` only revises a package in `draft`, or in `locked` while the crew it
    * had has not filled (`NEGOTIATION_SPEC` §3.1) — a locked, crewed offer is a deal
-   * already struck.
+   * already struck. `lockOffer` reuses this same code for the same reason in the
+   * other direction: it is only ever legal against a `draft` package
+   * (`NEGOTIATION_SPEC` §3.1's table), so a package already `locked` or `settled`
+   * answers here rather than falling through to a `keyHero`-acceptance or treasury
+   * check that a repeated lock would otherwise pass — `lockOffer` never clears
+   * `acceptedBy`, so a second lock of an already-`locked` package would find the key
+   * hero still accepted.
    */
   OfferNotInDraft: 'rejected.offer_not_in_draft',
   /**
@@ -38,7 +44,25 @@ export const RejectionCodes = Object.freeze({
    * checks before ever building a package (`NEGOTIATION_SPEC` §3.3, §6.1) — money
    * outside `0..patronFee`, or a method tag the contract never offered.
    */
-  OfferTermsOutOfBounds: 'rejected.offer_terms_out_of_bounds'
+  OfferTermsOutOfBounds: 'rejected.offer_terms_out_of_bounds',
+  /**
+   * `lockOffer` only freezes a package the key hero has answered *and* accepted, on
+   * the exact version currently in play (`NEGOTIATION_SPEC` §3.1, §3.3). `composeOffer`
+   * empties `acceptedBy` on every revision, so an acceptance given to a package the
+   * player has since changed never satisfies this — there is no separate "stale
+   * acceptance" code because the membership check already answers both cases the
+   * same way a revision made them: nobody has accepted yet, or the one who did
+   * accepted a version that no longer exists.
+   */
+  KeyHeroHasNotAccepted: 'rejected.key_hero_has_not_accepted',
+  /**
+   * `lockOffer`'s last and most expensive check (`NEGOTIATION_SPEC` §3.3, §6.1):
+   * the treasury, net of every commitment every other `locked` offer already holds
+   * (`reservedCommitments`), falls short of this offer's own commitment
+   * (`commitmentOf` — `advance × requiredCrew + promisedBonus`, the full crew the
+   * contract has room for, not merely who has answered so far).
+   */
+  TreasuryCannotCoverTheOffer: 'rejected.treasury_cannot_cover_the_offer'
 });
 
 export type RejectionCode = (typeof RejectionCodes)[keyof typeof RejectionCodes];

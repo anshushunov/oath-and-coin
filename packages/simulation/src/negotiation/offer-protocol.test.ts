@@ -2,13 +2,19 @@ import { describe, expect, it } from 'vitest';
 
 import { SortedMap } from '../collections/sorted-map.ts';
 import { SortedSet } from '../collections/sorted-set.ts';
-import { RejectionCodes } from '../commands/command-result.ts';
+import { RejectionCodes, type CommandResult } from '../commands/command-result.ts';
 import type { ComposeOffer } from '../commands/compose-offer.ts';
+import type { LockOffer } from '../commands/lock-offer.ts';
 import type { ProposeContractToHero } from '../commands/propose-contract-to-hero.ts';
 import { Actions } from '../decisions/actions.ts';
 import type { DecisionResult } from '../decisions/causal-trace.ts';
 import { ReasonCodes } from '../decisions/reason-codes.ts';
-import { composeOffer, proposeContractToHero } from '../engine.ts';
+import {
+  composeOffer,
+  composeOffer as engineComposeOffer,
+  lockOffer,
+  proposeContractToHero
+} from '../engine.ts';
 import { compareContentIds } from '../ids/content-id.ts';
 import { compareHeroIds, heroId, type HeroId } from '../ids/hero-id.ts';
 import { ContractStatus, type ContractState } from '../state/contract-state.ts';
@@ -332,7 +338,17 @@ describe('proposeContractToHero — the key hero, and the mood pinned to the con
         // away and back" test passed against the ignore-`moodOrdinals` mutant purely
         // because greed/caution/pride left the score too lopsided for any mood to move
         // it).
-        [KEY_HERO, aHero({ id: KEY_HERO, greed: 0, caution: 0, pride: 0, trustInGuild: 10, traits: [ids.refusesDeception] })],
+        [
+          KEY_HERO,
+          aHero({
+            id: KEY_HERO,
+            greed: 0,
+            caution: 0,
+            pride: 0,
+            trustInGuild: 10,
+            traits: [ids.refusesDeception]
+          })
+        ],
         [OTHER_HERO, aHero({ id: OTHER_HERO })]
       ]),
       contracts: SortedMap.from(compareContentIds, [
@@ -511,5 +527,170 @@ describe('proposeContractToHero — the key hero, and the mood pinned to the con
     const gated = declinedByPrinciple(aCampaign());
     const scored = answered(composeOffer(gated, aCompose({ methodTag: ids.open })).state);
     expect(contractOf(scored, ids.crypt).moodOrdinals.has(heroId(0))).toBe(true);
+  });
+});
+
+/**
+ * `lockOffer` (`NEGOTIATION_SPEC` §3.1, §3.3, §6.1) — the point a package stops
+ * being a draft the player can still walk away from and becomes money the guild
+ * has committed. `KEY_HERO`/`OTHER_HERO` are this file's own top-level ones
+ * (`heroId(0)`/`heroId(1)`); the outer, module-level `accepted()` is reused as-is,
+ * since it only edits `ids.crypt`'s own offer and is agnostic to which `aCampaign`
+ * built the state around it.
+ */
+describe('lockOffer', () => {
+  /**
+   * A campaign shaped like the outer `aCampaign`, except its own second parameter
+   * also accepts the two offer terms these tests need to flex (`advance`,
+   * `promisedBonus`) alongside ordinary `ContractState` fields such as
+   * `requiredCrew`. `lockOffer` itself takes no such terms — they already live on
+   * the package a prior `composeOffer` set — so there is nowhere else for a test
+   * needing a specific `advance`/`requiredCrew` pair to put it but into the
+   * contract this campaign starts on.
+   */
+  function aCampaign(
+    stateOverrides: Partial<GameState> = {},
+    overrides: Partial<ContractState> & {
+      readonly advance?: number;
+      readonly promisedBonus?: number;
+    } = {}
+  ): GameState {
+    const { advance, promisedBonus, ...contractOverrides } = overrides;
+    const offerOverrides: Partial<OfferState> = {
+      ...(advance !== undefined ? { advance } : {}),
+      ...(promisedBonus !== undefined ? { promisedBonus } : {})
+    };
+
+    return aState({
+      heroes: SortedMap.from(compareHeroIds, [
+        [KEY_HERO, aHero({ id: KEY_HERO })],
+        [OTHER_HERO, aHero({ id: OTHER_HERO })]
+      ]),
+      contracts: SortedMap.from(compareContentIds, [
+        [ids.crypt, aContract({ ...contractOverrides, offer: anOffer(offerOverrides) })]
+      ]),
+      ...stateOverrides
+    });
+  }
+
+  /**
+   * `composeOffer`, but resetting `stateVersion`/`appliedCommandIds` back to what a
+   * fresh campaign starts on before returning — the same convention, and for the
+   * same reason, `proposeContractToHero`'s own describe block's `answered()`
+   * (above) resets them: so a test composing a real revision by hand can still
+   * follow it with another command at the default `expectedStateVersion`/
+   * `commandId` every fixture in this file already assumes, rather than every test
+   * threading the exact counter its own particular chain of calls would produce.
+   * Shadows the imported `composeOffer` for every `it` below, the same way this
+   * file's `proposeContractToHero` block already shadows `aCampaign`/`aCompose`.
+   */
+  function composeOffer(state: GameState, command: ComposeOffer): CommandResult {
+    const result = engineComposeOffer(state, command);
+
+    if (!result.applied) {
+      return result;
+    }
+
+    return {
+      ...result,
+      state: {
+        ...result.state,
+        metadata: { ...result.state.metadata, stateVersion: 0 },
+        appliedCommandIds: SortedSet.empty<number>(compareNumbers)
+      }
+    };
+  }
+
+  function aLock(overrides: Partial<LockOffer> & { readonly advance?: number } = {}): LockOffer {
+    // `advance` is not a `LockOffer` field — locking carries no terms of its own,
+    // every term it freezes already lives on the package `composeOffer` set — but
+    // it is accepted and discarded here so a call site can name, right next to the
+    // command, which of `withOneLockedContract`'s own overrides is the number that
+    // makes this particular lock fail; see that fixture's own doc.
+    const { advance: _advance, ...lockOverrides } = overrides;
+
+    return {
+      commandId: 1,
+      contractId: ids.crypt,
+      expectedStateVersion: 0,
+      ...lockOverrides
+    };
+  }
+
+  /**
+   * `aCampaign`, plus one *other* contract already `locked` with a small
+   * commitment of its own — for the one test proving `lockOffer`'s treasury check
+   * counts every locked contract's reservation, not only the one about to be
+   * locked. `ids.temple` is otherwise only ever used as a tag id in this file;
+   * reused here as a second, unrelated contract's id, since nothing in this
+   * isolated campaign reads it as anything else.
+   */
+  function withOneLockedContract(
+    overrides: Partial<ContractState> & {
+      readonly advance?: number;
+      readonly promisedBonus?: number;
+    } = {},
+    stateOverrides: Partial<GameState> = {}
+  ): GameState {
+    const campaign = aCampaign(stateOverrides, overrides);
+    const otherLockedContract = aContract({
+      id: ids.temple,
+      requiredCrew: 1,
+      status: ContractStatus.Offered,
+      offer: anOffer({ keyHero: OTHER_HERO, advance: 1, phase: OfferPhase.Locked })
+    });
+
+    return {
+      ...campaign,
+      contracts: campaign.contracts.set(otherLockedContract.id, otherLockedContract)
+    };
+  }
+
+  it('refuses to lock a package the key hero has not accepted', () => {
+    expect(lockOffer(aCampaign(), aLock()).rejectionCode).toBe(
+      RejectionCodes.KeyHeroHasNotAccepted
+    );
+  });
+
+  it('refuses to lock against an acceptance of an older version', () => {
+    const revised = composeOffer(accepted(aCampaign()), aCompose({ advance: 50 })).state;
+    expect(lockOffer(revised, aLock()).rejectionCode).toBe(RejectionCodes.KeyHeroHasNotAccepted);
+  });
+
+  it('reserves the advance for every seat, not for the heroes who happened to answer', () => {
+    const campaign = accepted(aCampaign({ treasury: 100 }, { advance: 40, requiredCrew: 3 }));
+    expect(lockOffer(campaign, aLock()).rejectionCode).toBe(
+      RejectionCodes.TreasuryCannotCoverTheOffer
+    );
+  });
+
+  it('counts what other locked contracts already committed', () => {
+    const campaign = accepted(
+      withOneLockedContract({ advance: 100, requiredCrew: 6 }, { treasury: 600 })
+    );
+    expect(lockOffer(campaign, aLock({ advance: 100 })).rejectionCode).toBe(
+      RejectionCodes.TreasuryCannotCoverTheOffer
+    );
+  });
+
+  it('fills a single-seat contract the moment the key hero accepts', () => {
+    const locked = lockOffer(accepted(aCampaign({}, { requiredCrew: 1 })), aLock()).state;
+    expect(contractOf(locked, ids.crypt).status).toBe('crewed');
+    expect(offerOf(locked).phase).toBe(OfferPhase.Locked);
+  });
+
+  // Beyond the five tests above: `NEGOTIATION_SPEC` §3.1's table restricts
+  // `lockOffer` to a `draft` package, the same way `composeOffer`'s own
+  // `OfferNotInDraft` restricts revision. Proven directly, because `lockOffer`
+  // never clears `acceptedBy`: without this check, a second lock of an
+  // already-`locked` package would still find the key hero accepted and fall
+  // through to the treasury check, instead of being refused here.
+  it('refuses to lock a package that is already locked', () => {
+    const state = lockedButUncrewed();
+    const result = lockOffer(state, aLock());
+    expect(result.rejectionCode).toBe(RejectionCodes.OfferNotInDraft);
+    // §6.1: a refusal changes nothing at all, and that is a property of the
+    // *object*, not merely of its fields.
+    expect(result.state).toBe(state);
   });
 });
