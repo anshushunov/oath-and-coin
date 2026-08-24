@@ -113,7 +113,7 @@ describe('canonicalize — strings', () => {
   it('escapes only the quote and the backslash among printable ASCII', () => {
     expect(canonicalize('a"b\\c')).toBe('"a\\"b\\\\c"');
     // The set `System.Text.Json`'s default encoder escaped and RFC 8785 does not.
-    // `m1-decision/1` reaching the artifact with an escaped slash would have been
+    // `m1-negotiation/1` reaching the artifact with an escaped slash would have been
     // a different document.
     expect(canonicalize(`<>&'+/`)).toBe(`"<>&'+/"`);
   });

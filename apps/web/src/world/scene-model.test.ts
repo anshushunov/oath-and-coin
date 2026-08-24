@@ -88,7 +88,7 @@ function aResponse(heroDefinition: string): ResponseLine {
 const A_CONTRACT: ContractLine = {
   definition: 'core:escort_the_caravan',
   displayNameKey: 'contract.core.escort_the_caravan.name',
-  payment: 40,
+  patronFee: 40,
   risk: 'Moderate',
   tagKeys: [],
   requiredCrew: 2,
@@ -109,7 +109,28 @@ function aModel(rosterDefinitions: readonly string[], responders: readonly strin
     roster: rosterDefinitions.map(aHeroCard),
     responses: responders.map(aResponse),
     errorCode: null,
-    errorDetail: null
+    errorDetail: null,
+    // The negotiation fields (`DEC-008` Task 15) are not this file's question — the
+    // scene reads only `contract` and `roster` (`describeScene`'s own rule) — so a
+    // minimal, legal offer is enough to keep the model itself valid.
+    treasury: 400,
+    offer: {
+      version: 1,
+      // A bare literal, not `OfferPhase.Draft` (the convention `packages/presentation`'s
+      // own tests use): `apps/web` does not depend on `@oath-and-coin/simulation` at
+      // all (`package.json` names only `application`/`content`/`presentation`), and the
+      // type this satisfies structurally is a plain string union either way.
+      phase: 'draft',
+      advance: 0,
+      methodTagKey: null,
+      methodOptionKeys: [],
+      promisedBonus: 0,
+      keyHeroDefinition: null,
+      lockCommitment: 0
+    },
+    treasuryForecast: 400,
+    promiseTerms: null,
+    settlement: null
   });
 }
 

@@ -3,5 +3,10 @@
   "scenario": "screen_normal",
   "expected_outcome": "success",
   "expected_screen_state": "normal",
-  "checkpoints": [{ "name": "screen_normal", "after_command_id": 6 }]
+  "checkpoints": [
+    {
+      "name": "screen_normal",
+      "after_command_id": 4
+    }
+  ]
 }

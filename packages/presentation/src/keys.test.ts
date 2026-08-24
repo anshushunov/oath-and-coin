@@ -1,16 +1,23 @@
 import { describe, expect, it } from 'vitest';
 
-import { ACTIONS, parseContentId } from '@oath-and-coin/simulation';
+import { ACTIONS, OfferPhase, parseContentId } from '@oath-and-coin/simulation';
 
 import {
   ACTION_KEYS,
   FIELD_KEYS,
   FieldKeys,
+  OFFER_FIELD_KEYS,
+  OFFER_PHASE_KEYS,
+  OfferFieldKeys,
   REASON_DIRECTION_KEYS,
   SCREEN_STATE_KEYS,
+  SETTLEMENT_ACTION_KEYS,
+  SETTLEMENT_FIELD_KEYS,
+  TREASURY_FIELD_KEYS,
   actionKey,
   contractDisplayNameKey,
   errorKey,
+  offerPhaseKey,
   reasonDirectionKey,
   screenStateKey,
   tagKey,
@@ -90,7 +97,7 @@ describe('the field captions', () => {
     // were green because every text was the right text for its field.
     expect(FIELD_KEYS).toEqual(
       expect.arrayContaining([
-        FieldKeys.ContractPayment,
+        FieldKeys.ContractPatronFee,
         FieldKeys.ContractRequiredCrew,
         FieldKeys.ContractAcceptedCount,
         FieldKeys.HeroGreed,
@@ -102,6 +109,33 @@ describe('the field captions', () => {
   });
 });
 
+describe('the negotiation captions and phase keys', () => {
+  it("names all three offer phases, from the engine's own closed set", () => {
+    expect(OFFER_PHASE_KEYS).toEqual([
+      'offer.phase.draft',
+      'offer.phase.locked',
+      'offer.phase.settled'
+    ]);
+    expect(Object.values(OfferPhase).map(offerPhaseKey)).toEqual(OFFER_PHASE_KEYS);
+  });
+
+  it('lists every offer, treasury and settlement caption exactly once', () => {
+    for (const group of [OFFER_FIELD_KEYS, TREASURY_FIELD_KEYS, SETTLEMENT_FIELD_KEYS]) {
+      expect(new Set(group).size).toBe(group.length);
+    }
+
+    // The two facts a settlement shares with the offer rather than repeating: the
+    // caption is the same key at both points in the negotiation's lifecycle.
+    expect(OFFER_FIELD_KEYS).toContain(OfferFieldKeys.PromisedBonus);
+    expect(OFFER_FIELD_KEYS).toContain(OfferFieldKeys.KeyHero);
+  });
+
+  it('names both settlement buttons', () => {
+    expect(SETTLEMENT_ACTION_KEYS).toHaveLength(2);
+    expect(new Set(SETTLEMENT_ACTION_KEYS).size).toBe(2);
+  });
+});
+
 describe('every key this package can produce', () => {
   it('is a dotted lowercase path, never a raw identifier', () => {
     const everyKey = [
@@ -110,6 +144,11 @@ describe('every key this package can produce', () => {
       ...REASON_DIRECTION_KEYS,
       ...WAVERED_KEYS,
       ...FIELD_KEYS,
+      ...OFFER_PHASE_KEYS,
+      ...OFFER_FIELD_KEYS,
+      ...TREASURY_FIELD_KEYS,
+      ...SETTLEMENT_FIELD_KEYS,
+      ...SETTLEMENT_ACTION_KEYS,
       errorKey('CHECKPOINT_UNKNOWN'),
       tagKey(parseContentId('target:cult')),
       contractDisplayNameKey(parseContentId('core:escort_the_caravan')),

@@ -37,7 +37,8 @@ const { proposeContractToHero } = await simulation('engine.ts');
 const { compareContentIds, parseContentId } = await simulation('ids', 'content-id.ts');
 const { compareHeroIds, heroId } = await simulation('ids', 'hero-id.ts');
 const { compareNumbers } = await simulation('collections', 'comparator.ts');
-const { ContractStatus } = await simulation('state', 'contract-state.ts');
+const { ContractStatus, OfferPhase } = await simulation('state', 'contract-state.ts');
+const { STARTING_TREASURY } = await simulation('negotiation', 'commitments.ts');
 
 function argument(name, fallback) {
   const index = process.argv.indexOf(name);
@@ -79,24 +80,41 @@ const hero = {
   pride: 45,
   trustInGuild: 50,
   traits: [ids.squeamish, ids.loyal],
-  relationships: SortedMap.from(compareContentIds, [[ids.zara, 5]])
+  relationships: SortedMap.from(compareContentIds, [[ids.zara, 5]]),
+  // `NEGOTIATION_SPEC` §2.2's starting values — this benchmark never breaks a promise.
+  believesGuildPromises: true,
+  grievance: 0
 };
 
 const contract = {
   id: ids.crypt,
-  payment: 70,
+  patronFee: 70,
   risk: 80,
   requiredCrew: 2,
   tags: SortedSet.from(compareContentIds, [ids.undead, ids.temple]),
   status: ContractStatus.Offered,
-  respondedBy: SortedSet.empty(compareHeroIds),
-  acceptedBy: SortedSet.empty(compareHeroIds)
+  // `respondedBy`/`acceptedBy` live inside `offer` (`NEGOTIATION_SPEC` §2.1, Task 6),
+  // not flat on the contract — `decide()` reads `contract.offer.acceptedBy` while
+  // walking bonds, and a flat `acceptedBy` here is exactly what made this benchmark
+  // throw after that move.
+  offer: {
+    version: 1,
+    keyHero: null,
+    advance: 0,
+    methodTag: null,
+    promisedBonus: 0,
+    phase: OfferPhase.Draft,
+    respondedBy: SortedSet.empty(compareHeroIds),
+    acceptedBy: SortedSet.empty(compareHeroIds)
+  },
+  moodOrdinals: SortedMap.empty(compareHeroIds)
 };
 
 const state = {
   metadata: {
-    saveSchemaVersion: 1,
-    rulesetVersion: 'm1-decision/1',
+    // Literal — currently 2 (`DEC-008` Task 6 fix round), kept in step by hand.
+    saveSchemaVersion: 2,
+    rulesetVersion: 'm1-negotiation/1',
     contentVersion: '5d03734fd9c7abaa',
     campaignSeed: 424242n,
     stateVersion: 0,
@@ -110,7 +128,9 @@ const state = {
   appliedCommandIds: SortedSet.empty(compareNumbers),
   traitRules,
   traces: SortedMap.empty(compareNumbers),
-  history: []
+  history: [],
+  // `NEGOTIATION_SPEC` §2.3's starting treasury; no command moves it yet.
+  treasury: STARTING_TREASURY
 };
 
 const context = {

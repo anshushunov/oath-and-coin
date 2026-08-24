@@ -18,7 +18,99 @@ export const RejectionCodes = Object.freeze({
   /** The contract is no longer on offer — somebody took it. */
   ContractAlreadyResolved: 'rejected.contract_already_resolved',
   /** This hero already answered this offer; nobody is asked twice. */
-  AlreadyResponded: 'rejected.already_responded'
+  AlreadyResponded: 'rejected.already_responded',
+  /**
+   * `proposeContractToHero` only lets the offer's key hero answer while the package is
+   * still a draft (`NEGOTIATION_SPEC` §3.1, §6) — everyone else's turn comes once the
+   * package is `locked` (`pollCrew`, Task 13), never before. `keyHero` starts `null`
+   * (`initialOffer`), so before the first `composeOffer` this refuses every hero, key
+   * or not — there is no key hero yet to be.
+   */
+  NotTheKeyHero: 'rejected.not_the_key_hero',
+  /**
+   * `composeOffer` only revises a package in `draft`, or in `locked` while the crew it
+   * had has not filled (`NEGOTIATION_SPEC` §3.1) — a locked, crewed offer is a deal
+   * already struck. `lockOffer` reuses this same code for the same reason in the
+   * other direction: it is only ever legal against a `draft` package
+   * (`NEGOTIATION_SPEC` §3.1's table), so a package already `locked` or `settled`
+   * answers here rather than falling through to a `keyHero`-acceptance or treasury
+   * check that a repeated lock would otherwise pass — `lockOffer` never clears
+   * `acceptedBy`, so a second lock of an already-`locked` package would find the key
+   * hero still accepted.
+   */
+  OfferNotInDraft: 'rejected.offer_not_in_draft',
+  /**
+   * `advance`, `promisedBonus` or `methodTag` fell outside the bounds `composeOffer`
+   * checks before ever building a package (`NEGOTIATION_SPEC` §3.3, §6.1) — money
+   * outside `0..patronFee`, or a method tag the contract never offered.
+   */
+  OfferTermsOutOfBounds: 'rejected.offer_terms_out_of_bounds',
+  /**
+   * `lockOffer` only freezes a package the key hero has answered *and* accepted, on
+   * the exact version currently in play (`NEGOTIATION_SPEC` §3.1, §3.3). `composeOffer`
+   * empties `acceptedBy` on every revision, so an acceptance given to a package the
+   * player has since changed never satisfies this — there is no separate "stale
+   * acceptance" code because the membership check already answers both cases the
+   * same way a revision made them: nobody has accepted yet, or the one who did
+   * accepted a version that no longer exists.
+   */
+  KeyHeroHasNotAccepted: 'rejected.key_hero_has_not_accepted',
+  /**
+   * `lockOffer`'s last and most expensive check (`NEGOTIATION_SPEC` §3.3, §6.1):
+   * the treasury, net of every commitment every other `locked` offer already holds
+   * (`reservedCommitments`), falls short of this offer's own commitment
+   * (`commitmentOf` — `advance × requiredCrew + promisedBonus`, the full crew the
+   * contract has room for, not merely who has answered so far).
+   */
+  TreasuryCannotCoverTheOffer: 'rejected.treasury_cannot_cover_the_offer',
+  /**
+   * `pollCrew` only asks the rest of the roster once a package is `locked`
+   * (`NEGOTIATION_SPEC` §3.1's table) — a package still `draft` has no answer from
+   * its key hero to poll against yet, and one already `settled` has nothing left to
+   * ask. Checked before {@link CrewAlreadyFilled}: a package that is not locked at
+   * all answers with this code regardless of what its (draft) `acceptedBy` happens
+   * to hold.
+   */
+  OfferNotLocked: 'rejected.offer_not_locked',
+  /**
+   * `pollCrew` refuses a contract whose crew is already complete
+   * (`NEGOTIATION_SPEC` §3.1, §6): `requiredCrew = 1` fills the crew from the key
+   * hero's own draft acceptance, before `pollCrew` ever runs, so there is nobody left
+   * whose answer could still change anything — the next legal move is
+   * `settleContract`.
+   */
+  CrewAlreadyFilled: 'rejected.crew_already_filled',
+  /**
+   * `pollCrew` refuses a locked package every hero in the roster has already
+   * answered — checked after {@link CrewAlreadyFilled}, since that code covers the
+   * one case §6 names where `requiredCrew` fills before the roster is exhausted,
+   * and this one covers the other: every seat still open, but nobody left to ask.
+   * §6's own edge-case table sends an unfilled crew back to `composeOffer` for a
+   * new package, not to a second `pollCrew` of the same one — external review of
+   * Task 13 found that without this, a player (or a replayed command log) could
+   * call `pollCrew` on an already-fully-polled package any number of times, each
+   * one a legal, applied command that appended zero events and grew
+   * `appliedCommandIds` without bound.
+   */
+  NobodyLeftToPoll: 'rejected.nobody_left_to_poll',
+  /**
+   * `settleContract` only settles a package that is `locked` **and** whose contract
+   * is `crewed` (`NEGOTIATION_SPEC` §3.1's table) — every other reachable shape,
+   * from an untouched `draft` through a `locked` package still waiting on
+   * `pollCrew`, answers here. Also covers the one case `NEGOTIATION_SPEC` §6 names
+   * without a code of its own: a single-seat contract the key hero has already
+   * filled in `draft`, before `lockOffer` (Task 12) ever ran — money has not moved
+   * and nothing has been committed, so "the crew is not (yet, lockedly) filled" is
+   * the accurate refusal, not a distinct one this table would otherwise need.
+   */
+  CrewNotFilled: 'rejected.crew_not_filled',
+  /**
+   * `settleContract` pays out exactly once per contract (`NEGOTIATION_SPEC` §2.3,
+   * §3.3): a settled offer's `phase` becomes `settled` and never moves again, so a
+   * second `settleContract` against the same contract is refused here rather than
+   * paying the patron fee, and any promised bonus, a second time.
+   */
+  AlreadySettled: 'rejected.already_settled'
 });
 
 export type RejectionCode = (typeof RejectionCodes)[keyof typeof RejectionCodes];
@@ -39,21 +131,72 @@ export interface CommandResult {
   readonly state: GameState;
   readonly events: readonly DomainEvent[];
   /**
-   * The hero's decision, when the command produced one. `null` for every rejection — a
-   * refused command explains itself through {@link rejectionCode}, which is a fact
-   * about the command, not a decision anybody made.
+   * Every decision this command's events explain, in the same order as {@link events} —
+   * index `i` is the explanation for `events[i]`. Empty for every rejection — a refused
+   * command explains itself through {@link rejectionCode}, which is a fact about the
+   * command, not a decision anybody made.
+   *
+   * One decision per event is enforced, not assumed: {@link fromDecisions} throws rather
+   * than build a result whose two lists disagree in length, because a caller reading
+   * `decisions[i]` as "what explains `events[i]`" would otherwise be trusting a pairing
+   * nobody checked.
    */
-  readonly decision: DecisionResult | null;
+  readonly decisions: readonly DecisionResult[];
 }
 
 export function rejected(state: GameState, rejectionCode: RejectionCode): CommandResult {
-  return { applied: false, rejectionCode, state, events: [], decision: null };
+  return { applied: false, rejectionCode, state, events: [], decisions: [] };
 }
 
-export function fromDecision(
+/**
+ * Builds the result of an applied command from the events it produced and the decision
+ * behind each one, in the same order.
+ *
+ * Throws rather than silently accepting a result whose two lists disagree in length: a
+ * command result is not just "some events and some decisions" — it is one decision per
+ * event, and a mismatch here is a bug in the command that built the lists, not a shape
+ * downstream code should have to guard against.
+ */
+export function fromDecisions(
   state: GameState,
-  domainEvent: DomainEvent,
-  decision: DecisionResult
+  events: readonly DomainEvent[],
+  decisions: readonly DecisionResult[]
 ): CommandResult {
-  return { applied: true, rejectionCode: null, state, events: [domainEvent], decision };
+  if (events.length !== decisions.length) {
+    throw new Error(
+      `fromDecisions requires one decision per event, but got ${String(events.length)} event(s) ` +
+        `and ${String(decisions.length)} decision(s).`
+    );
+  }
+
+  return { applied: true, rejectionCode: null, state, events, decisions };
+}
+
+/**
+ * Builds the result of a command whose one event explains itself — nobody decided
+ * anything, so there is no {@link DecisionResult} to pair it with. `composeOffer`'s
+ * `offer_revised` is the first such event (`NEGOTIATION_SPEC` §3.3): the player
+ * revised the package, a hero did not.
+ *
+ * `fromDecisions`'s "one decision per event" invariant does not apply here on
+ * purpose — that invariant pairs a *decision* event with the trace that explains it,
+ * and `event.causalTraceId` is `null` here for exactly the same reason a decision's
+ * never is. Enforcing equal-length lists on a result that will only ever hold one
+ * event and zero decisions would just be `fromDecisions` refusing the one shape this
+ * function exists to build.
+ *
+ * @throws if `event.causalTraceId` is not `null` — a decision-bearing event has an
+ * explanation, and {@link fromDecisions} is the constructor for that shape, not this
+ * one.
+ */
+export function fromEvent(state: GameState, event: DomainEvent): CommandResult {
+  if (event.causalTraceId !== null) {
+    throw new Error(
+      `fromEvent was given an event ('${event.kind}') whose causalTraceId is ` +
+        `${String(event.causalTraceId)}, not null; an event with an explanation is a decision ` +
+        'and belongs in fromDecisions, paired with the DecisionResult that produced it.'
+    );
+  }
+
+  return { applied: true, rejectionCode: null, state, events: [event], decisions: [] };
 }

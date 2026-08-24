@@ -33,26 +33,33 @@ export function Label({ text }: { readonly text: string }) {
  *
  * External review of the Godot screen found what the captions are for: the frame
  * showed `40`, `4`, `3` and a run of qualitative grades stacked with nothing saying
- * which was the payment, which the crew, and which of greed, caution and pride each
+ * which was the patron fee, which the crew, and which of greed, caution and pride each
  * grade belonged to. Both hashes were green, and correctly — every one of those texts
  * was the right text for its field.
  *
  * `captionKey` is a key and `value` is already resolved text, because the two are
  * different kinds of thing: a caption is always a catalogue entry, while a value is
  * sometimes one (a qualitative grade) and sometimes an objective number the model
- * carries literally (`payment`, `requiredCrew`, `acceptedCount`).
+ * carries literally (`patronFee`, `requiredCrew`, `acceptedCount`).
+ *
+ * `testId`, when given, marks the pair itself — never a player-facing string, so it
+ * costs nothing against the "no literal on screen" rule, and it exists for the one
+ * value `NEGOTIATION_SPEC` §5.1 asks a test to be able to find without depending on
+ * which locale is loaded: the treasury the current package would leave.
  */
 export function Captioned({
   captionKey,
-  value
+  value,
+  testId
 }: {
   readonly captionKey: string;
   readonly value: string;
+  readonly testId?: string;
 }) {
   const text = useText();
 
   return (
-    <div className="captioned">
+    <div className="captioned" data-testid={testId}>
       <Label text={text(captionKey)} />
       <Label text={value} />
     </div>

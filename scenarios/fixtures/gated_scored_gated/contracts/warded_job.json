@@ -1,0 +1,9 @@
+{
+  "schema_version": 3,
+  "id": "fixture:warded_job",
+  "display_name_key": "contract.fixture.warded_job.name",
+  "patron_fee": 50,
+  "risk": 0,
+  "required_crew": 2,
+  "tags": ["test:warded"]
+}

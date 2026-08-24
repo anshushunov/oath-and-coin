@@ -137,14 +137,17 @@ const expectations = {
     'properties.schema_version.const': versions.SUPPORTED_CONTENT_SCHEMA_VERSION,
     'properties.id.pattern': CONTENT_ID_PATTERN,
     'properties.display_name_key.pattern': LOCALIZATION_KEY_PATTERN,
-    'properties.payment.minimum': bounds.PAYMENT_MIN,
-    'properties.payment.maximum': bounds.PAYMENT_MAX,
+    'properties.patron_fee.minimum': bounds.PATRON_FEE_MIN,
+    'properties.patron_fee.maximum': bounds.PATRON_FEE_MAX,
     'properties.risk.minimum': bounds.RISK_MIN,
     'properties.risk.maximum': bounds.RISK_MAX,
     'properties.required_crew.minimum': bounds.REQUIRED_CREW_MIN,
     'properties.required_crew.maximum': bounds.REQUIRED_CREW_MAX,
     'properties.tags.maxItems': limits.MAX_TAGS_PER_CONTRACT,
     'properties.tags.items.pattern': CONTENT_ID_PATTERN,
+    'properties.negotiable_tags.minItems': limits.NEGOTIABLE_TAGS_COUNT,
+    'properties.negotiable_tags.maxItems': limits.NEGOTIABLE_TAGS_COUNT,
+    'properties.negotiable_tags.items.pattern': CONTENT_ID_PATTERN,
     additionalProperties: false
   },
   'trait.schema.json': {
@@ -321,7 +324,8 @@ for (const fileName of Object.keys(expectations).filter((name) => name !== 'trai
 // set the contract state holds — which is what the C# loader did too.
 for (const [fileName, arrayProperty] of [
   ['hero.schema.json', 'traits'],
-  ['contract.schema.json', 'tags']
+  ['contract.schema.json', 'tags'],
+  ['contract.schema.json', 'negotiable_tags']
 ]) {
   const handWritten = readJson(join(schemasDirectory, fileName));
   if (at(handWritten, `properties.${arrayProperty}.uniqueItems`) !== true) {

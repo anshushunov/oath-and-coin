@@ -13,6 +13,9 @@ import {
 import {
   ACTION_KEYS,
   FIELD_KEYS,
+  OFFER_FIELD_KEYS,
+  OFFER_PHASE_KEYS,
+  PROMISE_TERMS_KEYS,
   QUALITATIVE_KEYS,
   REASON_DIRECTION_KEYS,
   SAVES_TITLE_KEY,
@@ -23,7 +26,10 @@ import {
   SCREEN_LINK_KEYS,
   SCREEN_STATES,
   SCREEN_STATE_KEYS,
+  SETTLEMENT_ACTION_KEYS,
+  SETTLEMENT_FIELD_KEYS,
   TITLE_KEY,
+  TREASURY_FIELD_KEYS,
   WAVERED_KEYS,
   contractDisplayNameKey,
   errorKey,
@@ -83,9 +89,42 @@ const content = loadContentSet(shippedContent);
  * claim, and a shared constant would put the pin in a place where deleting one test
  * would quietly weaken the other. Task 19 retires **both**, not only this one; `ADR-012`
  * records that.
+ *
+ * The number itself has moved five times already, off what the corpus originally
+ * recorded: `DEC-008` Task 3 renamed the contract's fee field, Task 4 raised every
+ * file's `schema_version` and authored `negotiable_tags` on two contracts, Task 8 added
+ * the two reason-code keys the decision rule's new factors need —
+ * `hero.decision.promise_of_a_bonus` and `hero.decision.guild_broke_its_word` — the
+ * first keys this file's `content/locale/ru.json` half has grown since `ADR-012` froze
+ * it, because Task 8 is the first point in the plan where a producer exists for them
+ * (`vocabulary.test.ts` holds every reason code to a localization key, and the closed
+ * engine vocabulary those two codes belong in has nowhere else to be translated), and
+ * review of that same task reworded `hero.decision.guild_broke_its_word`'s Russian text
+ * to match its neighbours' grammatical form — the key count did not move, only the
+ * bytes behind it. Task 15's own review found the second growth: Task 4 authored
+ * `negotiable_tags: ["method:open", "method:deception"]` on two contracts, but
+ * `method:deception` already had a translation from its use as a plain authored `tags`
+ * entry elsewhere, so the gap — `tag.method.open`, needed once `OfferLine.methodOptionKeys`
+ * (`NEGOTIATION_SPEC` §5.1) started resolving both alternatives of a negotiable tag, not
+ * only the chosen one — went unnoticed until `everyKeyTheScreenCanShow` below was taught
+ * to look at `negotiableTags` and not only `tags`. Each move was deliberate and reviewed,
+ * not the drift this test exists to catch — the guard below is against the *next*
+ * unreviewed one.
+ *
+ * `DEC-008` Task 18 moved the version a sixth time: `tag.method.open` was translated
+ * but nothing reacted to it, so choosing it could only ever close a gate, never
+ * attract anyone (`NEGOTIATION_SPEC` §10.5). `core:works_in_the_open`
+ * (`content/traits/works_in_the_open.json`) closes that gap, and its display name needs
+ * one more key, `trait.core.works_in_the_open.name`, in `content/locale/ru.json` — the
+ * key count moved with it, to 98. The same task moved the version a seventh time, with
+ * no further key: its own `EveryContractCanBeCrewedBySomePackage` check
+ * (`NEGOTIATION_SPEC` §10.5) found `core:collect_the_debt` unreachable by any package —
+ * five of six shipped heroes carry a principle matching one of its three authored tags
+ * — on the very first run against the shipped tree, fixed by `required_crew: 2 → 1`
+ * (`content/contracts/collect_the_debt.json`) rather than by touching a tag or a hero.
  */
-const FROZEN_CONTENT_VERSION = '5d03734fd9c7abaa';
-const FROZEN_CONTENT_KEY_COUNT = 94;
+const FROZEN_CONTENT_VERSION = '46416b20360bbedd';
+const FROZEN_CONTENT_KEY_COUNT = 98;
 
 /** Every key the presentation layer can produce for the shipped content tree. */
 function everyKeyTheScreenCanShow(): readonly string[] {
@@ -107,7 +146,13 @@ function everyKeyTheScreenCanShow(): readonly string[] {
     ...content.contracts.keys().map(contractDisplayNameKey),
     ...content.traits.keys().map(traitDisplayNameKey),
     ...content.heroes.values().map((hero) => hero.displayNameKey),
-    ...content.contracts.values().flatMap((contract) => contract.tags.map(tagKey))
+    ...content.contracts.values().flatMap((contract) => contract.tags.map(tagKey)),
+    // `NEGOTIATION_SPEC` §5.1: the offer screen names *both* alternatives of a
+    // negotiable tag, not only the one a package has chosen — `OfferLine.methodOptionKeys`
+    // (`contract-offer-screen-model-factory.ts`'s `methodOptionKeysOf`) resolves every
+    // entry of `negotiableTags`, not only `tags`. Missing here, this list would agree
+    // with a catalogue that has no entry for a key the screen can actually show.
+    ...content.contracts.values().flatMap((contract) => contract.negotiableTags.map(tagKey))
   ];
 }
 
@@ -126,6 +171,27 @@ function everyKeyTheScreenCanShow(): readonly string[] {
  * `SAVE_SLOTS` is `packages/application`'s. Neither package can state these nine keys on
  * its own, so they are stated here — which is the same reason `errorKey` has no list
  * beside it either.
+ *
+ * `PROMISE_TERMS_KEYS` (Task 15's `toPromiseTerms`, `NEGOTIATION_SPEC` §5.1, §5.2) was
+ * missing from this list from the moment it shipped: `offer.promise.fulfil` and
+ * `offer.promise.breach` are texts the interface invents, exactly the class this
+ * function exists to list, and the omission left both the completeness check above and
+ * the orphan check below unable to see them — a key emitted with nothing to resolve it,
+ * and a gate that structurally could not catch that either catalogue was missing it.
+ * Confirmed by running before `ui-text/ru.json` grew the two entries: both checks
+ * reddened, `answer every key either layer can produce…` on the two missing keys.
+ *
+ * `DEC-008` Task 17 grows this list by five: the offer's own phase and captions
+ * (`OFFER_PHASE_KEYS`, `OFFER_FIELD_KEYS`), the two treasury facts
+ * (`TREASURY_FIELD_KEYS`), what a filled crew's settlement shows beyond what the offer
+ * already named (`SETTLEMENT_FIELD_KEYS`) and the two settlement buttons
+ * (`SETTLEMENT_ACTION_KEYS`) — every one of them a text the screen invents rather than
+ * one content authors, exactly the class `ADR-012` sends here. Extended before the
+ * entries landed in `ui-text/ru.json`, not after: with the entries already written and
+ * this list not yet grown, "answer nothing nobody asks for" reddened on all sixteen
+ * keys as orphans, which is the shape a producer-less key takes on this side of the
+ * boundary (`content/locale/ru.json` would instead fail the completeness check above,
+ * because that side is closed by size and by `content_version`).
  */
 function everyKeyTheInterfaceCanShow(): readonly string[] {
   return [
@@ -136,6 +202,12 @@ function everyKeyTheInterfaceCanShow(): readonly string[] {
     ...SAVE_FIELD_KEYS,
     ...SAVE_OVERWRITE_KEYS,
     ...SCREEN_LINK_KEYS,
+    ...PROMISE_TERMS_KEYS,
+    ...OFFER_PHASE_KEYS,
+    ...OFFER_FIELD_KEYS,
+    ...TREASURY_FIELD_KEYS,
+    ...SETTLEMENT_FIELD_KEYS,
+    ...SETTLEMENT_ACTION_KEYS,
     ...SAVE_SLOTS.map(saveSlotDisplayNameKey),
     ...SAVE_SLOTS.map(saveSlotSaveKey),
     ...SAVE_SLOTS.map(saveSlotLoadKey)

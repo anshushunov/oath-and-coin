@@ -22,6 +22,7 @@
 
 import {
   ACTIONS,
+  OfferPhase,
   contentIdName,
   contentIdNamespace,
   type ContentId
@@ -138,7 +139,7 @@ export const REASON_DIRECTION_KEYS: readonly string[] = Object.freeze(
  *
  * External review of the C# screen found what their absence costs: on the captured
  * frame the texts `40`, `4`, `3` and a run of "Умеренно / Слабо / Умеренно" stood one
- * under another with nothing to say which was the payment, which the crew, and which
+ * under another with nothing to say which was the patron fee, which the crew, and which
  * of greed, caution and pride each grade belonged to. Both hashes were green
  * throughout, and correctly so — they compare the texts the model produced, and every
  * one of those was the right text for its field.
@@ -148,7 +149,7 @@ export const REASON_DIRECTION_KEYS: readonly string[] = Object.freeze(
  * differ by language, so the colon lives in the catalogue with the words.
  */
 export const FieldKeys = Object.freeze({
-  ContractPayment: 'field.contract.payment',
+  ContractPatronFee: 'field.contract.patron_fee',
   ContractRisk: 'field.contract.risk',
   ContractRequiredCrew: 'field.contract.required_crew',
   ContractAcceptedCount: 'field.contract.accepted_count',
@@ -171,6 +172,130 @@ export const FieldKeys = Object.freeze({
  * list that could disagree with the first.
  */
 export const FIELD_KEYS: readonly string[] = Object.freeze(Object.values(FieldKeys));
+
+/**
+ * The two keys `promiseTerms` resolves to (`NEGOTIATION_SPEC` §5.1, §5.2): what counts
+ * as keeping the guild's word and what counts as breaking it. Interface text, not
+ * content's — the predicate belongs to the screen, not to any one contract — so both
+ * keys are fixed rather than built from a contract's own identifier the way
+ * {@link contractDisplayNameKey} is.
+ */
+export const PromiseTermsKeys = Object.freeze({
+  Fulfil: 'offer.promise.fulfil',
+  Breach: 'offer.promise.breach'
+});
+
+export const PROMISE_TERMS_KEYS: readonly string[] = Object.freeze(Object.values(PromiseTermsKeys));
+
+/**
+ * Which of the offer's three phases it is in (`NEGOTIATION_SPEC` §2.1) — its own key
+ * per phase, shown right beside {@link screenStateKey}'s answer: state says "is there
+ * something to show", phase says "where the negotiation is", and neither can stand in
+ * for the other.
+ */
+export function offerPhaseKey(phase: OfferPhase): string {
+  return `offer.phase.${phase}`;
+}
+
+/**
+ * Every key {@link offerPhaseKey} can produce, derived from the engine's own closed
+ * `OfferPhase` rather than the three strings typed again — a fourth phase cannot
+ * arrive in the core and quietly go unchecked against the catalogue.
+ */
+export const OFFER_PHASE_KEYS: readonly string[] = Object.freeze(
+  Object.values(OfferPhase).map((phase) => offerPhaseKey(phase))
+);
+
+/**
+ * The captions the negotiation package shows (`NEGOTIATION_SPEC` §5.1) — the same
+ * treatment {@link FieldKeys} gives the contract and the roster, for the same reason: a
+ * bare `40` beside a bare `25` says nothing about which is the advance and which the
+ * promised bonus.
+ *
+ * A second object rather than three more members on {@link FieldKeys}: that object's
+ * own values are frozen into `content/locale/ru.json` (`ADR-012` grandfathered them
+ * there before the interface catalogue existed), and `content/locale/ru.json` is
+ * itself frozen (`tests/locale/catalogue.test.ts`'s `FROZEN_CONTENT_KEY_COUNT`) — a
+ * negotiation caption belongs in `ui-text/ru.json` like every other text this task
+ * invents, and {@link FIELD_KEYS} feeding `everyKeyTheScreenCanShow()`'s content-side
+ * completeness check is exactly the check a new member here must not trip.
+ *
+ * `KeyHero` is shared between {@link OfferLine.keyHeroDefinition} and
+ * {@link SettlementLine.keyHeroDefinition}, and `PromisedBonus` between
+ * {@link OfferLine.promisedBonus}, {@link PromiseTermsLine.bonus} and
+ * {@link SettlementLine.promisedBonus}: all three name the same fact at different
+ * points in the negotiation's lifecycle, and a second caption for the same fact would
+ * be a second declaration of one word.
+ *
+ * `SelectedMethod` exists beside `Method` rather than instead of it, and the
+ * distinction is load-bearing. `Method` captions the *group* — both alternatives a
+ * negotiable contract offers, `OfferLine.methodOptionKeys` — and which one is
+ * currently chosen is otherwise visible only as a radio's `checked` state, which no
+ * walk over rendered *text* (`collectRenderedTexts`, `expectedSnapshot`) can see at
+ * all. `SelectedMethod` projects `OfferLine.methodTagKey` itself as a second, ordinary
+ * `Captioned` value, so the choice a player made is provable by the same mechanism
+ * every other field on this screen already is, not only by inspecting a DOM property
+ * a snapshot cannot reach.
+ */
+export const OfferFieldKeys = Object.freeze({
+  Version: 'field.offer.version',
+  Advance: 'field.offer.advance',
+  Method: 'field.offer.method',
+  SelectedMethod: 'field.offer.method_selected',
+  PromisedBonus: 'field.offer.promised_bonus',
+  KeyHero: 'field.offer.key_hero',
+  LockCommitment: 'field.offer.lock_commitment'
+});
+
+export const OFFER_FIELD_KEYS: readonly string[] = Object.freeze(Object.values(OfferFieldKeys));
+
+/**
+ * The captions for the two campaign-wide money facts (`NEGOTIATION_SPEC` §2.3, §5.1):
+ * the treasury as it stands, and what it would read after settling the contract on
+ * screen and keeping the word (`ContractOfferScreenModel.treasuryForecast`) — Crusader
+ * Kings III's "price of a concession, visible before it is signed".
+ */
+export const TreasuryFieldKeys = Object.freeze({
+  Treasury: 'field.treasury',
+  Forecast: 'field.treasury_forecast'
+});
+
+export const TREASURY_FIELD_KEYS: readonly string[] = Object.freeze(
+  Object.values(TreasuryFieldKeys)
+);
+
+/**
+ * The captions {@link SettlementLine} needs beyond {@link OfferFieldKeys.PromisedBonus}
+ * and {@link OfferFieldKeys.KeyHero}, which it shares: the crew bound by the promise,
+ * and the two outcomes `settleContract` can produce.
+ */
+export const SettlementFieldKeys = Object.freeze({
+  Crew: 'field.settlement.crew',
+  TreasuryIfKept: 'field.settlement.treasury_if_kept',
+  TreasuryIfBroken: 'field.settlement.treasury_if_broken'
+});
+
+export const SETTLEMENT_FIELD_KEYS: readonly string[] = Object.freeze(
+  Object.values(SettlementFieldKeys)
+);
+
+/**
+ * What `settleContract`'s two outcomes (`pay: true`, `pay: false`) would be called on
+ * screen, reserved here for whichever task first draws a control that dispatches the
+ * command. `ContractOfferScreen` does not render either key today: the settlement block
+ * shows what the promise costs once {@link ContractOfferScreenModel.settlement} is
+ * non-`null` (`NEGOTIATION_SPEC` §5.1), but drew no control at all as of the task that
+ * removed the two buttons that pretended otherwise — they carried no handler, so
+ * pressing either did nothing.
+ */
+export const SettlementActionKeys = Object.freeze({
+  Pay: 'settlement.pay',
+  Refuse: 'settlement.refuse'
+});
+
+export const SETTLEMENT_ACTION_KEYS: readonly string[] = Object.freeze(
+  Object.values(SettlementActionKeys)
+);
 
 /** The save-slots screen's title. Its own key, not a second use of {@link TITLE_KEY}. */
 export const SAVES_TITLE_KEY = 'screen.saves.title';

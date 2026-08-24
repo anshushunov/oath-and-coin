@@ -1,14 +1,16 @@
 import {
+  RULESET_VERSION,
+  createInitialState,
   loadContentSet,
-  memoryFileSource,
-  runScenario,
-  type ScenarioCommand
+  memoryFileSource
 } from '@oath-and-coin/content';
 import {
   Actions,
   SortedMap,
   compareHeroIds,
+  composeOffer,
   parseContentId,
+  proposeContractToHero,
   type GameState,
   type HeroId,
   type HeroState
@@ -38,7 +40,7 @@ const CRYPT = parseContentId('core:cleanse_the_crypt');
 const SEED = 424242n;
 
 const BRAM = {
-  schema_version: 2,
+  schema_version: 3,
   id: 'core:bram',
   display_name_key: 'hero.core.bram.name',
   greed: 60,
@@ -50,7 +52,7 @@ const BRAM = {
 };
 
 const GREEDY = {
-  schema_version: 2,
+  schema_version: 3,
   id: 'core:greedy',
   display_name_key: 'trait.core.greedy.name',
   kind: 'inclination',
@@ -59,10 +61,10 @@ const GREEDY = {
 };
 
 const CARAVAN_FILE = {
-  schema_version: 2,
+  schema_version: 3,
   id: 'core:escort_the_caravan',
   display_name_key: 'contract.core.escort_the_caravan.name',
-  payment: 70,
+  patron_fee: 70,
   risk: 30,
   required_crew: 1,
   tags: ['method:escort']
@@ -70,7 +72,7 @@ const CARAVAN_FILE = {
 
 /** A hero who will not go near the undead, and the job that asks her to. */
 const ZARA = {
-  schema_version: 2,
+  schema_version: 3,
   id: 'core:zara',
   display_name_key: 'hero.core.zara.name',
   greed: 60,
@@ -82,7 +84,7 @@ const ZARA = {
 };
 
 const FEARS_UNDEATH = {
-  schema_version: 2,
+  schema_version: 3,
   id: 'core:fears_undeath',
   display_name_key: 'trait.core.fears_undeath.name',
   kind: 'principle',
@@ -90,33 +92,59 @@ const FEARS_UNDEATH = {
 };
 
 const CRYPT_FILE = {
-  schema_version: 2,
+  schema_version: 3,
   id: 'core:cleanse_the_crypt',
   display_name_key: 'contract.core.cleanse_the_crypt.name',
-  payment: 40,
+  patron_fee: 40,
   risk: 80,
   required_crew: 1,
   tags: ['target:undead']
 };
 
+/**
+ * Builds the initial state from `files` and proposes `contract` to the roster's first
+ * hero — directly, not through `runScenario`/`ScenarioCommand`. That frozen scenario
+ * format has no way to compose an offer (`composeOffer` arrives in `DEC-008` Tasks
+ * 10-14, and the format was never extended to name it), and `proposeContractToHero`
+ * (Task 11) now lets only the offer's key hero answer while the package is a draft —
+ * so this keys the offer to that one hero by hand before proposing, rather than
+ * routing through a command this fixture has no way to issue. The resulting state is
+ * identical either way: `runScenario` was never anything but this same single call.
+ */
 function ran(files: Record<string, string>, contract: string): GameState {
-  const command: ScenarioCommand = {
-    commandId: 1,
-    heroIndex: 0,
-    contract: parseContentId(contract),
-    expectedStateVersion: 0
+  const base = createInitialState(loadContentSet(memoryFileSource(files)), SEED, RULESET_VERSION);
+  const [heroKey] = base.heroes.keys();
+  const contractId = parseContentId(contract);
+  const target = base.contracts.get(contractId)!;
+
+  const keyed: GameState = {
+    ...base,
+    contracts: base.contracts.set(contractId, {
+      ...target,
+      offer: { ...target.offer, keyHero: heroKey! }
+    })
   };
 
-  return runScenario(loadContentSet(memoryFileSource(files)), [command], SEED).finalState;
+  const result = proposeContractToHero(keyed, {
+    commandId: 1,
+    heroId: heroKey!,
+    contractId,
+    expectedStateVersion: keyed.metadata.stateVersion
+  });
+
+  return result.state;
 }
 
 /**
  * Bram takes the caravan job. The arithmetic, written out so the expectation below is not
- * this build agreeing with itself (`HERO_DECISION_SPEC` §2.3, every term divided on its
- * own): payment 70 × greed 60 / 100 = +42; risk 30 × caution 30 / 100 = −9; no insult at
- * all, the pay covers the risk; the inclination `core:greedy` matches the contract's
- * `method:escort` tag at +20; trust 50 / 10 = +5; no bonds; mood at seed 424242, ordinal
- * 0 = +5. 42 − 9 + 20 + 5 + 5 = 63.
+ * this build agreeing with itself (`HERO_DECISION_SPEC` §2.3, `NEGOTIATION_SPEC` §4, every
+ * term divided on its own): `ran()` above never composes an offer, so the offer Bram is
+ * proposed is the one every contract starts on — `advance = 0`, no promised bonus — and the
+ * patron fee itself no longer contributes at all. Advance 0 × greed 60 / 100 = 0
+ * (no factor, not a zero one); risk 30 × caution 30 / 100 = −9; nothing offsets the risk, so
+ * insult fires: (30 − 0) × pride 45 / 100 = −13; the inclination `core:greedy` matches the
+ * contract's `method:escort` tag at +20; trust 50 / 10 = +5; no bonds; no grievance; mood at
+ * seed 424242, ordinal 0 = +5. 0 − 9 − 13 + 20 + 5 + 0 − 0 + 5 = 8.
  */
 function aStateWithOneAcceptedContract(): GameState {
   return ran(
@@ -148,10 +176,10 @@ describe('rebuilding the answered steps from a state', () => {
 
     expect(step?.command.contract).toBe(CARAVAN);
     expect(step?.heroDefinition).toBe(parseContentId('core:bram'));
-    expect(step?.decision?.selectedAction).toBe(Actions.Accept);
+    expect(step?.decisions[0]?.selectedAction).toBe(Actions.Accept);
     // Счёта нет ни в событии, ни в следе — он сумма факторов.
-    expect(step?.decision?.selectedScore).toBe(63);
-    expect(step?.decision?.trace.traceId).toBe(0);
+    expect(step?.decisions[0]?.selectedScore).toBe(8);
+    expect(step?.decisions[0]?.trace.traceId).toBe(0);
   });
 
   it('у блокированного решения счёт остаётся null, а не нулём', () => {
@@ -163,9 +191,9 @@ describe('rebuilding the answered steps from a state', () => {
     const [step] = restoreDecidedSteps(state);
 
     expect(step?.command.contract).toBe(CRYPT);
-    expect(step?.decision?.selectedAction).toBe(Actions.Decline);
-    expect(step?.decision?.trace.blockedBy).toHaveLength(1);
-    expect(step?.decision?.selectedScore).toBeNull();
+    expect(step?.decisions[0]?.selectedAction).toBe(Actions.Decline);
+    expect(step?.decisions[0]?.trace.blockedBy).toHaveLength(1);
+    expect(step?.decisions[0]?.selectedScore).toBeNull();
   });
 
   it('answers nothing for a campaign nobody has been offered anything in', () => {
@@ -179,6 +207,29 @@ describe('rebuilding the answered steps from a state', () => {
     );
 
     expect(restoreDecidedSteps({ ...state, history: [] })).toEqual([]);
+  });
+
+  it("drops offer_revised from the step list — it is the player's choice, not a hero's", () => {
+    const decided = aStateWithOneAcceptedContract();
+    const [heroKey] = decided.heroes.keys();
+    const [contractKey] = decided.contracts.keys();
+    const revised = composeOffer(decided, {
+      commandId: 2,
+      contractId: contractKey!,
+      keyHero: heroKey!,
+      advance: 10,
+      methodTag: null,
+      promisedBonus: 0,
+      expectedStateVersion: decided.metadata.stateVersion
+    }).state;
+
+    // The revision is in history alongside the earlier acceptance — two events — but
+    // restoring must not throw on the one with no hero, and must not manufacture a
+    // step for it either.
+    expect(revised.history).toHaveLength(2);
+    const steps = restoreDecidedSteps(revised);
+    expect(steps).toHaveLength(1);
+    expect(steps[0]?.heroDefinition).toBe(parseContentId('core:bram'));
   });
 
   it('names the hero the campaign no longer has rather than answering a step without one', () => {

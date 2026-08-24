@@ -12,7 +12,8 @@ import { compareContentIds, parseContentId, type ContentId } from './ids/content
 import { compareHeroIds, heroId } from './ids/hero-id.ts';
 import { ContractStatus } from './state/contract-state.ts';
 import type { GameState } from './state/game-state.ts';
-import { aContract, aHero, aState, aTrait, ids } from './testing/fixtures.ts';
+import { OfferPhase } from './state/offer-state.ts';
+import { aContract, aHero, anOffer, aState, aTrait, ids } from './testing/fixtures.ts';
 
 /**
  * What the engine adds on top of the rule: the order commands are refused in, and the
@@ -58,10 +59,34 @@ function aCampaign(overrides: Partial<GameState> = {}): GameState {
       [bram.id, bram],
       [zara.id, zara]
     ]),
-    contracts: SortedMap.from(compareContentIds, [[ids.crypt, aContract()]]),
+    // Keyed to `bram` by default (`aProposal`'s own default `heroId`) — `NEGOTIATION_SPEC`
+    // §3.1, §6 (Task 11) lets only the offer's key hero answer while the package is a
+    // draft, and every test in this file predates that rule.
+    contracts: SortedMap.from(compareContentIds, [
+      [ids.crypt, aContract({ offer: anOffer({ keyHero: bram.id }) })]
+    ]),
     traitRules,
     ...overrides
   });
+}
+
+/**
+ * `state`'s one contract, with its offer already `locked` — for tests where a hero
+ * other than the key hero answers. `proposeContractToHero` only gates *draft*
+ * responses to the key hero (Task 11); the rest of the roster answering once the
+ * package is locked is `pollCrew`'s job (Task 13, not built), so this stands in for it
+ * by hand rather than by running a command this task does not build.
+ */
+function locked(state: GameState): GameState {
+  const contract = state.contracts.get(ids.crypt)!;
+
+  return {
+    ...state,
+    contracts: state.contracts.set(ids.crypt, {
+      ...contract,
+      offer: { ...contract.offer, phase: OfferPhase.Locked }
+    })
+  };
 }
 
 function aProposal(overrides: Partial<ProposeContractToHero> = {}): ProposeContractToHero {
@@ -89,7 +114,7 @@ describe('a refused command changes nothing at all', () => {
 
     expect(result.applied).toBe(false);
     expect(result.rejectionCode).toBe(code);
-    expect(result.decision).toBeNull();
+    expect(result.decisions).toEqual([]);
     expect(result.events).toEqual([]);
     // The same object, not an equal one: a caller compares by reference to know that
     // nothing happened.
@@ -111,7 +136,9 @@ describe('a refused command changes nothing at all', () => {
     // Two seats, so the offer is still open after the first acceptance — otherwise the
     // command would be refused as already-resolved and this case would never be reached.
     const twoSeats = aCampaign({
-      contracts: SortedMap.from(compareContentIds, [[ids.crypt, aContract({ requiredCrew: 2 })]])
+      contracts: SortedMap.from(compareContentIds, [
+        [ids.crypt, aContract({ requiredCrew: 2, offer: anOffer({ keyHero: bram.id }) })]
+      ])
     });
 
     const first = proposeContractToHero(twoSeats, aProposal());
@@ -161,7 +188,7 @@ describe('a refused command changes nothing at all', () => {
 
     const withRefusals = proposeContractToHero(afterRefusals, aProposal());
 
-    expect(withRefusals.decision).toEqual(withoutRefusals.decision);
+    expect(withRefusals.decisions).toEqual(withoutRefusals.decisions);
     expect(withRefusals.state.metadata.nextDecisionOrdinal).toBe(
       withoutRefusals.state.metadata.nextDecisionOrdinal
     );
@@ -179,7 +206,7 @@ describe('an applied command records what the hero decided', () => {
     expect(result.state.metadata.nextEventId).toBe(1);
     expect(result.state.metadata.nextTraceId).toBe(1);
     expect(result.state.metadata.nextDecisionOrdinal).toBe(1n);
-    expect(result.state.traces.get(0)).toEqual(result.decision?.trace);
+    expect(result.state.traces.get(0)).toEqual(result.decisions[0]?.trace);
     expect(result.state.appliedCommandIds.has(1)).toBe(true);
   });
 
@@ -189,7 +216,7 @@ describe('an applied command records what the hero decided', () => {
     const result = proposeContractToHero(aCampaign(), aProposal());
 
     expect(
-      result.decision?.trace.positiveFactors.some(
+      result.decisions[0]?.trace.positiveFactors.some(
         (factor) =>
           factor.reasonCode === ReasonCodes.PersonalConviction && factor.sourceEntity === ids.loyal
       )
@@ -206,13 +233,13 @@ describe('an applied command records what the hero decided', () => {
     const accepted = proposeContractToHero(
       aCampaign({
         contracts: SortedMap.from(compareContentIds, [
-          [ids.crypt, aContract({ payment: 100, risk: 0 })]
+          [ids.crypt, aContract({ patronFee: 100, risk: 0, offer: anOffer({ keyHero: bram.id }) })]
         ])
       }),
       aProposal()
     );
 
-    expect(accepted.decision?.selectedAction).toBe(Actions.Accept);
+    expect(accepted.decisions[0]?.selectedAction).toBe(Actions.Accept);
     expect(accepted.events[0]?.kind).toBe('hero_accepted_contract');
     expect(accepted.events[0]?.causalTraceId).toBe(0);
   });
@@ -221,7 +248,7 @@ describe('an applied command records what the hero decided', () => {
     const declined = proposeContractToHero(
       aCampaign({
         contracts: SortedMap.from(compareContentIds, [
-          [ids.crypt, aContract({ payment: 0, risk: 100 })]
+          [ids.crypt, aContract({ patronFee: 0, risk: 100, offer: anOffer({ keyHero: bram.id }) })]
         ])
       }),
       aProposal()
@@ -229,36 +256,55 @@ describe('an applied command records what the hero decided', () => {
 
     const contract = declined.state.contracts.get(ids.crypt)!;
 
-    expect(declined.decision?.selectedAction).toBe(Actions.Decline);
+    expect(declined.decisions[0]?.selectedAction).toBe(Actions.Decline);
     expect(declined.events[0]?.kind).toBe('hero_declined_contract');
     expect(contract.status).toBe(ContractStatus.Offered);
-    expect(contract.respondedBy.has(bram.id)).toBe(true);
-    expect(contract.acceptedBy.has(bram.id)).toBe(false);
+    expect(contract.offer.respondedBy.has(bram.id)).toBe(true);
+    expect(contract.offer.acceptedBy.has(bram.id)).toBe(false);
   });
 
   it('crews the offer only when every seat is filled', () => {
     const twoSeats = aCampaign({
       contracts: SortedMap.from(compareContentIds, [
-        [ids.crypt, aContract({ payment: 100, risk: 0, requiredCrew: 2 })]
+        [
+          ids.crypt,
+          aContract({
+            patronFee: 100,
+            risk: 0,
+            requiredCrew: 2,
+            offer: anOffer({ keyHero: bram.id })
+          })
+        ]
       ])
     });
 
     const first = proposeContractToHero(twoSeats, aProposal());
     expect(first.state.contracts.get(ids.crypt)!.status).toBe(ContractStatus.Offered);
 
+    // The rest of the roster answers once the package is locked (`pollCrew`, Task 13),
+    // not while it is still a draft (`NEGOTIATION_SPEC` §3.1, §6) — simulated by hand
+    // here since `lockOffer` is not this task's to build.
     const second = proposeContractToHero(
-      first.state,
+      locked(first.state),
       aProposal({ commandId: 2, heroId: zara.id, expectedStateVersion: 1 })
     );
 
-    expect(second.decision?.selectedAction).toBe(Actions.Accept);
+    expect(second.decisions[0]?.selectedAction).toBe(Actions.Accept);
     expect(second.state.contracts.get(ids.crypt)!.status).toBe(ContractStatus.Crewed);
   });
 
   it('fails loudly when acceptedBy names a hero the campaign does not have', () => {
     const state = aCampaign({
       contracts: SortedMap.from(compareContentIds, [
-        [ids.crypt, aContract({ acceptedBy: SortedSet.from(compareHeroIds, [heroId(7)]) })]
+        [
+          ids.crypt,
+          aContract({
+            offer: anOffer({
+              keyHero: bram.id,
+              acceptedBy: SortedSet.from(compareHeroIds, [heroId(7)])
+            })
+          })
+        ]
       ])
     });
 
@@ -275,13 +321,21 @@ describe('an applied command records what the hero decided', () => {
     // equivalence stops being quietly false.
     const threeSeats = aCampaign({
       contracts: SortedMap.from(compareContentIds, [
-        [ids.crypt, aContract({ payment: 0, risk: 100, requiredCrew: 3 })]
+        [
+          ids.crypt,
+          aContract({
+            patronFee: 0,
+            risk: 100,
+            requiredCrew: 3,
+            offer: anOffer({ keyHero: bram.id })
+          })
+        ]
       ])
     });
 
     const first = proposeContractToHero(threeSeats, aProposal());
     const second = proposeContractToHero(
-      first.state,
+      locked(first.state),
       aProposal({ commandId: 2, heroId: zara.id, expectedStateVersion: 1 })
     );
 
@@ -289,12 +343,12 @@ describe('an applied command records what the hero decided', () => {
 
     // Bram refuses an unpaid, dangerous job; Zara, who cares about none of it, does not.
     // So the two sets genuinely differ and the subset is not trivially true.
-    expect(first.decision?.selectedAction).toBe(Actions.Decline);
-    expect(second.decision?.selectedAction).toBe(Actions.Accept);
-    expect(contract.respondedBy.values()).toEqual([bram.id, zara.id]);
-    expect(contract.acceptedBy.values()).toEqual([zara.id]);
-    for (const accepter of contract.acceptedBy.values()) {
-      expect(contract.respondedBy.has(accepter)).toBe(true);
+    expect(first.decisions[0]?.selectedAction).toBe(Actions.Decline);
+    expect(second.decisions[0]?.selectedAction).toBe(Actions.Accept);
+    expect(contract.offer.respondedBy.values()).toEqual([bram.id, zara.id]);
+    expect(contract.offer.acceptedBy.values()).toEqual([zara.id]);
+    for (const accepter of contract.offer.acceptedBy.values()) {
+      expect(contract.offer.respondedBy.has(accepter)).toBe(true);
     }
   });
 
@@ -312,17 +366,25 @@ describe('an applied command records what the hero decided', () => {
         [zaraLikesBram.id, zaraLikesBram]
       ]),
       contracts: SortedMap.from(compareContentIds, [
-        [ids.crypt, aContract({ payment: 100, risk: 0, requiredCrew: 2 })]
+        [
+          ids.crypt,
+          aContract({
+            patronFee: 100,
+            risk: 0,
+            requiredCrew: 2,
+            offer: anOffer({ keyHero: bram.id })
+          })
+        ]
       ])
     });
 
     const first = proposeContractToHero(state, aProposal());
     const second = proposeContractToHero(
-      first.state,
+      locked(first.state),
       aProposal({ commandId: 2, heroId: zaraLikesBram.id, expectedStateVersion: 1 })
     );
 
-    expect(second.decision?.trace.positiveFactors).toContainEqual({
+    expect(second.decisions[0]?.trace.positiveFactors).toContainEqual({
       reasonCode: ReasonCodes.StandsWithComrade,
       sourceEntity: ids.bram,
       magnitude: 9
@@ -334,15 +396,21 @@ describe('a decision the gate closed still happened', () => {
   it('advances the campaign but spends no randomness', () => {
     const state = aCampaign({
       contracts: SortedMap.from(compareContentIds, [
-        [ids.crypt, aContract({ tags: SortedSet.from(compareContentIds, [ids.temple]) })]
+        [
+          ids.crypt,
+          aContract({
+            tags: SortedSet.from(compareContentIds, [ids.temple]),
+            offer: anOffer({ keyHero: zara.id })
+          })
+        ]
       ])
     });
 
     const result = proposeContractToHero(state, aProposal({ heroId: zara.id }));
 
     expect(result.applied).toBe(true);
-    expect(result.decision?.selectedScore).toBeNull();
-    expect(result.decision?.trace.blockedBy).toHaveLength(1);
+    expect(result.decisions[0]?.selectedScore).toBeNull();
+    expect(result.decisions[0]?.trace.blockedBy).toHaveLength(1);
     expect(result.state.metadata.stateVersion).toBe(1);
     expect(result.state.metadata.nextTraceId).toBe(1);
     expect(result.state.metadata.nextDecisionOrdinal).toBe(0n);

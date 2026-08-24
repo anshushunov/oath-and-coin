@@ -1,0 +1,11 @@
+{
+  "schema_version": 3,
+  "id": "fixture:first_ward",
+  "display_name_key": "hero.fixture.first_ward.name",
+  "greed": 80,
+  "caution": 0,
+  "pride": 0,
+  "trust_in_guild": 50,
+  "traits": ["fixture:warded_principle"],
+  "relationships": []
+}

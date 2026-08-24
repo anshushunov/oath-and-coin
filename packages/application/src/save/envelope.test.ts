@@ -9,8 +9,11 @@ import {
   memoryFileSource
 } from '@oath-and-coin/content';
 import {
+  composeOffer,
   deepEqual,
+  lockOffer,
   proposeContractToHero,
+  settleContract,
   type ContentId,
   type GameState
 } from '@oath-and-coin/simulation';
@@ -28,7 +31,7 @@ import {
  * The envelope: version, signature and refusal table (design spec §2.3-§2.4).
  *
  * The plan this suite executes (`task-16-4-brief.md`) writes its tamper-test fixture
- * against `m1-decision/1` / `5d03734fd9c7abaa` — the real shipped tree's ruleset and
+ * against `m1-negotiation/1` / `5d03734fd9c7abaa` — the real shipped tree's ruleset and
  * content version, the same pair `packages/content/src/save/snapshot-codec.test.ts` and
  * `packages/simulation/src/testing/fixtures.ts`'s own `aState()` use. This suite cannot
  * reach that tree the same way: `packages/application/tsconfig.json` carries `types: []`
@@ -40,7 +43,7 @@ import {
  */
 
 const BRAM_FILE = {
-  schema_version: 2,
+  schema_version: 3,
   id: 'core:bram',
   display_name_key: 'hero.core.bram.name',
   greed: 60,
@@ -52,11 +55,17 @@ const BRAM_FILE = {
 };
 
 const CRYPT_FILE = {
-  schema_version: 2,
+  schema_version: 3,
   id: 'core:cleanse_the_crypt',
   display_name_key: 'contract.core.cleanse_the_crypt.name',
-  payment: 70,
-  risk: 30,
+  patron_fee: 70,
+  // Risk 0, not 30: `ScenarioCommand`/`proposeContractToHero` here has no way to compose
+  // an offer (`composeOffer` arrives in `DEC-008` Tasks 10-14), so every propose in this
+  // file reaches Bram with `advance = 0` — the patron fee itself no longer contributes at
+  // all (`NEGOTIATION_SPEC` §4). Zero risk keeps both risk-aversion and the insult term
+  // out of the way, so trust still carries this fixture to an acceptance rather than the
+  // whole suite needing a second lever this command surface cannot supply.
+  risk: 0,
   required_crew: 1,
   tags: []
 };
@@ -66,10 +75,10 @@ const CRYPT_FILE = {
  * 2: a nonexistent id is caught by referential integrity before the checksum is ever
  * asked, which proves nothing about checksum coverage). */
 const CARAVAN_FILE = {
-  schema_version: 2,
+  schema_version: 3,
   id: 'core:escort_the_caravan',
   display_name_key: 'contract.core.escort_the_caravan.name',
-  payment: 40,
+  patron_fee: 40,
   risk: 20,
   required_crew: 1,
   tags: []
@@ -77,7 +86,7 @@ const CARAVAN_FILE = {
 
 /** Unused by any hero here — `loadContentSet` still requires a `traits/` directory. */
 const GREEDY_FILE = {
-  schema_version: 2,
+  schema_version: 3,
   id: 'core:greedy',
   display_name_key: 'trait.core.greedy.name',
   kind: 'inclination',
@@ -105,14 +114,137 @@ function aDecidedState(): GameState {
   const base = aState();
   const [heroKey] = base.heroes.keys();
   const [contractKey] = base.contracts.keys();
-  const result = proposeContractToHero(base, {
+  const contract = base.contracts.get(contractKey!)!;
+  // `proposeContractToHero` (`DEC-008` Task 11) only lets the offer's key hero answer
+  // while the package is a draft — the offer is keyed to the one hero this fixture
+  // proposes to directly, rather than through a real `composeOffer` command, so every
+  // event id, trace id and history index this file's tamper table pins by number stays
+  // exactly where it was: this fixture is about the envelope, not the negotiation
+  // protocol's own commands.
+  const keyed: GameState = {
+    ...base,
+    contracts: base.contracts.set(contractKey!, {
+      ...contract,
+      offer: { ...contract.offer, keyHero: heroKey! }
+    })
+  };
+
+  const result = proposeContractToHero(keyed, {
     commandId: 1,
     heroId: heroKey!,
     contractId: contractKey!,
-    expectedStateVersion: base.metadata.stateVersion
+    expectedStateVersion: keyed.metadata.stateVersion
   });
 
   return result.state;
+}
+
+/**
+ * `aDecidedState()`, then that same offer revised — `respondedBy` cleared while the
+ * hero's `hero_accepted_contract`/`hero_declined_contract` event stays in `history`
+ * (`NEGOTIATION_SPEC` §3.3, `composeOffer`). Named by review: the first campaign
+ * `composeOffer` (`DEC-008` Task 10) can actually build, and the one
+ * `checkResponseBookkeeping`'s response-bookkeeping invariant refused before it was
+ * taught that a revision resets the window a hero can answer only once in — measured
+ * directly, `buildSave` on this exact campaign threw `SAVE_INCONSISTENT` before that fix.
+ */
+function aDecidedThenRevisedState(): GameState {
+  const decided = aDecidedState();
+  const [heroKey] = decided.heroes.keys();
+  const [contractKey] = decided.contracts.keys();
+
+  const result = composeOffer(decided, {
+    commandId: 2,
+    contractId: contractKey!,
+    keyHero: heroKey!,
+    advance: 10,
+    methodTag: null,
+    promisedBonus: 0,
+    expectedStateVersion: decided.metadata.stateVersion
+  });
+
+  return result.state;
+}
+
+/**
+ * `aDecidedState()`, then that same accepted offer locked (`NEGOTIATION_SPEC` §3.3,
+ * `lockOffer`) — `history` gains an `offer_locked` event alongside the acceptance,
+ * `respondedBy`/`acceptedBy` stay exactly as `proposeContractToHero` left them (locking
+ * clears neither), and the offer's `phase` moves to `locked`. Named by the same task
+ * that added `lockOffer` (`DEC-008` Task 12): `domainEventSchema`
+ * (`snapshot-codec.ts`) needs a member for this event, and `requireReadableSnapshot`
+ * re-decodes on the *write* path (`buildSave`), so a schema missing that member breaks
+ * saving this exact campaign, not only loading a file that already carries one.
+ */
+function aDecidedThenLockedState(): GameState {
+  const decided = aDecidedState();
+  const [contractKey] = decided.contracts.keys();
+
+  const result = lockOffer(decided, {
+    commandId: 2,
+    contractId: contractKey!,
+    expectedStateVersion: decided.metadata.stateVersion
+  });
+
+  return result.state;
+}
+
+/**
+ * `aDecidedThenLockedState()`, then settled with the promise broken
+ * (`NEGOTIATION_SPEC` §3.3, `settleContract`) — `history` gains a
+ * `contract_settled_promise_broken` event, the treasury moves, and the key hero's
+ * `believesGuildPromises`/`grievance` move with it. Named by `DEC-008` Task 14, for
+ * the same reason `aDecidedThenLockedState` was named by Task 12:
+ * `domainEventSchema` needs a member for this event, and `requireReadableSnapshot`
+ * re-decodes on the write path, so a schema missing that member breaks saving this
+ * exact campaign, not only loading a file that already carries one. `crypt.json`'s
+ * offer carries no `promisedBonus` of its own by this point in the chain, so one is
+ * composed onto it first — the one command in this chain `aDecidedState()`'s own
+ * callers do not otherwise issue.
+ */
+function aDecidedThenLockedThenSettledState(): GameState {
+  const decided = aDecidedState();
+  const [heroKey] = decided.heroes.keys();
+  const [contractKey] = decided.contracts.keys();
+
+  const composed = composeOffer(decided, {
+    commandId: 2,
+    contractId: contractKey!,
+    keyHero: heroKey!,
+    advance: 10,
+    methodTag: null,
+    promisedBonus: 20,
+    expectedStateVersion: decided.metadata.stateVersion
+  }).state;
+
+  const proposed = proposeContractToHero(composed, {
+    commandId: 3,
+    heroId: heroKey!,
+    contractId: contractKey!,
+    expectedStateVersion: composed.metadata.stateVersion
+  }).state;
+
+  const locked = lockOffer(proposed, {
+    commandId: 4,
+    contractId: contractKey!,
+    expectedStateVersion: proposed.metadata.stateVersion
+  }).state;
+
+  const settled = settleContract(locked, {
+    commandId: 5,
+    contractId: contractKey!,
+    pay: false,
+    expectedStateVersion: locked.metadata.stateVersion
+  });
+
+  if (!settled.applied) {
+    throw new Error(
+      `aDecidedThenLockedThenSettledState: settleContract was refused ` +
+        `(${String(settled.rejectionCode)}).`
+    );
+  }
+
+  return settled.state;
 }
 
 const state = aState();
@@ -326,6 +458,18 @@ it('отказывает на байтах, которые не разбираю
   expect(() => readSave(encodeUtf8('{не json'), expectedVersions)).toThrow(/SAVE_MALFORMED/u);
 });
 
+it('отказывает сохранению, записанному предыдущей версией снимка', () => {
+  // `NEGOTIATION_SPEC` §2.5: окно совместимости нулевое (`ADR-006`) — `readSave`'s
+  // own version gate, not the codec, is the layer that says no to a save the
+  // *previous* schema actually wrote, not merely to an arbitrary foreign number
+  // (the `'чужая версия снимка'` case above already covers that). `1` is not a
+  // made-up value: it is `SAVE_SCHEMA_VERSION`'s own value before `DEC-008` Task 6
+  // raised it to 2, so this is the exact save a pre-negotiation build produced.
+  const file = parseSave(aValidSave());
+  file.save_schema_version = 1;
+  expect(() => readSave(resign(file), expectedVersions)).toThrow(/SAVE_SCHEMA_UNSUPPORTED/u);
+});
+
 it('называет первый по порядку отказ, когда сломано два поля сразу', () => {
   const file = parseSave(aValidSave());
   file.format_version = 99;
@@ -406,23 +550,51 @@ describe('referential integrity across the snapshot’s own maps', () => {
     [
       'контракт называет отсутствующего героя в respondedBy',
       (snapshot) => {
-        snapshot.contracts[0]!.value.respondedBy = [
-          ...snapshot.contracts[0]!.value.respondedBy,
-          999
-        ];
+        const offer = snapshot.contracts[0]!.value.offer;
+        // `DEC-008` Task 14 routes `decodeSnapshot`'s own contract builder through
+        // `createContractState`, which refuses `phase = 'draft'` the moment
+        // `respondedBy` holds anyone but the key hero — and would catch id 999
+        // there first, before this test's own referential-integrity check ever
+        // ran. Moved to `locked`, where that draft-only restriction does not
+        // apply, so the mutation below still reaches the check this case is
+        // about.
+        offer.phase = 'locked';
+        offer.respondedBy = [...offer.respondedBy, 999];
       },
       'in respondedBy, but the save carries no such hero'
     ],
     [
-      'контракт называет отсутствующего героя в acceptedBy',
+      // Renamed (external review of Task 14): this fixture no longer isolates an
+      // unknown hero specifically *in* `acceptedBy` — see the case's own comment
+      // for why that isolation is gone — so the title now names the invariant it
+      // actually exercises rather than the one it used to.
+      'контракт держит в acceptedBy id, которого нет в respondedBy',
       (snapshot) => {
-        // `respondedBy` намеренно НЕ трогается: добавь 999 в оба множества — и первой
-        // отвечает проверка `respondedBy` двумя строками выше, а эта не измеряется
-        // вовсе. Ровно так она и оставалась непокрытой до второго раунда ревью на шве.
-        snapshot.contracts[0]!.value.acceptedBy = [...snapshot.contracts[0]!.value.acceptedBy, 999];
+        // `respondedBy` намеренно НЕ трогается — тот же приём, которым этот кейс
+        // изолировали от соседнего. Но `DEC-008` Task 14 сделал изоляцию
+        // недостижимой другим способом: `createContractState` требует
+        // `acceptedBy ⊆ respondedBy` структурно, и id, добавленный только в
+        // `acceptedBy`, ловится этой проверкой на входе в `decodeSnapshot` — раньше,
+        // чем успевает сработать собственная проверка `validateGameState`. Отказ,
+        // которого добивался этот кейс, по-прежнему происходит; он происходит у
+        // двери декодирования, под её собственным сообщением, а не под этим.
+        snapshot.contracts[0]!.value.offer.acceptedBy = [
+          ...snapshot.contracts[0]!.value.offer.acceptedBy,
+          999
+        ];
       },
-      'in acceptedBy, but the save carries no such hero'
+      'must be a subset of respondedBy'
     ]
+  ];
+
+  // `DEC-008` Task 14: `decodeSnapshot`'s own contract builder now enforces
+  // `acceptedBy ⊆ respondedBy` (`requireConsistentContract`, `snapshot-codec.ts`),
+  // so the last case above is refused *there*, before `readSave`'s
+  // `validateGameState` call — the only thing the write-path `it.each` below
+  // exercises — ever runs. Named here, once, rather than left for the write-path
+  // block to discover by a throw it was not expecting.
+  const REFERENTIAL_CASES_CAUGHT_AT_DECODE: readonly string[] = [
+    'контракт держит в acceptedBy id, которого нет в respondedBy'
   ];
 
   it.each(referentialCases)('отказывает, когда %s', (_name, mutate, detail) => {
@@ -430,19 +602,27 @@ describe('referential integrity across the snapshot’s own maps', () => {
     expect(() => readSave(aTamperedSave(mutate), expectedVersions)).toThrow(detail);
   });
 
-  it.each(referentialCases)('и отказывается ЗАПИСАТЬ то же самое: %s', (_name, mutate, detail) => {
-    const decided = aDecidedState();
-    const snapshot = JSON.parse(JSON.stringify(encodeSnapshot(decided))) as RawSnapshot;
-    mutate(snapshot);
+  it.each(referentialCases.filter(([name]) => !REFERENTIAL_CASES_CAUGHT_AT_DECODE.includes(name)))(
+    'и отказывается ЗАПИСАТЬ то же самое: %s',
+    (_name, mutate, detail) => {
+      const decided = aDecidedState();
+      const snapshot = JSON.parse(JSON.stringify(encodeSnapshot(decided))) as RawSnapshot;
+      mutate(snapshot);
 
-    expect(() =>
-      buildSave({
-        state: decodeSnapshot(snapshot),
-        focusedContract: FOCUSED_CONTRACT,
-        createdAt: CREATED_AT
-      })
-    ).toThrow(detail);
-  });
+      // `decodeSnapshot` hoisted out of the `expect` callback on purpose
+      // (external review of Task 14): a throw here is this test failing loudly
+      // for the wrong reason — not `buildSave` refusing what the case claims to
+      // be about — rather than a throw the assertion below would silently catch
+      // and read as a pass. Every case reaching this point is expected to decode
+      // cleanly; `REFERENTIAL_CASES_CAUGHT_AT_DECODE` above is the filtered-out
+      // list of the ones where that is no longer true.
+      const state = decodeSnapshot(snapshot);
+
+      expect(() =>
+        buildSave({ state, focusedContract: FOCUSED_CONTRACT, createdAt: CREATED_AT })
+      ).toThrow(detail);
+    }
+  );
 
   it('отказывает, когда focused_contract называет контракт, которого нет в снимке', () => {
     // Ревью Task 16.4, раунд 1: `focused_contract` был проверен только регуляркой формы
@@ -479,7 +659,16 @@ interface RawSnapshot {
   heroes: { value: { traits: string[] } }[];
   contracts: {
     key: string;
-    value: { requiredCrew: number; status: string; respondedBy: number[]; acceptedBy: number[] };
+    value: {
+      requiredCrew: number;
+      status: string;
+      offer: {
+        phase: string;
+        keyHero: number | null;
+        respondedBy: number[];
+        acceptedBy: number[];
+      };
+    };
   }[];
   appliedCommandIds: number[];
   traces: {
@@ -521,8 +710,8 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
       'ответ стёрт из контракта, а событие о нём осталось — файл из внешнего ревью',
       (snapshot) => {
         const contract = snapshot.contracts[0]!.value;
-        contract.respondedBy = [];
-        contract.acceptedBy = [];
+        contract.offer.respondedBy = [];
+        contract.offer.acceptedBy = [];
         contract.status = 'offered';
       },
       'respondedBy does not carry that hero'
@@ -530,15 +719,19 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
     [
       'герой в acceptedBy, но не в respondedBy',
       (snapshot) => {
-        snapshot.contracts[0]!.value.respondedBy = [];
+        snapshot.contracts[0]!.value.offer.respondedBy = [];
         snapshot.contracts[0]!.value.status = 'offered';
       },
-      'in acceptedBy but not in respondedBy'
+      // `DEC-008` Task 14: this exact shape (`acceptedBy ⊄ respondedBy`) is now caught
+      // by `createContractState` at `decodeSnapshot`'s own door, earlier than
+      // `validateGameState`'s own `checkOneContract` ever runs — the same rule, one
+      // layer sooner.
+      'must be a subset of respondedBy'
     ],
     [
       'история говорит «принял», контракт — «не в составе»',
       (snapshot) => {
-        snapshot.contracts[0]!.value.acceptedBy = [];
+        snapshot.contracts[0]!.value.offer.acceptedBy = [];
         snapshot.contracts[0]!.value.status = 'offered';
       },
       'and the history disagree about'
@@ -580,14 +773,18 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
       (snapshot) => {
         snapshot.contracts[0]!.value.status = 'offered';
       },
-      'a contract is crewed exactly when its required crew has accepted'
+      // `DEC-008` Task 14: `createContractState`'s own two-directional check
+      // (`status = 'crewed' ⇔ acceptedBy.size = requiredCrew`) catches this at
+      // `decodeSnapshot`'s door now, before `validateGameState`'s `checkOneContract`
+      // gets a turn — the same biconditional, worded by the earlier check instead.
+      "must be 'crewed' exactly when acceptedBy.size equals requiredCrew"
     ],
     [
       'контракт закрыт составом, которого не хватает',
       (snapshot) => {
         snapshot.contracts[0]!.value.requiredCrew = 2;
       },
-      'a contract is crewed exactly when its required crew has accepted'
+      "must be 'crewed' exactly when acceptedBy.size equals requiredCrew"
     ],
     [
       'nextEventId не совпадает с длиной истории',
@@ -606,9 +803,17 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
     [
       'применённых команд больше, чем событий',
       (snapshot) => {
+        // `pollCrew` (`DEC-008` Task 13) retired the equality this used to exercise
+        // (`appliedCommandIds.size === history.length`) — one `commandId` can now
+        // leave several events behind — but `<=` still holds, because a `pollCrew`
+        // with nobody left to poll is refused rather than applied
+        // (`RejectionCodes.NobodyLeftToPoll`), and every other command still
+        // appends exactly one event per id. A padded `appliedCommandIds` — an id
+        // nothing in `history` explains — is still `size > length` and still
+        // refused.
         snapshot.appliedCommandIds = [1, 2];
       },
-      'every applied command appends exactly one'
+      'every applied command appends at least one event'
     ],
     [
       'nextTraceId не равен числу хранимых следов',
@@ -655,7 +860,7 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
         // the *second* contract as well: its `respondedBy` gets him, its `acceptedBy`
         // does not, it stays `offered`, and a second trace is stored under the next free
         // id. That second trace is the first one's factor lists swapped: the campaign's
-        // one real decision sums to +36, so the mirror of it sums to −36 — a refusal
+        // one real decision sums to +3, so the mirror of it sums to −3 — a refusal
         // whose motives explain a refusal. A verbatim copy would be an acceptance's
         // trace under a refusal's event, which is refused a step earlier now, and this
         // case is about the clock rather than about the explanation. The only thing
@@ -686,7 +891,12 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
           }
         ];
         const other = snapshot.contracts.find((entry) => entry.key === OTHER_CONTRACT)!;
-        other.value.respondedBy = [first!.heroId];
+        // `DEC-008` Task 14: `createContractState` refuses `phase = 'draft'` the
+        // moment `respondedBy` names anyone but the key hero — `keyHero` is set to
+        // the same hero here so this fixture still reaches the clock check this
+        // case is about, not that earlier, unrelated one.
+        other.value.offer.keyHero = first!.heroId;
+        other.value.offer.respondedBy = [first!.heroId];
         snapshot.appliedCommandIds = [1, 2];
         snapshot.metadata.nextEventId = 2;
         snapshot.metadata.stateVersion = 2;
@@ -723,7 +933,7 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
         // A refusal, so the block and the action agree — what remains wrong is that the
         // trace both closes the path and weighs terms along it.
         snapshot.history[0]!.kind = 'hero_declined_contract';
-        snapshot.contracts[0]!.value.acceptedBy = [];
+        snapshot.contracts[0]!.value.offer.acceptedBy = [];
         snapshot.contracts[0]!.value.status = 'offered';
         snapshot.traces[0]!.value.blockedBy = [
           { reasonCode: 'hero.decision.principle_forbids', sourceEntity: 'core:greedy' }
@@ -735,7 +945,7 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
       'заблокированное решение вдобавок разрешает ничью',
       (snapshot) => {
         snapshot.history[0]!.kind = 'hero_declined_contract';
-        snapshot.contracts[0]!.value.acceptedBy = [];
+        snapshot.contracts[0]!.value.offer.acceptedBy = [];
         snapshot.contracts[0]!.value.status = 'offered';
         snapshot.traces[0]!.value.positiveFactors = [];
         snapshot.traces[0]!.value.negativeFactors = [];
@@ -749,7 +959,7 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
     [
       'принятие объяснено следом, чьи мотивы складываются в минус',
       (snapshot) => {
-        // The one real decision sums to +36; swapping the lists mirrors it to −36 while
+        // The one real decision sums to +3; swapping the lists mirrors it to −3 while
         // the history still says the hero took the contract.
         const trace = snapshot.traces[0]!.value;
         const positive = trace.positiveFactors;
@@ -800,9 +1010,12 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
             contractId: OTHER_CONTRACT
           }
         ];
-        snapshot.contracts.find((entry) => entry.key === OTHER_CONTRACT)!.value.respondedBy = [
-          first!.heroId
-        ];
+        // `DEC-008` Task 14: same reason as the clock case above — `keyHero` set to
+        // match, so `createContractState`'s draft restriction does not pre-empt the
+        // check this case is about.
+        const other = snapshot.contracts.find((entry) => entry.key === OTHER_CONTRACT)!;
+        other.value.offer.keyHero = first!.heroId;
+        other.value.offer.respondedBy = [first!.heroId];
         snapshot.appliedCommandIds = [1, 2];
         snapshot.metadata.nextEventId = 2;
         snapshot.metadata.stateVersion = 2;
@@ -811,28 +1024,57 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
     ]
   ];
 
+  // `DEC-008` Task 14: three of the cases above are now refused inside
+  // `decodeSnapshot` itself (`createContractState`, via `requireConsistentContract`
+  // — `snapshot-codec.ts`), before `readSave`'s `validateGameState` call, the only
+  // thing the write-path `it.each` below exercises, ever runs:
+  //
+  // - `'герой в acceptedBy, но не в respondedBy'` — `acceptedBy ⊆ respondedBy`.
+  // - `'состав набран, а контракт всё ещё предлагается'` and
+  //   `'контракт закрыт составом, которого не хватает'` — the two-directional
+  //   `status = 'crewed' ⇔ acceptedBy.size = requiredCrew`.
+  //
+  // Named here, once, rather than left for the write-path block to discover by a
+  // throw it was not expecting — external review of Task 14 found exactly that:
+  // all three had quietly stopped exercising `buildSave` at all, decoding to a
+  // thrown `SaveReadError` the outer `expect(() => buildSave(...))` swallowed as
+  // if it were the refusal the case claims to test.
+  const CASES_CAUGHT_AT_DECODE: readonly string[] = [
+    'герой в acceptedBy, но не в respondedBy',
+    'состав набран, а контракт всё ещё предлагается',
+    'контракт закрыт составом, которого не хватает'
+  ];
+
   it.each(cases)('отказывает при чтении: %s', (_name, mutate, detail) => {
     expect(() => readSave(aTamperedSave(mutate), expectedVersions)).toThrow(/SAVE_INCONSISTENT/u);
     expect(() => readSave(aTamperedSave(mutate), expectedVersions)).toThrow(detail);
   });
 
-  it.each(cases)('и отказывается ЗАПИСАТЬ то же самое: %s', (_name, mutate, detail) => {
-    // The other half, and the half external review said was missing: a producer must not
-    // be able to write what the reader refuses. The state is built by `decodeSnapshot`,
-    // which deliberately checks shape and not domain — so this is a real `GameState`
-    // carrying the same broken campaign, handed to `buildSave`.
-    const decided = aDecidedState();
-    const snapshot = JSON.parse(JSON.stringify(encodeSnapshot(decided))) as RawSnapshot;
-    mutate(snapshot);
+  it.each(cases.filter(([name]) => !CASES_CAUGHT_AT_DECODE.includes(name)))(
+    'и отказывается ЗАПИСАТЬ то же самое: %s',
+    (_name, mutate, detail) => {
+      // The other half, and the half external review said was missing: a producer must not
+      // be able to write what the reader refuses. The state is built by `decodeSnapshot`,
+      // which deliberately checks shape and not domain — so this is a real `GameState`
+      // carrying the same broken campaign, handed to `buildSave`.
+      const decided = aDecidedState();
+      const snapshot = JSON.parse(JSON.stringify(encodeSnapshot(decided))) as RawSnapshot;
+      mutate(snapshot);
 
-    expect(() =>
-      buildSave({
-        state: decodeSnapshot(snapshot),
-        focusedContract: FOCUSED_CONTRACT,
-        createdAt: CREATED_AT
-      })
-    ).toThrow(detail);
-  });
+      // `decodeSnapshot` hoisted out of the `expect` callback on purpose (external
+      // review of Task 14): a throw here is this test failing loudly for the wrong
+      // reason — not `buildSave` refusing what the case claims to be about —
+      // rather than a throw the assertion below would silently catch and read as a
+      // pass. Every case reaching this point is expected to decode cleanly;
+      // `CASES_CAUGHT_AT_DECODE` above is the filtered-out list of the ones where
+      // that is no longer true.
+      const state = decodeSnapshot(snapshot);
+
+      expect(() =>
+        buildSave({ state, focusedContract: FOCUSED_CONTRACT, createdAt: CREATED_AT })
+      ).toThrow(detail);
+    }
+  );
 
   it('принимает кампанию, которую движок действительно произвёл', () => {
     // The guard on the guards: every case above tampers with a save built from this same
@@ -850,6 +1092,94 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
     });
 
     expect(deepEqual(readSave(bytes, versions).state, decided)).toBe(true);
+  });
+
+  it('carries a campaign whose offer was answered, then revised, through save and read', () => {
+    // The scenario review named directly: a hero answers, the player revises the
+    // package, and the campaign must still be a campaign this build can save and load —
+    // not only through `encodeSnapshot`/`decodeSnapshot` in isolation
+    // (`snapshot-codec.test.ts` covers that byte-level round trip already), but through
+    // `buildSave`'s own `validateGameState` call and `readSave`'s matching one, both of
+    // which sit between the codec and the campaign a player actually has.
+    const revised = aDecidedThenRevisedState();
+    // Two events in history — the original answer, then the revision — while
+    // `respondedBy` on the current offer is empty again: exactly the shape that used to
+    // trip `checkResponseBookkeeping`'s "one history event per name in respondedBy"
+    // reading, before it was taught that a revision resets the window.
+    expect(revised.history).toHaveLength(2);
+    expect(revised.history[1]!.kind).toBe('offer_revised');
+
+    const versions = {
+      rulesetVersion: revised.metadata.rulesetVersion,
+      contentVersion: revised.metadata.contentVersion
+    };
+    const [focusedContract] = revised.contracts.keys();
+
+    const bytes = buildSave({
+      state: revised,
+      focusedContract: focusedContract!,
+      createdAt: CREATED_AT
+    });
+
+    expect(deepEqual(readSave(bytes, versions).state, revised)).toBe(true);
+  });
+
+  it('carries a campaign whose offer was answered, then locked, through save and read', () => {
+    // `DEC-008` Task 12's own risk, named in its brief: `offer_locked` is a new
+    // `DomainEvent` member, and a schema that forgot it would not fail loudly at
+    // `readSave` alone — `buildSave` calls `requireReadableSnapshot`, which re-decodes
+    // on the way *out*, so a missing schema member breaks saving this campaign in the
+    // first place, before there is ever a file to read back.
+    const locked = aDecidedThenLockedState();
+    expect(locked.history).toHaveLength(2);
+    expect(locked.history[1]!.kind).toBe('offer_locked');
+
+    const versions = {
+      rulesetVersion: locked.metadata.rulesetVersion,
+      contentVersion: locked.metadata.contentVersion
+    };
+    const [focusedContract] = locked.contracts.keys();
+
+    const bytes = buildSave({
+      state: locked,
+      focusedContract: focusedContract!,
+      createdAt: CREATED_AT
+    });
+
+    expect(deepEqual(readSave(bytes, versions).state, locked)).toBe(true);
+  });
+
+  it('carries a campaign whose promise was broken through save and read', () => {
+    // `DEC-008` Task 14: the same risk `aDecidedThenLockedState`'s own test names,
+    // for the three `settleContract` events instead of `offer_locked` — a schema
+    // missing one of them breaks saving this campaign, not only loading a file that
+    // already carries one. This is also the one settlement shape the codec's own
+    // `snapshot-codec.test.ts` round trip does not reach: the envelope's checksum,
+    // `validateGameState` on both sides, and `requireDuplicateFieldsAgree`, over a
+    // real settled, broken-promise campaign.
+    const settled = aDecidedThenLockedThenSettledState();
+    expect(settled.history[settled.history.length - 1]!.kind).toBe(
+      'contract_settled_promise_broken'
+    );
+
+    const [heroKey] = settled.heroes.keys();
+    expect(settled.heroes.get(heroKey!)!.believesGuildPromises).toBe(false);
+    expect(settled.heroes.get(heroKey!)!.grievance).toBeGreaterThan(0);
+    expect(settled.treasury).not.toBe(400);
+
+    const versions = {
+      rulesetVersion: settled.metadata.rulesetVersion,
+      contentVersion: settled.metadata.contentVersion
+    };
+    const [focusedContract] = settled.contracts.keys();
+
+    const bytes = buildSave({
+      state: settled,
+      focusedContract: focusedContract!,
+      createdAt: CREATED_AT
+    });
+
+    expect(deepEqual(readSave(bytes, versions).state, settled)).toBe(true);
   });
 });
 

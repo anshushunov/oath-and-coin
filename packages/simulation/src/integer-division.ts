@@ -4,8 +4,8 @@
  * infinity.
  *
  * This is the first trap of the port and it is invisible on today's data. Every
- * dividend the decision rule forms is non-negative on shipped content — payment, risk,
- * the risk-minus-payment gap, trust and the trait scales are all bounded at or above
+ * dividend the decision rule forms is non-negative on shipped content — patron fee, risk,
+ * the risk-minus-patron-fee gap, trust and the trait scales are all bounded at or above
  * zero — so `Math.floor` and `Math.trunc` agree on every one of the 54 frozen corpus
  * entries. A mutant swapping one for the other therefore stays **green** against the
  * corpus, which is exactly why the corpus is not what guards this: `divideTowardZero`
@@ -35,7 +35,7 @@ export function divideTowardZero(dividend: number, divisor: number): number {
  * `a * b` the way C# multiplies two `int`s: 32 bits, wrapping, unchecked.
  *
  * The second trap of the port, and external review had to find it because the corpus
- * cannot: on content-bounded values (payment and risk 0..100, scales 0..100) a product
+ * cannot: on content-bounded values (patron fee and risk 0..100, scales 0..100) a product
  * never approaches 2^31 and `Math.imul` is indistinguishable from `*`. Outside them the
  * two stop agreeing completely — `2147483647 * 2147483647` is `4611686014132420600` as a
  * double and `1` as an `int` — and the counterexample was a pair of values C# accepts

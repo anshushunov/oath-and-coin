@@ -8,7 +8,7 @@ import { createContext, useContext, useMemo, type ReactNode } from 'react';
  * make that failure loud. The C# original threw on a missing key for the same reason,
  * and the reason is worth restating: the alternative — falling back to the key itself
  * — produces a screen that renders, passes a smoke test, and shows
- * `field.contract.payment` to a player.
+ * `field.contract.patron_fee` to a player.
  *
  * **Context rather than a parameter, and that is a deviation from the segment plan
  * worth naming.** §4 of the plan writes it as `useText(catalogue)`, which mirrors C#,

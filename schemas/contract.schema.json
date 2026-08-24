@@ -9,7 +9,7 @@
     "schema_version",
     "id",
     "display_name_key",
-    "payment",
+    "patron_fee",
     "risk",
     "required_crew",
     "tags"
@@ -17,7 +17,7 @@
   "properties": {
     "schema_version": {
       "type": "integer",
-      "const": 2,
+      "const": 3,
       "description": "Version of this content format (TDD 11.1). Pinned by const so a file authored for a later format is refused by tooling, not read under today's assumptions; ContentSet.SupportedContentSchemaVersion states the same number and SchemaAgreementTests keeps the two equal."
     },
     "id": {
@@ -30,7 +30,7 @@
       "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$",
       "description": "Localization key, never a player-facing literal (TDD 11.1). The pattern is the artifact-safe character set: this key travels unchanged into HeroState and from there into the canonical determinism artifact, where non-ASCII text and control characters are exactly the inputs the frozen corpus records the C# writer and RFC 8785 disagreeing on."
     },
-    "payment": {
+    "patron_fee": {
       "type": "integer",
       "minimum": 0,
       "maximum": 100
@@ -54,6 +54,17 @@
         "pattern": "^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$"
       },
       "description": "Tags a hero's traits can react to (HERO_DECISION_SPEC §1.4)."
+    },
+    "negotiable_tags": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$"
+      },
+      "description": "Exactly two mutually exclusive method tags the player chooses one of (NEGOTIATION_SPEC 2.4). Absent means the contract is negotiated on money and promise only."
     }
   }
 }

@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "scenario": "promise_moves_only_the_key_hero",
+  "expected_outcome": "success",
+  "checkpoints": [{ "name": "final", "after_command_id": 4 }]
+}

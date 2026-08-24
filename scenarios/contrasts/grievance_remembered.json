@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "contrast": "grievance_remembered",
+  "content_root": "content",
+  "seed": 8,
+  "hero": "core:doran",
+  "contract": "core:silence_the_cult",
+  "vary": { "input": "hero.grievance", "from": 0, "to": 60 },
+  "expect": "accept_to_decline"
+}

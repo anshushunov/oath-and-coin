@@ -33,4 +33,21 @@ export interface HeroState {
    * every collection in state, for deterministic enumeration order.
    */
   readonly relationships: SortedMap<ContentId, number>;
+  /**
+   * Whether this hero still trusts a promise the guild makes (`NEGOTIATION_SPEC` §2.2).
+   * `true` for every hero at campaign start. `settleContract` turns it `false` for the
+   * hero a broken promise victimized, and nothing in this package turns it back —
+   * `trustedBonus` (`NEGOTIATION_SPEC` §4) reads it and stops crediting a promise the
+   * moment it is `false`. Not the same lever as {@link trustInGuild}: `NEGOTIATION_SPEC`
+   * §2.2 explains why one broken promise needs both a switch that disables a specific
+   * mechanic and a named, growing cost, rather than one shared dial doing both jobs.
+   */
+  readonly believesGuildPromises: boolean;
+  /**
+   * How much this hero resents the guild's broken word (`NEGOTIATION_SPEC` §2.2, §3.3),
+   * `0..GRIEVANCE_MAX` (`negotiation/grievance.ts`). `0` for every hero at campaign
+   * start; `settleContract` is the only transition that raises it, and no command wires
+   * that yet — this field is declared and seeded here, not moved.
+   */
+  readonly grievance: number;
 }

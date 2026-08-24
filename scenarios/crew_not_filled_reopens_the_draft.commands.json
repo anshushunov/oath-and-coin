@@ -1,0 +1,50 @@
+{
+  "commands": [
+    {
+      "command": "compose_offer",
+      "command_id": 1,
+      "contract": "core:escort_the_caravan",
+      "key_hero_index": 1,
+      "advance": 40,
+      "method_tag": "method:open",
+      "promised_bonus": 10,
+      "expected_state_version": 0
+    },
+    {
+      "command": "propose_contract_to_hero",
+      "command_id": 2,
+      "contract": "core:escort_the_caravan",
+      "hero_index": 1,
+      "expected_state_version": 1
+    },
+    {
+      "command": "lock_offer",
+      "command_id": 3,
+      "contract": "core:escort_the_caravan",
+      "expected_state_version": 2
+    },
+    {
+      "command": "poll_crew",
+      "command_id": 4,
+      "contract": "core:escort_the_caravan",
+      "expected_state_version": 3
+    },
+    {
+      "command": "compose_offer",
+      "command_id": 5,
+      "contract": "core:escort_the_caravan",
+      "key_hero_index": 1,
+      "advance": 40,
+      "method_tag": "method:open",
+      "promised_bonus": 20,
+      "expected_state_version": 8
+    },
+    {
+      "command": "propose_contract_to_hero",
+      "command_id": 6,
+      "contract": "core:escort_the_caravan",
+      "hero_index": 1,
+      "expected_state_version": 9
+    }
+  ]
+}

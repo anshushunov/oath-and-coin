@@ -1,0 +1,11 @@
+{
+  "schema_version": 3,
+  "id": "fixture:captain",
+  "display_name_key": "hero.fixture.captain.name",
+  "greed": 80,
+  "caution": 0,
+  "pride": 0,
+  "trust_in_guild": 50,
+  "traits": [],
+  "relationships": []
+}

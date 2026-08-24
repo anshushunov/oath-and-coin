@@ -11,7 +11,7 @@ import { TextSource, useText } from './text.tsx';
  * catalogue entry) seen from opposite ends: a key the catalogue cannot answer, and a
  * screen with no catalogue at all. The tempting behaviour in either case is to render
  * something — the key itself, or a blank — and both produce a page that mounts, passes
- * a smoke test and shows `field.contract.payment` to a player.
+ * a smoke test and shows `field.contract.patron_fee` to a player.
  */
 
 function Resolved({ textKey }: { readonly textKey: string }) {
@@ -23,8 +23,8 @@ function Resolved({ textKey }: { readonly textKey: string }) {
 describe('useText', () => {
   it('resolves a key through the catalogue above it', () => {
     const container = render(
-      <TextSource catalogue={new Map([['field.contract.payment', 'Оплата']])}>
-        <Resolved textKey="field.contract.payment" />
+      <TextSource catalogue={new Map([['field.contract.patron_fee', 'Оплата']])}>
+        <Resolved textKey="field.contract.patron_fee" />
       </TextSource>
     );
 
@@ -35,10 +35,10 @@ describe('useText', () => {
     expect(() =>
       render(
         <TextSource catalogue={new Map()}>
-          <Resolved textKey="field.contract.payment" />
+          <Resolved textKey="field.contract.patron_fee" />
         </TextSource>
       )
-    ).toThrow(/no entry for key 'field[.]contract[.]payment'/u);
+    ).toThrow(/no entry for key 'field[.]contract[.]patron_fee'/u);
   });
 
   it('fails the render when nothing put a catalogue above it', () => {
@@ -46,7 +46,7 @@ describe('useText', () => {
     // provider is wiring that was never done, and answering it with an empty
     // catalogue — or with the key — turns that into a screen somebody has to read to
     // notice.
-    expect(() => render(<Resolved textKey="field.contract.payment" />)).toThrow(
+    expect(() => render(<Resolved textKey="field.contract.patron_fee" />)).toThrow(
       /no TextSource above it/u
     );
   });

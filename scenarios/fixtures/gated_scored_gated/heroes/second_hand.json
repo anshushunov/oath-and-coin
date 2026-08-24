@@ -1,0 +1,11 @@
+{
+  "schema_version": 3,
+  "id": "fixture:second_hand",
+  "display_name_key": "hero.fixture.second_hand.name",
+  "greed": 80,
+  "caution": 0,
+  "pride": 0,
+  "trust_in_guild": 50,
+  "traits": [],
+  "relationships": []
+}

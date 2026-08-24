@@ -25,7 +25,7 @@ import { startSession } from './session.ts';
  */
 
 const HERO = {
-  schema_version: 2,
+  schema_version: 3,
   id: 'core:bram',
   display_name_key: 'hero.core.bram.name',
   greed: 60,
@@ -37,17 +37,17 @@ const HERO = {
 };
 
 const CONTRACT = {
-  schema_version: 2,
+  schema_version: 3,
   id: 'core:escort',
   display_name_key: 'contract.core.escort.name',
-  payment: 70,
+  patron_fee: 70,
   risk: 30,
   required_crew: 1,
   tags: ['method:escort']
 };
 
 const TRAIT = {
-  schema_version: 2,
+  schema_version: 3,
   id: 'core:greedy',
   display_name_key: 'trait.core.greedy.name',
   kind: 'inclination',
@@ -55,7 +55,7 @@ const TRAIT = {
   weight: 20
 };
 
-function contentTree(overrides: { readonly payment?: number } = {}): ContentFileSource {
+function contentTree(overrides: { readonly patron_fee?: number } = {}): ContentFileSource {
   return memoryFileSource({
     'heroes/bram.json': JSON.stringify(HERO),
     'contracts/escort.json': JSON.stringify({ ...CONTRACT, ...overrides }),
@@ -97,11 +97,33 @@ const ranScenario: ScenarioFixture = {
     content_root: 'fixture-content',
     checkpoints: [
       { name: 'start', after_command_id: 0 },
-      { name: 'final', after_command_id: 1 }
+      { name: 'final', after_command_id: 2 }
     ]
   },
+  // The whole protocol this fixture needs: a package naming Bram as its key hero, then
+  // Bram answering it. `advance` is the contract's whole `patron_fee`, which is what
+  // `NEGOTIATION_SPEC` §4's benefit term reads — an offer of nothing would be a hero
+  // deciding about no money, and this fixture is about a run that reaches a screen.
   commands: {
-    commands: [{ command_id: 1, hero_index: 0, contract: 'core:escort', expected_state_version: 0 }]
+    commands: [
+      {
+        command: 'compose_offer',
+        command_id: 1,
+        contract: 'core:escort',
+        key_hero_index: 0,
+        advance: 70,
+        method_tag: null,
+        promised_bonus: 0,
+        expected_state_version: 0
+      },
+      {
+        command: 'propose_contract_to_hero',
+        command_id: 2,
+        contract: 'core:escort',
+        hero_index: 0,
+        expected_state_version: 1
+      }
+    ]
   }
 };
 
@@ -237,7 +259,7 @@ describe('the content version a session reports', () => {
     // the manifest — would survive an edit, and a replay claiming "same content" over
     // edited numbers is worse than one admitting it cannot reproduce the run.
     const before = session(ranScenario, contentTree()).contentVersion;
-    const after = session(ranScenario, contentTree({ payment: 71 })).contentVersion;
+    const after = session(ranScenario, contentTree({ patron_fee: 71 })).contentVersion;
 
     expect(after).not.toBe(before);
   });
@@ -263,7 +285,10 @@ describe('the campaign a session carries', () => {
     const state = session(ranScenario).state;
 
     expect(state).not.toBeNull();
-    expect(state?.history).toHaveLength(1);
+    // Two, not one: `offer_revised` from the `compose_offer` this fixture now opens with,
+    // and Bram's answer to the package it composed. Both are in the campaign; only the
+    // second is in the screen, which is the lossiness this test is about.
+    expect(state?.history).toHaveLength(2);
     expect(state?.metadata.contentVersion).toBe(computeContentVersion(contentTree()));
   });
 

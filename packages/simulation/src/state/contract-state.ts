@@ -1,17 +1,65 @@
+import type { SortedMap } from '../collections/sorted-map.ts';
 import type { SortedSet } from '../collections/sorted-set.ts';
 import type { ContentId } from '../ids/content-id.ts';
 import type { HeroId } from '../ids/hero-id.ts';
 
 /**
+ * Lifecycle of a single offer version (`NEGOTIATION_SPEC` §2.1). Three members, and
+ * deliberately not folded into {@link ContractStatus}'s own two: status answers "is the
+ * crew filled", phase answers "where is the negotiation", and a version can be
+ * `crewed` while still `locked` (waiting on a decision to settle) — the two axes move
+ * independently, so one is not a special case of the other.
+ *
+ * Declared here, beside {@link ContractState}, rather than in `offer-state.ts` — which
+ * holds the invariants over this shape, not the shape itself — because `ContractState`
+ * needs it as a field's type and `offer-state.ts` needs `ContractState` for the
+ * functions that build and validate one; two files each needing the other's type is
+ * exactly the cycle `lint:deps`'s `no-circular` rule exists to catch, proven here by
+ * running into it. `offer-state.ts` re-exports both names, so every other module still
+ * reaches them the one way this package's index does.
+ */
+export const OfferPhase = Object.freeze({
+  Draft: 'draft',
+  Locked: 'locked',
+  Settled: 'settled'
+});
+
+export type OfferPhase = (typeof OfferPhase)[keyof typeof OfferPhase];
+
+/** A single version of a contract's negotiation package (`NEGOTIATION_SPEC` §2.1). */
+export interface OfferState {
+  /** 1 on the contract's first offer, +1 on every revision (`composeOffer`). */
+  readonly version: number;
+  /** Who the current package is negotiated with; `null` until the first revision. */
+  readonly keyHero: HeroId | null;
+  /** Money offered to every hero who accepts — a term, not a per-hero ledger entry. */
+  readonly advance: number;
+  /** The negotiated tag this version has chosen, if any; `null` picks none. */
+  readonly methodTag: ContentId | null;
+  /** Extra pay promised to {@link keyHero} alone; `0` means no promise stands. */
+  readonly promisedBonus: number;
+  readonly phase: OfferPhase;
+  /**
+   * Heroes who have answered this exact version — accepted or declined. Lives inside
+   * the offer, not beside it (`ContractState.offer`): a revision is a new version with
+   * a new, empty `respondedBy`, so an answer to a package a player has since changed
+   * cannot outlive the change — there is nowhere left for it to be stored.
+   */
+  readonly respondedBy: SortedSet<HeroId>;
+  /** Heroes who accepted this version and joined the crew — a subset of {@link respondedBy}. */
+  readonly acceptedBy: SortedSet<HeroId>;
+}
+
+/**
  * Lifecycle of a contract offer. Deliberately two members and not three.
  *
  * A hero declining does not close the offer for everyone else — it adds that hero to
- * {@link ContractState.respondedBy} instead. A third `declined` status would make the
+ * {@link OfferState.respondedBy} instead. A third `declined` status would make the
  * first refusal remove the offer for every other hero, which would make the
  * two-autonomous-decisions scenario this milestone exists to demonstrate impossible.
  *
  * `crewed` is the state that matters for a contract needing more than one hero: it
- * means every seat in {@link ContractState.acceptedBy} is filled, not merely that one
+ * means every seat in {@link OfferState.acceptedBy} is filled, not merely that one
  * hero among several said yes.
  */
 export const ContractStatus = Object.freeze({
@@ -24,7 +72,7 @@ export type ContractStatus = (typeof ContractStatus)[keyof typeof ContractStatus
 /** A contract offer's terms and lifecycle state. */
 export interface ContractState {
   readonly id: ContentId;
-  readonly payment: number;
+  readonly patronFee: number;
   readonly risk: number;
   /** How many heroes must accept before this offer is crewed (`HERO_DECISION_SPEC` §1.5). */
   readonly requiredCrew: number;
@@ -34,12 +82,47 @@ export interface ContractState {
    * `HeroState.traits`.
    */
   readonly tags: SortedSet<ContentId>;
+  /**
+   * The mutually-exclusive method tags a player may choose between when composing an
+   * offer (`NEGOTIATION_SPEC` §2.4) — exactly `NEGOTIABLE_TAGS_COUNT` (2) entries, or
+   * absent/empty for a contract that trades on money and promise only. `composeOffer`
+   * (`commands/compose-offer.ts`) is this field's one reader today: absent and empty
+   * both mean "nothing negotiable", so a chosen `methodTag` is only ever legal when it
+   * is a member of this set.
+   *
+   * **Optional on the type, not on the data.** Every contract this build can produce
+   * carries a real set — the content loader fills it from `ContractDefinition.negotiableTags`
+   * (`initial-state.ts`), a revision carries its contract's existing set forward
+   * (`composeOffer`), and `snapshot-codec.ts` round-trips it (an `.optional()` schema
+   * key rather than a required one, so this addition did not have to move
+   * `SAVE_SCHEMA_VERSION`). The type is optional only so that hand-built `ContractState`
+   * literals elsewhere in the tree — tests and fixtures predating this field — are not
+   * forced to supply it; reading code should treat absence exactly like an empty set,
+   * never as "unknown".
+   *
+   * **Not (yet) in the canonical artifact.** `determinism-artifact.ts`'s `describeContract`
+   * does not project this field — adding it would be a real shape change, and this task
+   * is explicitly told not to move `ARTIFACT_VERSION` or re-record `scenarios/*.canonical.json`
+   * (`ADR-013`, Task 20). A scenario that never composes an offer with a `methodTag`
+   * cannot observe the omission; one that does is Task 20's problem to pick up.
+   */
+  readonly negotiableTags?: SortedSet<ContentId>;
   readonly status: ContractStatus;
   /**
-   * Heroes who have already responded — accepted or declined — so the same hero is
-   * never asked twice.
+   * This contract's current negotiation package and its lifecycle
+   * (`NEGOTIATION_SPEC` §2.1). `respondedBy`/`acceptedBy` live inside it, not beside
+   * it: a revised package is a new `OfferState` with empty answer sets, so an answer
+   * to a version the player has since changed cannot exist — there is nowhere left to
+   * keep it. Built and revalidated only through `createContractState`
+   * (`offer-state.ts`).
    */
-  readonly respondedBy: SortedSet<HeroId>;
-  /** Heroes who accepted and joined the crew — a subset of {@link respondedBy}. */
-  readonly acceptedBy: SortedSet<HeroId>;
+  readonly offer: OfferState;
+  /**
+   * The decision ordinal each hero first drew a mood on, for this contract, keyed by
+   * hero id (`NEGOTIATION_SPEC` §2.1.1). Written once and never cleared by a revised
+   * offer, so re-answering a later version of the same package reuses the recorded
+   * ordinal instead of drawing a fresh mood. Filled by the engine (`pollCrew` and
+   * `proposeContractToHero`); empty at construction.
+   */
+  readonly moodOrdinals: SortedMap<HeroId, bigint>;
 }

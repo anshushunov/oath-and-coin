@@ -4,9 +4,14 @@ import {
   type ContentId,
   type DomainEvent,
   type GameState,
+  type HeroAcceptedContract,
+  type HeroDeclinedContract,
   type TraceFactor
 } from '@oath-and-coin/simulation';
 import type { DecidedOutcome, DecidedStep } from '@oath-and-coin/presentation';
+
+/** An event a hero decided, as opposed to one the player chose outright (`isDecisionEvent`). */
+type DecisionEvent = HeroAcceptedContract | HeroDeclinedContract;
 
 /**
  * The answered steps of a campaign, rebuilt from the campaign itself.
@@ -24,16 +29,45 @@ import type { DecidedOutcome, DecidedStep } from '@oath-and-coin/presentation';
  * from a live run's step list, and it is why {@link import('@oath-and-coin/presentation').contractOfferScreenModel}
  * takes the focused contract as an argument: after a reload, "the contract the first step
  * named" is a question about a different first step.
+ *
+ * **`DecidedStep` is a hero's answer, and only a hero's answer.** `offer_revised` is the
+ * player's own choice, not a decision a hero made (`domain-event.ts`'s `OfferRevised`), so
+ * it is filtered out here rather than forced into a shape built for "who answered, and
+ * why". That is the same kind of difference from a live run's step list the paragraph
+ * above already names for a refused command — not a new exception, an instance of the one
+ * already documented.
  */
 export function restoreDecidedSteps(state: GameState): readonly DecidedStep[] {
-  return state.history.map((event) => ({
-    command: { contract: event.contractId },
-    heroDefinition: heroDefinitionOf(state, event),
-    decision: restoreOutcome(state, event)
-  }));
+  return state.history.filter(isDecisionEvent).map((event) => {
+    const decision = restoreOutcome(state, event);
+
+    return {
+      command: { contract: event.contractId },
+      heroDefinition: heroDefinitionOf(state, event),
+      decisions: decision === null ? [] : [decision]
+    };
+  });
 }
 
-function heroDefinitionOf(state: GameState, event: DomainEvent): ContentId {
+/**
+ * Narrows `DomainEvent` to the members a hero actually decided. **Written as an
+ * allow-list of the two decision kinds, not as a denial of `offer_revised`** — a
+ * type-predicate body is not checked against `DomainEvent`'s own exhaustiveness, so a
+ * negated predicate (`kind !== 'offer_revised'`) would happily admit any *future* fourth
+ * member too (a tick, the reason `DomainEventBase.causalTraceId` is nullable at all),
+ * and TypeScript would not catch it: `actionOf`'s `satisfies never` only protects call
+ * sites that still see the full `DomainEvent` union, and once this predicate narrows to
+ * the hand-written `DecisionEvent` alias, `actionOf` is checked against that alias
+ * instead. Written positively, a fourth member is excluded by construction — it never
+ * matches either literal — and reaches neither `heroDefinitionOf` nor `actionOf` at all,
+ * rather than compiling its way through both and throwing at restore time on
+ * `state.heroes.get(undefined)`.
+ */
+function isDecisionEvent(event: DomainEvent): event is DecisionEvent {
+  return event.kind === 'hero_accepted_contract' || event.kind === 'hero_declined_contract';
+}
+
+function heroDefinitionOf(state: GameState, event: DecisionEvent): ContentId {
   const hero = state.heroes.get(event.heroId);
 
   if (hero === undefined) {
@@ -51,10 +85,10 @@ function heroDefinitionOf(state: GameState, event: DomainEvent): ContentId {
  * The decision behind one event, or `null` for an event that explains itself.
  *
  * `causalTraceId` is nullable on every event because a tick is not a decision; today both
- * members of the union carry one, and a step with no decision is filtered out by the
- * screen factory rather than guessed at here.
+ * members of {@link DecisionEvent} carry one, and a step with no decision is filtered out
+ * by the screen factory rather than guessed at here.
  */
-function restoreOutcome(state: GameState, event: DomainEvent): DecidedOutcome | null {
+function restoreOutcome(state: GameState, event: DecisionEvent): DecidedOutcome | null {
   if (event.causalTraceId === null) {
     return null;
   }
@@ -108,7 +142,7 @@ function total(factors: readonly TraceFactor[]): number {
  * from the score. The event is what the campaign recorded happening; a sign test on a
  * recomputed number would be this layer deciding the rule again.
  */
-function actionOf(event: DomainEvent): ContentId {
+function actionOf(event: DecisionEvent): ContentId {
   switch (event.kind) {
     case 'hero_accepted_contract':
       return Actions.Accept;

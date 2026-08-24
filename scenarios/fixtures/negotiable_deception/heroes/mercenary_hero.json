@@ -1,0 +1,11 @@
+{
+  "schema_version": 3,
+  "id": "fixture:mercenary_hero",
+  "display_name_key": "hero.fixture.mercenary_hero.name",
+  "greed": 80,
+  "caution": 0,
+  "pride": 0,
+  "trust_in_guild": 50,
+  "traits": ["fixture:forbids_deception"],
+  "relationships": []
+}

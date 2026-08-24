@@ -1,8 +1,8 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "id": "fixture:plain_alpha",
   "display_name_key": "contract.fixture.plain_alpha.name",
-  "payment": 50,
+  "patron_fee": 50,
   "risk": 10,
   "required_crew": 6,
   "tags": []

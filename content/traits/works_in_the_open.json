@@ -1,0 +1,8 @@
+{
+  "schema_version": 3,
+  "id": "core:works_in_the_open",
+  "display_name_key": "trait.core.works_in_the_open.name",
+  "kind": "inclination",
+  "tag": "method:open",
+  "weight": 10
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ReasonCodes } from '@oath-and-coin/simulation';
+import { OfferPhase, ReasonCodes } from '@oath-and-coin/simulation';
 
 import {
   createContractOfferScreenModel,
@@ -66,11 +66,18 @@ const aFullModel = createContractOfferScreenModel({
   contract: {
     definition: 'core:escort_the_caravan',
     displayNameKey: 'contract.core.escort_the_caravan.name',
-    payment: 40,
+    patronFee: 40,
     risk: QualitativeGrade.Moderate,
     tagKeys: ['tag.patron.merchant_guild', 'tag.target.bandits'],
-    requiredCrew: 4,
-    acceptedCount: 3
+    // Fully crewed on purpose: `SettlementLine`'s own doc comment gates a non-`null`
+    // settlement on `phase = Settled` or `phase = Locked` with every seat filled
+    // (`ContractStatus.Crewed`), and `offer.phase` below is `Locked`. `requiredCrew: 4`
+    // with `acceptedCount: 3` — the fixture's own value before external review of this
+    // task — described a state the engine cannot produce: a locked, uncrewed offer
+    // carrying a settlement anyway. Two seats, both filled, matches `settlement.crew`'s
+    // two entries below and is the state `NEGOTIATION_SPEC` §5.1 actually describes.
+    requiredCrew: 2,
+    acceptedCount: 2
   },
   roster: [
     {
@@ -144,7 +151,55 @@ const aFullModel = createContractOfferScreenModel({
     }
   ],
   errorCode: null,
-  errorDetail: null
+  errorDetail: null,
+  // The negotiation fields (`DEC-008` Tasks 15-16) are this file's own question as of
+  // Task 17, which is what walks and resolves them. Every optional branch of that
+  // projection appears here too, for the same reason the rest of the fixture is
+  // deliberately richer than any single scenario: a chosen method tag among two
+  // alternatives, a promise (so `promiseTerms` is not `null`), a key hero distinct from
+  // the roster's first entry, and a filled crew's settlement.
+  treasury: 400,
+  offer: {
+    version: 3,
+    phase: OfferPhase.Locked,
+    advance: 15,
+    // Deliberately the *second* entry of `methodOptionKeys`, not the first: external
+    // review of this task found that a chosen-first fixture cannot distinguish a
+    // correct `methodTagKey` projection from a wrong one that just showed
+    // `methodOptionKeys[0]` — the two coincide whenever the choice happens to sort
+    // first, which `methodOptionKeysOf`'s own convention always arranges for real
+    // model output. This fixture is hand-built and owes that convention nothing.
+    methodTagKey: 'tag.method.deception',
+    methodOptionKeys: ['tag.method.open', 'tag.method.deception'],
+    promisedBonus: 20,
+    keyHeroDefinition: 'core:doran',
+    // `advance × requiredCrew + promisedBonus` = `15 × 2 + 20` (`NEGOTIATION_SPEC`
+    // §2.3, §3.3's own reservation formula — `commitmentOf`, `@oath-and-coin/simulation`).
+    lockCommitment: 50
+  },
+  // `treasury + patronFee − advance × acceptedCount − promisedBonus` = `400 + 40 −
+  // 15 × 2 − 20` — `settleContract`'s own formula (`NEGOTIATION_SPEC` §3.3) with
+  // `pay: true`.
+  treasuryForecast: 390,
+  promiseTerms: {
+    fulfilKey: 'offer.promise.fulfil',
+    breachKey: 'offer.promise.breach',
+    bonus: 20
+  },
+  settlement: {
+    promisedBonus: 20,
+    keyHeroDefinition: 'core:doran',
+    // Two entries, matching `contract.acceptedCount: 2` above — `SettlementLine.crew`'s
+    // own doc comment defines it as `OfferState.acceptedBy`, and a crew list of a
+    // different size than the contract's own `acceptedCount` is the second half of the
+    // inconsistency external review of this task found.
+    crew: ['core:bram', 'core:doran'],
+    // Same formula as `treasuryForecast` above, `pay: true` — the two are required to
+    // agree (`toSettlement`'s own doc comment in `contract-offer-screen-model-factory.ts`).
+    treasuryIfKept: 390,
+    // `pay: false` skips the promised-bonus term: `390 + 20`.
+    treasuryIfBroken: 410
+  }
 });
 
 describe('the texts a correctly bound screen produces', () => {
@@ -165,7 +220,12 @@ describe('the texts a correctly bound screen produces', () => {
       roster: [],
       responses: [],
       errorCode: null,
-      errorDetail: null
+      errorDetail: null,
+      treasury: 0,
+      offer: null,
+      treasuryForecast: 0,
+      promiseTerms: null,
+      settlement: null
     });
 
     const loadingTexts = expectedSnapshot(LOADING_SCREEN, everyKeyOf(LOADING_SCREEN));
@@ -187,14 +247,14 @@ describe('the texts a correctly bound screen produces', () => {
       'text(screen.contract_offer.title)',
       'text(screen.contract_offer.state.normal)',
       'text(contract.core.escort_the_caravan.name)',
-      'text(field.contract.payment)',
+      'text(field.contract.patron_fee)',
       '40',
       'text(field.contract.risk)',
       'text(qualitative.moderate)',
       'text(field.contract.required_crew)',
-      '4',
+      '2',
       'text(field.contract.accepted_count)',
-      '3',
+      '2',
       'text(field.contract.tags)',
       'text(tag.patron.merchant_guild)',
       'text(tag.target.bandits)',
@@ -237,7 +297,42 @@ describe('the texts a correctly bound screen produces', () => {
       'text(hero.core.bram.name)',
       'text(action.accept)',
       'text(hero.decision.no_reason_to_refuse)',
-      'text(response.wavered.false)'
+      'text(response.wavered.false)',
+      'text(field.offer.version)',
+      '3',
+      'text(offer.phase.locked)',
+      'text(field.offer.advance)',
+      '15',
+      'text(field.offer.method)',
+      'text(tag.method.open)',
+      'text(tag.method.deception)',
+      'text(field.offer.method_selected)',
+      'text(tag.method.deception)',
+      'text(field.offer.promised_bonus)',
+      '20',
+      'text(field.offer.key_hero)',
+      'text(hero.core.doran.name)',
+      'text(field.offer.lock_commitment)',
+      '50',
+      'text(field.treasury)',
+      '400',
+      'text(field.treasury_forecast)',
+      '390',
+      'text(offer.promise.fulfil)',
+      'text(offer.promise.breach)',
+      'text(field.offer.promised_bonus)',
+      '20',
+      'text(field.offer.promised_bonus)',
+      '20',
+      'text(field.offer.key_hero)',
+      'text(hero.core.doran.name)',
+      'text(field.settlement.crew)',
+      'text(hero.core.bram.name)',
+      'text(hero.core.doran.name)',
+      'text(field.settlement.treasury_if_kept)',
+      '390',
+      'text(field.settlement.treasury_if_broken)',
+      '410'
     ]);
   });
 
@@ -248,6 +343,24 @@ describe('the texts a correctly bound screen produces', () => {
     // the projection without a model field behind it fails this one.
     const texts = expectedSnapshot(aFullModel, everyKeyOf(aFullModel));
     const shown = texts.filter((text) => text.startsWith('text(')).map((text) => text.slice(5, -1));
+
+    // A real lookup rather than a hand-typed name per entry: `settlement.crew` and
+    // `offer.keyHeroDefinition`/`settlement.keyHeroDefinition` are raw definitions, and
+    // asserting `'hero.core.bram.name'` for each position regardless of which
+    // definition is actually there is exactly the copy-paste that stopped noticing a
+    // real hero's name went unresolved (external review of this task's first version).
+    const heroDisplayNameKeyOf = new Map(
+      aFullModel.roster.map((hero) => [hero.definition, hero.displayNameKey])
+    );
+    const nameOf = (definition: string): string => {
+      const key = heroDisplayNameKeyOf.get(definition);
+
+      if (key === undefined) {
+        throw new Error(`Fixture bug: '${definition}' is not in aFullModel.roster.`);
+      }
+
+      return key;
+    };
 
     for (const key of [
       aFullModel.contract!.displayNameKey,
@@ -265,19 +378,46 @@ describe('the texts a correctly bound screen produces', () => {
         ]),
         ...(response.blockedByDisplayNameKey === null ? [] : [response.blockedByDisplayNameKey]),
         ...(response.tieBreakCode === null ? [] : [response.tieBreakCode])
-      ])
+      ]),
+      ...aFullModel.offer!.methodOptionKeys,
+      // `methodTagKey` is one of `methodOptionKeys`, but shown twice on screen — once
+      // in the group, once as the selection — and the coverage list says so plainly
+      // rather than relying on the group's own entry to stand in for both.
+      ...(aFullModel.offer!.methodTagKey === null ? [] : [aFullModel.offer!.methodTagKey]),
+      nameOf(aFullModel.offer!.keyHeroDefinition!),
+      aFullModel.promiseTerms!.fulfilKey,
+      aFullModel.promiseTerms!.breachKey,
+      nameOf(aFullModel.settlement!.keyHeroDefinition!),
+      ...aFullModel.settlement!.crew.map(nameOf)
     ]) {
       expect(shown, `the frame must resolve '${key}'`).toContain(key);
     }
   });
 
-  it('shows the three objective numbers literally and nothing else unresolved', () => {
+  it('shows the objective numbers literally and nothing else unresolved', () => {
     const texts = expectedSnapshot(aFullModel, everyKeyOf(aFullModel));
     const literals = texts.filter((text) => !text.startsWith('text('));
 
-    // Payment, required crew, accepted count — the values spec keeps as numbers on
-    // purpose. Any fourth literal is a key or an identifier that escaped resolution.
-    expect(literals).toEqual(['40', '4', '3']);
+    // Payment, required crew, accepted count, then the offer's own version, advance and
+    // promised bonus, its lock commitment, the treasury and its forecast, the promise's
+    // own bonus (shown again beside its two predicates) and the settlement's promised
+    // bonus and its two treasury outcomes — the values spec keeps as numbers on purpose.
+    // Any extra literal is a key or an identifier that escaped resolution.
+    expect(literals).toEqual([
+      '40',
+      '2',
+      '2',
+      '3',
+      '15',
+      '20',
+      '50',
+      '400',
+      '390',
+      '20',
+      '20',
+      '390',
+      '410'
+    ]);
   });
 
   it('keeps every raw content id off the screen', () => {
@@ -286,6 +426,7 @@ describe('the texts a correctly bound screen produces', () => {
     for (const identifier of [
       'core:escort_the_caravan',
       'core:bram',
+      'core:doran',
       'core:loyal_to_the_merchant_guild',
       'action:accept'
     ]) {

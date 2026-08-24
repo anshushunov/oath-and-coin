@@ -1,12 +1,15 @@
 import {
   ContractStatus,
+  STARTING_TREASURY,
   SortedMap,
   SortedSet,
   compareContentIds,
   compareHeroIds,
   compareNumbers,
+  createContractState,
   freezeDeep,
   heroId,
+  initialOffer,
   requireArtifactSafeText,
   requireUint64,
   type CausalTrace,
@@ -82,7 +85,11 @@ export function createInitialState(
             definition.relationships.map(
               (relationship) => [relationship.hero, relationship.weight] as const
             )
-          )
+          ),
+          // `NEGOTIATION_SPEC` §2.2's starting values — campaign state, not content, so
+          // no hero definition carries them.
+          believesGuildPromises: true,
+          grievance: 0
         }
       ];
     })
@@ -92,16 +99,20 @@ export function createInitialState(
     compareContentIds,
     content.contracts.values().map((definition): readonly [ContentId, ContractState] => [
       definition.id,
-      {
+      createContractState({
         id: definition.id,
-        payment: definition.payment,
+        patronFee: definition.patronFee,
         risk: definition.risk,
         requiredCrew: definition.requiredCrew,
         tags: SortedSet.from(compareContentIds, definition.tags),
+        // Already resolved by the content loader (`content-set.ts`, `DEC-012`/Task 4);
+        // simply not carried into simulation state until now. `composeOffer`
+        // (`NEGOTIATION_SPEC` §3.3) is the first reader.
+        negotiableTags: SortedSet.from(compareContentIds, definition.negotiableTags),
         status: ContractStatus.Offered,
-        respondedBy: SortedSet.empty<HeroId>(compareHeroIds),
-        acceptedBy: SortedSet.empty<HeroId>(compareHeroIds)
-      }
+        offer: initialOffer(),
+        moodOrdinals: SortedMap.empty<HeroId, bigint>(compareHeroIds)
+      })
     ])
   );
 
@@ -137,7 +148,9 @@ export function createInitialState(
     appliedCommandIds: SortedSet.empty<number>(compareNumbers),
     traitRules,
     traces: SortedMap.empty<number, CausalTrace>(compareNumbers),
-    history: []
+    history: [],
+    // `NEGOTIATION_SPEC` §2.3's starting treasury; no command moves it yet.
+    treasury: STARTING_TREASURY
   });
 }
 

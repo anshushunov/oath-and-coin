@@ -9,7 +9,13 @@ import {
   type ContentFileSource
 } from '@oath-and-coin/content';
 import { ScreenState, readModelHash } from '@oath-and-coin/presentation';
-import { ReasonCodes } from '@oath-and-coin/simulation';
+import {
+  ReasonCodes,
+  RejectionCodes,
+  heroId,
+  parseContentId,
+  type CommandResult
+} from '@oath-and-coin/simulation';
 import { describe, expect, it } from 'vitest';
 
 import type { ContentSourcePort, SaveStorePort } from './ports.ts';
@@ -46,7 +52,7 @@ import {
  */
 
 const BRAM = {
-  schema_version: 2,
+  schema_version: 3,
   id: 'core:bram',
   display_name_key: 'hero.core.bram.name',
   greed: 60,
@@ -59,27 +65,27 @@ const BRAM = {
 
 /** Sorts before `core:escort`, and is deliberately never the contract anyone answers. */
 const ARCHIVE_RUN = {
-  schema_version: 2,
+  schema_version: 3,
   id: 'core:archive_run',
   display_name_key: 'contract.core.archive_run.name',
-  payment: 30,
+  patron_fee: 30,
   risk: 10,
   required_crew: 1,
   tags: []
 };
 
 const ESCORT = {
-  schema_version: 2,
+  schema_version: 3,
   id: 'core:escort',
   display_name_key: 'contract.core.escort.name',
-  payment: 70,
+  patron_fee: 70,
   risk: 30,
   required_crew: 1,
   tags: ['method:escort']
 };
 
 const GREEDY = {
-  schema_version: 2,
+  schema_version: 3,
   id: 'core:greedy',
   display_name_key: 'trait.core.greedy.name',
   kind: 'inclination',
@@ -92,6 +98,40 @@ function contentTree(): ContentFileSource {
     'heroes/bram.json': JSON.stringify(BRAM),
     'contracts/archive-run.json': JSON.stringify(ARCHIVE_RUN),
     'contracts/escort.json': JSON.stringify(ESCORT),
+    'traits/greedy.json': JSON.stringify(GREEDY)
+  });
+}
+
+/**
+ * A three-hero roster over a two-seat contract — the one shape `contentTree`'s single
+ * hero cannot produce: a `pollCrew` with somebody left to answer once the key hero's own
+ * draft acceptance has already taken one of two seats. `DORAN` and `ZARA` are plain
+ * copies of `BRAM` with a different id: `pollCrew`'s decision count does not depend on
+ * which way either of them actually decides (`NEGOTIATION_SPEC` §3.3 asks the whole
+ * remaining roster regardless of how many seats are already spoken for), only on how
+ * many heroes are still owed an answer — two, here — so nothing about this fixture's
+ * outcome is left to the seed.
+ */
+const DORAN = { ...BRAM, id: 'core:doran', display_name_key: 'hero.core.doran.name' };
+const ZARA = { ...BRAM, id: 'core:zara', display_name_key: 'hero.core.zara.name' };
+
+/** Two seats, so the key hero's own draft acceptance leaves one for `pollCrew` to still fill. */
+const CRYPT = {
+  schema_version: 3,
+  id: 'core:cleanse_the_crypt',
+  display_name_key: 'contract.core.cleanse_the_crypt.name',
+  patron_fee: 70,
+  risk: 10,
+  required_crew: 2,
+  tags: []
+};
+
+function pollCrewContentTree(): ContentFileSource {
+  return memoryFileSource({
+    'heroes/bram.json': JSON.stringify(BRAM),
+    'heroes/doran.json': JSON.stringify(DORAN),
+    'heroes/zara.json': JSON.stringify(ZARA),
+    'contracts/crypt.json': JSON.stringify(CRYPT),
     'traits/greedy.json': JSON.stringify(GREEDY)
   });
 }
@@ -122,15 +162,75 @@ const MANIFEST = {
   content_root: 'fixture-content',
   checkpoints: [
     { name: 'start', after_command_id: 0 },
-    { name: 'final', after_command_id: 1 }
+    { name: 'final', after_command_id: 2 }
   ]
+};
+
+/**
+ * The package every fixture below negotiates over, or tries to.
+ *
+ * `advance` is the contract's whole `patron_fee`: that is the number
+ * `NEGOTIATION_SPEC` §4's benefit term reads, and an offer of nothing would make every
+ * fixture here a hero deciding about no money.
+ */
+const composeEscort = {
+  command: 'compose_offer',
+  command_id: 1,
+  contract: 'core:escort',
+  key_hero_index: 0,
+  advance: 70,
+  method_tag: null,
+  promised_bonus: 0,
+  expected_state_version: 0
 };
 
 /** Bram answers the escort — the campaign has a history, a trace and a decided step. */
 const answeredScenario: ScenarioFixture = {
   manifest: { ...MANIFEST, expected_screen_state: 'normal' },
   commands: {
-    commands: [{ command_id: 1, hero_index: 0, contract: 'core:escort', expected_state_version: 0 }]
+    commands: [
+      composeEscort,
+      {
+        command: 'propose_contract_to_hero',
+        command_id: 2,
+        contract: 'core:escort',
+        hero_index: 0,
+        expected_state_version: 1
+      }
+    ]
+  }
+};
+
+/**
+ * The same campaign `answeredScenario` reaches, with one difference load-bearing for
+ * exactly one test: the second scripted command's own `command_id` is `3`, not `2` — a
+ * deliberate gap. `appliedCommandIds` ends up `{1, 3}`, so its `size` (2) and its
+ * maximum (3) answer differently to "what id has this campaign never applied": `size +
+ * 1` is `3`, which collides with the id already spent; `max + 1` is `4`, which does
+ * not. `session-controller.test.ts`'s "never reuses a command id" test is the one
+ * place that distinction matters — on a dense `{1, 2}` id space the two formulas agree
+ * on every step, and a controller computing the wrong one would pass unnoticed.
+ */
+const gappedIdScenario: ScenarioFixture = {
+  manifest: {
+    ...MANIFEST,
+    expected_screen_state: 'normal',
+    checkpoints: [
+      { name: 'start', after_command_id: 0 },
+      { name: 'final', after_command_id: 3 }
+    ]
+  },
+  commands: {
+    commands: [
+      composeEscort,
+      {
+        command: 'propose_contract_to_hero',
+        command_id: 3,
+        contract: 'core:escort',
+        hero_index: 0,
+        expected_state_version: 1
+      }
+    ]
   }
 };
 
@@ -146,7 +246,14 @@ const rejectedScenario: ScenarioFixture = {
   manifest: { ...MANIFEST, expected_screen_state: 'incomplete' },
   commands: {
     commands: [
-      { command_id: 1, hero_index: 0, contract: 'core:escort', expected_state_version: 99 }
+      composeEscort,
+      {
+        command: 'propose_contract_to_hero',
+        command_id: 2,
+        contract: 'core:escort',
+        hero_index: 0,
+        expected_state_version: 99
+      }
     ]
   }
 };
@@ -164,10 +271,67 @@ const unscreenableScenario: ScenarioFixture = {
   commands: {
     commands: [
       {
+        command: 'compose_offer',
         command_id: 1,
-        hero_index: 0,
         contract: 'core:contract_nobody_authored',
+        key_hero_index: 0,
+        advance: 0,
+        method_tag: null,
+        promised_bonus: 0,
         expected_state_version: 0
+      },
+      {
+        command: 'propose_contract_to_hero',
+        command_id: 2,
+        contract: 'core:contract_nobody_authored',
+        hero_index: 0,
+        expected_state_version: 0
+      }
+    ]
+  }
+};
+
+/**
+ * Stops right after `lockOffer`: the key hero (`core:bram`) has accepted in draft and
+ * taken one of `CRYPT`'s two seats, and the package is locked. `core:doran` and
+ * `core:zara` have not been asked yet — that is left to a live `pollCrew` dispatched
+ * against the running controller, which is the one thing a scripted scenario command
+ * cannot exercise (Task 16 dispatches live commands; a scenario command is composed
+ * ahead of time, by definition).
+ */
+const pollCrewScenario: ScenarioFixture = {
+  manifest: {
+    ...MANIFEST,
+    expected_screen_state: 'incomplete',
+    checkpoints: [
+      { name: 'start', after_command_id: 0 },
+      { name: 'locked', after_command_id: 3 }
+    ]
+  },
+  commands: {
+    commands: [
+      {
+        command: 'compose_offer',
+        command_id: 1,
+        contract: 'core:cleanse_the_crypt',
+        key_hero_index: 0,
+        advance: 10,
+        method_tag: null,
+        promised_bonus: 0,
+        expected_state_version: 0
+      },
+      {
+        command: 'propose_contract_to_hero',
+        command_id: 2,
+        contract: 'core:cleanse_the_crypt',
+        hero_index: 0,
+        expected_state_version: 1
+      },
+      {
+        command: 'lock_offer',
+        command_id: 3,
+        contract: 'core:cleanse_the_crypt',
+        expected_state_version: 2
       }
     ]
   }
@@ -1203,5 +1367,152 @@ describe('the screen a save and a load put back', () => {
     const after = controller.store.snapshot();
     expect(after.screen.contract?.definition).toBe('core:escort');
     expect(readModelHash(after.screen)).toBe(readModelHash(before.screen));
+  });
+});
+
+describe('dispatching the five negotiation commands', () => {
+  const escort = parseContentId('core:escort');
+  const bram = heroId(0);
+
+  it('composes an offer against the version the caller was looking at', async () => {
+    // `answeredScenario` has already applied two commands by the time the controller
+    // hands control to the player — `composeOffer` then `proposeContractToHero` — so
+    // `stateVersion` starts above zero. A controller that composed a command against a
+    // stale or hard-coded `expectedStateVersion` (0, or "whatever `start` produced")
+    // would have this revision refused as `rejected.stale_state` the moment the
+    // campaign had moved even once before it was issued.
+    const { controller } = harness();
+    await controller.start();
+    const versionBeforeRevision = controller.store.snapshot().state!.metadata.stateVersion;
+    expect(versionBeforeRevision).toBeGreaterThan(0);
+    // A run hash exists before any live command — the property `session.test.ts`'s
+    // "keeps the run hash while the run is what is on screen" already pins.
+    expect(controller.store.snapshot().canonicalHash).toMatch(/^[0-9a-f]{64}$/u);
+
+    const result = controller.composeOffer({
+      contractId: escort,
+      keyHero: bram,
+      advance: 40,
+      methodTag: null,
+      promisedBonus: 0
+    });
+
+    expect(result.applied).toBe(true);
+    expect(result.rejectionCode).toBeNull();
+    expect(result.state.metadata.stateVersion).toBe(versionBeforeRevision + 1);
+    // The screen on the store moved with it — a controller that computed the right
+    // `CommandResult` but forgot to publish it would leave a player looking at the
+    // package they revised away from.
+    expect(controller.store.snapshot().screen.offer?.advance).toBe(40);
+    // `canonicalHash` is over the whole scripted `ScenarioOutcome`, and a live command
+    // was never one of its steps — carrying the old hash forward would claim a
+    // campaign this call just changed is still the one the run produced.
+    expect(controller.store.snapshot().canonicalHash).toBeNull();
+  });
+
+  it('surfaces a rejection code instead of throwing', async () => {
+    // `answeredScenario`'s Bram has already answered this exact package once, and
+    // `core:escort` needs one seat, so his acceptance already left the contract
+    // `crewed` — `proposeContractToHero` checks `contract.status !== Offered` before it
+    // ever asks whether this hero has answered (`engine.ts`), so asking again lands on
+    // `rejected.contract_already_resolved`, not `already_responded`. Either is a
+    // refusal a screen has to be able to show, not an exception a caller has to
+    // remember to catch — an implementation that threw on a rejection, or one that
+    // quietly mutated the session before discovering the command was illegal, both
+    // fail this.
+    const { controller } = harness();
+    await controller.start();
+    const before = controller.store.snapshot();
+
+    let result: CommandResult | undefined;
+    expect(() => {
+      result = controller.proposeContractToHero({ contractId: escort, heroId: bram });
+    }).not.toThrow();
+
+    expect(result?.applied).toBe(false);
+    expect(result?.rejectionCode).toBe(RejectionCodes.ContractAlreadyResolved);
+    // Nothing about the session moved — a rejection is the same object back, not a
+    // near-miss the store was updated with anyway.
+    expect(controller.store.snapshot()).toBe(before);
+  });
+
+  it('never reuses a command id across the five negotiation commands', async () => {
+    // On `gappedIdScenario`'s campaign, whose two scripted commands leave
+    // `appliedCommandIds` at `{1, 3}` rather than the dense `{1, 2}` `answeredScenario`
+    // would — deliberately, so "the next id" computed as `size + 1` (2 spent, so 3) and
+    // as `max + 1` (3 spent, so 4) disagree from the very first live command. A
+    // controller taking the former would hand `composeOffer` the id `3`, which the
+    // scenario already spent, and `composeOffer` would refuse it as
+    // `rejected.duplicate_command` on the spot — this is what `composed.applied` below
+    // actually catches, not a hypothetical.
+    //
+    // Four of the five commands here apply for real; the fifth, `pollCrew` against a
+    // single-hero, single-seat contract, is refused for being late rather than for
+    // colliding — but which refusal it gets is the whole instrument for the *later*
+    // ids too. `pollCrew`'s own checks run `rejected.stale_state`, then
+    // `rejected.duplicate_command`, and only then the phase/crew checks
+    // (`NEGOTIATION_SPEC` §6.1) — so if the controller handed it a command id already
+    // spent by the `lockOffer` three lines above, `pollCrew` would be refused as a
+    // duplicate and this assertion would name that instead of the crew-already-filled
+    // refusal the campaign is actually in.
+    const { controller } = harness({ scenario: gappedIdScenario });
+    await controller.start();
+
+    const composed = controller.composeOffer({
+      contractId: escort,
+      keyHero: bram,
+      advance: 70,
+      methodTag: null,
+      promisedBonus: 0
+    });
+    expect(composed.applied).toBe(true);
+
+    const proposed = controller.proposeContractToHero({ contractId: escort, heroId: bram });
+    expect(proposed.applied).toBe(true);
+
+    const locked = controller.lockOffer({ contractId: escort });
+    expect(locked.applied).toBe(true);
+
+    const polled = controller.pollCrew({ contractId: escort });
+    expect(polled.applied).toBe(false);
+    expect(polled.rejectionCode).toBe(RejectionCodes.CrewAlreadyFilled);
+
+    const settled = controller.settleContract({ contractId: escort, pay: true });
+    expect(settled.applied).toBe(true);
+    // `gappedIdScenario`'s own two scripted commands (ids 1 and 3) plus the four live
+    // ones dispatched above: six commands applied, so six distinct ids spent —
+    // `appliedCommandIds` absorbs a repeat silently (`SortedSet.add`), so a controller
+    // that had reused one anywhere in the chain would leave fewer entries than commands
+    // actually applied.
+    expect(settled.state.appliedCommandIds.size).toBe(6);
+  });
+
+  it('returns every decision a crew poll produced', async () => {
+    // `CRYPT` has two seats; Bram's own draft acceptance took one, leaving `core:doran`
+    // and `core:zara` for `pollCrew` to still ask. `NEGOTIATION_SPEC` §3.3: the poll
+    // asks the whole remaining roster in one command, and the count of decisions it
+    // returns does not depend on how either of them actually answers — so a controller
+    // that forwarded only `decisions[0]` (the shape `CommandResult.decision` used to
+    // be, singular) fails this regardless of which way the seed happens to draw either
+    // hero's mood.
+    const { controller } = harness({
+      scenario: pollCrewScenario,
+      content: pollCrewContentTree()
+    });
+    await controller.start();
+
+    const result = controller.pollCrew({ contractId: parseContentId('core:cleanse_the_crypt') });
+
+    expect(result.applied).toBe(true);
+    expect(result.decisions).toHaveLength(2);
+    expect(result.events).toHaveLength(2);
+    // Composition, not only count: `[decisions[0], decisions[0]]` would satisfy the
+    // length checks above. `NEGOTIATION_SPEC` §3.3's own roster order (`HeroId`) is
+    // `core:doran` (heroId 1) then `core:zara` (heroId 2), both distinct from the key
+    // hero `core:bram` (heroId 0) who already answered in draft and is not asked again.
+    expect(result.events.map((event) => ('heroId' in event ? event.heroId : null))).toEqual([
+      heroId(1),
+      heroId(2)
+    ]);
   });
 });

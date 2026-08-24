@@ -1,11 +1,20 @@
 import { join, resolve } from 'node:path';
 
-import { ContractStatus, parseContentId } from '@oath-and-coin/simulation';
-import { describe, expect, it } from 'vitest';
+import { ContractStatus, createContractState, parseContentId } from '@oath-and-coin/simulation';
+import { describe, expect, it, vi } from 'vitest';
 
 import { loadContentSet } from './node/index.ts';
 import { createInitialState } from './initial-state.ts';
 import { SAVE_SCHEMA_VERSION } from './versions.ts';
+
+// A spy that calls through to the real implementation by default, so every other
+// test in this file exercises the genuine function. Only the one test below that
+// asks for a one-time override sees anything different — see its own comment for
+// why a spy, rather than a content fixture, is what this claim needs.
+vi.mock('@oath-and-coin/simulation', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@oath-and-coin/simulation')>();
+  return { ...actual, createContractState: vi.fn(actual.createContractState) };
+});
 
 const repoRoot = resolve(import.meta.dirname, '..', '..', '..');
 const content = loadContentSet(join(repoRoot, 'content'));
@@ -18,7 +27,7 @@ const content = loadContentSet(join(repoRoot, 'content'));
  */
 
 describe('createInitialState', () => {
-  const state = createInitialState(content, 7n, 'm1-decision/1');
+  const state = createInitialState(content, 7n, 'm1-negotiation/1');
 
   it('assigns hero ids in content-id order, which is what the corpus recorded', () => {
     // Filesystem order is not a property of the content: it varies by platform, by
@@ -39,8 +48,13 @@ describe('createInitialState', () => {
   it('carries the reproducibility tuple into metadata', () => {
     expect(state.metadata).toEqual({
       saveSchemaVersion: SAVE_SCHEMA_VERSION,
-      rulesetVersion: 'm1-decision/1',
-      contentVersion: '5d03734fd9c7abaa',
+      rulesetVersion: 'm1-negotiation/1',
+      // `6ec81ab69e9fcec3` until Task 18 authored `core:works_in_the_open` and its
+      // localization key, then `9763a54ae7dbff9c` until the same task's own crewability
+      // check found `core:collect_the_debt` unreachable and fixed it with
+      // `required_crew: 2 → 1` (`content-set.test.ts` carries the same move's full
+      // history).
+      contentVersion: '46416b20360bbedd',
       campaignSeed: 7n,
       stateVersion: 0,
       logicalTime: 0,
@@ -54,7 +68,7 @@ describe('createInitialState', () => {
     // The mutant that made this test necessary lives in the corpus's own history: with
     // one seed frozen, `createInitialState(seed, …)` → `createInitialState(7UL, …)` left
     // every oracle test green — a port ignoring the seed entirely matched perfectly.
-    expect(createInitialState(content, 424242n, 'm1-decision/1').metadata.campaignSeed).toBe(
+    expect(createInitialState(content, 424242n, 'm1-negotiation/1').metadata.campaignSeed).toBe(
       424242n
     );
   });
@@ -62,8 +76,10 @@ describe('createInitialState', () => {
   it('offers every contract with no responses yet', () => {
     for (const contract of state.contracts.values()) {
       expect(contract.status).toBe(ContractStatus.Offered);
-      expect(contract.respondedBy.size).toBe(0);
-      expect(contract.acceptedBy.size).toBe(0);
+      expect(contract.offer.version).toBe(1);
+      expect(contract.offer.respondedBy.size).toBe(0);
+      expect(contract.offer.acceptedBy.size).toBe(0);
+      expect(contract.moodOrdinals.size).toBe(0);
     }
 
     expect(state.contracts.get(parseContentId('core:cleanse_the_crypt'))?.tags.values()).toEqual([
@@ -122,22 +138,22 @@ describe('createInitialState', () => {
   it.each([-1n, -7n, 2n ** 64n, 2n ** 70n])('refuses the seed %s', (seed) => {
     // The floor `bigint` lost when it replaced `ulong`. The RNG masks whatever it is
     // given back to 64 bits, so a negative seed silently aliases a valid unsigned one.
-    expect(() => createInitialState(content, seed, 'm1-decision/1')).toThrow(
+    expect(() => createInitialState(content, seed, 'm1-negotiation/1')).toThrow(
       /outside the 64-bit unsigned range/
     );
   });
 
   it('accepts both ends of the seed range', () => {
-    expect(createInitialState(content, 0n, 'm1-decision/1').metadata.campaignSeed).toBe(0n);
+    expect(createInitialState(content, 0n, 'm1-negotiation/1').metadata.campaignSeed).toBe(0n);
     expect(
-      createInitialState(content, 2n ** 64n - 1n, 'm1-decision/1').metadata.campaignSeed
+      createInitialState(content, 2n ** 64n - 1n, 'm1-negotiation/1').metadata.campaignSeed
     ).toBe(2n ** 64n - 1n);
   });
 
   it('hands back a tree nothing can edit afterwards', () => {
     // Persistence used to exist only in the types: `readonly` is erased, so a caller
     // holding a reference could rewrite state behind every check that had passed.
-    const built = createInitialState(content, 7n, 'm1-decision/1');
+    const built = createInitialState(content, 7n, 'm1-negotiation/1');
 
     expect(Object.isFrozen(built)).toBe(true);
     expect(Object.isFrozen(built.metadata)).toBe(true);
@@ -145,5 +161,25 @@ describe('createInitialState', () => {
     expect(() => {
       (built.metadata as { stateVersion: number }).stateVersion = 99;
     }).toThrow(TypeError);
+  });
+
+  it('builds every contract through createContractState, not a literal that skips it', () => {
+    // The claim `offer-state.ts`'s own doc makes for this call site — "the door every
+    // fresh-from-content contract is forced through" — has no test proving it on its
+    // own: `initialOffer()` is always the trivial valid draft, so no `patronFee`,
+    // `requiredCrew` or `tags` this loader accepts (all already bounded by the content
+    // schema) can drive a real §2.1 violation through this call. Wrapping
+    // `createContractState({...})` in `{...}` and dropping the wrapper would leave every
+    // other test in this file green. A spy is what proves the wiring where the
+    // behaviour cannot: replace one call with a function that throws its own message,
+    // and the loader must surface exactly that message — which only happens if it
+    // called the real (now spied) function rather than assembling the object by hand.
+    const spy = vi.mocked(createContractState);
+    const sentinel = 'createContractState was not called for the first contract built';
+    spy.mockImplementationOnce(() => {
+      throw new Error(sentinel);
+    });
+
+    expect(() => createInitialState(content, 7n, 'm1-negotiation/1')).toThrow(sentinel);
   });
 });

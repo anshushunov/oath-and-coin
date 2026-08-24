@@ -1,0 +1,9 @@
+{
+  "schema_version": 3,
+  "id": "fixture:tiny_promise",
+  "display_name_key": "contract.fixture.tiny_promise.name",
+  "patron_fee": 40,
+  "risk": 0,
+  "required_crew": 1,
+  "tags": []
+}

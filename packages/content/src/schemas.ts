@@ -4,8 +4,8 @@ import { z } from 'zod';
 import {
   INCLINATION_WEIGHT_MAX,
   INCLINATION_WEIGHT_MIN,
-  PAYMENT_MAX,
-  PAYMENT_MIN,
+  PATRON_FEE_MAX,
+  PATRON_FEE_MIN,
   RELATIONSHIP_WEIGHT_MAX,
   RELATIONSHIP_WEIGHT_MIN,
   REQUIRED_CREW_MAX,
@@ -19,7 +19,8 @@ import {
   MAX_ARTIFACT_SAFE_TEXT_LENGTH,
   MAX_RELATIONSHIPS_PER_HERO,
   MAX_TAGS_PER_CONTRACT,
-  MAX_TRAITS_PER_HERO
+  MAX_TRAITS_PER_HERO,
+  NEGOTIABLE_TAGS_COUNT
 } from './limits.ts';
 import { SUPPORTED_CONTENT_SCHEMA_VERSION, SUPPORTED_LOCALE_SCHEMA_VERSION } from './versions.ts';
 
@@ -98,15 +99,108 @@ export const heroFileSchema = z.strictObject({
   relationships: z.array(relationshipFileSchema).max(MAX_RELATIONSHIPS_PER_HERO)
 });
 
-export const contractFileSchema = z.strictObject({
-  schema_version: contentSchemaVersion,
-  id: contentIdString,
-  display_name_key: localizationKey,
-  payment: z.int().min(PAYMENT_MIN).max(PAYMENT_MAX),
-  risk: z.int().min(RISK_MIN).max(RISK_MAX),
-  required_crew: z.int().min(REQUIRED_CREW_MIN).max(REQUIRED_CREW_MAX),
-  tags: z.array(contentIdString).max(MAX_TAGS_PER_CONTRACT)
-});
+/**
+ * `negotiable_tags`: the pair of mutually exclusive method tags a contract offers
+ * the player a choice between (`NEGOTIATION_SPEC` §2.4). Optional — most contracts
+ * are negotiated on money and promise only — but when present it is exactly two
+ * *distinct* tags, neither of which the contract already carries in `tags`: a tag
+ * the contract already has is not a choice, a set of one or three is not the
+ * either/or the spec describes, and two copies of the same tag is a choice between
+ * a thing and itself — which is the one case the field exists to rule out and the
+ * count check alone does not catch (`['x','x']` has length 2).
+ *
+ * A fourth check joins them below: a contract that already authors
+ * `MAX_TAGS_PER_CONTRACT` tags in `tags` and still declares `negotiable_tags` can
+ * never have a method chosen, because the choice would push the effective tag count
+ * one past the ceiling `createContractState` enforces at runtime
+ * (`offer-state.ts`) — a content-authoring defect this loader can see before play
+ * ever reaches it.
+ *
+ * All four checks live in `superRefine` rather than on the array alone: the count
+ * check could stand on its own, but the other three each need the rest of the
+ * object (the contract's own `id`, and — for the intersection and tag-ceiling
+ * checks — `tags`) to produce a message that names what is wrong, not just that
+ * something is.
+ */
+export const contractFileSchema = z
+  .strictObject({
+    schema_version: contentSchemaVersion,
+    id: contentIdString,
+    display_name_key: localizationKey,
+    patron_fee: z.int().min(PATRON_FEE_MIN).max(PATRON_FEE_MAX),
+    risk: z.int().min(RISK_MIN).max(RISK_MAX),
+    required_crew: z.int().min(REQUIRED_CREW_MIN).max(REQUIRED_CREW_MAX),
+    tags: z.array(contentIdString).max(MAX_TAGS_PER_CONTRACT),
+    negotiable_tags: z.array(contentIdString).optional()
+  })
+  .superRefine((file, ctx) => {
+    const negotiableTags = file.negotiable_tags;
+    if (negotiableTags === undefined) {
+      return;
+    }
+
+    if (negotiableTags.length !== NEGOTIABLE_TAGS_COUNT) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['negotiable_tags'],
+        message:
+          `Contract '${file.id}' declares ${negotiableTags.length} negotiable tag(s); ` +
+          `'negotiable_tags' must name exactly ${NEGOTIABLE_TAGS_COUNT} — a player choice needs ` +
+          'two mutually exclusive options, not one and not three (NEGOTIATION_SPEC §2.4).'
+      });
+      return;
+    }
+
+    const repeated = negotiableTags.find(
+      (tag, index) => negotiableTags.indexOf(tag) !== index
+    );
+    if (repeated !== undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['negotiable_tags'],
+        message:
+          `Contract '${file.id}' names tag '${repeated}' twice in 'negotiable_tags'; the two ` +
+          'entries must be distinct, or the player would be offered a choice between one thing ' +
+          'and itself.'
+      });
+      return;
+    }
+
+    for (const tag of negotiableTags) {
+      if (file.tags.includes(tag)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['negotiable_tags'],
+          message:
+            `Contract '${file.id}' already carries tag '${tag}' in 'tags'; a negotiable tag must ` +
+            'be one the contract does not already carry, or there would be nothing left to choose ' +
+            'between.'
+        });
+      }
+    }
+
+    // A chosen method tag joins `tags` (`NEGOTIATION_SPEC` §2.4), and `createContractState`
+    // refuses an effective tag set past `MAX_TAGS_PER_CONTRACT` (`offer-state.ts`) — defence
+    // in depth, not the only place this has to be caught. A contract that already carries
+    // the ceiling in `tags` and still declares `negotiable_tags` can never have a method
+    // chosen at all: every one of the two candidates would push the count to
+    // `MAX_TAGS_PER_CONTRACT + 1` the instant it was picked, so the state-level guard would
+    // fire on the very first `chooseMethod`, in play, on content that loaded without
+    // complaint. Ruled a content-authoring defect rather than a runtime one, so it is
+    // caught here, at load, the same way the other three shapes above are.
+    if (file.tags.length + 1 > MAX_TAGS_PER_CONTRACT) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['negotiable_tags'],
+        message:
+          `Contract '${file.id}' authors ${String(file.tags.length)} tags and also declares ` +
+          `'negotiable_tags'; choosing either candidate would carry the contract's effective ` +
+          `tags to ${String(file.tags.length + 1)}, past the ceiling of ` +
+          `${String(MAX_TAGS_PER_CONTRACT)} (MAX_TAGS_PER_CONTRACT) — no method could ever be ` +
+          "chosen. Reduce 'tags' before this contract can offer a choice."
+      });
+    }
+  });
 
 /**
  * A trait, as a union discriminated on `kind` rather than as one object with an

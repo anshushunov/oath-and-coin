@@ -1,0 +1,7 @@
+{
+  "schema_version": 3,
+  "id": "fixture:warded_principle",
+  "display_name_key": "trait.fixture.warded_principle.name",
+  "kind": "principle",
+  "tag": "test:warded"
+}

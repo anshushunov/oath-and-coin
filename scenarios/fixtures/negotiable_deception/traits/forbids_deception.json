@@ -1,0 +1,7 @@
+{
+  "schema_version": 3,
+  "id": "fixture:forbids_deception",
+  "display_name_key": "trait.fixture.forbids_deception.name",
+  "kind": "principle",
+  "tag": "method:deception"
+}

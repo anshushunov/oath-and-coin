@@ -2,6 +2,7 @@ import {
   Actions,
   ContractStatus,
   ReasonCodes,
+  STARTING_TREASURY,
   SortedMap,
   SortedSet,
   compareContentIds,
@@ -9,6 +10,7 @@ import {
   compareNumbers,
   createDecisionResult,
   heroId,
+  initialOffer,
   parseContentId,
   type CausalTrace,
   type ContentId,
@@ -18,6 +20,7 @@ import {
   type HeldTrait,
   type HeroId,
   type HeroState,
+  type OfferState,
   type TraceFactor
 } from '@oath-and-coin/simulation';
 
@@ -48,7 +51,9 @@ export const ids = {
   squeamish: parseContentId('core:fears_undeath'),
   refusesTemples: parseContentId('core:will_not_strike_a_temple'),
   merchants: parseContentId('patron:merchant_guild'),
-  undead: parseContentId('target:undead')
+  undead: parseContentId('target:undead'),
+  methodOpen: parseContentId('method:open'),
+  methodDeception: parseContentId('method:deception')
 } as const;
 
 export function aHero(overrides: Partial<HeroState> = {}): HeroState {
@@ -62,20 +67,27 @@ export function aHero(overrides: Partial<HeroState> = {}): HeroState {
     trustInGuild: 50,
     traits: [],
     relationships: SortedMap.empty<ContentId, number>(compareContentIds),
+    believesGuildPromises: true,
+    grievance: 0,
     ...overrides
   };
+}
+
+/** An `OfferState`, for tests overriding just the answers or terms they need. */
+export function anOffer(overrides: Partial<OfferState> = {}): OfferState {
+  return { ...initialOffer(), ...overrides };
 }
 
 export function aContract(overrides: Partial<ContractState> = {}): ContractState {
   return {
     id: ids.caravan,
-    payment: 40,
+    patronFee: 40,
     risk: 55,
     requiredCrew: 2,
     tags: SortedSet.from(compareContentIds, [ids.merchants]),
     status: ContractStatus.Offered,
-    respondedBy: SortedSet.empty<HeroId>(compareHeroIds),
-    acceptedBy: SortedSet.empty<HeroId>(compareHeroIds),
+    offer: anOffer(),
+    moodOrdinals: SortedMap.empty<HeroId, bigint>(compareHeroIds),
     ...overrides
   };
 }
@@ -96,8 +108,11 @@ export function aState(overrides: Partial<GameState> = {}): GameState {
 
   return {
     metadata: {
-      saveSchemaVersion: 1,
-      rulesetVersion: 'm1-decision/1',
+      // Literal, not imported: this package's fixtures do not read
+      // `@oath-and-coin/content`. Kept in step by hand — currently 2 (`DEC-008`
+      // Task 6 fix round).
+      saveSchemaVersion: 2,
+      rulesetVersion: 'm1-negotiation/1',
       contentVersion: '5d03734fd9c7abaa',
       campaignSeed: 7n,
       stateVersion: 0,
@@ -112,6 +127,7 @@ export function aState(overrides: Partial<GameState> = {}): GameState {
     traitRules: SortedMap.empty<ContentId, HeldTrait>(compareContentIds),
     traces: SortedMap.empty<number, CausalTrace>(compareNumbers),
     history: [],
+    treasury: STARTING_TREASURY,
     ...overrides
   };
 }
@@ -182,7 +198,7 @@ export function aStep(overrides: Partial<DecidedStep> = {}): DecidedStep {
   return {
     command: { contract: ids.caravan },
     heroDefinition: ids.bram,
-    decision: aDecision(),
+    decisions: [aDecision()],
     ...overrides
   };
 }

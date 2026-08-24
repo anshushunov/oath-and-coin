@@ -23,7 +23,7 @@ describe('isArtifactSafeText', () => {
     'core:bram',
     'hero.core.bram.name',
     'hero.decision.payment_attractive',
-    'm1-decision/1',
+    'm1-negotiation/1',
     'action:accept',
     'rejected.stale_state',
     'offered',
@@ -58,7 +58,7 @@ describe('isArtifactSafeText', () => {
   });
 
   it('returns the text it accepted, so it can sit inside an expression', () => {
-    expect(requireArtifactSafeText('rulesetVersion', 'm1-decision/1')).toBe('m1-decision/1');
+    expect(requireArtifactSafeText('rulesetVersion', 'm1-negotiation/1')).toBe('m1-negotiation/1');
   });
 });
 

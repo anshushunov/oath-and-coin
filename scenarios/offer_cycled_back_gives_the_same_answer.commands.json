@@ -1,0 +1,55 @@
+{
+  "commands": [
+    {
+      "command": "compose_offer",
+      "command_id": 1,
+      "contract": "core:cleanse_the_crypt",
+      "key_hero_index": 0,
+      "advance": 30,
+      "method_tag": null,
+      "promised_bonus": 0,
+      "expected_state_version": 0
+    },
+    {
+      "command": "propose_contract_to_hero",
+      "command_id": 2,
+      "contract": "core:cleanse_the_crypt",
+      "hero_index": 0,
+      "expected_state_version": 1
+    },
+    {
+      "command": "compose_offer",
+      "command_id": 3,
+      "contract": "core:cleanse_the_crypt",
+      "key_hero_index": 0,
+      "advance": 60,
+      "method_tag": null,
+      "promised_bonus": 0,
+      "expected_state_version": 2
+    },
+    {
+      "command": "propose_contract_to_hero",
+      "command_id": 4,
+      "contract": "core:cleanse_the_crypt",
+      "hero_index": 0,
+      "expected_state_version": 3
+    },
+    {
+      "command": "compose_offer",
+      "command_id": 5,
+      "contract": "core:cleanse_the_crypt",
+      "key_hero_index": 0,
+      "advance": 30,
+      "method_tag": null,
+      "promised_bonus": 0,
+      "expected_state_version": 4
+    },
+    {
+      "command": "propose_contract_to_hero",
+      "command_id": 6,
+      "contract": "core:cleanse_the_crypt",
+      "hero_index": 0,
+      "expected_state_version": 5
+    }
+  ]
+}

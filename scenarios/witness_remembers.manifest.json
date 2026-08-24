@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "scenario": "witness_remembers",
+  "expected_outcome": "success",
+  "checkpoints": [{ "name": "final", "after_command_id": 5 }]
+}

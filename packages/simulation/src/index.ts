@@ -53,16 +53,48 @@ export {
   drawMood,
   type HeroDecision
 } from './decisions/contract-decision-rule.ts';
-export { proposeContractToHero } from './engine.ts';
+export {
+  composeOffer,
+  lockOffer,
+  pollCrew,
+  proposeContractToHero,
+  settleContract
+} from './engine.ts';
 export { divideTowardZero, multiplyInt32, toInt32 } from './integer-division.ts';
 
+export {
+  GRIEVANCE_MAX,
+  GRIEVANCE_VICTIM,
+  WITNESS_SHARE,
+  grievanceForBrokenPromise
+} from './negotiation/grievance.ts';
+export {
+  STARTING_TREASURY,
+  canCover,
+  commitmentOf,
+  reservedCommitments
+} from './negotiation/commitments.ts';
+
 export type {
+  ContractSettled,
+  ContractSettledPromiseBroken,
+  ContractSettledPromiseKept,
   DomainEvent,
   HeroAcceptedContract,
-  HeroDeclinedContract
+  HeroDeclinedContract,
+  OfferLocked,
+  OfferRevised
 } from './events/domain-event.ts';
 
 export { ContractStatus, type ContractState } from './state/contract-state.ts';
+export {
+  MAX_TAGS_PER_CONTRACT,
+  OfferPhase,
+  createContractState,
+  effectiveTags,
+  initialOffer,
+  type OfferState
+} from './state/offer-state.ts';
 export type { HeroState } from './state/hero-state.ts';
 export {
   contractOf,
@@ -74,12 +106,17 @@ export {
 
 export {
   RejectionCodes,
-  fromDecision,
+  fromDecisions,
+  fromEvent,
   rejected,
   type CommandResult,
   type RejectionCode
 } from './commands/command-result.ts';
+export type { ComposeOffer } from './commands/compose-offer.ts';
+export type { LockOffer } from './commands/lock-offer.ts';
+export type { PollCrew } from './commands/poll-crew.ts';
 export type { ProposeContractToHero } from './commands/propose-contract-to-hero.ts';
+export type { SettleContract } from './commands/settle-contract.ts';
 
 export {
   ARTIFACT_SAFE_TEXT_PATTERN,

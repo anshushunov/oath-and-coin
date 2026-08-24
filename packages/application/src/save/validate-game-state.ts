@@ -60,7 +60,18 @@ export function validateGameState(state: GameState): void {
  */
 function checkReferentialIntegrity(state: GameState): void {
   for (const event of state.history) {
-    if (!state.heroes.has(event.heroId)) {
+    // `offer_revised`, `offer_locked` and the three `settleContract` events name no
+    // hero — composing, locking or settling an offer is the player's own choice,
+    // not a decision a hero made (`domain-event.ts`). Only the two hero-response
+    // kinds do.
+    if (
+      event.kind !== 'offer_revised' &&
+      event.kind !== 'offer_locked' &&
+      event.kind !== 'contract_settled' &&
+      event.kind !== 'contract_settled_promise_kept' &&
+      event.kind !== 'contract_settled_promise_broken' &&
+      !state.heroes.has(event.heroId)
+    ) {
       throw inconsistent(
         `history event ${String(event.eventId)} names hero#${String(event.heroId)}, but the ` +
           'save carries no such hero.'
@@ -92,7 +103,7 @@ function checkReferentialIntegrity(state: GameState): void {
   }
 
   for (const [contractId, contract] of state.contracts.entries()) {
-    for (const heroId of contract.respondedBy.values()) {
+    for (const heroId of contract.offer.respondedBy.values()) {
       if (!state.heroes.has(heroId)) {
         throw inconsistent(
           `contract '${contractId}' lists hero#${String(heroId)} in respondedBy, but the save ` +
@@ -101,7 +112,20 @@ function checkReferentialIntegrity(state: GameState): void {
       }
     }
 
-    for (const heroId of contract.acceptedBy.values()) {
+    // **Dead code as of `DEC-008` Task 14, and left in place on purpose — the
+    // guard-over-guards case ("принимает кампанию, которую движок действительно
+    // произвёл") still needs a live function to call, and a check that cannot
+    // fire is not the same claim as no check at all.** `decodeSnapshot`'s own
+    // contract builder now routes through `createContractState`
+    // (`requireConsistentContract`, `snapshot-codec.ts`), which requires
+    // `acceptedBy ⊆ respondedBy` structurally — so by the time a `GameState`
+    // reaches this function, every hero in `acceptedBy` is already in
+    // `respondedBy` too, and the `respondedBy` loop just above (which runs
+    // first) has already checked every one of them for existence. An unknown
+    // hero reaching `acceptedBy` alone, without also reaching `respondedBy`, is
+    // refused earlier now, at the decode door, under that door's own message —
+    // `envelope.test.ts`'s referential-integrity table names this explicitly.
+    for (const heroId of contract.offer.acceptedBy.values()) {
       if (!state.heroes.has(heroId)) {
         throw inconsistent(
           `contract '${contractId}' lists hero#${String(heroId)} in acceptedBy, but the save ` +
@@ -126,13 +150,15 @@ function checkReferentialIntegrity(state: GameState): void {
  * "why" and `restoreDecidedSteps` answers `null` — and the second let the interface show a
  * hero *accepting* a contract that its own trace says a red line closed.
  *
- * **Why every event, with no exception for a future tick.** `DomainEvent` is a closed
- * union of two members and both are decisions (`domain-event.ts`), so today "an event
- * with no trace" is exactly "a decision with no explanation". The nullability on
- * `DomainEventBase.causalTraceId` is there for a tick event that does not exist yet; the
- * day one is added, this loop is where the exception has to be written, and it will say
- * so by refusing the first tick anybody produces rather than by silently admitting an
- * unexplained decision in the meantime.
+ * **Why every event, with the exceptions non-decision events now need.**
+ * `DomainEvent` is a closed union of seven members (`domain-event.ts`); two are
+ * hero decisions, and the other five — `offer_revised`, `offer_locked` and the
+ * three `settleContract` events — are the player's own choice and carry no trace
+ * by construction. The loop below writes that exception explicitly — refusing one
+ * of the five that *does* carry a `causalTraceId`, rather than silently admitting
+ * an unexplained decision — and treats every other kind as a decision that must
+ * carry one. The nullability on `DomainEventBase.causalTraceId` exists for exactly
+ * this shape of event.
  *
  * **Coverage is a bijection, in both directions.** An event names exactly one trace, and
  * a trace explains exactly one event. The counters next door already force
@@ -147,13 +173,38 @@ function checkReferentialIntegrity(state: GameState): void {
  * suite pins `Σpositive − Σnegative === selectedScore`). So "the action agrees with the
  * score" is checkable from the file alone. It cannot silently overflow the way the
  * engine's own `toInt32` can: `snapshot-codec.ts` bounds a factor's magnitude at
- * `PAYMENT_MAX` and bounds how many factors a side may hold, which is that comment's
+ * `PATRON_FEE_MAX` and bounds how many factors a side may hold, which is that comment's
  * stated reason for existing.
  */
 function checkDecisionTraces(state: GameState): void {
   const explains = new Map<number, number>();
 
   for (const event of state.history) {
+    // The non-decision events this build produces today: composing, locking or
+    // settling an offer is the player's own choice, so each explains itself and
+    // carries no trace (`domain-event.ts`'s `OfferRevised`, `OfferLocked`,
+    // `ContractSettled` and its two promise-outcome siblings). This is the
+    // exception `DomainEventBase.causalTraceId`'s own doc anticipated the day a
+    // non-decision event arrived — refusing the first tick or player-choice event
+    // that carries an explanation it should not, rather than silently admitting an
+    // unexplained decision.
+    if (
+      event.kind === 'offer_revised' ||
+      event.kind === 'offer_locked' ||
+      event.kind === 'contract_settled' ||
+      event.kind === 'contract_settled_promise_kept' ||
+      event.kind === 'contract_settled_promise_broken'
+    ) {
+      if (event.causalTraceId !== null) {
+        throw inconsistent(
+          `history event ${String(event.eventId)} ('${event.kind}') carries causalTraceId ` +
+            `${String(event.causalTraceId)}; composing, locking or settling an offer is the ` +
+            "player's own choice, not a decision, and explains itself."
+        );
+      }
+      continue;
+    }
+
     if (event.causalTraceId === null) {
       throw inconsistent(
         `history event ${String(event.eventId)} records a decision ('${event.kind}') carrying no ` +
@@ -261,11 +312,24 @@ function total(factors: readonly TraceFactor[]): number {
  *    only in the same expression that adds to `respondedBy` (`engine.ts`), so a hero in
  *    one and not the other is a state no command produced.
  * 2. **A contract's `respondedBy` is exactly the set of heroes with a history event on
- *    it, one event each,** and the kind of that event says which of the two sets the
- *    hero is in. `respondedBy.has` is what refuses a hero a second decision on the same
- *    contract, ever, so the log and the set are two spellings of the same fact — and a
- *    file where they disagree is a file that reopens a decision the campaign already
- *    made.
+ *    it *since the offer's last revision*, one event each,** and the kind of that event
+ *    says which of the two sets the hero is in. `respondedBy.has` is what refuses a hero
+ *    a second decision on the *current version*, so the log since the last `offer_revised`
+ *    and the set are two spellings of the same fact — and a file where they disagree,
+ *    over that window, is a file that reopens a decision the campaign already made.
+ *
+ *    **"Since the last revision", not "ever" — and that qualifier is load-bearing, not
+ *    decorative.** This invariant predates offer versions: it was written when a
+ *    contract's `respondedBy` was the whole history's answer set, because there was
+ *    only ever one version to answer. `composeOffer` (`DEC-008` Task 10) empties
+ *    `respondedBy`/`acceptedBy` on every revision while leaving the *history* alone —
+ *    the log is what happened, not what the current package can still be answered
+ *    about — so a hero who answered version 1 and sees version 2 revised is, correctly,
+ *    no longer in `respondedBy`, while their `hero_accepted_contract` event from version
+ *    1 is still sitting in `state.history`. Counting the whole history against the
+ *    current `respondedBy` therefore refuses every save `composeOffer` can produce after
+ *    a single answered, then revised, offer — measured directly: `buildSave` on exactly
+ *    that campaign threw `SAVE_INCONSISTENT` before this fix.
  * 3. **`Crewed` means exactly "enough heroes accepted".** The status moves to `Crewed`
  *    in the same expression, from `acceptedBy.size >= requiredCrew`, and no further
  *    response is admitted once it has (`ContractAlreadyResolved`), so the biconditional
@@ -277,6 +341,35 @@ function checkResponseBookkeeping(state: GameState): void {
   const respondedInHistory = new Map<ContentId, Map<HeroId, boolean>>();
 
   for (const event of state.history) {
+    if (event.kind === 'offer_revised') {
+      // A revision clears the contract's `respondedBy`/`acceptedBy` (`engine.ts`'s
+      // `composeOffer`), so every response bookkeeping fact above this point in the
+      // log is about a package that no longer exists. Reset this contract's window
+      // here, at the point the campaign itself reset it, rather than counting across
+      // it.
+      respondedInHistory.set(event.contractId, new Map<HeroId, boolean>());
+      continue;
+    }
+
+    if (event.kind === 'offer_locked') {
+      // Locking names no hero and changes neither `respondedBy` nor `acceptedBy`
+      // (`engine.ts`'s `lockOffer`) — unlike a revision, there is no window to reset
+      // here, only nothing to add.
+      continue;
+    }
+
+    if (
+      event.kind === 'contract_settled' ||
+      event.kind === 'contract_settled_promise_kept' ||
+      event.kind === 'contract_settled_promise_broken'
+    ) {
+      // Settling names no hero either and changes neither `respondedBy` nor
+      // `acceptedBy` (`engine.ts`'s `settleContract` only moves `offer.phase` to
+      // `settled`) — the same reason `offer_locked` above needs no window reset,
+      // only nothing to add.
+      continue;
+    }
+
     let perContract = respondedInHistory.get(event.contractId);
     if (perContract === undefined) {
       perContract = new Map<HeroId, boolean>();
@@ -286,7 +379,8 @@ function checkResponseBookkeeping(state: GameState): void {
     if (perContract.has(event.heroId)) {
       throw inconsistent(
         `history records hero#${String(event.heroId)} answering contract '${event.contractId}' ` +
-          'more than once, but a hero may answer an offer exactly once.'
+          'more than once since its last revision, but a hero may answer a given offer version ' +
+          'exactly once.'
       );
     }
 
@@ -309,8 +403,17 @@ function checkOneContract(
   contract: ContractState,
   answeredInHistory: ReadonlyMap<HeroId, boolean>
 ): void {
-  for (const heroId of contract.acceptedBy.values()) {
-    if (!contract.respondedBy.has(heroId)) {
+  // **Dead code as of `DEC-008` Task 14, left in place for the same reason
+  // `checkReferentialIntegrity`'s own `acceptedBy` loop is (that function's own
+  // comment names it first).** `decodeSnapshot`'s contract builder now routes
+  // through `createContractState` (`requireConsistentContract`), which requires
+  // `acceptedBy ⊆ respondedBy` on every `ContractState` it accepts — so a save
+  // reaching this function can no longer carry a hero in `acceptedBy` without
+  // also carrying them in `respondedBy`. `envelope.test.ts`'s "герой в
+  // acceptedBy, но не в respondedBy" case is refused at the decode door now,
+  // under `createContractState`'s own message, not this one's.
+  for (const heroId of contract.offer.acceptedBy.values()) {
+    if (!contract.offer.respondedBy.has(heroId)) {
       throw inconsistent(
         `contract '${contractId}' lists hero#${String(heroId)} in acceptedBy but not in ` +
           'respondedBy; a hero accepts an offer only by answering it.'
@@ -318,7 +421,7 @@ function checkOneContract(
     }
   }
 
-  for (const heroId of contract.respondedBy.values()) {
+  for (const heroId of contract.offer.respondedBy.values()) {
     const accepted = answeredInHistory.get(heroId);
 
     // **This branch adds no refusing power, and that is deliberate rather than
@@ -338,17 +441,49 @@ function checkOneContract(
       );
     }
 
-    if (accepted !== contract.acceptedBy.has(heroId)) {
+    const inAcceptedBy = contract.offer.acceptedBy.has(heroId);
+
+    // Declining and being listed in `acceptedBy` is a contradiction in every case —
+    // a hero joins the crew only by saying yes.
+    if (!accepted && inAcceptedBy) {
       throw inconsistent(
         `contract '${contractId}' and the history disagree about hero#${String(heroId)}: the ` +
-          `history says the hero ${accepted ? 'accepted' : 'declined'}, the contract says the ` +
-          `hero is ${contract.acceptedBy.has(heroId) ? '' : 'not '}in acceptedBy.`
+          'history says the hero declined, but the contract lists them in acceptedBy.'
+      );
+    }
+
+    // Accepting without a seat is a contradiction too, *except* the one shape
+    // `pollCrew` legitimately produces (`NEGOTIATION_SPEC` §2.1, §3.3): the poll does
+    // not stop once the crew is full, so a hero who accepts after every seat is taken
+    // still gets a full decision and a trace, and stays in `respondedBy` without ever
+    // entering `acceptedBy`. That shape is only reachable once the contract's own
+    // seats are exhausted, so an accepted-but-unseated hero found with room still
+    // open is still a genuine contradiction.
+    //
+    // **What this no longer catches, named rather than left implicit.** `pollCrew`
+    // seats the *lowest* `HeroId` acceptors first, but only among the heroes it
+    // itself polls — the key hero's own seat comes from `proposeContractToHero`,
+    // in the draft phase, before `pollCrew` ever runs, and carries no such ordering
+    // relative to the rest of the roster (`keyHero` can be any id). So this check
+    // states only "an accepted, unseated hero exists only once the seats are
+    // full" — a real fact, and the one this file can check without re-deriving
+    // `pollCrew`'s whole per-poll ordering from a snapshot that does not record
+    // poll order at all. It does **not** say *which* accepted heroes hold the
+    // seats: a file where two heroes both accepted, the seats are full, and the
+    // "wrong" one by `HeroId` order was recorded as seated passes this check.
+    // Catching that would need the campaign's own command log, not the state a
+    // save carries.
+    if (accepted && !inAcceptedBy && contract.offer.acceptedBy.size < contract.requiredCrew) {
+      throw inconsistent(
+        `contract '${contractId}' and the history disagree about hero#${String(heroId)}: the ` +
+          'history says the hero accepted while the contract still had an open seat, but they ' +
+          'are not in acceptedBy.'
       );
     }
   }
 
   for (const heroId of answeredInHistory.keys()) {
-    if (!contract.respondedBy.has(heroId)) {
+    if (!contract.offer.respondedBy.has(heroId)) {
       throw inconsistent(
         `history records hero#${String(heroId)} answering contract '${contractId}', but the ` +
           "contract's respondedBy does not carry that hero."
@@ -356,13 +491,23 @@ function checkOneContract(
     }
   }
 
+  // **Dead code as of `DEC-008` Task 14, same reason and same door as the two
+  // checks above.** `createContractState` already enforces the two-directional
+  // `status = 'crewed' ⇔ acceptedBy.size = requiredCrew` on every `ContractState`
+  // `decodeSnapshot` accepts, *and* `acceptedBy.size ≤ requiredCrew` separately —
+  // so by the time a save reaches this function, `acceptedBy.size >= requiredCrew`
+  // below can only ever agree with `acceptedBy.size === requiredCrew`, and
+  // `crewed`/`enough` can no longer disagree. `envelope.test.ts`'s "состав
+  // набран, а контракт всё ещё предлагается" and "контракт закрыт составом,
+  // которого не хватает" cases are both refused at the decode door now, under
+  // `createContractState`'s own message.
   const crewed = contract.status === ContractStatus.Crewed;
-  const enough = contract.acceptedBy.size >= contract.requiredCrew;
+  const enough = contract.offer.acceptedBy.size >= contract.requiredCrew;
 
   if (crewed !== enough) {
     throw inconsistent(
       `contract '${contractId}' is ${crewed ? 'crewed' : 'offered'} with ` +
-        `${String(contract.acceptedBy.size)} of ${String(contract.requiredCrew)} seats filled; ` +
+        `${String(contract.offer.acceptedBy.size)} of ${String(contract.requiredCrew)} seats filled; ` +
         'a contract is crewed exactly when its required crew has accepted.'
     );
   }
@@ -378,11 +523,22 @@ function checkOneContract(
  * there. So the equalities below are properties of that one function, not of any
  * particular command.
  *
- * `appliedCommandIds.size === history.length` is the one statement here that belongs to
- * a *command* rather than to `withEvent`: `proposeContractToHero` records a command id
- * and appends exactly one event, in the same transition, and it is the only command
- * there is. The day a command applies without producing an event, this line is the one
- * that has to change, and it will say so by reddening.
+ * **`appliedCommandIds.size === history.length` no longer holds — it is
+ * `appliedCommandIds.size <= history.length` now.** The equality held while every
+ * command that could apply appended exactly one event in the same transition it
+ * recorded its id under (`composeOffer`, `lockOffer`, `proposeContractToHero`).
+ * `pollCrew` (`DEC-008` Task 13) is the one command that breaks it: one `commandId`
+ * can leave *several* events behind — one per hero the poll actually asked — so a
+ * command id can now correspond to more than one history event. It can never
+ * correspond to *zero*, though: `pollCrew` itself refuses to apply against a locked
+ * package every hero has already answered (`RejectionCodes.NobodyLeftToPoll`,
+ * `engine.ts`) — a rejection records no command id at all, so the one shape that
+ * would have driven `appliedCommandIds.size` *above* `history.length` (a command
+ * applying with nothing to show for it) is not reachable through this build's own
+ * engine. `<=` is therefore still a real invariant, not merely a weaker one settled
+ * for: every applied command id accounts for at least one history event, and this
+ * still refuses the same tampered file external review priced this against — an
+ * `appliedCommandIds` list padded with an id nothing in `history` explains.
  */
 function checkCounters(state: GameState): void {
   const { metadata, history } = state;
@@ -402,10 +558,11 @@ function checkCounters(state: GameState): void {
     );
   }
 
-  if (state.appliedCommandIds.size !== history.length) {
+  if (state.appliedCommandIds.size > history.length) {
     throw inconsistent(
-      `the save records ${String(state.appliedCommandIds.size)} applied commands and ` +
-        `${String(history.length)} history events; every applied command appends exactly one.`
+      `the save records ${String(state.appliedCommandIds.size)} applied commands, more than the ` +
+        `${String(history.length)} history events it holds; every applied command appends at ` +
+        'least one event.'
     );
   }
 

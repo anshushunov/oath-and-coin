@@ -96,7 +96,7 @@ describe('the happy path', () => {
     expect(result.manifest.scenario).toBe('gate0');
     expect(result.outcome.steps.length).toBe(result.commands.length);
     expect(result.outcome.finalState.metadata.campaignSeed).toBe(7n);
-    expect(result.outcome.finalState.metadata.rulesetVersion).toBe('m1-decision/1');
+    expect(result.outcome.finalState.metadata.rulesetVersion).toBe('m1-negotiation/1');
   });
 
   it('stops before content on a scenario whose screen is shown before content exists', () => {
@@ -253,7 +253,13 @@ describe('a hero index outside the roster is a rejection, not a crash', () => {
     // Refusing the id outright turned that recorded rejection into a thrown exception —
     // on an input no shipped scenario contains, so the corpus could never see it.
     const directory = withCommands([
-      { command_id: 1, hero_index: -1, contract: 'core:cleanse_the_crypt', expected_state_version: 0 }
+      {
+        command: 'propose_contract_to_hero',
+        command_id: 1,
+        hero_index: -1,
+        contract: 'core:cleanse_the_crypt',
+        expected_state_version: 0
+      }
     ]);
 
     const result = run({ scenarioRoot: directory, scenario: 'demo' });
@@ -273,6 +279,7 @@ describe('a hero index outside the roster is a rejection, not a crash', () => {
   it('refuses an index the original could not have deserialized at all', () => {
     const directory = withCommands([
       {
+        command: 'propose_contract_to_hero',
         command_id: 1,
         hero_index: 2147483648,
         contract: 'core:cleanse_the_crypt',

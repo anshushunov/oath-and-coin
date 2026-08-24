@@ -1,9 +1,10 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "id": "core:silence_the_cult",
   "display_name_key": "contract.core.silence_the_cult.name",
-  "payment": 55,
+  "patron_fee": 55,
   "risk": 65,
   "required_crew": 3,
-  "tags": ["target:cult", "target:temple"]
+  "tags": ["target:cult", "target:temple"],
+  "negotiable_tags": ["method:open", "method:deception"]
 }

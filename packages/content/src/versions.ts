@@ -11,8 +11,17 @@
  * something checks that they still say the same thing.
  */
 
-/** The content format `heroes/`, `contracts/` and `traits/` are read under (`TDD` §11.1). */
-export const SUPPORTED_CONTENT_SCHEMA_VERSION = 2;
+/**
+ * The content format `heroes/`, `contracts/` and `traits/` are read under (`TDD`
+ * §11.1). Raised to 3 by `DEC-008` Task 4: a contract file may now declare
+ * `negotiable_tags`, the pair of mutually exclusive method tags `NEGOTIATION_SPEC`
+ * §2.4 has the player choose between. A version 2 file lacking that field is still
+ * a legal version 3 file — the field is optional — but the number moves anyway,
+ * because a hand-authored version 2 file is a statement about what its author
+ * checked it against, and that statement did not include a field this build now
+ * understands.
+ */
+export const SUPPORTED_CONTENT_SCHEMA_VERSION = 3;
 
 /** The locale file format, versioned separately because it evolves separately. */
 export const SUPPORTED_LOCALE_SCHEMA_VERSION = 2;
@@ -22,5 +31,20 @@ export const SUPPORTED_LOCALE_SCHEMA_VERSION = 2;
  * travels in the campaign's metadata from the first state onward, so a save
  * written today can be recognized — or refused — by a later build, instead of
  * being read with today's assumptions silently applied to yesterday's bytes.
+ *
+ * **2, not 1, bumped in the DEC-008 negotiation slice's Task 6 fix round, for the
+ * same reason and by the same ruling as `ARTIFACT_VERSION`'s move to 4.**
+ * `ContractState` gained a nested `offer` object and `moodOrdinals`
+ * (`NEGOTIATION_SPEC` §2.1) in place of flat `respondedBy`/`acceptedBy`, and
+ * `snapshot-codec.ts`'s `contractValueSchema` is a `strictObject` — a save written
+ * under version 1's shape is unreadable under this one, and the reverse. Left at 1,
+ * a version-1 save would fail `decodeSnapshot` with `unrecognized_keys`, which
+ * `classify` reports as `SAVE_MALFORMED` — telling the player the file is corrupt
+ * or hand-edited, when it is simply older. `readSave`'s own version gate
+ * (`envelope.ts`) exists precisely to be the layer that says "no" for that reason
+ * instead of the codec, and comparing `1 === 1` against an unmoved number cannot
+ * do that. This is the plan's own final value (§2.5); one bump inside this
+ * unreleased slice reaches it directly. **Task 14 must not bump this again** —
+ * `SAVE_SCHEMA_VERSION` is already at the plan's target.
  */
-export const SAVE_SCHEMA_VERSION = 1;
+export const SAVE_SCHEMA_VERSION = 2;

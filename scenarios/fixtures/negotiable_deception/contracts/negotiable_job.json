@@ -1,0 +1,10 @@
+{
+  "schema_version": 3,
+  "id": "fixture:negotiable_job",
+  "display_name_key": "contract.fixture.negotiable_job.name",
+  "patron_fee": 50,
+  "risk": 0,
+  "required_crew": 1,
+  "tags": [],
+  "negotiable_tags": ["method:open", "method:deception"]
+}

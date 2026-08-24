@@ -64,7 +64,7 @@ describe('multiplyInt32 wraps the way C# multiplies two ints', () => {
   });
 
   it('agrees with plain multiplication on every value content can hold', () => {
-    // Which is exactly why the corpus cannot separate the two: payment and risk are
+    // Which is exactly why the corpus cannot separate the two: the patron fee and risk are
     // 0..100 and the scales are 0..100, so no product this rule forms on valid content
     // comes within twenty bits of the boundary.
     for (let left = 0; left <= 100; left += 5) {

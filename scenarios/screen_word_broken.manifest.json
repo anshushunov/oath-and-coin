@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "scenario": "screen_word_broken",
+  "expected_outcome": "success",
+  "expected_screen_state": "incomplete",
+  "checkpoints": [
+    {
+      "name": "screen_word_broken",
+      "after_command_id": 4
+    }
+  ]
+}

@@ -1,7 +1,10 @@
 import {
   Actions,
+  ContractStatus,
+  OfferPhase,
   ReasonCodes,
   canonicalSha256,
+  commitmentOf,
   compareContentIds,
   compareStrings,
   type CanonicalValue,
@@ -9,13 +12,21 @@ import {
   type ContractState,
   type GameState,
   type HeldTrait,
+  type HeroId,
   type HeroState,
+  type OfferState,
   type SortedMap,
   type TraceFactor
 } from '@oath-and-coin/simulation';
 
 import { requireCorpusComparableText } from './corpus-comparable-text.ts';
-import { TITLE_KEY, contractDisplayNameKey, tagKey, traitDisplayNameKey } from './keys.ts';
+import {
+  PromiseTermsKeys,
+  TITLE_KEY,
+  contractDisplayNameKey,
+  tagKey,
+  traitDisplayNameKey
+} from './keys.ts';
 import {
   createContractOfferScreenModel,
   type ContractLine,
@@ -23,8 +34,11 @@ import {
   type DecidedOutcome,
   type DecidedStep,
   type HeroCard,
+  type OfferLine,
+  type PromiseTermsLine,
   type ReasonLine,
-  type ResponseLine
+  type ResponseLine,
+  type SettlementLine
 } from './contract-offer-screen-model.ts';
 import { gradeForMagnitude, gradeForValue } from './qualitative-scale.ts';
 import { ReasonDirection, ScreenState } from './screen-state.ts';
@@ -44,7 +58,7 @@ const MAX_REASONS = 3;
  * External review of the C# original found what ranking every factor together costs.
  * On entirely legal data a hero accepts at +3 while risk (−30), insult (−29) and a
  * dislike (−28) are the three largest magnitudes in the trace — so the screen showed
- * three reasons to refuse beneath the word "accepted" and hid the payment, the
+ * three reasons to refuse beneath the word "accepted" and hid the patron fee, the
  * convictions and the trust that actually carried it. A majority of the slots
  * therefore goes to the side that won, which buys two properties: a supporting reason
  * is always visible when one exists, and a win carried by several smaller motives
@@ -89,7 +103,12 @@ export const LOADING_SCREEN: ContractOfferScreenModel = createContractOfferScree
   roster: [],
   responses: [],
   errorCode: null,
-  errorDetail: null
+  errorDetail: null,
+  treasury: 0,
+  offer: null,
+  treasuryForecast: 0,
+  promiseTerms: null,
+  settlement: null
 });
 
 /**
@@ -112,7 +131,12 @@ export function failedScreen(errorCode: string, errorDetail: string): ContractOf
     roster: [],
     responses: [],
     errorCode,
-    errorDetail
+    errorDetail,
+    treasury: 0,
+    offer: null,
+    treasuryForecast: 0,
+    promiseTerms: null,
+    settlement: null
   });
 }
 
@@ -169,7 +193,14 @@ export function contractOfferScreenModel(
       roster: [],
       responses: [],
       errorCode: null,
-      errorDetail: null
+      errorDetail: null,
+      // A real campaign, just one with nothing to offer — unlike Loading and Error,
+      // where there is no state to read a figure off at all.
+      treasury: state.treasury,
+      offer: null,
+      treasuryForecast: state.treasury,
+      promiseTerms: null,
+      settlement: null
     });
   }
 
@@ -181,19 +212,34 @@ export function contractOfferScreenModel(
   // does not — so it is joined here, by the hero's own definition, against the same
   // roster this factory already built.
   const heroDisplayNameKeys = new Map(heroes.map((hero) => [hero.definition, hero.displayNameKey]));
+  // The offer and the settlement name their key hero and their crew by `HeroId`
+  // (`OfferState.keyHero`, `OfferState.acceptedBy`), not by content id — this is the
+  // second join a hero needs, from the number the engine tracks answers by back to the
+  // definition the rest of the screen already shows.
+  const heroDefinitionByHeroId = new Map(heroes.map((hero) => [hero.id, hero.definition]));
 
   const responses = steps
-    .filter((step) => step.decision !== null && step.command.contract === contract.id)
-    .map((step) => toResponseLine(step, heroDisplayNameKeys));
+    .filter((step) => step.command.contract === contract.id)
+    .flatMap((step) =>
+      step.decisions.map((decision) => toResponseLine(step, decision, heroDisplayNameKeys))
+    );
 
   return createContractOfferScreenModel({
-    state: contract.respondedBy.size >= roster.length ? ScreenState.Normal : ScreenState.Incomplete,
+    state:
+      contract.offer.respondedBy.size >= roster.length
+        ? ScreenState.Normal
+        : ScreenState.Incomplete,
     titleKey: TITLE_KEY,
     contract: toContractLine(contract),
     roster,
     responses,
     errorCode: null,
-    errorDetail: null
+    errorDetail: null,
+    treasury: state.treasury,
+    offer: toOfferLine(contract, heroDefinitionByHeroId),
+    treasuryForecast: computeTreasuryForecast(state.treasury, contract),
+    promiseTerms: toPromiseTerms(contract.offer),
+    settlement: toSettlement(contract, state.treasury, heroDefinitionByHeroId)
   });
 }
 
@@ -225,11 +271,157 @@ function toContractLine(contract: ContractState): ContractLine {
   return {
     definition: contract.id,
     displayNameKey: contractDisplayNameKey(contract.id),
-    payment: contract.payment,
+    patronFee: contract.patronFee,
     risk: gradeForValue(contract.risk),
     tagKeys: [...contract.tags.values()].map(tagKey),
     requiredCrew: contract.requiredCrew,
-    acceptedCount: contract.acceptedBy.size
+    acceptedCount: contract.offer.acceptedBy.size
+  };
+}
+
+/**
+ * The hero `heroId` names, resolved to the definition the rest of the screen already
+ * shows. A bare lookup here would surface a missing id with no clue which one or where
+ * it came from — an offer naming a hero the roster does not carry is a content-loading
+ * or roster-building bug, not a hero with no name, the same class of failure
+ * {@link resolveTrait} and the response-line lookups elsewhere in this file already
+ * refuse the same way.
+ */
+function definitionOfHero(
+  heroId: HeroId,
+  heroDefinitionByHeroId: ReadonlyMap<HeroId, ContentId>
+): ContentId {
+  const definition = heroDefinitionByHeroId.get(heroId);
+
+  if (definition === undefined) {
+    throw new Error(
+      `An offer names hero#${String(heroId)}, but the roster this factory built has no ` +
+        'definition for it — a content-loading or roster-building bug, not a hero with no name.'
+    );
+  }
+
+  return definition;
+}
+
+/**
+ * The negotiation package currently on {@link contract} (`NEGOTIATION_SPEC` §5.1).
+ *
+ * `methodOptionKeys` puts the chosen tag first when one is chosen, the alternative
+ * second — the order the player made a choice in, and the one `contract-offer-screen-
+ * model-factory.test.ts` pins. Natural `SortedSet` order is not it: `method:deception`
+ * sorts ordinally before `method:open` regardless of which one the package picked, so a
+ * plain iteration would silently reorder itself out from under whichever tag the player
+ * actually chose. Sorted order otherwise, when nothing has been chosen yet — there is no
+ * "the chosen one" to lead with.
+ */
+function toOfferLine(
+  contract: ContractState,
+  heroDefinitionByHeroId: ReadonlyMap<HeroId, ContentId>
+): OfferLine {
+  const { offer } = contract;
+
+  return {
+    version: offer.version,
+    phase: offer.phase,
+    advance: offer.advance,
+    methodTagKey: offer.methodTag === null ? null : tagKey(offer.methodTag),
+    methodOptionKeys: methodOptionKeysOf(contract),
+    promisedBonus: offer.promisedBonus,
+    keyHeroDefinition:
+      offer.keyHero === null ? null : definitionOfHero(offer.keyHero, heroDefinitionByHeroId),
+    lockCommitment: commitmentOf(contract)
+  };
+}
+
+function methodOptionKeysOf(contract: ContractState): readonly string[] {
+  const { negotiableTags } = contract;
+
+  if (negotiableTags === undefined || negotiableTags.size === 0) {
+    return [];
+  }
+
+  const tags = [...negotiableTags.values()];
+  const { methodTag } = contract.offer;
+
+  if (methodTag === null) {
+    return tags.map(tagKey);
+  }
+
+  return [methodTag, ...tags.filter((tag) => tag !== methodTag)].map(tagKey);
+}
+
+/**
+ * What keeping the word will mean and what breaking it will mean (`NEGOTIATION_SPEC`
+ * §5.1) — `null` exactly when nothing was promised, the same gate `settleContract`
+ * itself applies before it will touch a hero's grievance at all (`NEGOTIATION_SPEC`
+ * §3.3, §6: "Расчёт без обещания — законен; ... обид не возникает").
+ *
+ * Shown from the moment a promise exists, in every phase, not only once the package is
+ * locked: `DIRECTION_2026-08` §6.3 requires the two predicates be visible **before**
+ * signing, which is the whole point of the screen this task builds.
+ */
+function toPromiseTerms(offer: OfferState): PromiseTermsLine | null {
+  if (offer.promisedBonus <= 0) {
+    return null;
+  }
+
+  return {
+    fulfilKey: PromiseTermsKeys.Fulfil,
+    breachKey: PromiseTermsKeys.Breach,
+    bonus: offer.promisedBonus
+  };
+}
+
+/**
+ * What `treasury` would read after settling `contract`'s current package with
+ * `pay: true` — `settleContract`'s own formula (`NEGOTIATION_SPEC` §3.3), term for
+ * term: the patron fee arrives, the advance leaves for every hero who actually has a
+ * seat, and the promised bonus leaves because this is the branch where the guild pays
+ * it.
+ */
+function computeTreasuryForecast(treasury: number, contract: ContractState): number {
+  const { offer } = contract;
+
+  return (
+    treasury + contract.patronFee - offer.advance * offer.acceptedBy.size - offer.promisedBonus
+  );
+}
+
+/**
+ * What the promise costs and who is bound by it (`NEGOTIATION_SPEC` §5.1) — `null`
+ * before there is a crew to bind: the phase is `settled`, or it is `locked` with every
+ * seat filled (`ContractStatus.Crewed`). A package that might still change, or one still
+ * short a seat, has no settlement to show.
+ *
+ * `treasuryIfBroken` is {@link computeTreasuryForecast}'s figure plus the promised
+ * bonus back — the same formula with `pay: false`, which simply skips that term rather
+ * than computing it a second, independent way.
+ */
+function toSettlement(
+  contract: ContractState,
+  treasury: number,
+  heroDefinitionByHeroId: ReadonlyMap<HeroId, ContentId>
+): SettlementLine | null {
+  const { offer } = contract;
+  const eligible =
+    offer.phase === OfferPhase.Settled ||
+    (offer.phase === OfferPhase.Locked && contract.status === ContractStatus.Crewed);
+
+  if (!eligible) {
+    return null;
+  }
+
+  const treasuryIfKept = computeTreasuryForecast(treasury, contract);
+
+  return {
+    promisedBonus: offer.promisedBonus,
+    keyHeroDefinition:
+      offer.keyHero === null ? null : definitionOfHero(offer.keyHero, heroDefinitionByHeroId),
+    crew: [...offer.acceptedBy.values()].map((heroId) =>
+      definitionOfHero(heroId, heroDefinitionByHeroId)
+    ),
+    treasuryIfKept,
+    treasuryIfBroken: treasuryIfKept + offer.promisedBonus
   };
 }
 
@@ -284,19 +476,24 @@ function resolveTrait(
   return trait;
 }
 
+/**
+ * The hero behind `decision` (`DecidedOutcome.heroDefinition`'s own doc): that
+ * decision's own hero when it names one, `step.heroDefinition` otherwise. Every
+ * decision but a `pollCrew` one names no hero of its own and falls through to the
+ * step's single hero, so this is `step.heroDefinition` for every existing caller —
+ * the per-decision field exists for the one step shape where a single hero cannot
+ * name every decision.
+ */
+function heroDefinitionOf(step: DecidedStep, decision: DecidedOutcome): ContentId | null {
+  return decision.heroDefinition ?? step.heroDefinition;
+}
+
 function toResponseLine(
   step: DecidedStep,
+  decision: DecidedOutcome,
   heroDisplayNameKeys: ReadonlyMap<ContentId, string>
 ): ResponseLine {
-  const decision = step.decision;
-
-  if (decision === null) {
-    throw new Error(
-      'A step without a decision reached response building; the filter above missed it.'
-    );
-  }
-
-  const hero = step.heroDefinition;
+  const hero = heroDefinitionOf(step, decision);
 
   if (hero === null) {
     throw new Error(
@@ -450,7 +647,7 @@ function resolveSourceDisplayNameKey(
     return key;
   }
 
-  // Payment/risk name the contract; trust and mood name the responding hero. Both are
+  // Patron fee/risk name the contract; trust and mood name the responding hero. Both are
   // already on screen under their own key.
   return null;
 }
@@ -556,7 +753,13 @@ export function describeReadModel(model: ContractOfferScreenModel): CanonicalVal
     error_code: validated.errorCode,
     contract: validated.contract === null ? null : describeContract(validated.contract),
     roster: validated.roster.map(describeHero),
-    responses: validated.responses.map(describeResponse)
+    responses: validated.responses.map(describeResponse),
+    treasury: validated.treasury,
+    offer: validated.offer === null ? null : describeOffer(validated.offer),
+    treasury_forecast: validated.treasuryForecast,
+    promise_terms:
+      validated.promiseTerms === null ? null : describePromiseTerms(validated.promiseTerms),
+    settlement: validated.settlement === null ? null : describeSettlement(validated.settlement)
   };
 
   requireComparableStrings(projection, '$');
@@ -573,7 +776,7 @@ function describeContract(contract: ContractLine): CanonicalValue {
   return {
     definition: contract.definition,
     display_name_key: contract.displayNameKey,
-    payment: contract.payment,
+    patron_fee: contract.patronFee,
     risk: contract.risk,
     tag_keys: [...contract.tagKeys],
     required_crew: contract.requiredCrew,
@@ -613,5 +816,36 @@ function describeReason(reason: ReasonLine): CanonicalValue {
     strength: reason.strength,
     source_display_name_key: reason.sourceDisplayNameKey,
     direction: reason.direction
+  };
+}
+
+function describeOffer(offer: OfferLine): CanonicalValue {
+  return {
+    version: offer.version,
+    phase: offer.phase,
+    advance: offer.advance,
+    method_tag_key: offer.methodTagKey,
+    method_option_keys: [...offer.methodOptionKeys],
+    promised_bonus: offer.promisedBonus,
+    key_hero_definition: offer.keyHeroDefinition,
+    lock_commitment: offer.lockCommitment
+  };
+}
+
+function describePromiseTerms(promiseTerms: PromiseTermsLine): CanonicalValue {
+  return {
+    fulfil_key: promiseTerms.fulfilKey,
+    breach_key: promiseTerms.breachKey,
+    bonus: promiseTerms.bonus
+  };
+}
+
+function describeSettlement(settlement: SettlementLine): CanonicalValue {
+  return {
+    promised_bonus: settlement.promisedBonus,
+    key_hero_definition: settlement.keyHeroDefinition,
+    crew: [...settlement.crew],
+    treasury_if_kept: settlement.treasuryIfKept,
+    treasury_if_broken: settlement.treasuryIfBroken
   };
 }

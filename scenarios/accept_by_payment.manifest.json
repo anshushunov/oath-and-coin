@@ -2,5 +2,10 @@
   "schema_version": 1,
   "scenario": "accept_by_payment",
   "expected_outcome": "success",
-  "checkpoints": [{ "name": "final", "after_command_id": 1 }]
+  "checkpoints": [
+    {
+      "name": "final",
+      "after_command_id": 2
+    }
+  ]
 }

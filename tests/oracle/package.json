@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "What the frozen C# corpus in migration/oracle/v1 still proves once byte parity is retired (ADR-013): canonicalization, file digests and RNG vectors, plus save/read-model round trips against it",
+  "description": "What the frozen C# corpus in migration/oracle/v1 still proves after ADR-013's two retirements — byte parity (2026-08-22) and the replay itself (2026-08-23): canonicalization, file digests and RNG vectors. The read-model round trip lives here too, but its fixture is now the shipped scenarios/ corpus, not the frozen one",
   "scripts": {
     "test": "vitest run --root ../.. tests/oracle"
   },

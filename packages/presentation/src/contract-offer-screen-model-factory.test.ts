@@ -2,13 +2,17 @@ import { describe, expect, it } from 'vitest';
 
 import {
   Actions,
+  ContractStatus,
+  OfferPhase,
   ReasonCodes,
   SortedMap,
   SortedSet,
   compareContentIds,
   compareHeroIds,
   heroId,
+  parseContentId,
   type ContentId,
+  type GameState,
   type HeroId,
   type HeroState
 } from '@oath-and-coin/simulation';
@@ -27,6 +31,7 @@ import {
   aDecision,
   aFactor,
   aHero,
+  anOffer,
   aState,
   aStep,
   aTrait,
@@ -75,7 +80,7 @@ describe('the screen with nothing to offer', () => {
 
 describe('which contract the screen is about', () => {
   const caravan = aContract({ id: ids.caravan });
-  const crypt = aContract({ id: ids.crypt, payment: 90 });
+  const crypt = aContract({ id: ids.crypt, patronFee: 90 });
 
   it('is the one the first step named', () => {
     const state = withContracts(aState(), [caravan, crypt]);
@@ -156,7 +161,7 @@ describe('whether everyone has answered', () => {
 
   it('is Normal when the contract records an answer from every hero', () => {
     const state = withContracts(withHeroes(aState(), roster), [
-      aContract({ respondedBy: responded(0, 1) })
+      aContract({ offer: anOffer({ respondedBy: responded(0, 1) }) })
     ]);
 
     expect(contractOfferScreenModel(state, [aStep()]).state).toBe(ScreenState.Normal);
@@ -164,7 +169,7 @@ describe('whether everyone has answered', () => {
 
   it('is Incomplete while one hero has not answered', () => {
     const state = withContracts(withHeroes(aState(), roster), [
-      aContract({ respondedBy: responded(0) })
+      aContract({ offer: anOffer({ respondedBy: responded(0) }) })
     ]);
 
     expect(contractOfferScreenModel(state, [aStep()]).state).toBe(ScreenState.Incomplete);
@@ -175,7 +180,7 @@ describe('whether everyone has answered', () => {
     // the filtered list — two lines, two heroes in the roster, "everyone answered"
     // while one of them never did.
     const state = withContracts(withHeroes(aState(), roster), [
-      aContract({ respondedBy: responded(0) })
+      aContract({ offer: anOffer({ respondedBy: responded(0) }) })
     ]);
     const twice = [aStep({ heroDefinition: ids.bram }), aStep({ heroDefinition: ids.bram })];
 
@@ -187,10 +192,10 @@ describe('the contract line', () => {
   it('shows objective numbers literally and everything else on the qualitative scale', () => {
     const state = withContracts(aState(), [
       aContract({
-        payment: 40,
+        patronFee: 40,
         risk: 55,
         requiredCrew: 4,
-        acceptedBy: responded(0, 1, 2),
+        offer: anOffer({ acceptedBy: responded(0, 1, 2) }),
         tags: SortedSet.from(compareContentIds, [ids.merchants, ids.undead])
       })
     ]);
@@ -198,7 +203,7 @@ describe('the contract line', () => {
     expect(contractOfferScreenModel(state, []).contract).toEqual({
       definition: ids.caravan,
       displayNameKey: 'contract.core.escort_the_caravan.name',
-      payment: 40,
+      patronFee: 40,
       risk: QualitativeGrade.Moderate,
       tagKeys: ['tag.patron.merchant_guild', 'tag.target.undead'],
       requiredCrew: 4,
@@ -257,10 +262,12 @@ describe('how a response ranks its reasons', () => {
     selectedAction = Actions.Accept
   ) {
     const step = aStep({
-      decision: aDecision({
-        selectedAction,
-        trace: { traceId: 0, positiveFactors, negativeFactors, blockedBy: [], tieBreak: null }
-      })
+      decisions: [
+        aDecision({
+          selectedAction,
+          trace: { traceId: 0, positiveFactors, negativeFactors, blockedBy: [], tieBreak: null }
+        })
+      ]
     });
 
     return contractOfferScreenModel(state, [step]).responses[0]?.reasons ?? [];
@@ -410,15 +417,17 @@ describe('which reasons name their source', () => {
 
   function sourceKeyFor(reasonCode: string, sourceEntity: ContentId): string | null {
     const step = aStep({
-      decision: aDecision({
-        trace: {
-          traceId: 0,
-          positiveFactors: [aFactor({ reasonCode, sourceEntity })],
-          negativeFactors: [],
-          blockedBy: [],
-          tieBreak: null
-        }
-      })
+      decisions: [
+        aDecision({
+          trace: {
+            traceId: 0,
+            positiveFactors: [aFactor({ reasonCode, sourceEntity })],
+            negativeFactors: [],
+            blockedBy: [],
+            tieBreak: null
+          }
+        })
+      ]
     });
 
     return (
@@ -461,17 +470,21 @@ describe('a blocked answer', () => {
   const state = withHeroes(aState(), heroes(ids.bram));
 
   const blocked = aStep({
-    decision: aDecision({
-      selectedAction: Actions.Decline,
-      selectedScore: null,
-      trace: {
-        traceId: 0,
-        positiveFactors: [aFactor({ magnitude: 90 })],
-        negativeFactors: [],
-        blockedBy: [{ reasonCode: ReasonCodes.PrincipleForbids, sourceEntity: ids.refusesTemples }],
-        tieBreak: null
-      }
-    })
+    decisions: [
+      aDecision({
+        selectedAction: Actions.Decline,
+        selectedScore: null,
+        trace: {
+          traceId: 0,
+          positiveFactors: [aFactor({ magnitude: 90 })],
+          negativeFactors: [],
+          blockedBy: [
+            { reasonCode: ReasonCodes.PrincipleForbids, sourceEntity: ids.refusesTemples }
+          ],
+          tieBreak: null
+        }
+      })
+    ]
   });
 
   it('names the principle and shows no reasons beside it', () => {
@@ -503,17 +516,19 @@ describe('whether the hero wavered', () => {
     });
 
     const step = aStep({
-      decision: aDecision({
-        selectedAction: selectedScore >= 0 ? Actions.Accept : Actions.Decline,
-        selectedScore,
-        trace: {
-          traceId: 0,
-          positiveFactors: mood?.positive === true ? [moodFactor] : [],
-          negativeFactors: mood?.positive === false ? [moodFactor] : [],
-          blockedBy: [],
-          tieBreak: null
-        }
-      })
+      decisions: [
+        aDecision({
+          selectedAction: selectedScore >= 0 ? Actions.Accept : Actions.Decline,
+          selectedScore,
+          trace: {
+            traceId: 0,
+            positiveFactors: mood?.positive === true ? [moodFactor] : [],
+            negativeFactors: mood?.positive === false ? [moodFactor] : [],
+            blockedBy: [],
+            tieBreak: null
+          }
+        })
+      ]
     });
 
     return contractOfferScreenModel(state, [step]).responses[0]?.wavered ?? false;
@@ -569,16 +584,161 @@ describe('the screens no run produces', () => {
 });
 
 describe('the read-model hash', () => {
+  it('does not depend on whether N decisions arrive as one step or as N steps', () => {
+    // The obligation `DEC-008` Task 5 inherits from the Task 2 spike
+    // (`docs/technical/SPIKE_2026-08-22-evidence-and-decisions.md`): a command answering
+    // several heroes at once (`pollCrew`, Tasks 6, 10-14) must collapse into `responses`
+    // no differently than the same decisions spread over several one-decision steps. The
+    // spike measured that equality once, on a temporary `pollCrew` probe that was thrown
+    // away with the rest of its code; this is the test that makes the number
+    // reproducible from the repository rather than resting on a discarded run.
+    const state = withContracts(withHeroes(aState(), heroes(ids.bram)), [
+      aContract({ offer: anOffer({ respondedBy: responded(0) }) })
+    ]);
+
+    // Three distinct decisions — different actions, different traces — so a projection
+    // that quietly dropped all but the first would still be caught: a test built from
+    // three identical decisions could not tell "collapsed correctly" from "kept only
+    // one".
+    const decisions = [
+      aDecision({
+        selectedAction: Actions.Accept,
+        selectedScore: 5,
+        trace: {
+          traceId: 0,
+          positiveFactors: [aFactor({ reasonCode: ReasonCodes.PaymentAttractive, magnitude: 5 })],
+          negativeFactors: [],
+          blockedBy: [],
+          tieBreak: null
+        }
+      }),
+      aDecision({
+        selectedAction: Actions.Decline,
+        selectedScore: -40,
+        trace: {
+          traceId: 1,
+          positiveFactors: [],
+          negativeFactors: [aFactor({ reasonCode: ReasonCodes.RiskTooHigh, magnitude: 40 })],
+          blockedBy: [],
+          tieBreak: null
+        }
+      }),
+      aDecision({
+        selectedAction: Actions.Accept,
+        selectedScore: 0,
+        trace: {
+          traceId: 2,
+          positiveFactors: [],
+          negativeFactors: [],
+          blockedBy: [],
+          tieBreak: ReasonCodes.NoReasonToRefuse
+        }
+      })
+    ];
+
+    const oneStepWithThree = [aStep({ decisions })];
+    const threeStepsWithOne = decisions.map((decision) => aStep({ decisions: [decision] }));
+
+    const collapsed = contractOfferScreenModel(state, oneStepWithThree);
+    const spread = contractOfferScreenModel(state, threeStepsWithOne);
+
+    expect(collapsed.responses).toHaveLength(3);
+    expect(collapsed.responses).toEqual(spread.responses);
+    expect(readModelHash(collapsed)).toBe(readModelHash(spread));
+  });
+
+  it('does not depend on whether N heroes answer in one step or in N steps of their own', () => {
+    // The multi-hero version of the test above — `DEC-008` Task 13's own obligation,
+    // not Task 5's: `pollCrew` is the one command that puts *several different*
+    // heroes' decisions inside a single step, and `DecidedStep.heroDefinition` alone
+    // cannot name all of them (`contract-offer-screen-model.ts`'s own note on
+    // `DecidedOutcome.heroDefinition`). The test above reuses one hero for all three
+    // decisions, so an implementation that quietly stamped every decision with the
+    // step's single `heroDefinition` would still pass it — the three response lines
+    // would already agree on the hero by construction. This one gives each decision a
+    // *different* hero of its own and checks the response lines name them correctly,
+    // which only reading `decision.heroDefinition` can make true.
+    const roster = heroes(ids.bram, ids.doran, ids.zara);
+    const state = withContracts(withHeroes(aState(), roster), [
+      aContract({ offer: anOffer({ respondedBy: responded(0, 1, 2) }) })
+    ]);
+
+    const rawDecisions = [
+      aDecision({
+        selectedAction: Actions.Accept,
+        selectedScore: 5,
+        trace: {
+          traceId: 0,
+          positiveFactors: [aFactor({ reasonCode: ReasonCodes.PaymentAttractive, magnitude: 5 })],
+          negativeFactors: [],
+          blockedBy: [],
+          tieBreak: null
+        }
+      }),
+      aDecision({
+        selectedAction: Actions.Decline,
+        selectedScore: -40,
+        trace: {
+          traceId: 1,
+          positiveFactors: [],
+          negativeFactors: [aFactor({ reasonCode: ReasonCodes.RiskTooHigh, magnitude: 40 })],
+          blockedBy: [],
+          tieBreak: null
+        }
+      }),
+      aDecision({
+        selectedAction: Actions.Accept,
+        selectedScore: 0,
+        trace: {
+          traceId: 2,
+          positiveFactors: [],
+          negativeFactors: [],
+          blockedBy: [],
+          tieBreak: ReasonCodes.NoReasonToRefuse
+        }
+      })
+    ];
+    const heroDefinitions: readonly ContentId[] = [ids.bram, ids.doran, ids.zara];
+
+    // One step, three decisions, each carrying its own hero — the shape only
+    // `pollCrew` produces.
+    const oneStepWithThree = [
+      aStep({
+        decisions: rawDecisions.map((decision, index) => ({
+          ...decision,
+          heroDefinition: heroDefinitions[index]!
+        }))
+      })
+    ];
+    // Three ordinary single-hero steps, each relying on the step's own
+    // `heroDefinition` — the shape every other command produces — built from the
+    // same raw decisions, with no per-decision override at all.
+    const threeStepsWithOne = rawDecisions.map((decision, index) =>
+      aStep({ decisions: [decision], heroDefinition: heroDefinitions[index]! })
+    );
+
+    const collapsed = contractOfferScreenModel(state, oneStepWithThree);
+    const spread = contractOfferScreenModel(state, threeStepsWithOne);
+
+    expect(collapsed.responses).toHaveLength(3);
+    // Names each hero correctly — the assertion a same-hero fixture cannot make: a
+    // factory that ignored the decision's own hero and stamped every line with the
+    // step's one `heroDefinition` would show `bram, bram, bram` here instead.
+    expect(collapsed.responses.map((response) => response.heroDefinition)).toEqual(heroDefinitions);
+    expect(collapsed.responses).toEqual(spread.responses);
+    expect(readModelHash(collapsed)).toBe(readModelHash(spread));
+  });
+
   it('distinguishes two screens that differ only in state', () => {
     // Incomplete and Normal can carry an identical roster and identical responses. If
     // the state were outside the hash, a screen still waiting on a hero would be
     // indistinguishable from one that finished.
     const roster = heroes(ids.bram, ids.doran);
     const incomplete = withContracts(withHeroes(aState(), roster), [
-      aContract({ respondedBy: responded(0) })
+      aContract({ offer: anOffer({ respondedBy: responded(0) }) })
     ]);
     const complete = withContracts(withHeroes(aState(), roster), [
-      aContract({ respondedBy: responded(0, 1) })
+      aContract({ offer: anOffer({ respondedBy: responded(0, 1) }) })
     ]);
 
     const left = contractOfferScreenModel(incomplete, [aStep()]);
@@ -647,7 +807,316 @@ describe('the read-model hash', () => {
       error_code: null,
       contract: null,
       roster: [],
-      responses: []
+      responses: [],
+      treasury: 0,
+      offer: null,
+      treasury_forecast: 0,
+      promise_terms: null,
+      settlement: null
+    });
+  });
+});
+
+describe('what the screen shows about the negotiation itself', () => {
+  /** A draft package promising the key hero a bonus, before anything is signed. */
+  function draftWithAPromise(): GameState {
+    const hero = aHero({
+      id: heroId(0),
+      definition: ids.bram,
+      displayNameKey: 'hero.core.bram.name'
+    });
+    const contract = aContract({
+      patronFee: 100,
+      negotiableTags: SortedSet.from(compareContentIds, [ids.methodDeception, ids.methodOpen]),
+      offer: anOffer({
+        keyHero: heroId(0),
+        methodTag: ids.methodOpen,
+        promisedBonus: 25
+      })
+    });
+
+    return withContracts(withHeroes(aState(), [hero]), [contract]);
+  }
+
+  /**
+   * The same contract, hero and negotiable tags as {@link draftWithAPromise} — byte for
+   * byte, down to `patronFee` — with nothing promised and no method chosen.
+   * `readModelHash`'s own test needs the two fixtures to disagree about *only* the
+   * offer: a stray difference anywhere else (a different `patronFee`, say) would let
+   * that test pass for the wrong reason, agreeing with a `describeReadModel` that
+   * dropped the new fields entirely as readily as with a correct one.
+   */
+  function draftWithoutAPromise(): GameState {
+    const hero = aHero({
+      id: heroId(0),
+      definition: ids.bram,
+      displayNameKey: 'hero.core.bram.name'
+    });
+    const contract = aContract({
+      patronFee: 100,
+      negotiableTags: SortedSet.from(compareContentIds, [ids.methodDeception, ids.methodOpen]),
+      offer: anOffer()
+    });
+
+    return withContracts(withHeroes(aState(), [hero]), [contract]);
+  }
+
+  /**
+   * A `locked` package over a roster one hero larger than `crew`, so the extra hero has
+   * not answered yet and the screen reads `Incomplete` by construction — the shape
+   * `lockedCampaign()`'s own test needs, without that test having to state it. The first
+   * `crew` heroes both answered and accepted, so `crew` also doubles as `acceptedBy.size`
+   * for the test that reads the treasury forecast off it.
+   */
+  function lockedCampaign(
+    overrides: {
+      readonly treasury?: number;
+      readonly patronFee?: number;
+      readonly advance?: number;
+      readonly crew?: number;
+      readonly promisedBonus?: number;
+    } = {}
+  ): GameState {
+    const { treasury = 400, patronFee = 60, advance = 0, crew = 2, promisedBonus = 0 } = overrides;
+
+    const roster = Array.from({ length: crew + 1 }, (_unused, index) =>
+      aHero({
+        id: heroId(index),
+        definition: parseContentId(`core:hero${String(index)}`),
+        displayNameKey: `hero.core.hero${String(index)}.name`
+      })
+    );
+    const acceptedBy = SortedSet.from(
+      compareHeroIds,
+      roster.slice(0, crew).map((hero) => hero.id)
+    );
+
+    const contract = aContract({
+      patronFee,
+      requiredCrew: crew,
+      // `acceptedBy.size` is always `crew` here, which is always `requiredCrew` too —
+      // so §2.1's biconditional (`status = 'crewed' ⇔ acceptedBy.size = requiredCrew`)
+      // leaves exactly one legal status for this fixture, not the `aContract` default
+      // (`Offered`) review of Task 15 found this had been carrying instead.
+      status: ContractStatus.Crewed,
+      offer: anOffer({
+        phase: OfferPhase.Locked,
+        keyHero: roster[0]!.id,
+        advance,
+        promisedBonus,
+        respondedBy: acceptedBy,
+        acceptedBy
+      })
+    });
+
+    return withContracts(withHeroes(aState({ treasury }), roster), [contract]);
+  }
+
+  /**
+   * `locked`, one seat still open — `NEGOTIATION_SPEC` §3.2's "отряд не набран" branch.
+   * `respondedBy` is the *whole* roster, same as {@link crewedCampaign}: both heroes
+   * answered, only one accepted. Review of Task 15 found the original pair of fixtures
+   * varying `respondedBy` too, which made `Normal` versus `Incomplete` differ between
+   * them for free — an implementation gating the settlement on `state ===
+   * ScreenState.Normal` instead of on the crew would have passed the very test this
+   * fixture exists for.
+   */
+  function lockedButUncrewed(): GameState {
+    const roster = heroes(ids.bram, ids.doran);
+    const contract = aContract({
+      requiredCrew: 2,
+      status: ContractStatus.Offered,
+      offer: anOffer({
+        phase: OfferPhase.Locked,
+        keyHero: heroId(0),
+        respondedBy: responded(0, 1),
+        acceptedBy: responded(0)
+      })
+    });
+
+    return withContracts(withHeroes(aState(), roster), [contract]);
+  }
+
+  /**
+   * `locked`, every seat filled — the phase/status pair `settleContract` waits on. Same
+   * `respondedBy` as {@link lockedButUncrewed}, so both fixtures read `Normal`; only
+   * `acceptedBy` and `status` — the actual crew — differ.
+   */
+  function crewedCampaign(): GameState {
+    const roster = heroes(ids.bram, ids.doran);
+    const contract = aContract({
+      requiredCrew: 2,
+      status: ContractStatus.Crewed,
+      offer: anOffer({
+        phase: OfferPhase.Locked,
+        keyHero: heroId(0),
+        respondedBy: responded(0, 1),
+        acceptedBy: responded(0, 1)
+      })
+    });
+
+    return withContracts(withHeroes(aState(), roster), [contract]);
+  }
+
+  /**
+   * `locked`, crewed, mid-negotiation on every axis at once — every field of `offer`,
+   * `promiseTerms` and `settlement` carries a distinct, nonzero value, so a `toEqual`
+   * against the full projection is sensitive to each of the three sub-objects' own
+   * fields individually, not only to whether the sub-object is `null` or present.
+   */
+  function crewedCampaignWithPromise(): GameState {
+    const roster = heroes(ids.bram, ids.doran);
+    const contract = aContract({
+      patronFee: 100,
+      requiredCrew: 2,
+      status: ContractStatus.Crewed,
+      negotiableTags: SortedSet.from(compareContentIds, [ids.methodDeception, ids.methodOpen]),
+      offer: anOffer({
+        version: 3,
+        phase: OfferPhase.Locked,
+        keyHero: heroId(0),
+        advance: 15,
+        methodTag: ids.methodOpen,
+        promisedBonus: 30,
+        respondedBy: responded(0, 1),
+        acceptedBy: responded(0, 1)
+      })
+    });
+
+    return withContracts(withHeroes(aState({ treasury: 500 }), roster), [contract]);
+  }
+
+  it('shows what fulfilment and breach will mean, before anything is signed', () => {
+    const model = contractOfferScreenModel(draftWithAPromise(), []);
+
+    expect(model.promiseTerms).toEqual({
+      fulfilKey: 'offer.promise.fulfil',
+      breachKey: 'offer.promise.breach',
+      bonus: 25
+    });
+  });
+
+  it('shows no promise terms when nothing was promised', () => {
+    expect(contractOfferScreenModel(draftWithoutAPromise(), []).promiseTerms).toBeNull();
+  });
+
+  it('forecasts the treasury as keeping the word would leave it', () => {
+    const model = contractOfferScreenModel(
+      lockedCampaign({ treasury: 400, patronFee: 60, advance: 10, crew: 3, promisedBonus: 20 }),
+      []
+    );
+
+    expect(model.treasuryForecast).toBe(400 + 60 - 30 - 20);
+  });
+
+  /**
+   * Draft, one of three seats filled by the key hero's own draft acceptance — the
+   * shape `lockCommitment` exists to stay honest about. `requiredCrew` (3) and
+   * `acceptedBy.size` (1) disagree here, which every other fixture in this file does
+   * not: `crewedCampaignWithPromise`'s own projection test has `acceptedBy.size ===
+   * requiredCrew`, where `advance × requiredCrew + promisedBonus` and `advance ×
+   * acceptedBy.size + promisedBonus` coincide by construction. A `lockCommitment`
+   * computed off `acceptedBy.size` instead of `requiredCrew` — exactly the mistake the
+   * field exists to not make — would still pass that pinned assertion and only
+   * reddens against a state where the two formulas can disagree.
+   */
+  function draftWithOneSeatOfThreeFilled(): GameState {
+    const hero = aHero({
+      id: heroId(0),
+      definition: ids.bram,
+      displayNameKey: 'hero.core.bram.name'
+    });
+    const contract = aContract({
+      requiredCrew: 3,
+      offer: anOffer({
+        keyHero: heroId(0),
+        advance: 10,
+        promisedBonus: 5,
+        respondedBy: responded(0),
+        acceptedBy: responded(0)
+      })
+    });
+
+    return withContracts(withHeroes(aState(), [hero]), [contract]);
+  }
+
+  it('reserves what locking the full crew would commit, not just who has answered so far', () => {
+    // advance × requiredCrew + promisedBonus = 10×3+5 = 35; advance × acceptedBy.size +
+    // promisedBonus = 10×1+5 = 15. The two disagree, and `lockCommitment` must be the
+    // first.
+    const model = contractOfferScreenModel(draftWithOneSeatOfThreeFilled(), []);
+
+    expect(model.offer?.lockCommitment).toBe(35);
+  });
+
+  it('keeps the phase out of the five screen states', () => {
+    const model = contractOfferScreenModel(lockedCampaign(), []);
+
+    expect(model.state).toBe(ScreenState.Incomplete);
+    expect(model.offer?.phase).toBe(OfferPhase.Locked);
+  });
+
+  it('names both alternatives of a negotiable tag, not only the chosen one', () => {
+    expect(contractOfferScreenModel(draftWithAPromise(), []).offer?.methodOptionKeys).toEqual([
+      'tag.method.open',
+      'tag.method.deception'
+    ]);
+  });
+
+  it('shows the settlement only once the crew is filled', () => {
+    expect(contractOfferScreenModel(lockedButUncrewed(), []).settlement).toBeNull();
+    expect(contractOfferScreenModel(crewedCampaign(), []).settlement).not.toBeNull();
+  });
+
+  it('changes the read model hash when the offer changes and not when a translation does', () => {
+    expect(readModelHash(contractOfferScreenModel(draftWithAPromise(), []))).not.toBe(
+      readModelHash(contractOfferScreenModel(draftWithoutAPromise(), []))
+    );
+  });
+
+  it('projects every field of the offer, the promise and the settlement, not only whether each is present', () => {
+    // External review of this task found the gap the seven tests above leave: none of
+    // them ever puts a *non-null* `settlement` through `describeReadModel` at all, so
+    // `describeSettlement` had never actually run, and the other two pinned tests only
+    // ever check `offer`/`promiseTerms` field by field on the *model*, never on the
+    // projection `readModelHash` is taken over. A field could be dropped, renamed or
+    // miscomputed inside `describeOffer`/`describePromiseTerms`/`describeSettlement` and
+    // every test above would still pass. `toEqual` closes that: a projection missing a
+    // key compares unequal to an expectation that states one, the same property the
+    // `LOADING_SCREEN` projection test above already leans on for its five `null`s — so
+    // this single assertion is sensitive to each of the sixteen sub-fields below on its
+    // own, not only to whether `offer`/`promise_terms`/`settlement` are `null`.
+    const model = contractOfferScreenModel(crewedCampaignWithPromise(), []);
+    const projection = describeReadModel(model) as Record<string, unknown>;
+
+    // acceptedBy.size is 2 here (both heroes crewed), so §3.3's formula reads
+    // 500 + 100 − 15×2 − 30 = 540 kept, 570 broken (the 30 not paid).
+    expect(projection['treasury']).toBe(500);
+    expect(projection['treasury_forecast']).toBe(540);
+    // requiredCrew is 2 here (`crewedCampaignWithPromise`), so `lockCommitment` reads
+    // `commitmentOf` — 15 × 2 + 30 = 60 — the full-crew price `lockOffer` would have
+    // reserved, not the `acceptedBy.size`-scaled figure `treasuryForecast` uses.
+    expect(projection['offer']).toEqual({
+      version: 3,
+      phase: 'locked',
+      advance: 15,
+      method_tag_key: 'tag.method.open',
+      method_option_keys: ['tag.method.open', 'tag.method.deception'],
+      promised_bonus: 30,
+      key_hero_definition: ids.bram,
+      lock_commitment: 60
+    });
+    expect(projection['promise_terms']).toEqual({
+      fulfil_key: 'offer.promise.fulfil',
+      breach_key: 'offer.promise.breach',
+      bonus: 30
+    });
+    expect(projection['settlement']).toEqual({
+      promised_bonus: 30,
+      key_hero_definition: ids.bram,
+      crew: [ids.bram, ids.doran],
+      treasury_if_kept: 540,
+      treasury_if_broken: 570
     });
   });
 });

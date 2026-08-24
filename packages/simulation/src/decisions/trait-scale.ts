@@ -10,7 +10,7 @@
  * own, word for word: a range may be stated exactly twice, as a constant and as a
  * literal in the schema, and what must not exist is a third, hand-copied statement
  * of it inside a scoring function. Three such copies did exist in the C# original
- * once — `/ 100` in the payment, risk and insult terms — so raising the authored
+ * once — `/ 100` in the patron fee, risk and insult terms — so raising the authored
  * ceiling would have been accepted by the loader and by the schema while every one
  * of those terms silently weakened.
  *

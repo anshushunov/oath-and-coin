@@ -129,7 +129,12 @@ function gatedController(run: RunRequest): {
       start: () => started,
       save: (slot) => inner.save(slot),
       load: (slot) => inner.load(slot),
-      slots: () => inner.slots()
+      slots: () => inner.slots(),
+      composeOffer: (input) => inner.composeOffer(input),
+      proposeContractToHero: (input) => inner.proposeContractToHero(input),
+      lockOffer: (input) => inner.lockOffer(input),
+      pollCrew: (input) => inner.pollCrew(input),
+      settleContract: (input) => inner.settleContract(input)
     },
     subscribers: () => held.size,
     finish: async () => {

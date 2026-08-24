@@ -3,5 +3,10 @@
   "scenario": "zero_sum_tie",
   "expected_outcome": "success",
   "content_root": "scenarios/fixtures/zero_sum",
-  "checkpoints": [{ "name": "final", "after_command_id": 7 }]
+  "checkpoints": [
+    {
+      "name": "final",
+      "after_command_id": 14
+    }
+  ]
 }

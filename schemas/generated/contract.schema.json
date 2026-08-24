@@ -7,7 +7,7 @@
   "properties": {
     "schema_version": {
       "type": "number",
-      "const": 2
+      "const": 3
     },
     "id": {
       "type": "string",
@@ -18,7 +18,7 @@
       "maxLength": 256,
       "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$"
     },
-    "payment": {
+    "patron_fee": {
       "type": "integer",
       "minimum": 0,
       "maximum": 100
@@ -40,13 +40,20 @@
         "type": "string",
         "pattern": "^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$"
       }
+    },
+    "negotiable_tags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$"
+      }
     }
   },
   "required": [
     "schema_version",
     "id",
     "display_name_key",
-    "payment",
+    "patron_fee",
     "risk",
     "required_crew",
     "tags"

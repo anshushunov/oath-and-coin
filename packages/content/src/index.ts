@@ -17,8 +17,8 @@
 export {
   INCLINATION_WEIGHT_MAX,
   INCLINATION_WEIGHT_MIN,
-  PAYMENT_MAX,
-  PAYMENT_MIN,
+  PATRON_FEE_MAX,
+  PATRON_FEE_MIN,
   RELATIONSHIP_WEIGHT_MAX,
   RELATIONSHIP_WEIGHT_MIN,
   REQUIRED_CREW_MAX,
@@ -102,14 +102,37 @@ export {
   type FaultInjection,
   type ScenarioManifest
 } from './scenarios/scenario-manifest.ts';
-export { loadScenarioCommands, type ScenarioCommand } from './scenarios/scenario-commands.ts';
+export {
+  ScenarioCommandKind,
+  loadScenarioCommands,
+  type ComposeOfferScenarioCommand,
+  type LockOfferScenarioCommand,
+  type PollCrewScenarioCommand,
+  type ProposeContractScenarioCommand,
+  type ScenarioCommand
+} from './scenarios/scenario-commands.ts';
 export { commandsUpTo, resolveCheckpoint } from './scenarios/checkpoint-resolver.ts';
 export { resolveContentRoot } from './scenarios/content-root.ts';
+export {
+  ALLOWED_CONTRAST_INPUTS,
+  ContrastExpectation,
+  SUPPORTED_CONTRAST_SCHEMA_VERSION,
+  loadContrastDefinition,
+  type ContrastDefinition,
+  type ContrastInput,
+  type ContrastVary
+} from './scenarios/contrast-definition.ts';
+export {
+  runContrast,
+  type ContrastRun,
+  type ContrastSideResult
+} from './scenarios/contrast-runner.ts';
 export {
   RULESET_VERSION,
   applyScenarioCommands,
   runScenario,
   type ScenarioOutcome,
+  type StepDecision,
   type StepOutcome
 } from './scenarios/scenario-runner.ts';
 export {
