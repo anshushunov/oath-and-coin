@@ -226,11 +226,22 @@ export const OFFER_PHASE_KEYS: readonly string[] = Object.freeze(
  * {@link SettlementLine.promisedBonus}: all three name the same fact at different
  * points in the negotiation's lifecycle, and a second caption for the same fact would
  * be a second declaration of one word.
+ *
+ * `SelectedMethod` exists beside `Method` rather than instead of it, and the
+ * distinction is load-bearing. `Method` captions the *group* — both alternatives a
+ * negotiable contract offers, `OfferLine.methodOptionKeys` — and which one is
+ * currently chosen is otherwise visible only as a radio's `checked` state, which no
+ * walk over rendered *text* (`collectRenderedTexts`, `expectedSnapshot`) can see at
+ * all. `SelectedMethod` projects `OfferLine.methodTagKey` itself as a second, ordinary
+ * `Captioned` value, so the choice a player made is provable by the same mechanism
+ * every other field on this screen already is, not only by inspecting a DOM property
+ * a snapshot cannot reach.
  */
 export const OfferFieldKeys = Object.freeze({
   Version: 'field.offer.version',
   Advance: 'field.offer.advance',
   Method: 'field.offer.method',
+  SelectedMethod: 'field.offer.method_selected',
   PromisedBonus: 'field.offer.promised_bonus',
   KeyHero: 'field.offer.key_hero',
   LockCommitment: 'field.offer.lock_commitment'

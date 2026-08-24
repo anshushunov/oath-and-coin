@@ -200,6 +200,11 @@ export function expectedSnapshot(
  * as one draft block, the key hero the package names when it names one, and last the
  * reservation locking it would make, which is the price those three levers together
  * produce.
+ *
+ * The method choice is two entries, not one: {@link OfferFieldKeys.Method} names both
+ * alternatives, and {@link OfferFieldKeys.SelectedMethod} — separately — names the one
+ * actually chosen. Folding the second into "whichever alternative sorts first" would
+ * make a wrong selection unprovable by this function's own output.
  */
 function resolveOffer(
   offer: OfferLine,
@@ -214,14 +219,25 @@ function resolveOffer(
   resolve(OfferFieldKeys.Advance);
   texts.push(String(offer.advance));
 
-  // Both alternatives, chosen one first — the order `methodOptionKeysOf` already
-  // builds (`contract-offer-screen-model-factory.ts`'s own doc comment): a player
-  // choosing between two things has to see both, and an empty list means the contract
-  // carries no negotiable tag at all, so there is no caption for nothing to choose
-  // between.
+  // Both alternatives, in whatever order `OfferLine.methodOptionKeys` carries them
+  // (`methodOptionKeysOf` puts the chosen one first, but this function does not lean
+  // on that — a player choosing between two things has to see both, in *some* stated
+  // order, and an empty list means the contract carries no negotiable tag at all, so
+  // there is no caption for nothing to choose between).
   if (offer.methodOptionKeys.length > 0) {
     resolve(OfferFieldKeys.Method);
     offer.methodOptionKeys.forEach(resolve);
+  }
+
+  // Which one is *chosen*, projected as its own ordinary value — never inferred from
+  // position in the list above. A radio's `checked` state has no text representation
+  // at all, so without this line "which alternative won" is provable only by reading a
+  // DOM property no walk over rendered text (`collectRenderedTexts`, this function's
+  // own caller) can see. `null` exactly when nothing has been chosen yet, the same gate
+  // {@link OfferLine.methodTagKey}'s own doc keeps.
+  if (offer.methodTagKey !== null) {
+    resolve(OfferFieldKeys.SelectedMethod);
+    resolve(offer.methodTagKey);
   }
 
   resolve(OfferFieldKeys.PromisedBonus);

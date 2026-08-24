@@ -312,6 +312,14 @@ function ResponseBlock({ response }: { readonly response: ResponseLine }) {
  * because which of two named alternatives a package has chosen is a selection among a
  * closed set the way a number is not, and a screen that already draws it this way costs
  * nothing extra to keep drawing it this way once a handler lands.
+ *
+ * The radio group's `checked` state is not the only place the choice is visible.
+ * `OfferFieldKeys.SelectedMethod` repeats it as an ordinary `Captioned` value right
+ * under the group — the same text `OfferFieldKeys.Method`'s two options already carry,
+ * projected a second time from `methodTagKey` directly rather than from which option
+ * happens to render first. A `checked` prop is a DOM property with no text node behind
+ * it, so without this second line "which alternative won" could not be told from
+ * rendered text at all — see {@link OfferFieldKeys.SelectedMethod}'s own doc comment.
  */
 function OfferBlock({
   offer,
@@ -345,6 +353,10 @@ function OfferBlock({
               </label>
             ))}
           </div>
+        )}
+
+        {offer.methodTagKey === null ? null : (
+          <Captioned captionKey={OfferFieldKeys.SelectedMethod} value={text(offer.methodTagKey)} />
         )}
 
         <Captioned captionKey={OfferFieldKeys.PromisedBonus} value={String(offer.promisedBonus)} />

@@ -328,8 +328,17 @@ function rawIdentifiersOf(model: ContractOfferScreenModel): readonly string[] {
  * `requiredCrew` — and no scenario in the corpus composes an offer with a promise or a
  * method choice yet (`NEGOTIATION_SPEC` §10.3's `promise_kept`, `promise_broken` and
  * `method_choice_flips_the_key_hero` are Task 20's). A hand-built model is the only way
- * to exercise those branches before that task lands, and `createContractOfferScreenModel`
- * still refuses one that violates §2.1.
+ * to exercise those branches before that task lands.
+ *
+ * **`createContractOfferScreenModel` does not check §2.1 for us, and an earlier version
+ * of this comment wrongly claimed it did.** It refuses a `null`/non-`null` mismatch
+ * against {@link ContractOfferScreenModel.state} and nothing else — not the crew-size
+ * invariants, not "`settlement` is non-`null` only when the crew is actually filled",
+ * not the arithmetic of §3.3. External review of this task found exactly that gap in
+ * `rendered-ui-snapshot.test.ts`'s own fixture (a `locked`, three-of-four-seats offer
+ * that still carried a `settlement`, and money that did not balance). The three models
+ * below are legal against §2.1 by hand — checked line by line, not by a gate — and
+ * that is the only thing keeping them legal.
  */
 describe('the draft block, the promise, the treasury and the settlement buttons', () => {
   it('shows the advance, the method choice and the promise as one draft block', () => {
@@ -344,10 +353,21 @@ describe('the draft block, the promise, the treasury and the settlement buttons'
 
     // The chosen method tag is a real radio among the two named alternatives — the
     // other one (`tag.method.deception`) exists on the same package and is not
-    // checked, which the third assertion below is what would fail if the screen drew
-    // both as checked or neither.
+    // checked, which the second assertion below is what would fail if the screen drew
+    // both as checked or neither. `draftModel` deliberately lists the chosen tag
+    // *second* in `methodOptionKeys`, so an implementation that checked "whichever
+    // option renders first" instead of `key === offer.methodTagKey` would check
+    // `tag.method.deception` here and fail both radio assertions.
     expect(radioChecked(container, textOf('tag.method.open'))).toBe(true);
     expect(radioChecked(container, textOf('tag.method.deception'))).toBe(false);
+
+    // The same fact again, but as ordinary rendered text rather than a DOM property:
+    // `checked` has no text node behind it at all, so `OfferFieldKeys.SelectedMethod`
+    // is what lets this selection be seen (and the snapshot hash `pnpm verify` already
+    // covers) the same way every other field on this screen is seen.
+    expect(captionedValue(container, textOf(OfferFieldKeys.SelectedMethod))).toBe(
+      textOf('tag.method.open')
+    );
   });
 
   it('says what counts as keeping the word and what counts as breaking it', () => {
@@ -370,7 +390,14 @@ describe('the draft block, the promise, the treasury and the settlement buttons'
     expect(forecast?.closest('.price')?.textContent).toContain(textOf(PromiseTermsKeys.Fulfil));
   });
 
-  it('offers no settlement buttons until the crew is filled', () => {
+  it('offers no settlement buttons when the model carries no settlement to act on', () => {
+    // What this proves, precisely: `ContractOfferScreen`'s own conditional
+    // (`model.settlement === null ? null : <SettlementBlock .../>`) never renders a
+    // button absent a settlement. It does *not* prove that `lockedUncrewedModel`'s
+    // particular contract/offer combination is one `pollCrew` could actually leave
+    // uncrewed — that would need the model built through the real factory, off a real
+    // `ContractState`, which no shipped scenario reaches through this screen's own
+    // matrix above (`NEGOTIATION_SPEC` §5.1's own two settlement-eligible phases).
     const container = renderScreen(lockedUncrewedModel());
 
     expect(container.querySelector('[data-testid="settlement-pay"]')).toBeNull();
@@ -433,8 +460,15 @@ function draftModel(): ContractOfferScreenModel {
       version: 1,
       phase: 'draft',
       advance: 40,
+      // Deliberately the *second* entry of `methodOptionKeys`, not the first: external
+      // review of this task found that a chosen-first fixture cannot tell a correct
+      // `methodTagKey` projection apart from a wrong one that just shows whichever
+      // option happens to render first — the two coincide whenever the choice sorts
+      // first, which is what the real factory's own convention always arranges. This
+      // model is hand-built and owes that convention nothing, so the test below can
+      // actually discriminate.
       methodTagKey: 'tag.method.open',
-      methodOptionKeys: ['tag.method.open', 'tag.method.deception'],
+      methodOptionKeys: ['tag.method.deception', 'tag.method.open'],
       promisedBonus: 25,
       keyHeroDefinition: 'core:bram',
       lockCommitment: 145
@@ -453,10 +487,12 @@ function draftModel(): ContractOfferScreenModel {
 }
 
 /**
- * A package locked with the crew still short a seat: `NEGOTIATION_SPEC` §5.1's
- * settlement line is `null` here on purpose — `pollCrew` ran and did not fill
- * `requiredCrew` — which is the one state the fourth test needs and no shipped
- * scenario reaches through this screen's own matrix above.
+ * A package locked with the crew still short a seat, as `NEGOTIATION_SPEC` §5.1
+ * describes one: `requiredCrew: 3` against `acceptedCount: 1`. `settlement: null` is
+ * set directly here, standing in for what a real `pollCrew` that did not fill the crew
+ * would leave behind — this fixture does not run that command, so it proves the
+ * screen's own conditional and not the engine's, exactly what the fourth test's own
+ * comment now says.
  */
 function lockedUncrewedModel(): ContractOfferScreenModel {
   return createContractOfferScreenModel({
@@ -623,8 +659,8 @@ function findButtonByText(container: HTMLElement, text: string): HTMLButtonEleme
  * has to keep working for a render that reaches a key with nothing to answer it.
  * `collectRenderedAttributes` is deliberately not reused here — it walks every
  * attribute a browser ever sees, including `class`, `type` and `data-testid`, none of
- * which a player reads — so this looks only at the three attributes a literal could
- * hide behind unseen by a text-node walk: `aria-label`, `title`, `placeholder`.
+ * which a player reads — so this looks only at the four attributes a literal could
+ * hide behind unseen by a text-node walk: `aria-label`, `title`, `placeholder`, `alt`.
  */
 function literalsIn(
   Component: (props: {
@@ -679,10 +715,16 @@ function literalsIn(
   return [...literals];
 }
 
-/** `aria-label`, `title` and `placeholder` — the attributes a literal could hide behind. */
+/**
+ * `aria-label`, `title`, `placeholder` and `alt` — the attributes a literal could hide
+ * behind. This screen renders no `<img>` today, so `alt` is latent coverage rather than
+ * a branch this file currently exercises — the brief named it beside the other three,
+ * and a scanner that only checks the ones a current component happens to use is a
+ * scanner with an expiry date.
+ */
 function collectLabelledAttributes(root: Node): readonly string[] {
   const values: string[] = [];
-  const ATTRIBUTES = ['aria-label', 'title', 'placeholder'];
+  const ATTRIBUTES = ['aria-label', 'title', 'placeholder', 'alt'];
 
   const walk = (node: Node): void => {
     if (node.nodeType === node.ELEMENT_NODE) {

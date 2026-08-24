@@ -33,6 +33,7 @@
     "field.offer.version": "Версия пакета:",
     "field.offer.advance": "Аванс:",
     "field.offer.method": "Метод:",
+    "field.offer.method_selected": "Выбрано:",
     "field.offer.promised_bonus": "Надбавка по возвращении:",
     "field.offer.key_hero": "Ключевой герой:",
     "field.offer.lock_commitment": "Резерв при блокировке:",
