@@ -1,0 +1,27 @@
+{
+  "commands": [
+    {
+      "command": "compose_offer",
+      "command_id": 1,
+      "contract": "core:collect_the_debt",
+      "key_hero_index": 0,
+      "advance": 20,
+      "method_tag": null,
+      "promised_bonus": 5,
+      "expected_state_version": 0
+    },
+    {
+      "command": "propose_contract_to_hero",
+      "command_id": 2,
+      "contract": "core:collect_the_debt",
+      "hero_index": 0,
+      "expected_state_version": 1
+    },
+    {
+      "command": "lock_offer",
+      "command_id": 3,
+      "contract": "core:collect_the_debt",
+      "expected_state_version": 2
+    }
+  ]
+}

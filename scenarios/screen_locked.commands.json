@@ -1,0 +1,27 @@
+{
+  "commands": [
+    {
+      "command": "compose_offer",
+      "command_id": 1,
+      "contract": "core:escort_the_caravan",
+      "key_hero_index": 2,
+      "advance": 40,
+      "method_tag": "method:open",
+      "promised_bonus": 15,
+      "expected_state_version": 0
+    },
+    {
+      "command": "propose_contract_to_hero",
+      "command_id": 2,
+      "contract": "core:escort_the_caravan",
+      "hero_index": 2,
+      "expected_state_version": 1
+    },
+    {
+      "command": "lock_offer",
+      "command_id": 3,
+      "contract": "core:escort_the_caravan",
+      "expected_state_version": 2
+    }
+  ]
+}

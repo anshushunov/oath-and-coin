@@ -135,7 +135,7 @@ jobs:
       # is the only place that can notice.
       #
       # The residue is real and is named rather than fixed: when `pnpm test:e2e`
-      # fails after writing two of the five states, this step also fails, and its
+      # fails after writing two of the nine states, this step also fails, and its
       # message ("produced no evidence for: …") reads as "the suite stopped writing
       # reports" when the truth is "the suite stopped". Making it a notice when
       # `steps.e2e.outcome == 'failure'` and an error when e2e passed would separate
@@ -148,7 +148,7 @@ jobs:
         shell: bash
         run: |
           root=artifacts/browser-evidence
-          expected="screen_loading screen_empty screen_error screen_incomplete screen_normal"
+          expected="screen_loading screen_empty screen_error screen_incomplete screen_normal screen_draft screen_locked screen_settlement_due screen_word_broken"
 
           missing=""
           for state in $expected; do

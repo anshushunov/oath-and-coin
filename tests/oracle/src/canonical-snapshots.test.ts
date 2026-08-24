@@ -49,12 +49,14 @@ const SNAPSHOT_SCENARIOS: readonly string[] = readdirSync(scenarioRoot)
   .sort();
 
 describe('a canonical snapshot against a fresh run at the CLI default', () => {
-  it('ships exactly the snapshots DEC-008 Task 20 accounted for', () => {
+  it('ships exactly the snapshots DEC-008 Tasks 20 and 21 accounted for', () => {
     // Named as a number for the same reason every other corpus-size assertion in this
-    // slice is: 24 inherited from before this task, 14 named individually by
-    // `NEGOTIATION_SPEC` §10.3, and `grey_zone_flip` — one of the 24 — is not an
-    // addition, only a rewrite (`DEC-008` Task 8's parked obligation, closed here).
-    expect(SNAPSHOT_SCENARIOS).toHaveLength(38);
+    // slice is: 24 inherited from before Task 20, 14 named individually by
+    // `NEGOTIATION_SPEC` §10.3 (`grey_zone_flip` — one of the 24 — is not an addition,
+    // only a rewrite, `DEC-008` Task 8's parked obligation, closed by Task 20), and the
+    // four negotiation-phase scenarios Task 21 adds for the browser evidence run
+    // (`screen_draft`, `screen_locked`, `screen_settlement_due`, `screen_word_broken`).
+    expect(SNAPSHOT_SCENARIOS).toHaveLength(42);
   });
 
   it.each(SNAPSHOT_SCENARIOS)('%s reproduces the file this build already ships', (scenario) => {

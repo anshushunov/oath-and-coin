@@ -40,19 +40,43 @@ import { expectWindowBoundedScreen, measureLayout } from './layout.ts';
  *   the texts a correctly bound screen owes from a model this process builds off the
  *   disk, and the texts the page actually rendered are walked out of its DOM. Neither
  *   half can see the other;
- * - the screen state is compared with what the scenario's *manifest* declares, read out
- *   of the corpus, not with what the run produced;
+ * - the screen state is compared with what the scenario's own manifest declares
+ *   (`scenarios/<scenario>.manifest.json`), never `migration/oracle/v1` — DEC-008 Task 21
+ *   decoupled both this and the checkpoint below from the frozen corpus, which cannot gain
+ *   the negotiation-phase scenarios this file now also runs — not with what the run
+ *   produced;
  * - reachability is measured, and it is the one question neither hash can ask.
  *
  * That last one is the direct port of `ScreenLayoutMeasurement`, and it is here because
  * review of the Godot screen caught a roster that had walked off the bottom of the window
  * while both hashes were green. A hash says the right texts exist in the right order; it
  * says nothing about whether a person can get to them.
+ *
+ * **What Task 21 removed rather than decoupled.** This file used to open the frozen
+ * corpus's own per-scenario record (`migration/oracle/v1/scenarios/<scenario>/…`) and
+ * assert it agreed with the SHA-256 it carries beside its own `read_model` — a
+ * self-consistency check on the corpus entry alone, unrelated to anything the browser
+ * rendered. Nothing downstream still read that entry once the checkpoint and the expected
+ * screen state moved to each scenario's own manifest above, and a scenario `DEC-008` adds
+ * after the corpus was frozen has no such entry to open at all — gating the assertion on
+ * `entry !== null` would have kept a check that runs on five scenarios and skips the four
+ * this task exists to add.
+ *
+ * Not relocated to `tests/oracle`, and not because it would be homeless there: measured
+ * (checked every entry the original five scenarios could reach, `canonicalSha256` of the
+ * `read_model` against its own carried hash, all five agree). It is a fact about data that
+ * cannot change — `migration/oracle/v1` is frozen and read-only, and its own README says
+ * so — so the only two things that could ever move it are already gated elsewhere:
+ * `tests/oracle/canonical.test.ts`'s JCS-vector suite fixes this port's canonicalization
+ * against the corpus's own recorded agreement/disagreement with the old C# writer, and its
+ * "sha256 against the frozen corpus" block fixes every one of the 57 files' bytes against
+ * `manifest.json`. A third check re-deriving the same already-proven-stable number from
+ * one live entry would be a fact restated, not a fact guarded.
  */
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = join(HERE, '..', '..');
-const ORACLE_ROOT = join(REPOSITORY_ROOT, 'migration', 'oracle', 'v1');
+const SCENARIO_ROOT = join(REPOSITORY_ROOT, 'scenarios');
 
 /** Where the run's evidence lands. The CI job publishes this directory with `if: always()`. */
 const EVIDENCE_ROOT = join(REPOSITORY_ROOT, 'artifacts', 'browser-evidence');
@@ -70,25 +94,32 @@ const SCREEN = 'contract-offer-screen';
 const CANVAS = 'world-canvas';
 
 /**
- * The five scenarios whose manifests declare the five states `AGENTS.md` §7 requires.
+ * The five scenarios whose manifests declare the five states `AGENTS.md` §7 requires,
+ * plus the four negotiation-phase scenarios `DEC-008` Task 21 adds — `draft`, `locked`,
+ * a locked-and-crewed offer waiting on `settleContract`, and a settled one whose promise
+ * was broken. None of the nine can be recorded in `migration/oracle/v1`: that corpus is
+ * frozen at the Godot/.NET baseline and predates the negotiation protocol entirely
+ * (`ADR-013`).
  *
- * The checkpoint is not listed: it is read from the corpus manifest, which is the
- * document that decides it. A list here would be a fourth place the same five names are
- * written, and the one place nothing checks.
+ * The checkpoint is not listed: it is read from each scenario's own manifest
+ * (`scenarios/<scenario>.manifest.json`), which is the document that decides it. A list
+ * here would be a fourth place the same names are written, and the one place nothing
+ * checks.
  *
  * `overflows` is stated per state because reachability is satisfied trivially by content
- * that fits, and three of these five states hold two or three texts and can never fill a
+ * that fits, and several of these states hold few enough texts that they can never fill a
  * 1280x800 window. Measured from the `report.json` each state writes under
  * `artifacts/browser-evidence`: at a window of 800 the screen's box is 532, and loading,
  * empty and error report 532px of content inside it — a box stretched to the window with
- * shorter content reads its own height — while incomplete holds 696 and normal 1011. Two
- * things moved these numbers in Task 16.8: the screen link took a row above the screen,
- * and the project's viewport was repaired from the 720 `devices['Desktop Chrome']` had
- * been quietly imposing to the 800 the record asks for.
+ * shorter content reads its own height — while incomplete and the four negotiation-phase
+ * states hold enough offer, promise and settlement detail to overflow, and normal does
+ * too. Two things moved the original five numbers in Task 16.8: the screen link took a
+ * row above the screen, and the project's viewport was repaired from the 720
+ * `devices['Desktop Chrome']` had been quietly imposing to the 800 the record asks for.
  *
- * So the check is real on exactly two of them, and saying which turns "the reachability
- * check passed" into a claim with a subject — a layout change that stops the roster
- * overflowing would otherwise leave the whole measurement green and meaningless, which is
+ * So the check is real on most of these, and saying which turns "the reachability check
+ * passed" into a claim with a subject — a layout change that stops the roster overflowing
+ * would otherwise leave the whole measurement green and meaningless, which is
  * `FULL_TYPESCRIPT_MIGRATION` §14.3's warning arriving from the other direction.
  *
  * It says nothing about the *horizontal* question, and that one is not exercised at all:
@@ -102,28 +133,12 @@ const SCENARIOS = [
   { scenario: 'screen_empty', overflows: false },
   { scenario: 'screen_error', overflows: false },
   { scenario: 'screen_incomplete', overflows: true },
-  { scenario: 'screen_normal', overflows: true }
+  { scenario: 'screen_normal', overflows: true },
+  { scenario: 'screen_draft', overflows: true },
+  { scenario: 'screen_locked', overflows: true },
+  { scenario: 'screen_settlement_due', overflows: true },
+  { scenario: 'screen_word_broken', overflows: true }
 ] as const;
-
-/** What one corpus entry states about the screen its run produced. */
-interface OracleEntry {
-  readonly canonical_sha256: string | null;
-  readonly outcome: { readonly screen_state: string };
-  readonly inputs: {
-    readonly content_version: string | null;
-    readonly manifest: { readonly expected_screen_state: string | null };
-  };
-  readonly read_model: Record<string, unknown> & { readonly sha256: string };
-}
-
-/** The corpus manifest, down to the fields this file addresses an entry by. */
-interface OracleManifest {
-  readonly scenarios: readonly {
-    readonly scenario: string;
-    readonly expected_screen_state: string | null;
-    readonly checkpoints: readonly { readonly checkpoint: string }[];
-  }[];
-}
 
 /** What the page reports about the run it performed. */
 interface PageReport {
@@ -151,8 +166,6 @@ interface FrameMeasurement {
   readonly shapes: number;
   readonly distinctColors: number;
 }
-
-const manifest = readJson<OracleManifest>(join(ORACLE_ROOT, 'manifest.json'));
 
 // Both catalogues, merged the same way the page itself merges them
 // (`apps/web/src/App.tsx`'s `browserCatalogue`, `ADR-012`): since Task 17 the screen
@@ -187,26 +200,10 @@ test.beforeAll(() => {
 
 test.describe('contract-offer screen, in a browser', () => {
   for (const { scenario, overflows } of SCENARIOS) {
-    test(`${scenario} renders what the corpus recorded, and all of it is reachable`, async ({
+    test(`${scenario} renders what its own manifest declares, and all of it is reachable`, async ({
       page
     }) => {
       const checkpoint = checkpointOf(scenario);
-      const entry = readJson<OracleEntry>(
-        join(ORACLE_ROOT, 'scenarios', scenario, checkpoint, `seed-${SEED.toString()}.json`)
-      );
-
-      // The corpus hashed the projection without the hash it stores beside it. Recomputed
-      // rather than read, so an entry that disagrees with itself is caught here instead of
-      // silently deciding which half the page is measured against — the same discipline
-      // the parity tool applies for the reason §3.6 recorded. This is a self-consistency
-      // check on the frozen entry alone — neither side is the rename below reaches — so it
-      // stays exactly what it was.
-      const { sha256: recordedHash, ...recorded } = entry.read_model;
-      const corpusReadModelHash = canonicalSha256(recorded as CanonicalValue);
-      expect(
-        corpusReadModelHash,
-        'the corpus entry must agree with the hash it carries, or it is an oracle for nothing'
-      ).toBe(recordedHash);
 
       // The other side of the second hash, built in this process off the disk. Nothing in
       // it can know what the page rendered, which is exactly what makes agreement mean
@@ -316,6 +313,16 @@ test.describe('contract-offer screen, in a browser', () => {
       };
       writeFileSync(join(directory, 'report.json'), `${JSON.stringify(report, null, 2)}\n`);
 
+      // The evidence `AGENTS.md` §11 asks for, present on disk — not merely "the write
+      // call did not throw". A CI job that published an empty `artifacts/browser-evidence`
+      // directory would still reach this line if any of the three writes above were
+      // quietly skipped; this is what turns that into a red assertion instead of a
+      // missing file discovered only by the workflow's own summary step, days later, in
+      // a different job.
+      expect(existsSync(join(directory, 'screenshot.png')), 'screenshot.png').toBe(true);
+      expect(existsSync(join(directory, 'events.jsonl')), 'events.jsonl').toBe(true);
+      expect(existsSync(join(directory, 'report.json')), 'report.json').toBe(true);
+
       // The page must have run what the URL asked for. Without this the four comparisons
       // below could all pass about some other run — the failure that looks like success.
       expect(reported.scenario).toBe(scenario);
@@ -323,10 +330,11 @@ test.describe('contract-offer screen, in a browser', () => {
       expect(reported.seed).toBe(SEED.toString());
       expect(reported.locale).toBe(LOCALE);
 
-      // Against the manifest's declared state, not against what the run produced. The
+      // Against the scenario's own manifest, not against what the run produced and not
+      // against `migration/oracle/v1` — the frozen corpus predates the negotiation
+      // protocol and cannot record any of these nine scenarios (DEC-008 Task 21). The
       // parity tool lower-cases at exactly this point, and this is the same comparison.
       expect(reported.screen_state.toLowerCase()).toBe(expectedScreenStateOf(scenario));
-      expect(reported.screen_state.toLowerCase()).toBe(entry.outcome.screen_state);
 
       expect(reported.read_model_hash).toBe(expectedReadModelHash);
 
@@ -442,30 +450,49 @@ function runUrl(scenario: string, checkpoint: string): string {
   return `/?${parameters.toString()}`;
 }
 
-/** The checkpoint the corpus manifest records for this scenario. */
-function checkpointOf(scenario: string): string {
-  const entry = manifest.scenarios.find((candidate) => candidate.scenario === scenario);
+/**
+ * The manifest fields this file addresses a scenario by — `scenarios/<scenario>.manifest.json`,
+ * read directly rather than through `loadScenarioManifest`: this process only ever needs
+ * two of its fields, and importing the full domain type would pull the content package's
+ * validation in for a read this file already validates by construction (the four checks
+ * below throw on exactly what would otherwise be silently wrong).
+ */
+interface ScenarioManifestFile {
+  readonly expected_screen_state: string | null;
+  readonly checkpoints: readonly { readonly name: string }[];
+}
 
-  if (entry === undefined || entry.checkpoints.length !== 1) {
+function scenarioManifestOf(scenario: string): ScenarioManifestFile {
+  return readJson<ScenarioManifestFile>(join(SCENARIO_ROOT, `${scenario}.manifest.json`));
+}
+
+/**
+ * The checkpoint this scenario's own manifest records — never `migration/oracle/v1`,
+ * which cannot record any scenario `DEC-008` added after the corpus was frozen
+ * (`ADR-013`). DEC-008 Task 21 decoupled this from the corpus manifest that answered it
+ * before.
+ */
+function checkpointOf(scenario: string): string {
+  const file = scenarioManifestOf(scenario);
+
+  if (file.checkpoints.length !== 1) {
     throw new Error(
-      `The corpus manifest must record '${scenario}' with exactly one checkpoint; a screen ` +
-        'scenario stops at the state it is named after.'
+      `Scenario manifest 'scenarios/${scenario}.manifest.json' must declare exactly one ` +
+        'checkpoint; a screen scenario stops at the state it is named after.'
     );
   }
 
-  return entry.checkpoints[0]?.checkpoint ?? '';
+  return file.checkpoints[0]?.name ?? '';
 }
 
-/** The state this scenario's manifest declares it will land on. */
+/** The state this scenario's own manifest declares it will land on. */
 function expectedScreenStateOf(scenario: string): string {
-  const declared = manifest.scenarios.find(
-    (candidate) => candidate.scenario === scenario
-  )?.expected_screen_state;
+  const declared = scenarioManifestOf(scenario).expected_screen_state;
 
   if (declared === null || declared === undefined) {
     throw new Error(
-      `The corpus manifest records no expected screen state for '${scenario}', so there is ` +
-        'nothing independent to compare the page against.'
+      `Scenario manifest 'scenarios/${scenario}.manifest.json' declares no ` +
+        'expected_screen_state, so there is nothing independent to compare the page against.'
     );
   }
 

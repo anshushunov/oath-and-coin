@@ -29,7 +29,7 @@ import { describe, expect, it } from 'vitest';
  * against a package nobody composed, and the engine now refuses all of them
  * (`rejected.not_the_key_hero`). A corpus is frozen by definition and cannot gain a
  * `compose_offer`, so it stopped being a replayable input at all. What replaced it is the
- * corpus this repository authors and can keep faithful: 39 runnable scenarios, two seeds.
+ * corpus this repository authors and can keep faithful: 43 runnable scenarios, two seeds.
  *
  * **What this file does *not* claim**, stated because the same misreading has been caught
  * twice in this slice: this is not an external oracle. Both screens are computed by this
@@ -122,11 +122,13 @@ function focusOf(outcome: ScenarioOutcome): ContentId | undefined {
 
 describe('the screen a reloaded campaign draws', () => {
   it('agrees with the screen of a run that never stopped, on every shipped scenario', () => {
-    // Named as numbers so a silently shrinking corpus does not read as success. 41
-    // scenarios ship — 27 from before `DEC-008` Task 20 plus the 14 `NEGOTIATION_SPEC`
-    // §10.3 names individually; `screen_loading` and `screen_error` reach no state,
-    // leaving 39 that run, at two seeds each.
-    expect(SCENARIOS).toHaveLength(41);
+    // Named as numbers so a silently shrinking corpus does not read as success. 45
+    // scenarios ship — 27 from before `DEC-008` Task 20, the 14 `NEGOTIATION_SPEC` §10.3
+    // names individually, and the four negotiation-phase scenarios Task 21 adds for the
+    // browser evidence run (`screen_draft`, `screen_locked`, `screen_settlement_due`,
+    // `screen_word_broken`); `screen_loading` and `screen_error` reach no state, leaving
+    // 43 that run, at two seeds each.
+    expect(SCENARIOS).toHaveLength(45);
 
     let ranCount = 0;
     let blockedSeen = 0;
@@ -215,10 +217,17 @@ describe('the screen a reloaded campaign draws', () => {
     // `blockedSeen` grew with the scenarios that gate a hero on a negotiated method tag,
     // and `polledStepsSeen` with the new scenarios whose `pollCrew` step actually applies
     // (a refused one, as in `single_seat_contract_settles_without_a_poll`, carries no
-    // decision and does not count here).
-    expect(ranCount).toBe(78);
+    // decision and does not count here). `ranCount` and `scoredSeen` grew again with
+    // Task 21's four negotiation-phase scenarios (`screen_draft`, `screen_locked`,
+    // `screen_settlement_due`, `screen_word_broken`) — eight more runs (two seeds each)
+    // and one scored `proposeContractToHero` decision apiece, eight in total.
+    // `blockedSeen` and `polledStepsSeen` are unchanged: none of the four gates its key
+    // hero on a method tag, and none reaches `pollCrew` — the whole point of
+    // `screen_settlement_due` and `screen_word_broken` is a crew filled without one
+    // (`NEGOTIATION_SPEC` §3.1, `requiredCrew = 1`).
+    expect(ranCount).toBe(86);
     expect(blockedSeen).toBe(16);
-    expect(scoredSeen).toBe(226);
+    expect(scoredSeen).toBe(234);
     expect(polledStepsSeen).toBe(26);
   });
 });
