@@ -348,7 +348,7 @@ Read model — `ContractOfferScreenModel` в сборке `OathAndCoin.Presentat
 
 ### 7.3. Сценарии и контрасты
 
-`ScenarioCoverageTests.cs` — не менее двадцати сценариев в формате манифеста, каждый с каноническим артефактом и replay (`AtLeastTwentyScenariosAreShipped`, `EveryScenarioReplaysToItsCanonicalArtifact`), плюс именованные утверждения по каждому мотиву — включая `ZeroSumTie_AcceptsOnAStatedTieBreakRatherThanASilentDefault` на сценарии `zero_sum_tie`, где герой с нулевыми шкалами отвечает на том ординале, где seed 7 даёт настроение ровно ноль: пустая сумма, пустой след и заявленная ничья (§2.4).
+`tests/oracle/src/canonical-snapshots.test.ts` — не менее двадцати сценариев в формате манифеста, каждый с каноническим артефактом и replay, плюс именованные утверждения по каждому мотиву — включая проверку на сценарии `zero_sum_tie`, где герой с нулевыми шкалами отвечает на том ординале, где seed 7 даёт настроение ровно ноль: пустая сумма, пустой след и заявленная ничья (§2.4).
 
 Критерий выхода «изменение одного понятного условия предсказуемо меняет решение» переведён в автоматическую проверку **отдельным типом файла** в `scenarios/contrasts/`, а не полем существующего манифеста: манифест описывает прогон, а контраст описывает два прогона и различие между ними.
 
@@ -360,18 +360,20 @@ Read model — `ContractOfferScreenModel` в сборке `OathAndCoin.Presentat
   "seed": 1,
   "hero": "core:kestrel",
   "contract": "core:escort_the_caravan",
-  "vary": { "input": "contract.payment", "from": 0, "to": 100 },
+  "vary": { "input": "contract.patron_fee", "from": 0, "to": 100 },
   "expect": "decline_to_accept"
 }
 ```
 
 Раннер строит из общего набора два начальных состояния, отличающиеся только названным входом, и задаёт один и тот же вопрос одному и тому же герою. Seed, ординал и предсостояние совпадают **по построению**, поэтому перевернувшийся ответ не может объясняться настроением или историей команд.
 
-Допустимые значения `input` — закрытый список `ContrastDefinition.AllowedInputs`, и это ровно те условия, которые игрок способен воспринять: `contract.payment`, `contract.risk`, `contract.tags`, `contract.accepted_by`. Последнее — различие предсостояния, а не файлов контента; именно поэтому вход перечислен, а не выведен сравнением двух наборов JSON.
+**Загрузчик, закрытый список входов и раннер — код этого репозитория, а не наследство удалённого C#-дерева.** Первая редакция этого раздела описывала `ContrastDefinition.AllowedInputs` и `ContrastTests.cs` как существующие; на деле они существовали только в удалённом Godot/.NET-дереве, а `schemas/contrast.schema.json` и четыре файла `scenarios/contrasts/*.json` были данными без потребителя (`tests/architecture/orphaned-data.test.ts` держало их объявленными сиротами именно для того, чтобы это не осталось незамеченным). `NEGOTIATION_SPEC` §10.3 (`DEC-008`) назвал цену построения заново, и `packages/content/src/scenarios/contrast-definition.ts` и `contrast-runner.ts` — этот код, а не пять строк в существующий массив.
+
+Допустимые значения `input` — закрытый список `ALLOWED_CONTRAST_INPUTS` (`contrast-definition.ts`), и это ровно те условия, которые игрок способен воспринять. Список вырос до **девяти**: старые четыре — `contract.patron_fee` (переименовано из `contract.payment` вслед за переименованием поля в `Task 3`), `contract.risk`, `contract.tags`, `contract.accepted_by` — плюс пять новых, которые несёт срез переговоров — `offer.advance`, `offer.method_tag`, `offer.promised_bonus`, `hero.grievance`, `hero.believes_guild_promises`. `contract.accepted_by` — различие предсостояния, а не файлов контента; именно поэтому вход перечислен, а не выведен сравнением двух наборов JSON — то же основание оставляет его в списке и после того, как черновик этого раздела однажды прочитал собственную цитату задом наперёд и вычеркнул вход, который она защищает.
 
 Контрасты по чертам героя выражаются не мутацией героя, а разными героями на одном контракте — это отдельная проверка, и подменять ею контраст условий не нужно.
 
-Держит это `ContrastTests.cs`: `EveryShippedContrastFlipsAsDeclared`, `ContrastRunner_UsesTheSameSeedAndOrdinalOnBothSides`, `ContrastRunner_DoesNotCountAMismatchedDirectionAsFlipped`, `ContrastDefinition_RejectsAnInputOutsideTheClosedList`.
+Держат это `packages/content/src/scenarios/contrast-runner.test.ts` («flips every shipped contrast as it declares», «runs both sides on the same seed and the same ordinal», «does not count a flip in the wrong direction as the declared flip») и `contrast-definition.test.ts` («refuses an input outside the closed list»).
 
 ### 7.4. Экран
 
