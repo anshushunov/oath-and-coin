@@ -50,8 +50,8 @@ export const WITNESS_SHARE = 40;
  * amounts a broken promise adds — not the victim's or a witness's resulting
  * `HeroState.grievance` — because this function is not handed an existing `grievance`
  * to add to; folding the two together (`min(grievance + …, GRIEVANCE_MAX)`) is
- * `settleContract`'s own arithmetic, and no command wires it yet (`NEGOTIATION_SPEC`
- * §3.3 names the command; nothing in this package invokes it).
+ * `settleContract`'s own arithmetic (`engine.ts`'s `applyBrokenPromise`, which this
+ * function's two results feed directly), not this function's.
  *
  * Divides before flooring: {@link divideTowardZero} first, `Math.max(…, 1)` second —
  * load-bearing, because flooring the raw ratio and only then dividing would be a

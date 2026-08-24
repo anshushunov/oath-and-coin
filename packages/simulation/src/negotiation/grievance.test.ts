@@ -5,8 +5,8 @@ import { GRIEVANCE_MAX, grievanceForBrokenPromise } from './grievance.ts';
 /**
  * `grievanceForBrokenPromise` (`NEGOTIATION_SPEC` §3.3): what breaking a promise costs
  * the victim and every witness, before either amount is added to an existing
- * `HeroState.grievance` — that addition is `settleContract`'s, and no command wires it
- * yet.
+ * `HeroState.grievance` — that addition is `settleContract`'s own arithmetic
+ * (`engine.ts`'s `applyBrokenPromise`), not this function's.
  */
 describe('grievanceForBrokenPromise', () => {
   it('scales the victim grievance with how much of the fee was withheld', () => {
