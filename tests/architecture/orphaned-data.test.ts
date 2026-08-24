@@ -62,11 +62,11 @@ const SCHEMAS: Readonly<Record<string, Accounting>> = {
       'DEC-008 Task 19 gave the fixtures this schema describes their first consumer — ' +
       'loadContrastDefinition (packages/content/src/scenarios/contrast-definition.ts) states ' +
       'the same rules in Zod, and scenarios/contrasts/*.json is read for real by ' +
-      'contrast-runner.ts, the scenario-runner CLI\'s contrast subcommand and ' +
+      "contrast-runner.ts, the scenario-runner CLI's contrast subcommand and " +
       'contrast-runner.test.ts — but the schema *document* itself is still read by nothing: ' +
       'no test or script parses contrast.schema.json and checks it against that Zod contract. ' +
       'That is the same gap scenario-manifest.schema.json above is orphaned for, and the same ' +
-      'fix closes both: check-schemas.mjs asserting this document\'s fields against ' +
+      "fix closes both: check-schemas.mjs asserting this document's fields against " +
       'contrast-definition.ts the way it already does for the four `checkedBy` schemas.'
   }
 };
