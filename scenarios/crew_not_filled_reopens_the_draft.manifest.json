@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "scenario": "crew_not_filled_reopens_the_draft",
+  "expected_outcome": "success",
+  "checkpoints": [{ "name": "final", "after_command_id": 6 }]
+}

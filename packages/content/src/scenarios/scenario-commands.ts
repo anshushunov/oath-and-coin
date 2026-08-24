@@ -16,15 +16,16 @@ import { readFile } from '../strict-json.ts';
  *
  * Spelled the way the file spells it (`"compose_offer"`, not `"ComposeOffer"`), so the
  * discriminant a reader sees in the JSON and the one the compiler switches on are the
- * same string. `settleContract` is deliberately absent: it does not exist yet
- * (`DEC-008` Task 14), and a wire format that could express a command no engine
- * implements would be a scenario nobody can run, refused at the first `switch`.
+ * same string. `settle_contract` (Task 20) is the fifth and last: the engine has all
+ * five commands `NEGOTIATION_SPEC` §3.1 names now, so a scenario file can drive a
+ * negotiation start to finish.
  */
 export const ScenarioCommandKind = Object.freeze({
   ComposeOffer: 'compose_offer',
   ProposeContractToHero: 'propose_contract_to_hero',
   LockOffer: 'lock_offer',
-  PollCrew: 'poll_crew'
+  PollCrew: 'poll_crew',
+  SettleContract: 'settle_contract'
 });
 
 export type ScenarioCommandKind = (typeof ScenarioCommandKind)[keyof typeof ScenarioCommandKind];
@@ -75,6 +76,19 @@ export interface PollCrewScenarioCommand extends ScenarioCommandBase {
 }
 
 /**
+ * Pays out a locked, crewed package — and, if it promised a bonus, decides whether the
+ * guild keeps its word (`NEGOTIATION_SPEC` §3.1, §3.3).
+ *
+ * `pay` is stated, not defaulted: a scenario author choosing to keep or break a
+ * promise is the one input this command exists to carry, and a silent default would
+ * make the choice invisible in the file that made it.
+ */
+export interface SettleContractScenarioCommand extends ScenarioCommandBase {
+  readonly kind: typeof ScenarioCommandKind.SettleContract;
+  readonly pay: boolean;
+}
+
+/**
  * One step of a scenario, as a discriminated union over the engine command it issues.
  *
  * A scenario names a hero by position rather than by content id because it is written
@@ -104,7 +118,8 @@ export type ScenarioCommand =
   | ComposeOfferScenarioCommand
   | ProposeContractScenarioCommand
   | LockOfferScenarioCommand
-  | PollCrewScenarioCommand;
+  | PollCrewScenarioCommand
+  | SettleContractScenarioCommand;
 
 // Stated from the parser's own pattern rather than as `z.string()` plus a hopeful
 // `parseContentId` afterwards: a malformed id is then a contract violation naming the
@@ -167,15 +182,22 @@ const pollCrewFileSchema = z.strictObject({
   ...commandBaseFields
 });
 
+const settleContractFileSchema = z.strictObject({
+  command: z.literal(ScenarioCommandKind.SettleContract),
+  ...commandBaseFields,
+  pay: z.boolean()
+});
+
 // `discriminatedUnion` rather than a plain `union`: a step naming an unknown command,
 // or one whose fields belong to a different command than the one it names, is then
 // reported against *that* command's contract — `$.commands[3].hero_index` — instead of
-// as four simultaneous failures the author has to work out the right one of.
+// as five simultaneous failures the author has to work out the right one of.
 const commandFileSchema = z.discriminatedUnion('command', [
   composeOfferFileSchema,
   proposeFileSchema,
   lockOfferFileSchema,
-  pollCrewFileSchema
+  pollCrewFileSchema,
+  settleContractFileSchema
 ]);
 
 const scenarioFileSchema = z.strictObject({
@@ -211,6 +233,8 @@ function toCommand(command: CommandFile): ScenarioCommand {
       return { kind: ScenarioCommandKind.LockOffer, ...base };
     case ScenarioCommandKind.PollCrew:
       return { kind: ScenarioCommandKind.PollCrew, ...base };
+    case ScenarioCommandKind.SettleContract:
+      return { kind: ScenarioCommandKind.SettleContract, ...base, pay: command.pay };
   }
 }
 

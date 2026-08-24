@@ -128,8 +128,9 @@ function describeStep(step: StepOutcome): CanonicalValue {
  * keeps the artifact readable as *what the run was asked to do*: a `poll_crew` step has
  * no hero index, and a projection that wrote one anyway — `null`, or the last hero it
  * happened to see — would be the artifact stating a fact the command never carried.
- * The `switch` is exhaustive, so `settleContract` (Task 14) cannot reach the artifact
- * without a decision about how it is written.
+ * The `switch` is exhaustive, so `settle_contract` (Task 20) could not reach the wire
+ * format without a decision about how it is written here too — the decision made:
+ * `pay` is the one field it adds over the shared base.
  */
 function describeCommand(command: ScenarioCommand): CanonicalValue {
   const base = {
@@ -160,6 +161,8 @@ function describeCommand(command: ScenarioCommand): CanonicalValue {
     case ScenarioCommandKind.LockOffer:
     case ScenarioCommandKind.PollCrew:
       return base;
+    case ScenarioCommandKind.SettleContract:
+      return { ...base, pay: command.pay };
   }
 }
 
@@ -215,6 +218,16 @@ function describeState(state: GameState): CanonicalValue {
   };
 }
 
+/**
+ * `grievance` and `believes_guild_promises` were absent here through Task 14, which
+ * wired the only command that writes either (`settleContract`'s broken-promise branch,
+ * `NEGOTIATION_SPEC` §3.3) without updating the one place a run's whole campaign state
+ * is described. Found by Task 20's own Step 4: a `WITNESS_SHARE` mutant broke every
+ * grievance a `promise_broken`/`witness_remembers` settlement computes and reddened
+ * nothing here, because nothing here was reading either field. `mood_ordinals` on
+ * `describeContract` is the nearest precedent for the shape — a campaign fact with no
+ * home on `HeroState`'s authored siblings above, appended rather than interleaved.
+ */
 function describeHero(hero: HeroState): CanonicalValue {
   return {
     hero_id: hero.id,
@@ -225,10 +238,22 @@ function describeHero(hero: HeroState): CanonicalValue {
     pride: hero.pride,
     trust_in_guild: hero.trustInGuild,
     traits: hero.traits,
-    relationships: Object.fromEntries(hero.relationships.entries())
+    relationships: Object.fromEntries(hero.relationships.entries()),
+    grievance: hero.grievance,
+    believes_guild_promises: hero.believesGuildPromises
   };
 }
 
+/**
+ * **`negotiableTags` is not written here, and that is a gap this comment names rather
+ * than hides.** No command in this build ever mutates it — `composeOffer` chooses a
+ * `methodTag` from it but never rewrites the set itself — so its omission is invisible
+ * today: nothing in `ContractState.negotiableTags` can move between two states this
+ * projection could disagree about. The day a command *does* write it, that state
+ * change would replay-diverge silently, because a determinism check compares only what
+ * this function describes. Nothing here catches that mechanically; this note is the
+ * whole guard, which is the point being flagged, not a claim that it is enforced.
+ */
 function describeContract(contract: ContractState): CanonicalValue {
   return {
     id: contract.id,

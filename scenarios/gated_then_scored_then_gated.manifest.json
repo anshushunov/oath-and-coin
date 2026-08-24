@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "scenario": "gated_then_scored_then_gated",
+  "expected_outcome": "success",
+  "content_root": "scenarios/fixtures/gated_scored_gated",
+  "checkpoints": [{ "name": "final", "after_command_id": 4 }]
+}

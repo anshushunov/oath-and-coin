@@ -29,15 +29,16 @@ import { describe, expect, it } from 'vitest';
  * against a package nobody composed, and the engine now refuses all of them
  * (`rejected.not_the_key_hero`). A corpus is frozen by definition and cannot gain a
  * `compose_offer`, so it stopped being a replayable input at all. What replaced it is the
- * corpus this repository authors and can keep faithful: 25 runnable scenarios, two seeds.
+ * corpus this repository authors and can keep faithful: 39 runnable scenarios, two seeds.
  *
  * **What this file does *not* claim**, stated because the same misreading has been caught
  * twice in this slice: this is not an external oracle. Both screens are computed by this
  * build. What makes the comparison worth running is that they are computed by *different
  * code paths* from *different inputs* — a live step list versus an event log and a trace
- * store that survived a round trip through the save codec. An external expected value is
- * Task 20's, once `scenarios/*.canonical.json` is rebuilt and can supply one this build
- * did not itself compute.
+ * store that survived a round trip through the save codec. An external expected value —
+ * one this build did not itself compute — is what `canonical-snapshots.test.ts` supplies
+ * instead, comparing a fresh run against the file `scenarios/*.canonical.json` already
+ * ships, which is `DEC-008` Task 20's own addition.
  */
 
 const repoRoot = resolve(import.meta.dirname, '..', '..', '..');
@@ -69,7 +70,17 @@ const SCENARIOS: readonly string[] = readdirSync(join(repoRoot, 'scenarios'))
 const EXPECTED_REFUSALS: Readonly<Record<string, readonly string[]>> = {
   // The one scenario built on a refusal: the same hero is offered the same package
   // twice, and the second answer is refused because nobody is asked twice.
-  duplicate_response_attempt: ['rejected.already_responded']
+  duplicate_response_attempt: ['rejected.already_responded'],
+  // `requiredCrew = 1`: the key hero's own draft acceptance already fills the crew, so
+  // the `poll_crew` this scenario names on purpose is refused before it can ask anyone
+  // (`NEGOTIATION_SPEC` §3.1) — the scenario's whole point.
+  single_seat_contract_settles_without_a_poll: ['rejected.crew_already_filled'],
+  // Both single-seat contracts here hit the same refusal once each, for the same
+  // reason as above — this scenario compares two settlements, not two polls.
+  promise_size_changes_the_price_of_breaking_it: [
+    'rejected.crew_already_filled',
+    'rejected.crew_already_filled'
+  ]
 };
 
 function ran(scenario: string, seed: bigint): ScenarioOutcome | null {
@@ -111,10 +122,11 @@ function focusOf(outcome: ScenarioOutcome): ContentId | undefined {
 
 describe('the screen a reloaded campaign draws', () => {
   it('agrees with the screen of a run that never stopped, on every shipped scenario', () => {
-    // Named as numbers so a silently shrinking corpus does not read as success. 27
-    // scenarios ship; `screen_loading` and `screen_error` reach no state, leaving 25 that
-    // run, at two seeds each — the 50 below.
-    expect(SCENARIOS).toHaveLength(27);
+    // Named as numbers so a silently shrinking corpus does not read as success. 41
+    // scenarios ship — 27 from before `DEC-008` Task 20 plus the 14 `NEGOTIATION_SPEC`
+    // §10.3 names individually; `screen_loading` and `screen_error` reach no state,
+    // leaving 39 that run, at two seeds each.
+    expect(SCENARIOS).toHaveLength(41);
 
     let ranCount = 0;
     let blockedSeen = 0;
@@ -198,11 +210,15 @@ describe('the screen a reloaded campaign draws', () => {
     // one where no scenario ever polled a crew, would pass the loop above in silence —
     // and those two shapes are exactly what this file exists to keep under the
     // comparison. `polledStepsSeen` is the one Task 11a added: it is the only shape where
-    // the two sides genuinely disagree about what a *step* is — five scenarios poll a
-    // crew, at two seeds each.
-    expect(ranCount).toBe(50);
-    expect(blockedSeen).toBe(10);
-    expect(scoredSeen).toBe(114);
-    expect(polledStepsSeen).toBe(10);
+    // the two sides genuinely disagree about what a *step* is. All four numbers grew with
+    // `DEC-008` Task 20's fourteen scenarios, most of which negotiate a real offer:
+    // `blockedSeen` grew with the scenarios that gate a hero on a negotiated method tag,
+    // and `polledStepsSeen` with the new scenarios whose `pollCrew` step actually applies
+    // (a refused one, as in `single_seat_contract_settles_without_a_poll`, carries no
+    // decision and does not count here).
+    expect(ranCount).toBe(78);
+    expect(blockedSeen).toBe(16);
+    expect(scoredSeen).toBe(226);
+    expect(polledStepsSeen).toBe(26);
   });
 });

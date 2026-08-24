@@ -65,16 +65,16 @@ const SCREEN_SCENARIOS = [
  * heat on seed 7 and not on 424242. A matrix that fixed the seed would have listed the
  * right scenario and still not tested the branch.
  *
- * **The `wavered` branch — a hero whose mood turned the answer the other factors would
- * have given — has no entry here.** It used to, as `grey_zone_flip` at seed 7. `DEC-008`
- * Task 8 moved the decision rule's benefit term from `contract.patronFee` onto
- * `contract.offer.advance` (`NEGOTIATION_SPEC` §4), and no shipped scenario can give an
- * offer a nonzero advance yet — that needs `composeOffer`, a command `DEC-008` Tasks
- * 10-14 have not built. Every scenario here still starts every contract on
- * `advance = 0`, so `grey_zone_flip`'s pre-mood score, tuned to land inside the grey
- * band under the old `patronFee`-driven benefit, moved outside it, and mood no longer
- * flips the answer. Task 20 restores this branch once a shipped scenario can compose a
- * real offer.
+ * **The `wavered` branch is `grey_zone_flip` again, restored rather than replaced.**
+ * `DEC-008` Task 8 moved the decision rule's benefit term from `contract.patronFee`
+ * onto `contract.offer.advance` (`NEGOTIATION_SPEC` §4) and removed this entry: no
+ * shipped scenario could give an offer a nonzero advance without `composeOffer`, which
+ * `DEC-008` Tasks 10-14 had not built yet. Task 20 is the first point a shipped
+ * scenario can compose a real offer, so `grey_zone_flip`'s own commands were rewritten
+ * (an offer on `core:escort_the_caravan`, `advance = 22`, no promise) to land a score
+ * back inside the mood's grey band at the CLI's default seed — the same seed every
+ * canonical snapshot is recorded at, so the branch and the snapshot agree on which run
+ * they are both describing.
  */
 const BRANCH_SCENARIOS = [
   {
@@ -103,6 +103,14 @@ const BRANCH_SCENARIOS = [
     branch: 'heroes carrying no inclinations',
     covers: (model: ContractOfferScreenModel) =>
       model.roster.some((hero) => hero.inclinationKeys.length === 0)
+  },
+  {
+    scenario: 'grey_zone_flip',
+    checkpoint: 'final',
+    seed: 424242n,
+    branch: 'a hero whose mood turned the answer the other factors would have given',
+    covers: (model: ContractOfferScreenModel) =>
+      model.responses.some((response) => response.wavered)
   }
 ] as const;
 

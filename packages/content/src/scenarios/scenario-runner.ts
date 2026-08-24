@@ -4,6 +4,7 @@ import {
   lockOffer,
   pollCrew,
   proposeContractToHero,
+  settleContract,
   type CommandResult,
   type ContentId,
   type DecisionResult,
@@ -121,9 +122,11 @@ export function applyScenarioCommands(
 
 /**
  * The one place a scenario step becomes an engine call. A `switch` over the union
- * rather than a lookup table: adding `settleContract` (Task 14) to
+ * rather than a lookup table, with no `default`: a member added to
  * {@link ScenarioCommand} then fails to compile here, which is where it must be
- * handled, instead of falling through to a default that quietly does nothing.
+ * handled, instead of falling through to a branch that quietly does nothing —
+ * `settleContract` (Task 14) reached this file that way, and Task 20 is the one that
+ * wires it in.
  */
 function apply(state: GameState, command: ScenarioCommand): CommandResult {
   switch (command.kind) {
@@ -154,6 +157,13 @@ function apply(state: GameState, command: ScenarioCommand): CommandResult {
       return pollCrew(state, {
         commandId: command.commandId,
         contractId: command.contract,
+        expectedStateVersion: command.expectedStateVersion
+      });
+    case ScenarioCommandKind.SettleContract:
+      return settleContract(state, {
+        commandId: command.commandId,
+        contractId: command.contract,
+        pay: command.pay,
         expectedStateVersion: command.expectedStateVersion
       });
   }

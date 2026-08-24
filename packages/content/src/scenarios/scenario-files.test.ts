@@ -180,10 +180,11 @@ describe('a command list is refused rather than read on a guess', () => {
     return path;
   }
 
-  it('reads a well-formed one, in all four commands the protocol has', () => {
-    // All four in one file rather than four one-command files: the discriminant is the
+  it('reads a well-formed one, in all five commands the protocol has', () => {
+    // All five in one file rather than five one-command files: the discriminant is the
     // point of this format, and a list that mixes commands is what every real scenario
-    // is. `settleContract` is absent because the engine has none (Task 14).
+    // is. `settle_contract` (Task 20) is the last one — the engine has had it since
+    // Task 14, and this is where the wire format caught up.
     const commands = loadScenarioCommands(
       writeCommands({
         commands: [
@@ -210,7 +211,14 @@ describe('a command list is refused rather than read on a guess', () => {
             contract: 'core:job',
             expected_state_version: 2
           },
-          { command: 'poll_crew', command_id: 4, contract: 'core:job', expected_state_version: 3 }
+          { command: 'poll_crew', command_id: 4, contract: 'core:job', expected_state_version: 3 },
+          {
+            command: 'settle_contract',
+            command_id: 5,
+            contract: 'core:job',
+            pay: true,
+            expected_state_version: 4
+          }
         ]
       })
     );
@@ -234,7 +242,8 @@ describe('a command list is refused rather than read on a guess', () => {
         expectedStateVersion: 1
       },
       { kind: 'lock_offer', commandId: 3, contract: 'core:job', expectedStateVersion: 2 },
-      { kind: 'poll_crew', commandId: 4, contract: 'core:job', expectedStateVersion: 3 }
+      { kind: 'poll_crew', commandId: 4, contract: 'core:job', expectedStateVersion: 3 },
+      { kind: 'settle_contract', commandId: 5, contract: 'core:job', pay: true, expectedStateVersion: 4 }
     ]);
   });
 
@@ -313,9 +322,20 @@ describe('a command list is refused rather than read on a guess', () => {
     expect(commands[0]).toMatchObject({ advance: PATRON_FEE_MAX });
   });
 
-  it('refuses a command this build cannot issue, rather than reading it as another', () => {
-    // `settle_contract` is the one a reader will reach for first, because the spec has
-    // five commands and this build implements four.
+  it('refuses a command no protocol has, rather than reading it as another', () => {
+    const path = writeCommands({
+      commands: [
+        { command: 'renegotiate_terms', command_id: 1, contract: 'core:job', expected_state_version: 0 }
+      ]
+    });
+
+    expect(() => loadScenarioCommands(path)).toThrow(/does not satisfy its contract/);
+  });
+
+  it('refuses a settle_contract missing pay, rather than reading it as another command', () => {
+    // `pay` is the one field that separates `settle_contract` from the shared base
+    // every command carries — the fixture a reader would build by copying `lock_offer`
+    // and swapping the discriminant.
     const path = writeCommands({
       commands: [
         { command: 'settle_contract', command_id: 1, contract: 'core:job', expected_state_version: 0 }

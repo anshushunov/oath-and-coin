@@ -1,0 +1,33 @@
+{
+  "commands": [
+    {
+      "command": "compose_offer",
+      "command_id": 1,
+      "contract": "fixture:warded_job",
+      "key_hero_index": 0,
+      "advance": 50,
+      "method_tag": null,
+      "promised_bonus": 0,
+      "expected_state_version": 0
+    },
+    {
+      "command": "propose_contract_to_hero",
+      "command_id": 2,
+      "contract": "fixture:warded_job",
+      "hero_index": 0,
+      "expected_state_version": 1
+    },
+    {
+      "command": "lock_offer",
+      "command_id": 3,
+      "contract": "fixture:warded_job",
+      "expected_state_version": 2
+    },
+    {
+      "command": "poll_crew",
+      "command_id": 4,
+      "contract": "fixture:warded_job",
+      "expected_state_version": 3
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -229,13 +229,23 @@ test.describe('contract-offer screen, in a browser', () => {
       // every scenario that reaches a state — `screen_incomplete` and `screen_normal`
       // among these five — away from what the frozen corpus recorded, forever:
       // `migration/oracle/v1` cannot be rewritten. That frozen comparison was already a
-      // remnant of the byte-for-byte parity `ADR-013` retired. Task 20 restores an
-      // external comparison once `scenarios/*.canonical.json` is rebuilt under the new
-      // field name.
+      // remnant of the byte-for-byte parity `ADR-013` retired.
       const expectedContentVersion =
         runResult.kind === 'ran' ? runResult.outcome.finalState.metadata.contentVersion : null;
       const expectedCanonicalHash =
         runResult.kind === 'ran' ? artifactHash(runResult.outcome) : null;
+
+      // The external comparison `DEC-008` Task 20 restores: `scenarios/*.canonical.json`
+      // rebuilt under the new field name, read off disk and hashed independently of
+      // `expectedCanonicalHash` above — which this same process just computed and would
+      // agree with itself about no matter what broke. `screen_incomplete` and
+      // `screen_normal` are the two of these five that reach a state and ship a
+      // snapshot; the other three have none to compare (`canonical-snapshots.test.ts`
+      // reads the same absence the same way).
+      const shippedCanonicalPath = join(REPOSITORY_ROOT, 'scenarios', `${scenario}.canonical.json`);
+      const shippedCanonicalHash = existsSync(shippedCanonicalPath)
+        ? canonicalSha256(JSON.parse(readFileSync(shippedCanonicalPath, 'utf8')) as CanonicalValue)
+        : null;
 
       // The page's own read-model hash is compared against this, not against
       // `corpusReadModelHash` above. `DEC-008` Task 3 renamed the contract's fee field in
@@ -246,8 +256,16 @@ test.describe('contract-offer screen, in a browser', () => {
       // rewritten. That frozen comparison was already a remnant of the byte-for-byte parity
       // `ADR-013` retired, so this hash is now held to the same discipline the rendered-UI
       // hash beside it already uses — a value this same process just computed off the disk,
-      // never the one the page prints about itself. Task 20 restores an external comparison
-      // once `scenarios/*.canonical.json` is rebuilt under the new field name.
+      // never the one the page prints about itself.
+      //
+      // **This one stays internal, and that is a fact worth stating rather than leaving
+      // implicit.** `scenarios/*.canonical.json` — the external value `canonical_hash`
+      // now checks against, above — records the simulation's own artifact, not the
+      // screen's read model; the two are different projections of the same run, and
+      // nothing this repository ships is an external record of the second one. What
+      // makes this comparison worth running regardless is the same reason stated at the
+      // top of this file: `expectedReadModelHash` and the page's own reported hash come
+      // from two code paths that share no data, even though neither is external to it.
       const expectedReadModelHash = readModelHash(expectedModel);
 
       // What the scene owes, derived here from the same model — a marker when there is a
@@ -324,6 +342,18 @@ test.describe('contract-offer screen, in a browser', () => {
       // read no content and a failed one produced none.
       expect(reported.content_version).toBe(expectedContentVersion);
       expect(reported.canonical_hash).toBe(expectedCanonicalHash);
+
+      // The genuinely external half: the page's own hash against the file this
+      // repository ships, not against a value this same test run just computed. Skipped
+      // rather than compared against `null` for the three states with no snapshot at
+      // all — `screen_loading` and `screen_error` produce no artifact to hash in the
+      // first place, and `screen_empty` does (it reaches `kind: 'ran'` with zero steps)
+      // but ships no `.canonical.json`, a pre-existing gap this task's scope does not
+      // extend to closing (`canonical-snapshots.test.ts` reads that same absence the
+      // same way, off the directory rather than off a hand-picked list).
+      if (shippedCanonicalHash !== null) {
+        expect(reported.canonical_hash).toBe(shippedCanonicalHash);
+      }
 
       // Whether this state puts the question at all, asserted before the answer. Without
       // it a layout change that stopped the roster overflowing would turn the two

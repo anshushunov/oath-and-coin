@@ -1,0 +1,76 @@
+{
+  "commands": [
+    {
+      "command": "compose_offer",
+      "command_id": 1,
+      "contract": "fixture:tiny_promise",
+      "key_hero_index": 1,
+      "advance": 0,
+      "method_tag": null,
+      "promised_bonus": 1,
+      "expected_state_version": 0
+    },
+    {
+      "command": "propose_contract_to_hero",
+      "command_id": 2,
+      "contract": "fixture:tiny_promise",
+      "hero_index": 1,
+      "expected_state_version": 1
+    },
+    {
+      "command": "lock_offer",
+      "command_id": 3,
+      "contract": "fixture:tiny_promise",
+      "expected_state_version": 2
+    },
+    {
+      "command": "poll_crew",
+      "command_id": 4,
+      "contract": "fixture:tiny_promise",
+      "expected_state_version": 3
+    },
+    {
+      "command": "settle_contract",
+      "command_id": 5,
+      "contract": "fixture:tiny_promise",
+      "pay": false,
+      "expected_state_version": 3
+    },
+    {
+      "command": "compose_offer",
+      "command_id": 6,
+      "contract": "fixture:big_promise",
+      "key_hero_index": 0,
+      "advance": 0,
+      "method_tag": null,
+      "promised_bonus": 40,
+      "expected_state_version": 4
+    },
+    {
+      "command": "propose_contract_to_hero",
+      "command_id": 7,
+      "contract": "fixture:big_promise",
+      "hero_index": 0,
+      "expected_state_version": 5
+    },
+    {
+      "command": "lock_offer",
+      "command_id": 8,
+      "contract": "fixture:big_promise",
+      "expected_state_version": 6
+    },
+    {
+      "command": "poll_crew",
+      "command_id": 9,
+      "contract": "fixture:big_promise",
+      "expected_state_version": 7
+    },
+    {
+      "command": "settle_contract",
+      "command_id": 10,
+      "contract": "fixture:big_promise",
+      "pay": false,
+      "expected_state_version": 7
+    }
+  ]
+}
