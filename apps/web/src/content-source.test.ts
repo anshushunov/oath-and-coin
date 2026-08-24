@@ -51,9 +51,15 @@ import {
  * Task 15 moved it again, authoring `tag.method.open` — the untranslated half of Task
  * 4's `negotiable_tags`, invisible until `OfferLine.methodOptionKeys`
  * (`NEGOTIATION_SPEC` §5.1) started resolving both alternatives of a negotiable tag —
- * pinned here from now on as a drift guard, not as corpus parity.
+ * pinned here from now on as a drift guard, not as corpus parity. Task 18 moved it once
+ * more, authoring `core:works_in_the_open` and its localization key: `tag.method.open`
+ * was translated but nothing reacted to it, so choosing it could only ever close a
+ * gate, never attract anyone (`NEGOTIATION_SPEC` §10.5). The same task moved it once
+ * more again: its own crewability check found `core:collect_the_debt` unreachable by
+ * any package on its first run and it was fixed by `required_crew: 2 → 1`
+ * (`content/contracts/collect_the_debt.json`) rather than by touching a tag or a hero.
  */
-const SHIPPED_CONTENT_VERSION = '6ec81ab69e9fcec3';
+const SHIPPED_CONTENT_VERSION = '46416b20360bbedd';
 
 /**
  * The content version the corpus recorded for `screen_empty`'s own fixture root,

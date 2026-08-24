@@ -4,6 +4,6 @@
   "display_name_key": "contract.core.collect_the_debt.name",
   "patron_fee": 30,
   "risk": 20,
-  "required_crew": 2,
+  "required_crew": 1,
   "tags": ["patron:slavers", "method:deception", "method:abandon_wounded"]
 }

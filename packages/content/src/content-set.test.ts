@@ -2,12 +2,13 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
-import { parseContentId } from '@oath-and-coin/simulation';
+import { STARTING_TREASURY, parseContentId, type ContentId } from '@oath-and-coin/simulation';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { INCLINATION_WEIGHT_MAX, TRAIT_MAX } from './bounds.ts';
-import { loadContentSet } from './node/index.ts';
+import type { ContentSet, ContractDefinition, TraitDefinition } from './content-set.ts';
 import { MAX_TRAITS_PER_HERO } from './limits.ts';
+import { loadContentSet, loadLocaleCatalogue } from './node/index.ts';
 
 const repoRoot = resolve(import.meta.dirname, '..', '..', '..');
 const shippedContent = join(repoRoot, 'content');
@@ -52,6 +53,27 @@ const shippedContent = join(repoRoot, 'content');
  * elsewhere, `tag.method.open` did not — and the gap stayed invisible until the
  * read-model's `OfferLine.methodOptionKeys` (`NEGOTIATION_SPEC` §5.1) started resolving
  * both alternatives of a negotiable tag, not only the chosen one.
+ *
+ * Task 18 moved it a sixth time, to `9763a54ae7dbff9c`: `NEGOTIATION_SPEC` §10.5's
+ * `EveryNegotiableSetIsCarriedByAtLeastOneTrait` (`describe('the shipped content is
+ * playable')` below) named the gap `tag.method.open` only closed half of — the tag was
+ * translated, but nothing reacted to it, so choosing `method:open` closed a gate and
+ * never attracted anyone. `core:works_in_the_open` (`content/traits/`) and its
+ * localization key (`content/locale/ru.json`) close it.
+ *
+ * The same task's own `EveryContractCanBeCrewedBySomePackage` (§10.5) moved it a
+ * seventh time, to `46416b20360bbedd`, on its very first run against the shipped
+ * tree: `core:collect_the_debt` authored `patron:slavers`, `method:deception` and
+ * `method:abandon_wounded` together, and five of the six shipped heroes carry a
+ * *principle* matching one of those three — only `core:bram` carries none, so the
+ * contract's `required_crew: 2` was unreachable by any package, a pre-existing defect
+ * this check exists to catch and had never been checked until this task added the
+ * check that reads it. The three tags stay — dropping one would change what the
+ * contract *is*, and reassigning a hero's principle would be editing the hero to fit
+ * the contract, with consequences for every other contract that principle already
+ * gates — so the fix is `required_crew: 1` (`content/contracts/collect_the_debt.json`):
+ * the contract reads as dirty work for the one hero with no principle against it,
+ * not a patch.
  */
 
 const temporaryRoots: string[] = [];
@@ -153,7 +175,7 @@ describe('loadContentSet over the shipped tree', () => {
   it('reads every authored entity', () => {
     expect(content.heroes.size).toBe(6);
     expect(content.contracts.size).toBe(4);
-    expect(content.traits.size).toBe(8);
+    expect(content.traits.size).toBe(9);
   });
 
   it('pins the content version this repository computes for the shipped tree', () => {
@@ -163,7 +185,19 @@ describe('loadContentSet over the shipped tree', () => {
     // bytes on purpose. What this pin buys now is the same as before either move — a
     // digest that drifted only with itself would let the whole segment pass parity on
     // a coincidence — just no longer against the frozen C# export.
-    expect(content.contentVersion).toBe('6ec81ab69e9fcec3');
+    //
+    // Task 18 moved it a sixth time, to `9763a54ae7dbff9c`: `core:works_in_the_open`
+    // (`inclination`, `tag: method:open`, `weight: 10`) is the trait `method:open` had
+    // none of — the exact gap `ships no negotiable tag no trait reacts to` below exists
+    // to catch — plus the localization key its display name needs
+    // (`trait.core.works_in_the_open.name`, `content/locale/ru.json`). The same task's
+    // own `ships no contract that cannot be crewed by any package` moved it a seventh
+    // time, to `46416b20360bbedd`, the first time it ran against the shipped tree:
+    // `core:collect_the_debt` was unreachable by any package (five of six heroes carry
+    // a principle matching one of its three tags), fixed by
+    // `required_crew: 2 → 1` (`content/contracts/collect_the_debt.json`) rather than by
+    // touching the tags or any hero.
+    expect(content.contentVersion).toBe('46416b20360bbedd');
   });
 
   it('keys heroes, contracts and traits in content-id order', () => {
@@ -230,6 +264,90 @@ describe('loadContentSet over the shipped tree', () => {
       tag: 'method:deception',
       weight: 0
     });
+  });
+});
+
+/**
+ * The largest crew that clears the gate under some admissible package
+ * (`NEGOTIATION_SPEC` §10.5). A package is either the contract's authored `tags`
+ * alone — the only option when it has no `negotiableTags` — or those tags plus
+ * exactly one member of `negotiableTags`, because the player chooses one, never
+ * both and never neither once a set exists.
+ *
+ * Gates test a hero's principles only, and `HERO_DECISION_SPEC` §2.2 states plainly
+ * that they do not depend on money: no advance, no promised bonus, nothing but tag
+ * membership decides whether a principle blocks. So none of those fields is read
+ * here — reading them would be answering a question the gate itself never asks.
+ */
+function bestReachableCrew(contract: ContractDefinition, content: ContentSet): number {
+  const packages: readonly (readonly ContentId[])[] =
+    contract.negotiableTags.length === 0
+      ? [contract.tags]
+      : contract.negotiableTags.map((tag) => [...contract.tags, tag]);
+
+  const crewFor = (tags: readonly ContentId[]): number =>
+    content.heroes
+      .values()
+      .filter((hero) =>
+        hero.traits.every((traitId) => {
+          const trait = content.traits.get(traitId);
+          return trait === undefined || trait.kind !== 'principle' || !tags.includes(trait.tag);
+        })
+      ).length;
+
+  return Math.max(...packages.map(crewFor));
+}
+
+/**
+ * Every trait whose `tag` equals `tag`, of any kind (`NEGOTIATION_SPEC` §10.5). A
+ * principle makes choosing that tag decisive through the gate (`HERO_DECISION_SPEC`
+ * §2.2); an inclination makes it decisive through its contribution (§2.3). Either is
+ * enough for the choice to matter — zero of either means the tag changes no hero's
+ * decision at all, i.e. there is no value-based reason to choose it over its pair.
+ */
+function traitsReactingTo(tag: ContentId, content: ContentSet): readonly TraitDefinition[] {
+  return content.traits.values().filter((trait) => trait.tag === tag);
+}
+
+describe('the shipped content is playable', () => {
+  // `NEGOTIATION_SPEC` §10.5: checks over the content `content/` ships, not over the
+  // format every other `describe` in this file checks — the difference between a
+  // structurally valid contract and one a game can actually run.
+  const content = loadContentSet(shippedContent);
+  const catalogue = loadLocaleCatalogue(join(shippedContent, 'locale', 'ru.json'));
+
+  it('ships no contract that cannot be crewed by any package', () => {
+    for (const contract of content.contracts.values()) {
+      expect(bestReachableCrew(contract, content), contract.id).toBeGreaterThanOrEqual(
+        contract.requiredCrew
+      );
+    }
+  });
+
+  it('ships no negotiable tag no trait reacts to', () => {
+    for (const contract of content.contracts.values()) {
+      for (const tag of contract.negotiableTags) {
+        expect(traitsReactingTo(tag, content).length, tag).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('ships no contract whose full crew costs more than the guild starts with', () => {
+    for (const contract of content.contracts.values()) {
+      expect(contract.patronFee * contract.requiredCrew, contract.id).toBeLessThanOrEqual(
+        STARTING_TREASURY
+      );
+    }
+  });
+
+  it('names every new reason code and every new tag in the catalogue', () => {
+    for (const key of [
+      'hero.decision.promise_of_a_bonus',
+      'hero.decision.guild_broke_its_word',
+      'tag.method.open'
+    ]) {
+      expect(catalogue.has(key), key).toBe(true);
+    }
   });
 });
 
@@ -460,6 +578,32 @@ describe('loadContentSet refuses', () => {
         })
       )
     ).toThrow(/already carries/);
+  });
+
+  it('refuses a negotiable set on a contract already carrying MAX_TAGS_PER_CONTRACT tags', () => {
+    // Task 6's parked obligation: `createContractState` refuses an effective tag set
+    // past `MAX_TAGS_PER_CONTRACT` once a method tag is chosen (`offer-state.ts`), but a
+    // contract already at that ceiling in `tags` and still offering a choice can never
+    // have one *made* — every candidate pushes the count one past it. A
+    // content-authoring defect, caught here rather than left for the state guard to
+    // discover the first time a player tries to choose.
+    expect(() =>
+      loadContentSet(
+        sourceWith({
+          'contracts/a.json': aContractFile({
+            tags: [
+              'target:undead',
+              'target:cult',
+              'target:temple',
+              'target:bandits',
+              'patron:slavers',
+              'patron:merchant_guild'
+            ],
+            negotiable_tags: ['method:open', 'method:deception']
+          })
+        })
+      )
+    ).toThrow(/no method could ever be chosen/);
   });
 
   it('refuses a file that still declares schema version 2', () => {

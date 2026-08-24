@@ -49,9 +49,12 @@ describe('createInitialState', () => {
     expect(state.metadata).toEqual({
       saveSchemaVersion: SAVE_SCHEMA_VERSION,
       rulesetVersion: 'm1-negotiation/1',
-      // `08975dbb0d527f6e` until Task 15's own review authored `tag.method.open`
-      // (`content-set.test.ts` carries the same move's full history).
-      contentVersion: '6ec81ab69e9fcec3',
+      // `6ec81ab69e9fcec3` until Task 18 authored `core:works_in_the_open` and its
+      // localization key, then `9763a54ae7dbff9c` until the same task's own crewability
+      // check found `core:collect_the_debt` unreachable and fixed it with
+      // `required_crew: 2 → 1` (`content-set.test.ts` carries the same move's full
+      // history).
+      contentVersion: '46416b20360bbedd',
       campaignSeed: 7n,
       stateVersion: 0,
       logicalTime: 0,

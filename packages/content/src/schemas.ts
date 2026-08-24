@@ -109,11 +109,18 @@ export const heroFileSchema = z.strictObject({
  * a thing and itself — which is the one case the field exists to rule out and the
  * count check alone does not catch (`['x','x']` has length 2).
  *
- * All three checks live in `superRefine` rather than on the array alone: the count
- * check could stand on its own, but the duplicate check and the intersection check
- * both need the rest of the object (the contract's own `id`, and — for the
- * intersection — `tags`) to produce a message that names what is wrong, not just
- * that something is.
+ * A fourth check joins them below: a contract that already authors
+ * `MAX_TAGS_PER_CONTRACT` tags in `tags` and still declares `negotiable_tags` can
+ * never have a method chosen, because the choice would push the effective tag count
+ * one past the ceiling `createContractState` enforces at runtime
+ * (`offer-state.ts`) — a content-authoring defect this loader can see before play
+ * ever reaches it.
+ *
+ * All four checks live in `superRefine` rather than on the array alone: the count
+ * check could stand on its own, but the other three each need the rest of the
+ * object (the contract's own `id`, and — for the intersection and tag-ceiling
+ * checks — `tags`) to produce a message that names what is wrong, not just that
+ * something is.
  */
 export const contractFileSchema = z
   .strictObject({
@@ -170,6 +177,28 @@ export const contractFileSchema = z
             'between.'
         });
       }
+    }
+
+    // A chosen method tag joins `tags` (`NEGOTIATION_SPEC` §2.4), and `createContractState`
+    // refuses an effective tag set past `MAX_TAGS_PER_CONTRACT` (`offer-state.ts`) — defence
+    // in depth, not the only place this has to be caught. A contract that already carries
+    // the ceiling in `tags` and still declares `negotiable_tags` can never have a method
+    // chosen at all: every one of the two candidates would push the count to
+    // `MAX_TAGS_PER_CONTRACT + 1` the instant it was picked, so the state-level guard would
+    // fire on the very first `chooseMethod`, in play, on content that loaded without
+    // complaint. Ruled a content-authoring defect rather than a runtime one, so it is
+    // caught here, at load, the same way the other three shapes above are.
+    if (file.tags.length + 1 > MAX_TAGS_PER_CONTRACT) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['negotiable_tags'],
+        message:
+          `Contract '${file.id}' authors ${String(file.tags.length)} tags and also declares ` +
+          `'negotiable_tags'; choosing either candidate would carry the contract's effective ` +
+          `tags to ${String(file.tags.length + 1)}, past the ceiling of ` +
+          `${String(MAX_TAGS_PER_CONTRACT)} (MAX_TAGS_PER_CONTRACT) — no method could ever be ` +
+          "chosen. Reduce 'tags' before this contract can offer a choice."
+      });
     }
   });
 

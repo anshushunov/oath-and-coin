@@ -49,7 +49,14 @@ const shippedContent = join(repoRoot, 'content');
  * half-translated since it was authored — `tag.method.deception` already existed from
  * its use as a plain `tags` entry elsewhere, `tag.method.open` did not — and it stayed
  * invisible until the read-model's `OfferLine.methodOptionKeys` (`NEGOTIATION_SPEC`
- * §5.1) started resolving both alternatives, not only the chosen one. What this
+ * §5.1) started resolving both alternatives, not only the chosen one. Task 18 moved it
+ * a sixth time, authoring `core:works_in_the_open` and its localization key:
+ * `tag.method.open` was translated but nothing reacted to it, so choosing it could only
+ * ever close a gate, never attract anyone (`NEGOTIATION_SPEC` §10.5). The same task
+ * moved it a seventh time: its own `EveryContractCanBeCrewedBySomePackage` check found
+ * `core:collect_the_debt` unreachable by any package on its first run — five of six
+ * shipped heroes carry a principle matching one of its three authored tags — fixed by
+ * `required_crew: 2 → 1` rather than by touching the tags or any hero. What this
  * constant still buys is what both sources have to answer — not merely each other —
  * just no longer corpus parity.
  *
@@ -59,7 +66,7 @@ const shippedContent = join(repoRoot, 'content');
  * purpose — neither file may own the other's claim — and Task 19 retires **both** when
  * the corpus stops being the oracle.
  */
-const RECORDED_CONTENT_VERSION = '6ec81ab69e9fcec3';
+const RECORDED_CONTENT_VERSION = '46416b20360bbedd';
 
 /** Every file under `directory`, root-relative and POSIX, by this test's own walk. */
 function everyFileUnder(directory: string, prefix = ''): readonly string[] {

@@ -110,9 +110,21 @@ const content = loadContentSet(shippedContent);
  * to look at `negotiableTags` and not only `tags`. Each move was deliberate and reviewed,
  * not the drift this test exists to catch — the guard below is against the *next*
  * unreviewed one.
+ *
+ * `DEC-008` Task 18 moved the version a sixth time: `tag.method.open` was translated
+ * but nothing reacted to it, so choosing it could only ever close a gate, never
+ * attract anyone (`NEGOTIATION_SPEC` §10.5). `core:works_in_the_open`
+ * (`content/traits/works_in_the_open.json`) closes that gap, and its display name needs
+ * one more key, `trait.core.works_in_the_open.name`, in `content/locale/ru.json` — the
+ * key count moved with it, to 98. The same task moved the version a seventh time, with
+ * no further key: its own `EveryContractCanBeCrewedBySomePackage` check
+ * (`NEGOTIATION_SPEC` §10.5) found `core:collect_the_debt` unreachable by any package —
+ * five of six shipped heroes carry a principle matching one of its three authored tags
+ * — on the very first run against the shipped tree, fixed by `required_crew: 2 → 1`
+ * (`content/contracts/collect_the_debt.json`) rather than by touching a tag or a hero.
  */
-const FROZEN_CONTENT_VERSION = '6ec81ab69e9fcec3';
-const FROZEN_CONTENT_KEY_COUNT = 97;
+const FROZEN_CONTENT_VERSION = '46416b20360bbedd';
+const FROZEN_CONTENT_KEY_COUNT = 98;
 
 /** Every key the presentation layer can produce for the shipped content tree. */
 function everyKeyTheScreenCanShow(): readonly string[] {
