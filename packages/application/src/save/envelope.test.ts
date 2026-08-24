@@ -13,6 +13,7 @@ import {
   deepEqual,
   lockOffer,
   proposeContractToHero,
+  settleContract,
   type ContentId,
   type GameState
 } from '@oath-and-coin/simulation';
@@ -186,6 +187,64 @@ function aDecidedThenLockedState(): GameState {
   });
 
   return result.state;
+}
+
+/**
+ * `aDecidedThenLockedState()`, then settled with the promise broken
+ * (`NEGOTIATION_SPEC` §3.3, `settleContract`) — `history` gains a
+ * `contract_settled_promise_broken` event, the treasury moves, and the key hero's
+ * `believesGuildPromises`/`grievance` move with it. Named by `DEC-008` Task 14, for
+ * the same reason `aDecidedThenLockedState` was named by Task 12:
+ * `domainEventSchema` needs a member for this event, and `requireReadableSnapshot`
+ * re-decodes on the write path, so a schema missing that member breaks saving this
+ * exact campaign, not only loading a file that already carries one. `crypt.json`'s
+ * offer carries no `promisedBonus` of its own by this point in the chain, so one is
+ * composed onto it first — the one command in this chain `aDecidedState()`'s own
+ * callers do not otherwise issue.
+ */
+function aDecidedThenLockedThenSettledState(): GameState {
+  const decided = aDecidedState();
+  const [heroKey] = decided.heroes.keys();
+  const [contractKey] = decided.contracts.keys();
+
+  const composed = composeOffer(decided, {
+    commandId: 2,
+    contractId: contractKey!,
+    keyHero: heroKey!,
+    advance: 10,
+    methodTag: null,
+    promisedBonus: 20,
+    expectedStateVersion: decided.metadata.stateVersion
+  }).state;
+
+  const proposed = proposeContractToHero(composed, {
+    commandId: 3,
+    heroId: heroKey!,
+    contractId: contractKey!,
+    expectedStateVersion: composed.metadata.stateVersion
+  }).state;
+
+  const locked = lockOffer(proposed, {
+    commandId: 4,
+    contractId: contractKey!,
+    expectedStateVersion: proposed.metadata.stateVersion
+  }).state;
+
+  const settled = settleContract(locked, {
+    commandId: 5,
+    contractId: contractKey!,
+    pay: false,
+    expectedStateVersion: locked.metadata.stateVersion
+  });
+
+  if (!settled.applied) {
+    throw new Error(
+      `aDecidedThenLockedThenSettledState: settleContract was refused ` +
+        `(${String(settled.rejectionCode)}).`
+    );
+  }
+
+  return settled.state;
 }
 
 const state = aState();
@@ -1037,6 +1096,39 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
     });
 
     expect(deepEqual(readSave(bytes, versions).state, locked)).toBe(true);
+  });
+
+  it('carries a campaign whose promise was broken through save and read', () => {
+    // `DEC-008` Task 14: the same risk `aDecidedThenLockedState`'s own test names,
+    // for the three `settleContract` events instead of `offer_locked` — a schema
+    // missing one of them breaks saving this campaign, not only loading a file that
+    // already carries one. This is also the one settlement shape the codec's own
+    // `snapshot-codec.test.ts` round trip does not reach: the envelope's checksum,
+    // `validateGameState` on both sides, and `requireDuplicateFieldsAgree`, over a
+    // real settled, broken-promise campaign.
+    const settled = aDecidedThenLockedThenSettledState();
+    expect(settled.history[settled.history.length - 1]!.kind).toBe(
+      'contract_settled_promise_broken'
+    );
+
+    const [heroKey] = settled.heroes.keys();
+    expect(settled.heroes.get(heroKey!)!.believesGuildPromises).toBe(false);
+    expect(settled.heroes.get(heroKey!)!.grievance).toBeGreaterThan(0);
+    expect(settled.treasury).not.toBe(400);
+
+    const versions = {
+      rulesetVersion: settled.metadata.rulesetVersion,
+      contentVersion: settled.metadata.contentVersion
+    };
+    const [focusedContract] = settled.contracts.keys();
+
+    const bytes = buildSave({
+      state: settled,
+      focusedContract: focusedContract!,
+      createdAt: CREATED_AT
+    });
+
+    expect(deepEqual(readSave(bytes, versions).state, settled)).toBe(true);
   });
 });
 
