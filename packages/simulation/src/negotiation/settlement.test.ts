@@ -157,12 +157,15 @@ describe('settleContract', () => {
   });
 
   it('leaves everyone whole when the word was kept', () => {
-    const settled = settleContract(
-      crewedCampaign({ promisedBonus: 100 }),
-      aSettle({ pay: true })
-    ).state;
-    expect(heroOf(settled, KEY).believesGuildPromises).toBe(true);
-    expect(heroOf(settled, KEY).grievance).toBe(0);
+    const result = settleContract(crewedCampaign({ promisedBonus: 100 }), aSettle({ pay: true }));
+    // External review: nothing in this file asserted `contract_settled_promise_kept`
+    // by name — a mutant that always picked `contract_settled` for `pay: true`
+    // (dropping the `promised` check on the `_kept` branch) survived the whole
+    // suite, because every other assertion here is about hero fields, which a
+    // kept promise leaves untouched either way.
+    expect(result.events[0]!.kind).toBe('contract_settled_promise_kept');
+    expect(heroOf(result.state, KEY).believesGuildPromises).toBe(true);
+    expect(heroOf(result.state, KEY).grievance).toBe(0);
   });
 
   it('costs more to break a large promise than a small one', () => {

@@ -320,6 +320,23 @@ describe('§10.1: a principle holds at every advance and every bonus', () => {
 });
 
 describe('§10.1: the same inputs produce the same decision, offer included', () => {
+  // Explicit timeout, past `vitest.config.ts`'s own 30 s default, and derived the
+  // same way that number was: warm, this test measures 7.2-8.0 s (two independent
+  // runs, this repository, 2026-08-24) — `fullContextSweep()` built twice
+  // (120,006 `decide()` calls total, each allocating fresh `SortedSet`s) is
+  // genuinely heavy, not accidentally so; it is the whole point of
+  // `SameInputsProduceTheSameDecision`; §10.1's purity claim over every context
+  // this package can build, not a hand-picked few. External review of Task 14
+  // measured this file at 72 s under load and `decision-score-at-content-bounds.test.ts`
+  // timing out outright at the global 30 s — the same degradation
+  // `vitest.config.ts`'s own `testTimeout` comment already derives a ~15× factor
+  // for, from the corpus-parity suite (593 ms warm → 9094 ms loaded). Applied
+  // here: 8 s × 15 ≈ 120 s, the number below, rather than the global default
+  // raised for every test in the workspace on the strength of one heavy one.
+  // Confirmed not caused by Task 14: this file and `testing/generators.ts` carry
+  // no diff from before that task (`git diff 3bb3d9c..HEAD --
+  // decision-properties.test.ts testing/generators.ts` is empty), and a worktree
+  // built at the pre-Task-14 commit shows the same ~7-10 s warm cost.
   it('SameInputsProduceTheSameDecision', () => {
     // Two independent calls to the same generator: `fullContextSweep()`
     // allocates a fresh object graph — including a fresh `OfferState`, with its
@@ -355,7 +372,7 @@ describe('§10.1: the same inputs produce the same decision, offer included', ()
       expect(decisionB).toEqual(decisionA);
       expect(decisionB.ordinalsConsumed).toBe(decisionA.ordinalsConsumed);
     }
-  });
+  }, 120_000);
 });
 
 describe('§10.1: the promised bonus is ignored exactly when the hero stopped believing', () => {

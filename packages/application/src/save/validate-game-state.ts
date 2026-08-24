@@ -112,6 +112,19 @@ function checkReferentialIntegrity(state: GameState): void {
       }
     }
 
+    // **Dead code as of `DEC-008` Task 14, and left in place on purpose — the
+    // guard-over-guards case ("принимает кампанию, которую движок действительно
+    // произвёл") still needs a live function to call, and a check that cannot
+    // fire is not the same claim as no check at all.** `decodeSnapshot`'s own
+    // contract builder now routes through `createContractState`
+    // (`requireConsistentContract`, `snapshot-codec.ts`), which requires
+    // `acceptedBy ⊆ respondedBy` structurally — so by the time a `GameState`
+    // reaches this function, every hero in `acceptedBy` is already in
+    // `respondedBy` too, and the `respondedBy` loop just above (which runs
+    // first) has already checked every one of them for existence. An unknown
+    // hero reaching `acceptedBy` alone, without also reaching `respondedBy`, is
+    // refused earlier now, at the decode door, under that door's own message —
+    // `envelope.test.ts`'s referential-integrity table names this explicitly.
     for (const heroId of contract.offer.acceptedBy.values()) {
       if (!state.heroes.has(heroId)) {
         throw inconsistent(
@@ -390,6 +403,15 @@ function checkOneContract(
   contract: ContractState,
   answeredInHistory: ReadonlyMap<HeroId, boolean>
 ): void {
+  // **Dead code as of `DEC-008` Task 14, left in place for the same reason
+  // `checkReferentialIntegrity`'s own `acceptedBy` loop is (that function's own
+  // comment names it first).** `decodeSnapshot`'s contract builder now routes
+  // through `createContractState` (`requireConsistentContract`), which requires
+  // `acceptedBy ⊆ respondedBy` on every `ContractState` it accepts — so a save
+  // reaching this function can no longer carry a hero in `acceptedBy` without
+  // also carrying them in `respondedBy`. `envelope.test.ts`'s "герой в
+  // acceptedBy, но не в respondedBy" case is refused at the decode door now,
+  // under `createContractState`'s own message, not this one's.
   for (const heroId of contract.offer.acceptedBy.values()) {
     if (!contract.offer.respondedBy.has(heroId)) {
       throw inconsistent(
@@ -469,6 +491,16 @@ function checkOneContract(
     }
   }
 
+  // **Dead code as of `DEC-008` Task 14, same reason and same door as the two
+  // checks above.** `createContractState` already enforces the two-directional
+  // `status = 'crewed' ⇔ acceptedBy.size = requiredCrew` on every `ContractState`
+  // `decodeSnapshot` accepts, *and* `acceptedBy.size ≤ requiredCrew` separately —
+  // so by the time a save reaches this function, `acceptedBy.size >= requiredCrew`
+  // below can only ever agree with `acceptedBy.size === requiredCrew`, and
+  // `crewed`/`enough` can no longer disagree. `envelope.test.ts`'s "состав
+  // набран, а контракт всё ещё предлагается" and "контракт закрыт составом,
+  // которого не хватает" cases are both refused at the decode door now, under
+  // `createContractState`'s own message.
   const crewed = contract.status === ContractStatus.Crewed;
   const enough = contract.offer.acceptedBy.size >= contract.requiredCrew;
 

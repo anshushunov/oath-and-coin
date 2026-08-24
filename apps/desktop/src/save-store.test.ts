@@ -57,26 +57,46 @@ async function temporaryDirectory(): Promise<string> {
   return directory;
 }
 
-afterAll(async () => {
-  const survivors: string[] = [];
+afterAll(
+  async () => {
+    const survivors: string[] = [];
 
-  for (const directory of createdDirectories) {
-    await rm(directory, { recursive: true, force: true });
-    if (existsSync(directory)) {
-      survivors.push(directory);
+    for (const directory of createdDirectories) {
+      await rm(directory, { recursive: true, force: true });
+      if (existsSync(directory)) {
+        survivors.push(directory);
+      }
     }
-  }
 
-  // Not decoration. A teardown that silently stopped deleting is invisible —
-  // the suite still passes and the directories pile up in a place nobody
-  // looks, which is how the 2658 got there. This is the check that reddens on
-  // that, and it reddens on a directory a live handle keeps alive too, which
-  // is worth hearing about rather than swallowing.
-  expect(
-    survivors,
-    `${String(survivors.length)} of ${String(createdDirectories.length)} temporary directories survived teardown`
-  ).toEqual([]);
-});
+    // Not decoration. A teardown that silently stopped deleting is invisible —
+    // the suite still passes and the directories pile up in a place nobody
+    // looks, which is how the 2658 got there. This is the check that reddens on
+    // that, and it reddens on a directory a live handle keeps alive too, which
+    // is worth hearing about rather than swallowing.
+    expect(
+      survivors,
+      `${String(survivors.length)} of ${String(createdDirectories.length)} temporary directories survived teardown`
+    ).toEqual([]);
+  },
+  // Explicit timeout, past Vitest's own 10 s `hookTimeout` default. External
+  // review of Task 14 measured `Hook timed out in 10000ms` here, under a full
+  // `pnpm test` run — this hook deletes every temporary directory this file
+  // created (`node:fs/promises` `rm(..., { recursive: true, force: true })`),
+  // real disk I/O rather than CPU work, and the one thing this suite already
+  // knows about that class of cost is `vitest.config.ts`'s own `testTimeout`
+  // comment: the same work measured 15× slower loaded than warm elsewhere in
+  // this repository. This file carries no diff from before Task 14
+  // (`git diff 3bb3d9c..HEAD -- apps/desktop/src/save-store.test.ts` is empty)
+  // and passes in isolation in well under a second; the timeout observed was
+  // contention from the rest of a full-suite run, not a hang, so the fix is
+  // headroom for that contention, not a longer wait for something broken.
+  // `vitest.config.ts`'s own `hookTimeout` paragraph names the condition under
+  // which raising it stops being premature: an actual observation of a hook
+  // timing out. That observation now exists, here — scoped to this one hook
+  // rather than raised globally, since nothing else in this suite has ever
+  // been seen to need it.
+  60_000
+);
 
 /**
  * The guard for a write that makes no claim about what the slot held. Most of this

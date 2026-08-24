@@ -10,6 +10,7 @@ import {
   deepEqual,
   proposeContractToHero,
   settleContract,
+  type ContentId,
   type GameState
 } from '@oath-and-coin/simulation';
 import { describe, expect, it } from 'vitest';
@@ -25,28 +26,26 @@ const repoRoot = resolve(import.meta.dirname, '..', '..', '..', '..');
 const content = loadContentSet(join(repoRoot, 'content'));
 
 /**
- * A campaign carrying every field `DEC-008` added, all away from their defaults at
- * once: an aggrieved hero (`grievance > 0`), a hero who stopped believing the
- * guild's word (`believesGuildPromises = false`), and a treasury that has actually
- * moved (`treasury !== STARTING_TREASURY`). Task 6's `offer`/`moodOrdinals`
- * round-trip wiring was correct by inspection but untested against a non-default
- * value — every round-trip test before this one would pass identically if the
- * decoder reverted to hardcoded defaults for these three fields. This fixture is
- * what closes that: it locks the shipped tree's first contract to one seat, one
- * hero, a real bonus, breaks the promise through the real `settleContract`, and
- * round-trips whatever that produced.
+ * The shipped tree's first contract, locked to one seat and one hero with a real
+ * `promisedBonus`, ready for `settleContract` — the state both
+ * {@link campaignWithABrokenPromise} and {@link campaignWithAKeptPromise} settle
+ * from, so the two fixtures differ only in `pay`, not in two independently-built
+ * starting points that could quietly drift apart. `requiredCrew: 1`, overriding
+ * whatever the shipped contract authored: this fixture needs a crew of exactly
+ * one hero so `settleContract` can run without a `pollCrew` neither test is
+ * about. `createContractState` (`NEGOTIATION_SPEC` §2.1) validates the override
+ * rather than merely hoping it is consistent.
  */
-function campaignWithABrokenPromise(): GameState {
+function lockedSingleHeroCampaign(): {
+  readonly state: GameState;
+  readonly contractId: ContentId;
+} {
   const base = createInitialState(content, 7n, 'm1-negotiation/1');
   const [heroKey] = base.heroes.keys();
   const [contractKey] = base.contracts.keys();
   const contract = base.contracts.get(contractKey!)!;
   const keyOnly = SortedSet.from(compareHeroIds, [heroKey!]);
 
-  // `requiredCrew: 1`, overriding whatever the shipped contract authored: this
-  // fixture needs a crew of exactly one hero so `settleContract` can run without
-  // a `pollCrew` this test is not about. `createContractState` (`NEGOTIATION_SPEC`
-  // §2.1) validates the override rather than merely hoping it is consistent.
   const lockedAndCrewed = createContractState({
     ...contract,
     requiredCrew: 1,
@@ -62,14 +61,30 @@ function campaignWithABrokenPromise(): GameState {
     }
   });
 
-  const locked: GameState = {
-    ...base,
-    contracts: base.contracts.set(lockedAndCrewed.id, lockedAndCrewed)
+  return {
+    state: { ...base, contracts: base.contracts.set(lockedAndCrewed.id, lockedAndCrewed) },
+    contractId: lockedAndCrewed.id
   };
+}
+
+/**
+ * A campaign carrying every field `DEC-008` added, all away from their defaults at
+ * once: an aggrieved hero (`grievance > 0`), a hero who stopped believing the
+ * guild's word (`believesGuildPromises = false`), and a treasury that has actually
+ * moved (`treasury !== STARTING_TREASURY`). Task 6's `offer`/`moodOrdinals`
+ * round-trip wiring was correct by inspection but untested against a non-default
+ * value — every round-trip test before this one would pass identically if the
+ * decoder reverted to hardcoded defaults for these three fields. This fixture is
+ * what closes that: it locks the shipped tree's first contract to one seat, one
+ * hero, a real bonus, breaks the promise through the real `settleContract`, and
+ * round-trips whatever that produced.
+ */
+function campaignWithABrokenPromise(): GameState {
+  const { state: locked, contractId } = lockedSingleHeroCampaign();
 
   const settled = settleContract(locked, {
     commandId: 1,
-    contractId: lockedAndCrewed.id,
+    contractId,
     pay: false,
     expectedStateVersion: locked.metadata.stateVersion
   });
@@ -77,6 +92,33 @@ function campaignWithABrokenPromise(): GameState {
   if (!settled.applied) {
     throw new Error(
       `campaignWithABrokenPromise: settleContract was refused (${String(settled.rejectionCode)}), ` +
+        'not the non-default state this fixture is supposed to build.'
+    );
+  }
+
+  return settled.state;
+}
+
+/**
+ * The same starting point as {@link campaignWithABrokenPromise}, settled with
+ * `pay: true` instead — the one settlement event kind
+ * (`contract_settled_promise_kept`) nothing round-tripped through the save codec
+ * before this (external review of Task 14: `rg` found it only in the union, the
+ * engine's own ternary and the four exhaustive consumers, never in an `expect`).
+ */
+function campaignWithAKeptPromise(): GameState {
+  const { state: locked, contractId } = lockedSingleHeroCampaign();
+
+  const settled = settleContract(locked, {
+    commandId: 1,
+    contractId,
+    pay: true,
+    expectedStateVersion: locked.metadata.stateVersion
+  });
+
+  if (!settled.applied) {
+    throw new Error(
+      `campaignWithAKeptPromise: settleContract was refused (${String(settled.rejectionCode)}), ` +
         'not the non-default state this fixture is supposed to build.'
     );
   }
@@ -98,6 +140,23 @@ describe('snapshot codec', () => {
     const [heroKey] = state.heroes.keys();
     expect(state.heroes.get(heroKey!)!.grievance).toBeGreaterThan(0);
     expect(state.heroes.get(heroKey!)!.believesGuildPromises).toBe(false);
+
+    const decoded = decodeSnapshot(JSON.parse(JSON.stringify(encodeSnapshot(state))));
+
+    expect(deepEqual(decoded, state)).toBe(true);
+  });
+
+  it('carries a kept promise (contract_settled_promise_kept) through a snapshot round trip', () => {
+    // External review of Task 14: `contract_settled_promise_kept` was asserted
+    // nowhere in the suite — reachable only through the union, the engine's own
+    // ternary and the four exhaustive consumers, never through an `expect`. This
+    // is that assertion, plus the save round trip the broken-promise case above
+    // already exercises for `contract_settled_promise_broken`.
+    const state = campaignWithAKeptPromise();
+
+    expect(state.history[state.history.length - 1]!.kind).toBe(
+      'contract_settled_promise_kept'
+    );
 
     const decoded = decodeSnapshot(JSON.parse(JSON.stringify(encodeSnapshot(state))));
 

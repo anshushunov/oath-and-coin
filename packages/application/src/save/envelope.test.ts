@@ -564,7 +564,11 @@ describe('referential integrity across the snapshot’s own maps', () => {
       'in respondedBy, but the save carries no such hero'
     ],
     [
-      'контракт называет отсутствующего героя в acceptedBy',
+      // Renamed (external review of Task 14): this fixture no longer isolates an
+      // unknown hero specifically *in* `acceptedBy` — see the case's own comment
+      // for why that isolation is gone — so the title now names the invariant it
+      // actually exercises rather than the one it used to.
+      'контракт держит в acceptedBy id, которого нет в respondedBy',
       (snapshot) => {
         // `respondedBy` намеренно НЕ трогается — тот же приём, которым этот кейс
         // изолировали от соседнего. Но `DEC-008` Task 14 сделал изоляцию
@@ -583,24 +587,42 @@ describe('referential integrity across the snapshot’s own maps', () => {
     ]
   ];
 
+  // `DEC-008` Task 14: `decodeSnapshot`'s own contract builder now enforces
+  // `acceptedBy ⊆ respondedBy` (`requireConsistentContract`, `snapshot-codec.ts`),
+  // so the last case above is refused *there*, before `readSave`'s
+  // `validateGameState` call — the only thing the write-path `it.each` below
+  // exercises — ever runs. Named here, once, rather than left for the write-path
+  // block to discover by a throw it was not expecting.
+  const REFERENTIAL_CASES_CAUGHT_AT_DECODE: readonly string[] = [
+    'контракт держит в acceptedBy id, которого нет в respondedBy'
+  ];
+
   it.each(referentialCases)('отказывает, когда %s', (_name, mutate, detail) => {
     expect(() => readSave(aTamperedSave(mutate), expectedVersions)).toThrow(/SAVE_INCONSISTENT/u);
     expect(() => readSave(aTamperedSave(mutate), expectedVersions)).toThrow(detail);
   });
 
-  it.each(referentialCases)('и отказывается ЗАПИСАТЬ то же самое: %s', (_name, mutate, detail) => {
-    const decided = aDecidedState();
-    const snapshot = JSON.parse(JSON.stringify(encodeSnapshot(decided))) as RawSnapshot;
-    mutate(snapshot);
+  it.each(referentialCases.filter(([name]) => !REFERENTIAL_CASES_CAUGHT_AT_DECODE.includes(name)))(
+    'и отказывается ЗАПИСАТЬ то же самое: %s',
+    (_name, mutate, detail) => {
+      const decided = aDecidedState();
+      const snapshot = JSON.parse(JSON.stringify(encodeSnapshot(decided))) as RawSnapshot;
+      mutate(snapshot);
 
-    expect(() =>
-      buildSave({
-        state: decodeSnapshot(snapshot),
-        focusedContract: FOCUSED_CONTRACT,
-        createdAt: CREATED_AT
-      })
-    ).toThrow(detail);
-  });
+      // `decodeSnapshot` hoisted out of the `expect` callback on purpose
+      // (external review of Task 14): a throw here is this test failing loudly
+      // for the wrong reason — not `buildSave` refusing what the case claims to
+      // be about — rather than a throw the assertion below would silently catch
+      // and read as a pass. Every case reaching this point is expected to decode
+      // cleanly; `REFERENTIAL_CASES_CAUGHT_AT_DECODE` above is the filtered-out
+      // list of the ones where that is no longer true.
+      const state = decodeSnapshot(snapshot);
+
+      expect(() =>
+        buildSave({ state, focusedContract: FOCUSED_CONTRACT, createdAt: CREATED_AT })
+      ).toThrow(detail);
+    }
+  );
 
   it('отказывает, когда focused_contract называет контракт, которого нет в снимке', () => {
     // Ревью Task 16.4, раунд 1: `focused_contract` был проверен только регуляркой формы
@@ -1002,28 +1024,57 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
     ]
   ];
 
+  // `DEC-008` Task 14: three of the cases above are now refused inside
+  // `decodeSnapshot` itself (`createContractState`, via `requireConsistentContract`
+  // — `snapshot-codec.ts`), before `readSave`'s `validateGameState` call, the only
+  // thing the write-path `it.each` below exercises, ever runs:
+  //
+  // - `'герой в acceptedBy, но не в respondedBy'` — `acceptedBy ⊆ respondedBy`.
+  // - `'состав набран, а контракт всё ещё предлагается'` and
+  //   `'контракт закрыт составом, которого не хватает'` — the two-directional
+  //   `status = 'crewed' ⇔ acceptedBy.size = requiredCrew`.
+  //
+  // Named here, once, rather than left for the write-path block to discover by a
+  // throw it was not expecting — external review of Task 14 found exactly that:
+  // all three had quietly stopped exercising `buildSave` at all, decoding to a
+  // thrown `SaveReadError` the outer `expect(() => buildSave(...))` swallowed as
+  // if it were the refusal the case claims to test.
+  const CASES_CAUGHT_AT_DECODE: readonly string[] = [
+    'герой в acceptedBy, но не в respondedBy',
+    'состав набран, а контракт всё ещё предлагается',
+    'контракт закрыт составом, которого не хватает'
+  ];
+
   it.each(cases)('отказывает при чтении: %s', (_name, mutate, detail) => {
     expect(() => readSave(aTamperedSave(mutate), expectedVersions)).toThrow(/SAVE_INCONSISTENT/u);
     expect(() => readSave(aTamperedSave(mutate), expectedVersions)).toThrow(detail);
   });
 
-  it.each(cases)('и отказывается ЗАПИСАТЬ то же самое: %s', (_name, mutate, detail) => {
-    // The other half, and the half external review said was missing: a producer must not
-    // be able to write what the reader refuses. The state is built by `decodeSnapshot`,
-    // which deliberately checks shape and not domain — so this is a real `GameState`
-    // carrying the same broken campaign, handed to `buildSave`.
-    const decided = aDecidedState();
-    const snapshot = JSON.parse(JSON.stringify(encodeSnapshot(decided))) as RawSnapshot;
-    mutate(snapshot);
+  it.each(cases.filter(([name]) => !CASES_CAUGHT_AT_DECODE.includes(name)))(
+    'и отказывается ЗАПИСАТЬ то же самое: %s',
+    (_name, mutate, detail) => {
+      // The other half, and the half external review said was missing: a producer must not
+      // be able to write what the reader refuses. The state is built by `decodeSnapshot`,
+      // which deliberately checks shape and not domain — so this is a real `GameState`
+      // carrying the same broken campaign, handed to `buildSave`.
+      const decided = aDecidedState();
+      const snapshot = JSON.parse(JSON.stringify(encodeSnapshot(decided))) as RawSnapshot;
+      mutate(snapshot);
 
-    expect(() =>
-      buildSave({
-        state: decodeSnapshot(snapshot),
-        focusedContract: FOCUSED_CONTRACT,
-        createdAt: CREATED_AT
-      })
-    ).toThrow(detail);
-  });
+      // `decodeSnapshot` hoisted out of the `expect` callback on purpose (external
+      // review of Task 14): a throw here is this test failing loudly for the wrong
+      // reason — not `buildSave` refusing what the case claims to be about —
+      // rather than a throw the assertion below would silently catch and read as a
+      // pass. Every case reaching this point is expected to decode cleanly;
+      // `CASES_CAUGHT_AT_DECODE` above is the filtered-out list of the ones where
+      // that is no longer true.
+      const state = decodeSnapshot(snapshot);
+
+      expect(() =>
+        buildSave({ state, focusedContract: FOCUSED_CONTRACT, createdAt: CREATED_AT })
+      ).toThrow(detail);
+    }
+  );
 
   it('принимает кампанию, которую движок действительно произвёл', () => {
     // The guard on the guards: every case above tampers with a save built from this same

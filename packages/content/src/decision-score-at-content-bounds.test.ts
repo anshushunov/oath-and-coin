@@ -250,8 +250,22 @@ function contextsAtBounds(): readonly DecisionContext[] {
 }
 
 describe('the score equals its factors everywhere the loader admits', () => {
-  it('держится на краях всех диапазонов и на предельных длинах', () => {
-    const contexts = contextsAtBounds();
+  // Explicit timeout, past `vitest.config.ts`'s own 30 s default, for the same
+  // reason and by the same derivation as `decision-properties.test.ts`'s
+  // `SameInputsProduceTheSameDecision`: this sweep is 177,147 contexts — even
+  // larger than that one — and warm it measures 4.4-5.8 s (repeated runs, this
+  // repository, 2026-08-24). External review of Task 14 measured this test
+  // timing out outright at the global 30 s under load. Applying
+  // `vitest.config.ts`'s own ~15× loaded/warm degradation factor (derived there
+  // from the corpus-parity suite): 6 s × 15 = 90 s, the number below. Confirmed
+  // not caused by Task 14: this file carries no diff from before that task
+  // (`git diff 3bb3d9c..HEAD -- decision-score-at-content-bounds.test.ts` is
+  // empty), and a worktree built at the pre-Task-14 commit shows the same warm
+  // cost.
+  it(
+    'держится на краях всех диапазонов и на предельных длинах',
+    () => {
+      const contexts = contextsAtBounds();
 
     // Названо числом, потому что молчаливо сжавшийся перебор прошёл бы цикл ниже
     // целиком, и «зелено» означало бы «нечего было проверять».
@@ -279,7 +293,9 @@ describe('the score equals its factors everywhere the loader admits', () => {
 
       expect(positive - negative).toBe(result.selectedScore);
     }
-  });
+    },
+    90_000
+  );
 
   it('перебирает именно края диапазонов из bounds.ts, а не просто столько же точек', () => {
     // Внешнее ревью вскрыло дыру мутантом: замена `edgesOf` на `[min + 1, mid, max - 1]`
