@@ -202,6 +202,39 @@ const answeredScenario: ScenarioFixture = {
 };
 
 /**
+ * The same campaign `answeredScenario` reaches, with one difference load-bearing for
+ * exactly one test: the second scripted command's own `command_id` is `3`, not `2` — a
+ * deliberate gap. `appliedCommandIds` ends up `{1, 3}`, so its `size` (2) and its
+ * maximum (3) answer differently to "what id has this campaign never applied": `size +
+ * 1` is `3`, which collides with the id already spent; `max + 1` is `4`, which does
+ * not. `session-controller.test.ts`'s "never reuses a command id" test is the one
+ * place that distinction matters — on a dense `{1, 2}` id space the two formulas agree
+ * on every step, and a controller computing the wrong one would pass unnoticed.
+ */
+const gappedIdScenario: ScenarioFixture = {
+  manifest: {
+    ...MANIFEST,
+    expected_screen_state: 'normal',
+    checkpoints: [
+      { name: 'start', after_command_id: 0 },
+      { name: 'final', after_command_id: 3 }
+    ]
+  },
+  commands: {
+    commands: [
+      composeEscort,
+      {
+        command: 'propose_contract_to_hero',
+        command_id: 3,
+        contract: 'core:escort',
+        hero_index: 0,
+        expected_state_version: 1
+      }
+    ]
+  }
+};
+
+/**
  * The same offer, refused by the engine before it reached Bram: the command states a
  * state version the campaign is not at.
  *
@@ -1352,6 +1385,9 @@ describe('dispatching the five negotiation commands', () => {
     await controller.start();
     const versionBeforeRevision = controller.store.snapshot().state!.metadata.stateVersion;
     expect(versionBeforeRevision).toBeGreaterThan(0);
+    // A run hash exists before any live command — the property `session.test.ts`'s
+    // "keeps the run hash while the run is what is on screen" already pins.
+    expect(controller.store.snapshot().canonicalHash).toMatch(/^[0-9a-f]{64}$/u);
 
     const result = controller.composeOffer({
       contractId: escort,
@@ -1368,6 +1404,10 @@ describe('dispatching the five negotiation commands', () => {
     // `CommandResult` but forgot to publish it would leave a player looking at the
     // package they revised away from.
     expect(controller.store.snapshot().screen.offer?.advance).toBe(40);
+    // `canonicalHash` is over the whole scripted `ScenarioOutcome`, and a live command
+    // was never one of its steps — carrying the old hash forward would claim a
+    // campaign this call just changed is still the one the run produced.
+    expect(controller.store.snapshot().canonicalHash).toBeNull();
   });
 
   it('surfaces a rejection code instead of throwing', async () => {
@@ -1397,18 +1437,25 @@ describe('dispatching the five negotiation commands', () => {
   });
 
   it('never reuses a command id across the five negotiation commands', async () => {
-    // The whole chain, on `answeredScenario`'s campaign — whose own scripted commands
-    // already occupy ids 1 and 2, so a controller that started counting from 1 on its
-    // own would collide with the scenario's ids on the very first live command. Four
-    // of the five commands here apply for real; the fifth, `pollCrew` against a
+    // On `gappedIdScenario`'s campaign, whose two scripted commands leave
+    // `appliedCommandIds` at `{1, 3}` rather than the dense `{1, 2}` `answeredScenario`
+    // would — deliberately, so "the next id" computed as `size + 1` (2 spent, so 3) and
+    // as `max + 1` (3 spent, so 4) disagree from the very first live command. A
+    // controller taking the former would hand `composeOffer` the id `3`, which the
+    // scenario already spent, and `composeOffer` would refuse it as
+    // `rejected.duplicate_command` on the spot — this is what `composed.applied` below
+    // actually catches, not a hypothetical.
+    //
+    // Four of the five commands here apply for real; the fifth, `pollCrew` against a
     // single-hero, single-seat contract, is refused for being late rather than for
-    // colliding — but which refusal it gets is the whole instrument. `pollCrew`'s own
-    // checks run `rejected.stale_state`, then `rejected.duplicate_command`, and only
-    // then the phase/crew checks (`NEGOTIATION_SPEC` §6.1) — so if the controller
-    // handed it a command id already spent by the `lockOffer` three lines above,
-    // `pollCrew` would be refused as a duplicate and this assertion would name that
-    // instead of the crew-already-filled refusal the campaign is actually in.
-    const { controller } = harness();
+    // colliding — but which refusal it gets is the whole instrument for the *later*
+    // ids too. `pollCrew`'s own checks run `rejected.stale_state`, then
+    // `rejected.duplicate_command`, and only then the phase/crew checks
+    // (`NEGOTIATION_SPEC` §6.1) — so if the controller handed it a command id already
+    // spent by the `lockOffer` three lines above, `pollCrew` would be refused as a
+    // duplicate and this assertion would name that instead of the crew-already-filled
+    // refusal the campaign is actually in.
+    const { controller } = harness({ scenario: gappedIdScenario });
     await controller.start();
 
     const composed = controller.composeOffer({
@@ -1432,7 +1479,7 @@ describe('dispatching the five negotiation commands', () => {
 
     const settled = controller.settleContract({ contractId: escort, pay: true });
     expect(settled.applied).toBe(true);
-    // `answeredScenario`'s own two scripted commands (ids 1 and 2) plus the four live
+    // `gappedIdScenario`'s own two scripted commands (ids 1 and 3) plus the four live
     // ones dispatched above: six commands applied, so six distinct ids spent —
     // `appliedCommandIds` absorbs a repeat silently (`SortedSet.add`), so a controller
     // that had reused one anywhere in the chain would leave fewer entries than commands
@@ -1459,5 +1506,13 @@ describe('dispatching the five negotiation commands', () => {
     expect(result.applied).toBe(true);
     expect(result.decisions).toHaveLength(2);
     expect(result.events).toHaveLength(2);
+    // Composition, not only count: `[decisions[0], decisions[0]]` would satisfy the
+    // length checks above. `NEGOTIATION_SPEC` §3.3's own roster order (`HeroId`) is
+    // `core:doran` (heroId 1) then `core:zara` (heroId 2), both distinct from the key
+    // hero `core:bram` (heroId 0) who already answered in draft and is not asked again.
+    expect(result.events.map((event) => ('heroId' in event ? event.heroId : null))).toEqual([
+      heroId(1),
+      heroId(2)
+    ]);
   });
 });

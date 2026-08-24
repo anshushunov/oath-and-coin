@@ -1009,6 +1009,46 @@ describe('what the screen shows about the negotiation itself', () => {
     expect(model.treasuryForecast).toBe(400 + 60 - 30 - 20);
   });
 
+  /**
+   * Draft, one of three seats filled by the key hero's own draft acceptance — the
+   * shape `lockCommitment` exists to stay honest about. `requiredCrew` (3) and
+   * `acceptedBy.size` (1) disagree here, which every other fixture in this file does
+   * not: `crewedCampaignWithPromise`'s own projection test has `acceptedBy.size ===
+   * requiredCrew`, where `advance × requiredCrew + promisedBonus` and `advance ×
+   * acceptedBy.size + promisedBonus` coincide by construction. A `lockCommitment`
+   * computed off `acceptedBy.size` instead of `requiredCrew` — exactly the mistake the
+   * field exists to not make — would still pass that pinned assertion and only
+   * reddens against a state where the two formulas can disagree.
+   */
+  function draftWithOneSeatOfThreeFilled(): GameState {
+    const hero = aHero({
+      id: heroId(0),
+      definition: ids.bram,
+      displayNameKey: 'hero.core.bram.name'
+    });
+    const contract = aContract({
+      requiredCrew: 3,
+      offer: anOffer({
+        keyHero: heroId(0),
+        advance: 10,
+        promisedBonus: 5,
+        respondedBy: responded(0),
+        acceptedBy: responded(0)
+      })
+    });
+
+    return withContracts(withHeroes(aState(), [hero]), [contract]);
+  }
+
+  it('reserves what locking the full crew would commit, not just who has answered so far', () => {
+    // advance × requiredCrew + promisedBonus = 10×3+5 = 35; advance × acceptedBy.size +
+    // promisedBonus = 10×1+5 = 15. The two disagree, and `lockCommitment` must be the
+    // first.
+    const model = contractOfferScreenModel(draftWithOneSeatOfThreeFilled(), []);
+
+    expect(model.offer?.lockCommitment).toBe(35);
+  });
+
   it('keeps the phase out of the five screen states', () => {
     const model = contractOfferScreenModel(lockedCampaign(), []);
 
