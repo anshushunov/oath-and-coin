@@ -116,6 +116,10 @@ function aModel(rosterDefinitions: readonly string[], responders: readonly strin
     treasury: 400,
     offer: {
       version: 1,
+      // A bare literal, not `OfferPhase.Draft` (the convention `packages/presentation`'s
+      // own tests use): `apps/web` does not depend on `@oath-and-coin/simulation` at
+      // all (`package.json` names only `application`/`content`/`presentation`), and the
+      // type this satisfies structurally is a plain string union either way.
       phase: 'draft',
       advance: 0,
       methodTagKey: null,

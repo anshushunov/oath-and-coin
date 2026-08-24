@@ -44,8 +44,14 @@ const shippedContent = join(repoRoot, 'content');
  * purpose. Task 8 moved it a third time, authoring the two `hero.decision.*`
  * localization keys its new decision factors need in `content/locale/ru.json`, and a
  * fourth, in review of that same task, rewording one of those two keys' Russian text to
- * match its neighbours' grammatical form. What this constant still buys is what both
- * sources have to answer — not merely each other — just no longer corpus parity.
+ * match its neighbours' grammatical form. Task 15's own review moved it a fifth time,
+ * authoring `tag.method.open`: Task 4's `negotiable_tags` on two contracts had gone
+ * half-translated since it was authored — `tag.method.deception` already existed from
+ * its use as a plain `tags` entry elsewhere, `tag.method.open` did not — and it stayed
+ * invisible until the read-model's `OfferLine.methodOptionKeys` (`NEGOTIATION_SPEC`
+ * §5.1) started resolving both alternatives, not only the chosen one. What this
+ * constant still buys is what both sources have to answer — not merely each other —
+ * just no longer corpus parity.
  *
  * The same hash is pinned a second time, in `tests/locale/catalogue.test.ts` as
  * `FROZEN_CONTENT_VERSION`, where it states a different claim: that nothing has been
@@ -53,7 +59,7 @@ const shippedContent = join(repoRoot, 'content');
  * purpose — neither file may own the other's claim — and Task 19 retires **both** when
  * the corpus stops being the oracle.
  */
-const RECORDED_CONTENT_VERSION = '08975dbb0d527f6e';
+const RECORDED_CONTENT_VERSION = '6ec81ab69e9fcec3';
 
 /** Every file under `directory`, root-relative and POSIX, by this test's own walk. */
 function everyFileUnder(directory: string, prefix = ''): readonly string[] {

@@ -894,6 +894,11 @@ describe('what the screen shows about the negotiation itself', () => {
     const contract = aContract({
       patronFee,
       requiredCrew: crew,
+      // `acceptedBy.size` is always `crew` here, which is always `requiredCrew` too —
+      // so §2.1's biconditional (`status = 'crewed' ⇔ acceptedBy.size = requiredCrew`)
+      // leaves exactly one legal status for this fixture, not the `aContract` default
+      // (`Offered`) review of Task 15 found this had been carrying instead.
+      status: ContractStatus.Crewed,
       offer: anOffer({
         phase: OfferPhase.Locked,
         keyHero: roster[0]!.id,
@@ -907,7 +912,15 @@ describe('what the screen shows about the negotiation itself', () => {
     return withContracts(withHeroes(aState({ treasury }), roster), [contract]);
   }
 
-  /** `locked`, one seat still open — `NEGOTIATION_SPEC` §3.2's "отряд не набран" branch. */
+  /**
+   * `locked`, one seat still open — `NEGOTIATION_SPEC` §3.2's "отряд не набран" branch.
+   * `respondedBy` is the *whole* roster, same as {@link crewedCampaign}: both heroes
+   * answered, only one accepted. Review of Task 15 found the original pair of fixtures
+   * varying `respondedBy` too, which made `Normal` versus `Incomplete` differ between
+   * them for free — an implementation gating the settlement on `state ===
+   * ScreenState.Normal` instead of on the crew would have passed the very test this
+   * fixture exists for.
+   */
   function lockedButUncrewed(): GameState {
     const roster = heroes(ids.bram, ids.doran);
     const contract = aContract({
@@ -916,7 +929,7 @@ describe('what the screen shows about the negotiation itself', () => {
       offer: anOffer({
         phase: OfferPhase.Locked,
         keyHero: heroId(0),
-        respondedBy: responded(0),
+        respondedBy: responded(0, 1),
         acceptedBy: responded(0)
       })
     });
@@ -924,7 +937,11 @@ describe('what the screen shows about the negotiation itself', () => {
     return withContracts(withHeroes(aState(), roster), [contract]);
   }
 
-  /** `locked`, every seat filled — the phase/status pair `settleContract` waits on. */
+  /**
+   * `locked`, every seat filled — the phase/status pair `settleContract` waits on. Same
+   * `respondedBy` as {@link lockedButUncrewed}, so both fixtures read `Normal`; only
+   * `acceptedBy` and `status` — the actual crew — differ.
+   */
   function crewedCampaign(): GameState {
     const roster = heroes(ids.bram, ids.doran);
     const contract = aContract({
@@ -939,6 +956,34 @@ describe('what the screen shows about the negotiation itself', () => {
     });
 
     return withContracts(withHeroes(aState(), roster), [contract]);
+  }
+
+  /**
+   * `locked`, crewed, mid-negotiation on every axis at once — every field of `offer`,
+   * `promiseTerms` and `settlement` carries a distinct, nonzero value, so a `toEqual`
+   * against the full projection is sensitive to each of the three sub-objects' own
+   * fields individually, not only to whether the sub-object is `null` or present.
+   */
+  function crewedCampaignWithPromise(): GameState {
+    const roster = heroes(ids.bram, ids.doran);
+    const contract = aContract({
+      patronFee: 100,
+      requiredCrew: 2,
+      status: ContractStatus.Crewed,
+      negotiableTags: SortedSet.from(compareContentIds, [ids.methodDeception, ids.methodOpen]),
+      offer: anOffer({
+        version: 3,
+        phase: OfferPhase.Locked,
+        keyHero: heroId(0),
+        advance: 15,
+        methodTag: ids.methodOpen,
+        promisedBonus: 30,
+        respondedBy: responded(0, 1),
+        acceptedBy: responded(0, 1)
+      })
+    });
+
+    return withContracts(withHeroes(aState({ treasury: 500 }), roster), [contract]);
   }
 
   it('shows what fulfilment and breach will mean, before anything is signed', () => {
@@ -987,5 +1032,47 @@ describe('what the screen shows about the negotiation itself', () => {
     expect(readModelHash(contractOfferScreenModel(draftWithAPromise(), []))).not.toBe(
       readModelHash(contractOfferScreenModel(draftWithoutAPromise(), []))
     );
+  });
+
+  it('projects every field of the offer, the promise and the settlement, not only whether each is present', () => {
+    // External review of this task found the gap the seven tests above leave: none of
+    // them ever puts a *non-null* `settlement` through `describeReadModel` at all, so
+    // `describeSettlement` had never actually run, and the other two pinned tests only
+    // ever check `offer`/`promiseTerms` field by field on the *model*, never on the
+    // projection `readModelHash` is taken over. A field could be dropped, renamed or
+    // miscomputed inside `describeOffer`/`describePromiseTerms`/`describeSettlement` and
+    // every test above would still pass. `toEqual` closes that: a projection missing a
+    // key compares unequal to an expectation that states one, the same property the
+    // `LOADING_SCREEN` projection test above already leans on for its five `null`s — so
+    // this single assertion is sensitive to each of the fifteen sub-fields below on its
+    // own, not only to whether `offer`/`promise_terms`/`settlement` are `null`.
+    const model = contractOfferScreenModel(crewedCampaignWithPromise(), []);
+    const projection = describeReadModel(model) as Record<string, unknown>;
+
+    // acceptedBy.size is 2 here (both heroes crewed), so §3.3's formula reads
+    // 500 + 100 − 15×2 − 30 = 540 kept, 570 broken (the 30 not paid).
+    expect(projection['treasury']).toBe(500);
+    expect(projection['treasury_forecast']).toBe(540);
+    expect(projection['offer']).toEqual({
+      version: 3,
+      phase: 'locked',
+      advance: 15,
+      method_tag_key: 'tag.method.open',
+      method_option_keys: ['tag.method.open', 'tag.method.deception'],
+      promised_bonus: 30,
+      key_hero_definition: ids.bram
+    });
+    expect(projection['promise_terms']).toEqual({
+      fulfil_key: 'offer.promise.fulfil',
+      breach_key: 'offer.promise.breach',
+      bonus: 30
+    });
+    expect(projection['settlement']).toEqual({
+      promised_bonus: 30,
+      key_hero_definition: ids.bram,
+      crew: [ids.bram, ids.doran],
+      treasury_if_kept: 540,
+      treasury_if_broken: 570
+    });
   });
 });

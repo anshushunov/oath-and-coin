@@ -49,7 +49,9 @@ describe('createInitialState', () => {
     expect(state.metadata).toEqual({
       saveSchemaVersion: SAVE_SCHEMA_VERSION,
       rulesetVersion: 'm1-negotiation/1',
-      contentVersion: '08975dbb0d527f6e',
+      // `08975dbb0d527f6e` until Task 15's own review authored `tag.method.open`
+      // (`content-set.test.ts` carries the same move's full history).
+      contentVersion: '6ec81ab69e9fcec3',
       campaignSeed: 7n,
       stateVersion: 0,
       logicalTime: 0,

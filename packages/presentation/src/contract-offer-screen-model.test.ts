@@ -6,7 +6,9 @@ import {
   type ContractLine,
   type ContractOfferScreenModel,
   type HeroCard,
-  type OfferLine
+  type OfferLine,
+  type PromiseTermsLine,
+  type SettlementLine
 } from './contract-offer-screen-model.ts';
 import { QualitativeGrade } from './qualitative-scale.ts';
 import { ScreenState } from './screen-state.ts';
@@ -68,6 +70,20 @@ function anEmptyModel(): ContractOfferScreenModel {
   return createContractOfferScreenModel(
     aModel({ state: ScreenState.Empty, contract: null, roster: [], offer: null })
   );
+}
+
+function aPromiseTermsLine(): PromiseTermsLine {
+  return { fulfilKey: 'offer.promise.fulfil', breachKey: 'offer.promise.breach', bonus: 25 };
+}
+
+function aSettlementLine(): SettlementLine {
+  return {
+    promisedBonus: 25,
+    keyHeroDefinition: 'core:bram',
+    crew: ['core:bram'],
+    treasuryIfKept: 400,
+    treasuryIfBroken: 425
+  };
 }
 
 describe('the combinations a screen model refuses', () => {
@@ -178,4 +194,32 @@ describe('the combinations a screen model refuses', () => {
       createContractOfferScreenModel({ ...anEmptyModel(), offer: anOfferLine() })
     ).toThrow(/offer/u);
   });
+
+  it('refuses a model that carries promise terms with no contract', () => {
+    // External review found this half of `requireNoContractContent`'s new check
+    // entirely unpinned: the test above only ever sets `offer`, so a mutant deleting
+    // just the `promiseTerms` clause left every test green.
+    expect(() =>
+      createContractOfferScreenModel({ ...anEmptyModel(), promiseTerms: aPromiseTermsLine() })
+    ).toThrow(/promiseTerms/u);
+  });
+
+  it('refuses a model that carries a settlement with no contract', () => {
+    // Same gap, the third field.
+    expect(() =>
+      createContractOfferScreenModel({ ...anEmptyModel(), settlement: aSettlementLine() })
+    ).toThrow(/settlement/u);
+  });
+
+  it.each([ScreenState.Incomplete, ScreenState.Normal])(
+    'refuses a %s screen with a contract and no offer',
+    (state) => {
+      // External review found this check unpinned too: every other test that reaches
+      // this branch goes through `aModel()`'s own default `offer: anOfferLine()`, so a
+      // mutant deleting the whole check left every test in this file green.
+      expect(() => createContractOfferScreenModel(aModel({ state, offer: null }))).toThrow(
+        /offer must not be null/u
+      );
+    }
+  );
 });

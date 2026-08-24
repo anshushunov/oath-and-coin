@@ -84,7 +84,7 @@ const content = loadContentSet(shippedContent);
  * would quietly weaken the other. Task 19 retires **both**, not only this one; `ADR-012`
  * records that.
  *
- * The number itself has moved four times already, off what the corpus originally
+ * The number itself has moved five times already, off what the corpus originally
  * recorded: `DEC-008` Task 3 renamed the contract's fee field, Task 4 raised every
  * file's `schema_version` and authored `negotiable_tags` on two contracts, Task 8 added
  * the two reason-code keys the decision rule's new factors need —
@@ -95,11 +95,18 @@ const content = loadContentSet(shippedContent);
  * engine vocabulary those two codes belong in has nowhere else to be translated), and
  * review of that same task reworded `hero.decision.guild_broke_its_word`'s Russian text
  * to match its neighbours' grammatical form — the key count did not move, only the
- * bytes behind it. Each move was deliberate and reviewed, not the drift this test exists
- * to catch — the guard below is against the *next* unreviewed one.
+ * bytes behind it. Task 15's own review found the second growth: Task 4 authored
+ * `negotiable_tags: ["method:open", "method:deception"]` on two contracts, but
+ * `method:deception` already had a translation from its use as a plain authored `tags`
+ * entry elsewhere, so the gap — `tag.method.open`, needed once `OfferLine.methodOptionKeys`
+ * (`NEGOTIATION_SPEC` §5.1) started resolving both alternatives of a negotiable tag, not
+ * only the chosen one — went unnoticed until `everyKeyTheScreenCanShow` below was taught
+ * to look at `negotiableTags` and not only `tags`. Each move was deliberate and reviewed,
+ * not the drift this test exists to catch — the guard below is against the *next*
+ * unreviewed one.
  */
-const FROZEN_CONTENT_VERSION = '08975dbb0d527f6e';
-const FROZEN_CONTENT_KEY_COUNT = 96;
+const FROZEN_CONTENT_VERSION = '6ec81ab69e9fcec3';
+const FROZEN_CONTENT_KEY_COUNT = 97;
 
 /** Every key the presentation layer can produce for the shipped content tree. */
 function everyKeyTheScreenCanShow(): readonly string[] {
@@ -121,7 +128,13 @@ function everyKeyTheScreenCanShow(): readonly string[] {
     ...content.contracts.keys().map(contractDisplayNameKey),
     ...content.traits.keys().map(traitDisplayNameKey),
     ...content.heroes.values().map((hero) => hero.displayNameKey),
-    ...content.contracts.values().flatMap((contract) => contract.tags.map(tagKey))
+    ...content.contracts.values().flatMap((contract) => contract.tags.map(tagKey)),
+    // `NEGOTIATION_SPEC` §5.1: the offer screen names *both* alternatives of a
+    // negotiable tag, not only the one a package has chosen — `OfferLine.methodOptionKeys`
+    // (`contract-offer-screen-model-factory.ts`'s `methodOptionKeysOf`) resolves every
+    // entry of `negotiableTags`, not only `tags`. Missing here, this list would agree
+    // with a catalogue that has no entry for a key the screen can actually show.
+    ...content.contracts.values().flatMap((contract) => contract.negotiableTags.map(tagKey))
   ];
 }
 

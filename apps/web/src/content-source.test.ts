@@ -47,10 +47,13 @@ import {
  * authored `negotiable_tags`, each moving the shipped tree's bytes on purpose. Task 8
  * moved it again, authoring the two `hero.decision.*` reason-code keys its new decision
  * factors need in `content/locale/ru.json`, and once more in review of that task, when
- * one of those two keys' Russian text was reworded to match its neighbours — pinned
- * here from now on as a drift guard, not as corpus parity.
+ * one of those two keys' Russian text was reworded to match its neighbours. Review of
+ * Task 15 moved it again, authoring `tag.method.open` — the untranslated half of Task
+ * 4's `negotiable_tags`, invisible until `OfferLine.methodOptionKeys`
+ * (`NEGOTIATION_SPEC` §5.1) started resolving both alternatives of a negotiable tag —
+ * pinned here from now on as a drift guard, not as corpus parity.
  */
-const SHIPPED_CONTENT_VERSION = '08975dbb0d527f6e';
+const SHIPPED_CONTENT_VERSION = '6ec81ab69e9fcec3';
 
 /**
  * The content version the corpus recorded for `screen_empty`'s own fixture root,

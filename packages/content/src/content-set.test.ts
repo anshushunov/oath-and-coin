@@ -45,6 +45,13 @@ const shippedContent = join(repoRoot, 'content');
  * the past tense with an explicit subject; every other `hero.decision.*` entry is either
  * a noun phrase or names the guild's action against an implied hero) and was reworded to
  * match — `content/locale/ru.json` moved again, so the digest did too.
+ *
+ * Review of Task 15 moved it a fifth time, to `6ec81ab69e9fcec3`: Task 4's
+ * `negotiable_tags` on two contracts had gone half-translated since it was authored —
+ * `tag.method.deception` already existed from its use as a plain `tags` entry
+ * elsewhere, `tag.method.open` did not — and the gap stayed invisible until the
+ * read-model's `OfferLine.methodOptionKeys` (`NEGOTIATION_SPEC` §5.1) started resolving
+ * both alternatives of a negotiable tag, not only the chosen one.
  */
 
 const temporaryRoots: string[] = [];
@@ -156,7 +163,7 @@ describe('loadContentSet over the shipped tree', () => {
     // bytes on purpose. What this pin buys now is the same as before either move — a
     // digest that drifted only with itself would let the whole segment pass parity on
     // a coincidence — just no longer against the frozen C# export.
-    expect(content.contentVersion).toBe('08975dbb0d527f6e');
+    expect(content.contentVersion).toBe('6ec81ab69e9fcec3');
   });
 
   it('keys heroes, contracts and traits in content-id order', () => {
