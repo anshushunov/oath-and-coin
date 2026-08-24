@@ -30,25 +30,35 @@ export const SUPPORTED_CONTRAST_SCHEMA_VERSION = 1;
  * `requiredCrew`, …) that are real inputs to `decide` but are not things a player at the
  * table perceives as "one condition changing" — those stay out on purpose.
  *
- * Four of these are new since the .NET stack's own `ContrastDefinition.AllowedInputs`
+ * Five of these are new since the .NET stack's own `ContrastDefinition.AllowedInputs`
  * (`contract.payment`, `contract.risk`, `contract.tags`, `contract.accepted_by`):
  * `DEC-008`'s negotiation slice replaced a flat `contract.payment` with a composed
  * `offer` (`NEGOTIATION_SPEC` §2.1, §4) carrying `advance`, `method_tag` and
  * `promised_bonus`, and added a hero's `grievance` and belief in the guild's word.
  * `contract.payment` is renamed to `contract.patron_fee`, following Task 3's rename of
  * the field everywhere else — the four shipped contrast files were the one place Task 3
- * deliberately left alone, because nothing read them then. `contract.accepted_by` — a
- * pre-state difference in who has already accepted, not a content field — has no
- * replacement here: the property it demonstrated (a hero's bonds with an already-accepted
- * comrade) is already pinned at the unit level by `contract-decision-rule.test.ts`'s
- * `StandsWithComrade`/`WillNotWorkWith` assertions, and the fixture heroes that contrast
- * exercised (`crew_leader`, `crew_skeptic`) remain in use by the scenario suite
- * (`decline_by_comrade`), so retiring the contrast orphans nothing.
+ * deliberately left alone, because nothing read them then.
+ *
+ * `contract.accepted_by` — a pre-state difference in who has already accepted, not a
+ * content field — is carried over unchanged, not renamed. `HERO_DECISION_SPEC` §7.3
+ * states exactly why it belongs in a hand-enumerated list rather than being derived by
+ * diffing two content trees: *"Последнее — различие предсостояния, а не файлов
+ * контента; именно поэтому вход перечислен, а не выведен сравнением двух наборов
+ * JSON."* That is the argument *for* keeping it, not against — an earlier version of
+ * this comment read the same sentence backwards and dropped the input on the strength of
+ * its own quote. The `bondSum` term `decide` computes from `contract.offer.acceptedBy`
+ * (`contract-decision-rule.ts`) is live code, reachable from any state with a non-empty
+ * `acceptedBy`/`crew` — `contrast-runner.ts` builds exactly that state, deriving both
+ * from this input's value, the same way a `contract.patron_fee` contrast derives
+ * `offer.advance` from its own value. Excluding it would leave `bondSum` the one term of
+ * `decide`'s formula no shipped contrast ever moves, silently narrowing what `MVP_PLAN`
+ * §5.5's exit criterion is actually checked against.
  */
 export const ALLOWED_CONTRAST_INPUTS = Object.freeze([
   'contract.patron_fee',
   'contract.risk',
   'contract.tags',
+  'contract.accepted_by',
   'offer.advance',
   'offer.method_tag',
   'offer.promised_bonus',
@@ -70,9 +80,11 @@ export type ContrastExpectation =
 /**
  * The one input a contrast varies, and its two values — typed per input rather than as one
  * loose union, so a caller that has already switched on {@link ContrastVary.input} gets the
- * right shape for `from`/`to` back without a cast. `contract.tags` is the only array-valued
- * input; `offer.method_tag` is the only one that may be `null` (no method chosen);
- * `hero.believes_guild_promises` is the only boolean; every other input is an integer.
+ * right shape for `from`/`to` back without a cast. `contract.tags` and `contract.accepted_by`
+ * are the array-valued inputs — the former names tag ids, the latter names the content ids
+ * of heroes already treated as having accepted; `offer.method_tag` is the only one that may
+ * be `null` (no method chosen); `hero.believes_guild_promises` is the only boolean; every
+ * other input is an integer.
  */
 export type ContrastVary =
   | {
@@ -84,7 +96,7 @@ export type ContrastVary =
       readonly to: number;
     }
   | {
-      readonly input: Extract<ContrastInput, 'contract.tags'>;
+      readonly input: Extract<ContrastInput, 'contract.tags' | 'contract.accepted_by'>;
       readonly from: readonly ContentId[];
       readonly to: readonly ContentId[];
     }
@@ -265,6 +277,7 @@ function buildVary(
         to: requireInteger(to, input, 'to', displayPath)
       };
     case 'contract.tags':
+    case 'contract.accepted_by':
       return {
         input,
         from: requireContentIdArray(from, input, 'from', displayPath),
@@ -378,13 +391,14 @@ function requireContentIdArray(
 
 /**
  * Whether a fully-built {@link ContrastVary}'s two sides are the same value — a set
- * comparison for `contract.tags`, since two differently-ordered spellings of the same tag
- * set still vary nothing a hero's decision reads (`ContractState.tags` is a `SortedSet`),
- * and a plain `===` everywhere else, which already covers every other value this type
- * carries (`number`, `boolean`, `ContentId | null`, all primitives).
+ * comparison for `contract.tags`/`contract.accepted_by`, since two differently-ordered
+ * spellings of the same set still vary nothing a hero's decision reads (`ContractState.tags`
+ * and `OfferState.acceptedBy` are both a `SortedSet`), and a plain `===` everywhere else,
+ * which already covers every other value this type carries (`number`, `boolean`,
+ * `ContentId | null`, all primitives).
  */
 function valuesEqual(vary: ContrastVary): boolean {
-  if (vary.input === 'contract.tags') {
+  if (vary.input === 'contract.tags' || vary.input === 'contract.accepted_by') {
     const from = new Set<ContentId>(vary.from);
     const to = new Set<ContentId>(vary.to);
     return from.size === to.size && [...from].every((id) => to.has(id));

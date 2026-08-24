@@ -58,18 +58,16 @@ const SCHEMAS: Readonly<Record<string, Accounting>> = {
       'already does for the four above.'
   },
   'contrast.schema.json': {
-    // DEC-008 Task 19 gave the fixtures this schema describes their first consumer:
-    // `loadContrastDefinition` (`packages/content/src/scenarios/contrast-definition.ts`)
-    // states the same rules in Zod, and `contrast-runner.ts` is what now reads
-    // `scenarios/contrasts/*.json` for real — `tools/scenario-runner/src/cli.ts`'s
-    // `contrast` subcommand and `contrast-runner.test.ts`'s
-    // `EveryShippedContrastFlipsAsDeclared`-equivalent both exercise it. Not held to the
-    // stricter bar `scenario-manifest.schema.json` above still fails — nothing here
-    // cross-checks this document's fields against the Zod contract the way
-    // `check-schemas.mjs` does for the four fully `checkedBy` schemas — because that bar
-    // was never this entry's stated exit condition; "the contrast fixtures get a
-    // consumer" was.
-    checkedBy: 'packages/content/src/scenarios/contrast-definition.ts'
+    orphaned:
+      'DEC-008 Task 19 gave the fixtures this schema describes their first consumer — ' +
+      'loadContrastDefinition (packages/content/src/scenarios/contrast-definition.ts) states ' +
+      'the same rules in Zod, and scenarios/contrasts/*.json is read for real by ' +
+      'contrast-runner.ts, the scenario-runner CLI\'s contrast subcommand and ' +
+      'contrast-runner.test.ts — but the schema *document* itself is still read by nothing: ' +
+      'no test or script parses contrast.schema.json and checks it against that Zod contract. ' +
+      'That is the same gap scenario-manifest.schema.json above is orphaned for, and the same ' +
+      'fix closes both: check-schemas.mjs asserting this document\'s fields against ' +
+      'contrast-definition.ts the way it already does for the four `checkedBy` schemas.'
   }
 };
 

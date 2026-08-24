@@ -96,9 +96,15 @@ describe('the contrast runner', () => {
       .filter((name) => name.endsWith('.json'))
       .sort();
 
-    // A loop over zero files would pass vacuously — the same "green about nothing" trap
-    // `determinism-artifact.test.ts`'s own `ran()` guards against.
-    expect(files.length).toBeGreaterThan(0);
+    // A floor, not merely "some": `> 0` would keep this green after a shipped contrast was
+    // deleted, exactly the way `orphaned-data.test.ts`'s old `toBe(4)` on this same
+    // directory caught nothing when `comrade_accepted_first.json` was briefly removed —
+    // the assertion has to fall if the count falls, not merely if it hits zero. Nine is
+    // the count this task ships (`payment_raised`, `risk_raised`,
+    // `tag_added_that_a_trait_hates`, `comrade_accepted_first`, `advance_raised`,
+    // `method_switched_to_deception`, `bonus_promised`, `grievance_remembered`,
+    // `stopped_believing`); a tenth added later only raises the floor further.
+    expect(files.length).toBeGreaterThanOrEqual(9);
 
     for (const file of files) {
       const definition = loadContrastDefinition(source, file);

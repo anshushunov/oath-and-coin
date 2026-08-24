@@ -1,5 +1,6 @@
 import {
   Actions,
+  OfferPhase,
   SortedMap,
   SortedSet,
   compareContentIds,
@@ -62,7 +63,7 @@ export interface ContrastRun {
  * difference (`NEGOTIATION_SPEC` §2.1, §4). Not the engine's own starting offer
  * ({@link import('../initial-state.ts').createInitialState}'s `initialOffer()`, which pays
  * nothing and asks nobody) — a contrast is one question asked of one hero, and an unasked
- * question is not what any of the eight allowed inputs describe changing.
+ * question is not what any of the nine allowed inputs describe changing.
  *
  * - `advance` defaults to the contract's own `patronFee` — the guild's plain,
  *   unrenegotiated offer pays the whole published fee — unless `offer.advance` is the
@@ -70,13 +71,27 @@ export interface ContrastRun {
  *   what makes a `contract.patron_fee` contrast observable at all: `decide` never reads
  *   `patronFee` itself (`NEGOTIATION_SPEC` §4 — "The patron fee itself never appears"),
  *   only `offer.advance`, so varying the fee has to move what "the whole fee" means for
- *   the swing to exist.
+ *   the swing to exist. `payment_raised.json`/`advance_raised.json` are consequently
+ *   evidence for the same term of `decide` twice over — a limitation of this convention,
+ *   not a claim either file makes about itself; see the task report.
  * - `promisedBonus` defaults to `0` — no promise on the table — unless `offer.promised_bonus`
  *   is the input under test (the vary's value), or `hero.believes_guild_promises` is (the
  *   contract's `patronFee`, so a contrast about belief has an actual promise to revoke;
  *   varying belief around a promise of zero would vary nothing `decide` reads).
  * - `methodTag` defaults to `null` — no method negotiated — unless `offer.method_tag` is
- *   the input under test.
+ *   the input under test. Not checked against the contract's `negotiableTags`: that
+ *   membership rule belongs to `composeOffer` (`NEGOTIATION_SPEC` §2.4), which this runner
+ *   deliberately bypasses (see the module doc) rather than restates.
+ * - `acceptedBy` (and, derived from it, the `crew` map {@link decide} reads bonds from,
+ *   built by {@link crewFor}) defaults to empty — nobody has accepted yet — unless
+ *   `contract.accepted_by` is the input under test, in which case it is exactly the set of
+ *   heroes the vary's value names, resolved from content id to runtime id. `respondedBy` is
+ *   always set to the same set: an accepted hero has necessarily responded, and this
+ *   baseline asks nothing of anyone but the hero under test and the comrades the contrast
+ *   names. The offer's `phase` is `locked` rather than `draft` for exactly this reason —
+ *   `createContractState`'s `phase = 'draft' ⇒ respondedBy ⊆ {keyHero}` invariant would
+ *   otherwise refuse a non-empty `accepted_by` outright, and `decide` itself never reads
+ *   `phase` at all.
  * - `keyHero` is always the hero being asked. Harmless where no promise is on the table
  *   (`decide`'s `trustedBonus` only reads `keyHero` at all when `promisedBonus > 0`), and
  *   required wherever one is: `createContractState` refuses `promisedBonus > 0` with
@@ -84,8 +99,18 @@ export interface ContrastRun {
  * - `grievance` and `believesGuildPromises` default to the campaign's own starting values
  *   (`0`, `true` — `initial-state.ts`) unless the corresponding `hero.*` input is under
  *   test.
+ *
+ * **The baseline is a property of which input is under test, not a single fixed package.**
+ * Two contrasts on the same hero/contract pair that vary different inputs are not
+ * comparable to each other for that reason — `bonus_promised.json` and
+ * `stopped_believing.json` (both `core:ilsa`/`core:escort_the_caravan`) start from
+ * different baselines (`promisedBonus` `0` vs. `patronFee`) precisely because each is
+ * built to make its own named input observable, not to hold everything but that input
+ * fixed across contrasts. This is a runner convention, not a claim `NEGOTIATION_SPEC`
+ * makes about a single canonical "unrenegotiated" package.
  */
 function buildSide(
+  state: GameState,
   baseContract: ContractState,
   baseHero: HeroState,
   vary: ContrastVary,
@@ -97,6 +122,7 @@ function buildSide(
   let advanceOverride: number | null = null;
   let methodTag: ContentId | null = null;
   let promisedBonusOverride: number | null = null;
+  let acceptedByContentIds: readonly ContentId[] = [];
   let grievance = baseHero.grievance;
   let believesGuildPromises = baseHero.believesGuildPromises;
 
@@ -109,6 +135,9 @@ function buildSide(
       break;
     case 'contract.tags':
       tags = SortedSet.from(compareContentIds, vary[side]);
+      break;
+    case 'contract.accepted_by':
+      acceptedByContentIds = vary[side];
       break;
     case 'offer.advance':
       advanceOverride = vary[side];
@@ -130,6 +159,10 @@ function buildSide(
   const advance = advanceOverride ?? patronFee;
   const promisedBonus =
     promisedBonusOverride ?? (vary.input === 'hero.believes_guild_promises' ? patronFee : 0);
+  const acceptedBy = SortedSet.from(
+    compareHeroIds,
+    acceptedByContentIds.map((comradeId) => comradeRuntimeId(state, comradeId))
+  );
 
   const contract = createContractState({
     ...baseContract,
@@ -142,14 +175,57 @@ function buildSide(
       advance,
       methodTag,
       promisedBonus,
-      respondedBy: SortedSet.empty(compareHeroIds),
-      acceptedBy: SortedSet.empty(compareHeroIds)
+      phase: OfferPhase.Locked,
+      // An accepted comrade has necessarily responded — the same set both ways, since
+      // this baseline asks nothing of anyone the contrast does not name.
+      respondedBy: acceptedBy,
+      acceptedBy
     }
   });
 
   const hero: HeroState = { ...baseHero, grievance, believesGuildPromises };
 
   return { contract, hero };
+}
+
+/** The runtime id of the hero `contentId` names, resolved against `state`. */
+function comradeRuntimeId(state: GameState, contentId: ContentId): HeroId {
+  for (const [id, hero] of state.heroes.entries()) {
+    if (hero.definition === contentId) {
+      return id;
+    }
+  }
+
+  throw new Error(
+    `A 'contract.accepted_by' vary names comrade '${contentId}', which the content this ` +
+      'contrast runs against does not define.'
+  );
+}
+
+/**
+ * The `crew` {@link decide} resolves bonds against: every hero in `contract`'s own
+ * `offer.acceptedBy`, keyed by runtime id and resolved to the content id `HeroState.
+ * relationships` is authored against — the same resolution `engine.ts`'s
+ * `decideHeroResponse` performs for the live engine, restated here because that function is
+ * not exported (`ADR-002`/`content-depends-only-on-simulation`: this package may read the
+ * simulation package's public surface, not one internal helper of it).
+ */
+function crewFor(state: GameState, contract: ContractState): SortedMap<HeroId, ContentId> {
+  return SortedMap.from(
+    compareHeroIds,
+    contract.offer.acceptedBy.values().map((acceptedHeroId) => {
+      const comrade = state.heroes.get(acceptedHeroId);
+      if (comrade === undefined) {
+        throw new Error(
+          `Contract '${contract.id}' lists hero#${String(acceptedHeroId)} in acceptedBy, but the ` +
+            'campaign this contrast built has no such hero — a context-assembly bug in the runner, ' +
+            'not an absent relationship.'
+        );
+      }
+
+      return [acceptedHeroId, comrade.definition] as const;
+    })
+  );
 }
 
 /** The hero's traits, resolved through the campaign's trait rulebook, sorted by id. */
@@ -191,17 +267,18 @@ function sideResult(
   vary: ContrastVary,
   side: 'from' | 'to'
 ): ContrastSideResult {
-  const { contract, hero } = buildSide(baseContract, heroState, vary, side);
+  const { contract, hero } = buildSide(state, baseContract, heroState, vary, side);
 
   const decision = decide({
     hero,
     contract,
     traits,
-    // A freshly-built contrast package has never been offered, so nobody has accepted it
-    // yet — `acceptedBy` is always empty (see `buildSide`) and there is no comrade for the
-    // rule's bonds term to find. A contrast about a hero's bonds is a different hero on
-    // the same contract, not a mutated `acceptedBy` (`HERO_DECISION_SPEC` §7.3).
-    crew: SortedMap.empty(compareHeroIds),
+    // Derived from the side's own `contract.offer.acceptedBy`, never held separately: a
+    // `contract.accepted_by` contrast declares who has accepted, and `crew` is exactly the
+    // same set resolved to content ids, the same way the live engine's own
+    // `decideHeroResponse` builds it. Empty on every other contrast, since `buildSide`
+    // leaves `acceptedBy` empty unless `contract.accepted_by` is the input under test.
+    crew: crewFor(state, contract),
     campaignSeed: state.metadata.campaignSeed,
     decisionOrdinal: state.metadata.nextDecisionOrdinal,
     traceId: state.metadata.nextTraceId

@@ -79,7 +79,7 @@ describe('a contrast is refused rather than read on a guess', () => {
 
   // The property Step 2 names first, and the one an implementation forgetting to consult
   // `ALLOWED_CONTRAST_INPUTS` at all would let straight through: `hero.greed` is a real
-  // `HeroDefinition` field and a real `DecisionContext` input, but not one of the eight a
+  // `HeroDefinition` field and a real `DecisionContext` input, but not one of the nine a
   // player can perceive changing (`HERO_DECISION_SPEC` §7.3) — closed lists exist to refuse
   // exactly the input that would otherwise look plausible.
   it('refuses an input outside the closed list', () => {
@@ -124,6 +124,20 @@ describe('a contrast is refused rather than read on a guess', () => {
       input: 'offer.method_tag',
       from: null,
       to: 'method:deception'
+    });
+  });
+
+  it('reads contract.accepted_by as an array of content ids, the same shape contract.tags takes', () => {
+    const source = sourceWith(
+      aContrastFile({
+        vary: { input: 'contract.accepted_by', from: [], to: ['fixture:crew_leader'] }
+      })
+    );
+
+    expect(loadContrastDefinition(source, 'c.json').vary).toEqual({
+      input: 'contract.accepted_by',
+      from: [],
+      to: ['fixture:crew_leader']
     });
   });
 
