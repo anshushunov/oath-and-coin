@@ -70,8 +70,8 @@ export const WITNESS_SHARE = 40;
  * `broken ≤ GRIEVANCE_VICTIM` (30), already under the ceiling (60), so the clamp never
  * actually fires here. The spec's real ceiling is on the *running total*
  * (`min(grievance + max(broken, 1), GRIEVANCE_MAX)`, §3.3) — that addition, and the
- * ceiling that matters, belong to `settleContract` (a later task), not to this
- * function.
+ * ceiling that matters, belong to `settleContract`'s own arithmetic (`engine.ts`'s
+ * `applyBrokenPromise`), not to this function.
  *
  * Both results are nonetheless clamped independently, so `0 < witness ≤ victim ≤
  * GRIEVANCE_MAX` holds on the pair this function alone hands back for every input in

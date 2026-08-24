@@ -5,7 +5,7 @@ import {
   PromiseTermsKeys,
   QualitativeGrade,
   ScreenState,
-  SettlementActionKeys,
+  SettlementFieldKeys,
   TITLE_KEY,
   createContractOfferScreenModel,
   expectedSnapshot,
@@ -327,10 +327,21 @@ function rawIdentifiersOf(model: ContractOfferScreenModel): readonly string[] {
 }
 
 /**
- * Task 17's own five tests: the offer screen draws the draft block, the promise
- * predicates, the treasury the deal would leave, and the settlement buttons that only
- * exist once a crew is filled — and does every one of it through `ui-text/ru.json`,
- * never a literal typed into the component.
+ * Task 17's own tests: the offer screen draws the draft block, the promise
+ * predicates, the treasury the deal would leave, and the settlement block — what the
+ * promise costs and who is bound by it — that only exists once a crew is filled, and
+ * does every one of it through `ui-text/ru.json`, never a literal typed into the
+ * component.
+ *
+ * **The settlement block draws no control.** An earlier version of this screen drew two
+ * `<button>` elements here with no `onClick` at all — reachable, pressable and inert the
+ * moment a real `pollCrew` filled a crew. A whole-branch review found them; the owner's
+ * ruling was to remove rather than wire them, because a control that does nothing is
+ * worse than no control (`ContractOfferScreen`'s own `SettlementBlock` doc comment). The
+ * tests below assert that the block still shows everything it is meant to show, and that
+ * it now renders no interactive element at all — not the narrower claim the previous
+ * version of this comment made, that the two buttons existed only once a crew was
+ * filled.
  *
  * The models below are hand-built rather than run out of a shipped scenario, unlike
  * the two matrices above. Those exist to prove a real run reaches the markup this
@@ -351,7 +362,7 @@ function rawIdentifiersOf(model: ContractOfferScreenModel): readonly string[] {
  * below are legal against §2.1 by hand — checked line by line, not by a gate — and
  * that is the only thing keeping them legal.
  */
-describe('the draft block, the promise, the treasury and the settlement buttons', () => {
+describe('the draft block, the promise, the treasury and the settlement', () => {
   it('shows the advance, the method choice and the promise as one draft block', () => {
     const container = renderScreen(draftModel());
 
@@ -401,19 +412,41 @@ describe('the draft block, the promise, the treasury and the settlement buttons'
     expect(forecast?.closest('.price')?.textContent).toContain(textOf(PromiseTermsKeys.Fulfil));
   });
 
-  it('offers no settlement buttons when the model carries no settlement to act on', () => {
+  it('renders no settlement block when the model carries no settlement to act on', () => {
     // What this proves, precisely: `ContractOfferScreen`'s own conditional
-    // (`model.settlement === null ? null : <SettlementBlock .../>`) never renders a
-    // button absent a settlement. It does *not* prove that `lockedUncrewedModel`'s
-    // particular contract/offer combination is one `pollCrew` could actually leave
-    // uncrewed — that would need the model built through the real factory, off a real
-    // `ContractState`, which no shipped scenario reaches through this screen's own
-    // matrix above (`NEGOTIATION_SPEC` §5.1's own two settlement-eligible phases).
+    // (`model.settlement === null ? null : <SettlementBlock .../>`) draws nothing
+    // absent a settlement. It does *not* prove that `lockedUncrewedModel`'s particular
+    // contract/offer combination is one `pollCrew` could actually leave uncrewed — that
+    // would need the model built through the real factory, off a real `ContractState`,
+    // which no shipped scenario reaches through this screen's own matrix above
+    // (`NEGOTIATION_SPEC` §5.1's own two settlement-eligible phases).
     const container = renderScreen(lockedUncrewedModel());
 
-    expect(container.querySelector('[data-testid="settlement-pay"]')).toBeNull();
-    expect(container.querySelector('[data-testid="settlement-refuse"]')).toBeNull();
-    expect(findButtonByText(container, textOf(SettlementActionKeys.Pay))).toBeNull();
+    expect(container.querySelector('.settlement')).toBeNull();
+  });
+
+  it('shows what the promise costs and who is bound by it, and draws no control for it', () => {
+    // `crewedModel` carries a settlement (`NEGOTIATION_SPEC` §5.1: the crew is filled).
+    // Everything the block is meant to show — the promised bonus, the key hero it is
+    // owed to, the crew it binds, and the two treasury outcomes a kept and a broken
+    // promise would each leave — has to appear; nothing that presses a command may.
+    // A whole-branch review found two `<button>` elements here with no `onClick` at
+    // all, and the owner's ruling was to remove rather than wire them
+    // (`ContractOfferScreen`'s own `SettlementBlock` doc comment) — the price of the
+    // promise is this task's delivery, an action on it is not.
+    const container = renderScreen(crewedModel());
+    const texts = collectRenderedTexts(container);
+
+    expect(captionedValue(container, textOf(OfferFieldKeys.PromisedBonus))).toBe('10');
+    expect(captionedValue(container, textOf(OfferFieldKeys.KeyHero))).toBe(
+      textOf('hero.core.bram.name')
+    );
+    expect(texts).toContain(textOf(SettlementFieldKeys.Crew));
+    expect(texts).toContain(textOf('hero.core.doran.name'));
+    expect(captionedValue(container, textOf(SettlementFieldKeys.TreasuryIfKept))).toBe('290');
+    expect(captionedValue(container, textOf(SettlementFieldKeys.TreasuryIfBroken))).toBe('300');
+
+    expect(container.querySelectorAll('button')).toHaveLength(0);
   });
 
   it('renders every label from ui-text, never a literal', () => {
@@ -648,13 +681,6 @@ function radioChecked(container: HTMLElement, optionText: string): boolean {
   }
 
   return (input as HTMLInputElement).checked;
-}
-
-/** The first `<button>` whose own text is exactly `text`, or `null`. */
-function findButtonByText(container: HTMLElement, text: string): HTMLButtonElement | null {
-  return (
-    [...container.querySelectorAll('button')].find((button) => button.textContent === text) ?? null
-  );
 }
 
 /**

@@ -213,9 +213,9 @@ export function describeState(state: GameState): CanonicalValue {
     // every settlement since it shipped (`engine.ts`'s own `nextTreasury`), and nothing
     // here described the number that changed. Found the same way `grievance` and
     // `believesGuildPromises` were — external review of this task's own snapshots,
-    // after the fact, not by a mechanical guard (`scenarios/negotiation-scenarios.test.ts`'s
-    // `describeState covers every GameState key` test is the guard this omission is why
-    // it exists).
+    // after the fact, not by a mechanical guard (`determinism-artifact-key-coverage.test.ts`'s
+    // `describeState reads every top-level field of GameState` test, at line 116, is the
+    // guard this omission is why it exists).
     treasury: state.treasury,
 
     // The rulebook every decision is weighed against was the one part of state the

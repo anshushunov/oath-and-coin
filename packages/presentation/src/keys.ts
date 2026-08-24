@@ -280,9 +280,13 @@ export const SETTLEMENT_FIELD_KEYS: readonly string[] = Object.freeze(
 );
 
 /**
- * What the two settlement buttons are called. Shown only once
- * {@link ContractOfferScreenModel.settlement} is non-`null` — `NEGOTIATION_SPEC` §5.1:
- * the crew has to be filled before there is anything to settle.
+ * What `settleContract`'s two outcomes (`pay: true`, `pay: false`) would be called on
+ * screen, reserved here for whichever task first draws a control that dispatches the
+ * command. `ContractOfferScreen` does not render either key today: the settlement block
+ * shows what the promise costs once {@link ContractOfferScreenModel.settlement} is
+ * non-`null` (`NEGOTIATION_SPEC` §5.1), but drew no control at all as of the task that
+ * removed the two buttons that pretended otherwise — they carried no handler, so
+ * pressing either did nothing.
  */
 export const SettlementActionKeys = Object.freeze({
   Pay: 'settlement.pay',

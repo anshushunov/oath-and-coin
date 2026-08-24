@@ -3,7 +3,6 @@ import { Sha256, utf8Bytes } from '@oath-and-coin/simulation';
 import {
   FieldKeys,
   OfferFieldKeys,
-  SettlementActionKeys,
   SettlementFieldKeys,
   TreasuryFieldKeys,
   actionKey,
@@ -300,9 +299,6 @@ function resolveSettlement(
   texts.push(String(settlement.treasuryIfKept));
   resolve(SettlementFieldKeys.TreasuryIfBroken);
   texts.push(String(settlement.treasuryIfBroken));
-
-  resolve(SettlementActionKeys.Pay);
-  resolve(SettlementActionKeys.Refuse);
 }
 
 /**

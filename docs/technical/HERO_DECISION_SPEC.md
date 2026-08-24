@@ -4,7 +4,7 @@
 >
 > Область: ядро решения героя о контракте (Milestone 1)
 >
-> Реализовано: набор правил `m1-decision/1`, версия формата контента 2, версия артефакта детерминизма 3
+> Реализовано: набор правил `m1-negotiation/1`, версия формата контента 3, версия артефакта детерминизма 4
 
 Deliverable `MVP_PLAN` §5.6 в части ядра решения. Документ описывает, **как устроена модель и почему именно так**: какие данные она читает, в каком порядке считает, что кладёт в след и что из этого видит игрок.
 
@@ -30,7 +30,7 @@ Deliverable `MVP_PLAN` §5.6 в части ядра решения. Докуме
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "id": "core:bram",
   "display_name_key": "hero.core.bram.name",
   "greed": 60,
@@ -55,7 +55,7 @@ Deliverable `MVP_PLAN` §5.6 в части ядра решения. Докуме
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "id": "core:hates_the_cult",
   "display_name_key": "trait.core.hates_the_cult.name",
   "kind": "inclination",
@@ -66,7 +66,7 @@ Deliverable `MVP_PLAN` §5.6 в части ядра решения. Докуме
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "id": "core:will_not_strike_a_temple",
   "display_name_key": "trait.core.will_not_strike_a_temple.name",
   "kind": "principle",
@@ -87,17 +87,18 @@ Deliverable `MVP_PLAN` §5.6 в части ядра решения. Докуме
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "id": "core:silence_the_cult",
   "display_name_key": "contract.core.silence_the_cult.name",
-  "payment": 55,
+  "patron_fee": 55,
   "risk": 65,
   "required_crew": 3,
-  "tags": ["target:cult", "target:temple"]
+  "tags": ["target:cult", "target:temple"],
+  "negotiable_tags": ["method:open", "method:deception"]
 }
 ```
 
-`payment` и `risk` — `ContentBounds.PaymentMin..PaymentMax` и `ContentBounds.RiskMin..RiskMax`. `tags` — не более `ContentLimits.MaxTagsPerContract` (6) меток. `required_crew` — `ContentBounds.RequiredCrewMin..Max` (1..6); в решении героя он не участвует и нужен экрану, чтобы «не хватает одного» было видно, а отношения между героями имели последствие.
+**Правка (задача 22):** поле было `payment`, переименовано в `patron_fee` `DEC-008` Task 3; `negotiable_tags` (§1.6) добавлено Task 4 вместе с версией 3. `patron_fee` и `risk` — `PATRON_FEE_MIN..PATRON_FEE_MAX` и `RISK_MIN..RISK_MAX` (`packages/content/src/bounds.ts`, не C#-класс `ContentBounds`, которого в дереве нет). `tags` — не более `MAX_TAGS_PER_CONTRACT` (6) меток. `required_crew` — `REQUIRED_CREW_MIN..REQUIRED_CREW_MAX` (1..6); в решении героя он не участвует и нужен экрану, чтобы «не хватает одного» было видно, а отношения между героями имели последствие. `negotiable_tags` само по себе в решение героя не входит: оно лишь называет, какие две метки метода можно выбрать. Выбранная метка входит в решение как обычная метка контракта — `effectiveTags(contract)` (`packages/simulation/src/state/offer-state.ts`) добавляет её к `Tags` состояния (§1.5) перед тем, как ворота и вклады её увидят, и ни ворота, ни склонности не знают, что эта метка когда-то была выбором, а не авторской (`NEGOTIATION_SPEC` §2.4, §4).
 
 ### 1.5. Состояние контракта
 
@@ -113,9 +114,9 @@ Deliverable `MVP_PLAN` §5.6 в части ядра решения. Докуме
 
 ### 1.6. Версии форматов
 
-- `ContentSet.SupportedContentSchemaVersion` = **2**. Все файлы контента объявляют `schema_version: 2`; файл версии 1 отвергается с диагностикой.
-- `DeterminismArtifact.ArtifactVersion` = **3** — форма состояния и следа в каноническом артефакте другая; тройка добавлена вместе с проекцией `trait_rules` (справочник черт раньше не попадал в артефакт вовсе, и два состояния, отличавшиеся только правилами черт, давали одинаковые байты).
-- `ScenarioRunner.RulesetVersion` = **`m1-decision/1`** — артефакты прежних правил не должны выглядеть сравнимыми с нынешними.
+- `ContentSet.SupportedContentSchemaVersion` = **3**. **Правка (задача 22):** было 2; `DEC-008` Task 4 подняла её, когда контракт получил `negotiable_tags` — файл версии 2 без этого поля остаётся легальным файлом версии 3 (поле необязательно), но число всё равно движется, потому что рукописный файл версии 2 — это заявление о том, против чего его проверил автор, а это заявление не включало поле, которое эта сборка теперь понимает. Все файлы контента объявляют `schema_version: 3`; файл более старой версии отвергается с диагностикой.
+- `DeterminismArtifact.ArtifactVersion` = **4**. **Правка (задача 22):** было 3; тройка (проекция `trait_rules`) — это версия до `DEC-008`. Четвёрка покрывает три формы среза переговоров разом: список `decisions` вместо одиночного `decision` (Task 5), вложенные `respondedBy`/`acceptedBy` и `mood_ordinals` внутри `offer` (Task 6), и попредметную проекцию команды с `hero_definition` у решения опроса (Task 11а) — один скачок на все три сдвига формы, а не по одному на каждый.
+- `ScenarioRunner.RulesetVersion` = **`m1-negotiation/1`** — **правка (задача 22):** было `m1-decision/1`; артефакты прежних правил не должны выглядеть сравнимыми с нынешними.
 - `ScenarioManifest.SupportedManifestSchemaVersion` остаётся **1**: форма манифеста не изменилась. Контрасты (§7.3) — отдельный тип файла со своей версией.
 
 Основания и последствия версионирования — `ADR-009`.
@@ -228,9 +229,9 @@ wavered = (score_before_mood >= 0) != (final >= 0)
 
 `CausalTrace.BlockedBy` состоит из `TraceBlock(ReasonCode, SourceEntity)`. Величины у записи нет намеренно: у ворот нет силы, они не «очень большой минус». Источник обязателен, потому что экран обязан назвать **какой именно** принцип сработал; без него экрану пришлось бы догадываться по герою — то есть изобретать причину, что `TDD` §8 запрещает прямо.
 
-**Коды причин** (`ReasonCodes`) — закрытый словарь движка, точечные строки, а не `ContentId` (`ADR-005`): код причины никогда не авторится в контенте и не адресуется из контента, ему нечего резолвить. Одиннадцать кодов, все с префиксом `hero.decision.`:
+**Коды причин** (`ReasonCodes`) — закрытый словарь движка, точечные строки, а не `ContentId` (`ADR-005`): код причины никогда не авторится в контенте и не адресуется из контента, ему нечего резолвить. Тринадцать кодов, все с префиксом `hero.decision.`. **Правка (задача 22):** было одиннадцать; `promise_of_a_bonus` и `guild_broke_its_word` — срез переговоров `DEC-008` (`NEGOTIATION_SPEC` §4):
 
-`payment_attractive`, `risk_too_high`, `trusts_the_guild`, `unpredictable_mood`, `payment_insulting`, `personal_conviction`, `personal_aversion`, `stands_with_comrade`, `will_not_work_with`, `principle_forbids`, `no_reason_to_refuse`.
+`payment_attractive`, `promise_of_a_bonus`, `risk_too_high`, `trusts_the_guild`, `unpredictable_mood`, `payment_insulting`, `personal_conviction`, `personal_aversion`, `stands_with_comrade`, `will_not_work_with`, `guild_broke_its_word`, `principle_forbids`, `no_reason_to_refuse`.
 
 Последние два — не `TraceFactor.ReasonCode`: `principle_forbids` живёт в `TraceBlock`, `no_reason_to_refuse` — в `Trace.TieBreak` (§2.4). Величины у них нет по одной и той же причине: ни красная линия, ни разрешение ничьей не являются мотивом, который с чем-то соизмеряется.
 
@@ -332,17 +333,21 @@ Read model — `ContractOfferScreenModel` в сборке `OathAndCoin.Presentat
 
 ### 7.1. Свойства и контракты ядра
 
-`tests/OathAndCoin.Simulation.Tests/DecisionPropertyTests.cs` — перебор сгенерированных входов: `RaisingPaymentNeverTurnsAcceptanceIntoRefusal`, `RaisingRiskNeverTurnsRefusalIntoAcceptance`, `PrincipleHoldsAtEveryPaymentAndRisk`, `ConsideredActionsAlwaysWeighBothAcceptAndDecline`, `DecisiveSumOfMotivesKeepsTheSameActionAcrossEveryMood`, `BoundarySumOfMotivesLetsMoodFlipTheAction`, `IrrelevantFieldsDoNotChangeTheDecision`, `SameInputsProduceTheSameDecision`.
+**Правка (задача 22):** этот раздел называл шесть C#-классов из удалённого Godot/.NET-дерева; ни одного `.cs`-файла в репозитории нет и не было с переезда на TypeScript (`ADR-010`). Ниже — файлы этого репозитория, а имена внутри — реальные `it(...)`, а не переведённые названия.
 
-`ContractDecisionRuleTests.cs` — арифметика и порядок: `Decide_BlocksWhenPrincipleTagMatchesContract`, `Decide_ReportsEveryViolatedPrincipleInContentIdOrder`, `Decide_DividesEachTermSeparately_NotTheCombinedSum`, `Decide_OmitsZeroMagnitudeFactors`, `Decide_SumOfFactorsEqualsSelectedScore`, `Decide_BondsCountOnlyHeroesWhoAlreadyAccepted`, `Decide_NamesTheRuleThatSettlesAnExactlyZeroScore`, `Decide_LeavesTheTieBreakEmptyWhenTheScoreIsNotZero`.
+`packages/simulation/src/decisions/decision-properties.test.ts` — перебор сгенерированных входов, каждый describe помечен номером свойства `NEGOTIATION_SPEC` §10.1: `RaisingAdvanceNeverTurnsAcceptanceIntoRefusal`, `RaisingPromisedBonusNeverTurnsAcceptanceIntoRefusal`, `PromisedBonusMovesOnlyTheKeyHero`, `PrincipleHoldsAtEveryAdvanceAndBonus`, `SameInputsProduceTheSameDecision`, `PromisedBonusIsIgnoredExactlyWhenTheHeroStoppedBelieving`.
 
-`CausalTraceTests.cs` — форма следа: `SelectedScore_IsNullExactlyWhenBlocked`, `DecisionResult_RejectsScoreTogetherWithBlock`, `DecisionResult_RejectsMissingScoreWithoutBlock`, `BlockedBy_NamesTheEntityThatBlocked`.
+`packages/simulation/src/decisions/contract-decision-rule.test.ts` — арифметика и порядок: «declines outright when a principle tag is on the contract, with no score», «spends no RNG ordinal at all — not one, zero», «reports every violated principle, in trait-id order, not the first one found», «is not the same number as dividing the combined sum», «omits a term that weighed nothing rather than listing it at zero», «sums to exactly the selected score», «count only heroes who have already accepted, not everyone who responded», «names the rule that settled it and still accepts», «leaves the tie-break empty when the score is not zero» — плюс отдельный `describe` на офферные вклады (§2.3): аванс вместо платы, обещанная надбавка как свой мотив, нарушенное слово как свой мотив, метод-тег, закрывающий ворота и двигающий склонность как авторский.
 
-`ProposeContractTests.cs` — расход ординалов и множества состояния: `Propose_KeepsOrdinalUnchangedWhenAPrincipleBlocked`, `Propose_NextScoredDecisionReusesTheOrdinalTheGateDidNotRead`, `Propose_KeepsAcceptedByASubsetOfRespondedBy`, `Propose_MarksContractCrewedWhenRequiredCrewIsReached`.
+`packages/simulation/src/decisions/causal-trace.test.ts` — форма следа: «accepts a scored decision», «accepts a blocked decision with no score», «refuses a score alongside a block», «refuses a missing score without a block», «accepts an honest zero, which is not the same as an absent score».
+
+`packages/simulation/src/engine.test.ts` — расход ординалов и множества состояния: «leaves the RNG ordinal exactly where it was», «does not change the decision the next accepted command makes», «crews the offer only when every seat is filled», «keeps acceptedBy a subset of respondedBy on both answers», «carries the comrades who already accepted into the decision».
 
 ### 7.2. Поставляемый контент
 
-`tests/OathAndCoin.Content.Tests/ShippedContentTests.cs` — над содержимым `content/`, а не над форматом: `SixHeroesAreShipped`, `EveryHeroCarriesOneOrTwoPrinciples`, `EveryTraitTagIsCarriedByAtLeastOneContract` (эта же проверка ловит опечатку в метке), `EveryNameTheContentReferencesExistsInTheCatalogue`.
+**Правка (задача 22):** тот же перенос, что и §7.1 — `tests/OathAndCoin.Content.Tests/ShippedContentTests.cs` в репозитории нет.
+
+`packages/content/src/content-set.test.ts` — над содержимым `content/`, а не над форматом: «reads every authored entity» (шесть героев, четыре контракта, девять черт) и, отдельным `describe('the shipped content is playable')`, «ships no contract that cannot be crewed by any package», «ships no negotiable tag no trait reacts to» (эта же проверка ловит опечатку в метке), «ships no contract whose full crew costs more than the guild starts with», «names every new reason code and every new tag in the catalogue».
 
 Проверки живут вместе с контентом M1 и снимаются или переписываются, когда наборов станет несколько.
 
@@ -379,7 +384,9 @@ Read model — `ContractOfferScreenModel` в сборке `OathAndCoin.Presentat
 
 ### 7.4. Экран
 
-`tests/OathAndCoin.Presentation.Tests/ContractOfferScreenModelTests.cs` — ранжирование, отделённость принципа, пометка «колебался», допустимые комбинации полей у каждого состояния, оба хеша.
+**Правка (задача 22):** тот же перенос, что и §7.1–§7.2 — `tests/OathAndCoin.Presentation.Tests/ContractOfferScreenModelTests.cs` в репозитории нет.
+
+`packages/presentation/src/contract-offer-screen-model-factory.test.ts` — ранжирование причин (`describe('how a response ranks its reasons')`), отделённость принципа (`describe('a blocked answer')`), пометка «колебался» (`describe('whether the hero wavered')`). `packages/presentation/src/contract-offer-screen-model.test.ts` — допустимые комбинации полей у каждого состояния (`describe('the combinations a screen model refuses')`: «accepts the five states with the fields each of them owns», плюс отказ модели, несущей оффер, условия обещания или settlement без контракта). Оба хеша — `packages/presentation/src/rendered-ui-snapshot.test.ts` (`rendered_ui_hash`, через `snapshotHash`) и `contract-offer-screen-model-factory.test.ts` (`read_model_hash`, через `readModelHash`).
 
 Доказательный прогон `run-smoke` (`ADR-008`) — по одному именованному checkpoint на каждое из пяти состояний: манифесты `screen_loading`, `screen_empty`, `screen_error`, `screen_incomplete`, `screen_normal`.
 

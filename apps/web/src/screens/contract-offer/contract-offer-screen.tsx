@@ -2,7 +2,6 @@ import {
   FieldKeys,
   OfferFieldKeys,
   ScreenState,
-  SettlementActionKeys,
   SettlementFieldKeys,
   TreasuryFieldKeys,
   actionKey,
@@ -376,10 +375,19 @@ function OfferBlock({
 
 /**
  * What the promise costs and who is bound by it, shown once there is a crew to bind
- * (`NEGOTIATION_SPEC` §5.1) — the two settlement buttons only exist here, inside this
- * same branch, because the model itself carries no settlement to act on before the
- * crew is filled: `ContractOfferScreenModel.settlement` is `null` until then, and a
- * button with nothing behind it to press is not drawn absent, it is not drawn at all.
+ * (`NEGOTIATION_SPEC` §5.1): the promised bonus, the key hero it is owed to, the crew
+ * it binds, and the two treasury figures a kept and a broken promise would each leave —
+ * the price of the promise, visible before it is made.
+ *
+ * **This block draws no control.** `session-controller.ts` wires all five negotiation
+ * commands, `settleContract` (`pay: true` to keep the word, `pay: false` to break it)
+ * among them, but nothing on this screen dispatches any of them yet — the same
+ * deferral `OfferBlock`'s own doc comment states for the advance, the method and the
+ * promised bonus above. This block used to draw two `<button>` elements here with no
+ * `onClick` at all, reachable the moment a real `pollCrew` filled a crew, pressable and
+ * inert — a control that does nothing is worse than no control, so this task removed
+ * them rather than leave a promise to wire a handler later. Wiring `settleContract` to
+ * a real action is that later work, not this one's.
  */
 function SettlementBlock({
   settlement,
@@ -418,15 +426,6 @@ function SettlementBlock({
           captionKey={SettlementFieldKeys.TreasuryIfBroken}
           value={String(settlement.treasuryIfBroken)}
         />
-      </div>
-
-      <div className="row actions">
-        <button type="button" data-testid="settlement-pay">
-          {text(SettlementActionKeys.Pay)}
-        </button>
-        <button type="button" data-testid="settlement-refuse">
-          {text(SettlementActionKeys.Refuse)}
-        </button>
       </div>
     </div>
   );

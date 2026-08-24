@@ -332,9 +332,7 @@ describe('the texts a correctly bound screen produces', () => {
       'text(field.settlement.treasury_if_kept)',
       '390',
       'text(field.settlement.treasury_if_broken)',
-      '410',
-      'text(settlement.pay)',
-      'text(settlement.refuse)'
+      '410'
     ]);
   });
 

@@ -599,11 +599,11 @@ read model, React-приложение и доказательный прого�
 
 **Второй — сам доказательный прогон.** Отдельной команды `run-smoke` в репозитории нет:
 имя живёт в `AGENTS.md` §7, `ADR-008` и `HERO_DECISION_SPEC` §7.4, а исполняет его
-`tests/e2e/contract-offer.spec.ts` под `pnpm test:e2e`. Хуже другое: этот тест берёт имена
-checkpoint'ов **из манифеста замороженного корпуса миграции** и ходит по путям
-`migration/oracle/v1/scenarios/<сценарий>/<checkpoint>/`. Новых экранов в корпусе нет и
-быть не может — он заморожен, — поэтому **фазовые кадры через нынешний харнесс снять
-нельзя**, и «снимем кадры на новые фазы» является исполняемой ложью ровно того рода, о
+`tests/e2e/contract-offer.spec.ts` под `pnpm test:e2e`. На момент написания этого раздела
+тест брал имена checkpoint'ов **из манифеста замороженного корпуса миграции** и ходил по
+путям `migration/oracle/v1/scenarios/<сценарий>/<checkpoint>/`. Новых экранов в корпусе
+нет и быть не может — он заморожен, — поэтому фазовые кадры через тогдашний харнесс снять
+было нельзя, и «снимем кадры на новые фазы» было исполняемой ложью ровно того рода, о
 котором предупреждает `AGENTS.md` §4.
 
 Спайк, один и покрывающий оба стыка: провести выдуманную команду, возвращающую два
@@ -614,6 +614,16 @@ checkpoint'ов **из манифеста замороженного корпу�
 отдельная задача со своей ценой.
 
 Переговорная часть спайка не требует: она целиком внутри уже исполняемых слоёв.
+
+**Правка (задача 22): оба стыка закрыты, спайк больше не открытый вопрос.** `DEC-008`
+Task 21 отвязал `tests/e2e/contract-offer.spec.ts` от корпуса маленькой правкой, а не
+отдельной задачей: checkpoint и ожидаемое состояние экрана теперь читаются из собственного
+`scenarios/<сценарий>.manifest.json` каждого сценария, а не из `migration/oracle/v1`, и
+четыре новых фазовых сценария (`screen_draft`, `screen_locked`, `screen_settlement_due`,
+`screen_word_broken`) сняты кадрами наравне со старыми пятью. Команда, возвращающая
+несколько решений сразу (первый стык), к этому моменту уже существовала и была
+интегрирована — `CommandResult.decisions` не ломает ни сессию, ни снимок дерева контролов,
+ни один из двух хешей.
 
 ## 9. Критерии готовности
 
@@ -663,7 +673,10 @@ checkpoint'ов **из манифеста замороженного корпу�
 Новые сценарии с каноническими слепками: `offer_revised_resets_answers`,
 `offer_cycled_back_gives_the_same_answer`, `method_choice_flips_the_key_hero`,
 `promise_carries_a_reluctant_hero`, `promise_moves_only_the_key_hero`,
-`promise_kept`, `promise_broken`, `broken_word_changes_the_next_answer`,
+`promise_kept`, `promise_broken`,
+`promise_size_changes_the_price_of_breaking_it` — нарушение крупного обещания
+обходится обидой строже, чем нарушение символического, при одинаковой во всём
+остальном структуре (`grievanceForBrokenPromise`, §3.3), `broken_word_changes_the_next_answer`,
 `witness_remembers`, `crew_overflows_the_seats`, `crew_not_filled_reopens_the_draft`,
 `single_seat_contract_settles_without_a_poll`,
 `gated_then_scored_then_gated` — три отсортированных героя в одной `pollCrew`, где расход

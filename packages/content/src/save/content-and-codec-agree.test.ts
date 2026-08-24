@@ -9,7 +9,6 @@ import { loadContentSet as loadFromMemory } from '../content-set.ts';
 import { loadContentSet } from '../node/index.ts';
 
 import {
-  MAX_APPLIED_COMMANDS,
   MAX_HEROES_PER_CONTRACT,
   decodeSnapshot,
   encodeSnapshot
@@ -25,15 +24,22 @@ import {
  * while `snapshot-codec.ts` cut at 256, so a hero file with a 257-character
  * `display_name_key` loaded, was written by `encodeSnapshot`, and came back
  * `SAVE_OUT_OF_BOUNDS` — a save this build produced and this build refused. The named
- * class is the same shape one level up: `MAX_APPLIED_COMMANDS` and
- * `MAX_HEROES_PER_CONTRACT` are multiples of *today's* content volume, so content
- * growing past them turns the same corner without anybody editing a line of save code.
+ * class is the same shape one level up: `MAX_HEROES_PER_CONTRACT` is a multiple of
+ * *today's* content volume, so content growing past it turns the same corner without
+ * anybody editing a line of save code.
  *
  * The length is now one declaration (`limits.ts`) applied at both ends, which is what
- * the first two cases below measure at the boundary. The ceilings cannot be one
- * declaration — they are derived from a volume no constant knows — so the third case is
- * what stands in for that: it reddens in CI when content grows past what a save can
- * carry, rather than at a player's save button.
+ * the two cases below measure at the boundary.
+ *
+ * **What used to stand in for the third ceiling, `MAX_APPLIED_COMMANDS`, no longer
+ * does.** A test here once asserted `shipped.heroes.size * shipped.contracts.size <=
+ * MAX_APPLIED_COMMANDS` on the premise that a hero answers each contract at most once,
+ * ever. `composeOffer` broke that premise — a revision is itself an applied command,
+ * and `respondedBy` resets on every version bump (`NEGOTIATION_SPEC` §2.1), so a player
+ * free to revise a draft indefinitely can produce arbitrarily many applied commands on
+ * one hero/contract pair. Removed rather than kept green on a premise that no longer
+ * held (`DEC-008` Task 22's whole-branch fix wave); see the comment where it used to be,
+ * below.
  */
 
 // Тот же способ добыть настоящее дерево, что у `snapshot-codec.test.ts`: тестовые
@@ -127,9 +133,9 @@ describe('what the content contract accepts, the save codec reads back', () => {
 });
 
 describe('the shipped tree fits the ceilings a save states about it', () => {
-  // These two constants are `4 ×` today's volume rather than today's volume itself, so
-  // there is real headroom — but headroom is a number, and content is a thing that
-  // grows. What must not happen is content growing past them silently: the first save
+  // `MAX_HEROES_PER_CONTRACT` is a multiple of today's volume rather than today's volume
+  // itself, so there is real headroom — but headroom is a number, and content is a thing
+  // that grows. What must not happen is content growing past it silently: the first save
   // of a campaign that big would be refused by this same build, at a player's save
   // button, with `SAVE_OUT_OF_BOUNDS`.
 
@@ -137,12 +143,21 @@ describe('the shipped tree fits the ceilings a save states about it', () => {
     expect(shipped.heroes.size).toBeLessThanOrEqual(MAX_HEROES_PER_CONTRACT);
   });
 
-  it('cannot produce more decisions than the applied-command ceiling allows', () => {
-    // A hero answers each contract at most once, ever (`ContractState.respondedBy`), so
-    // heroes × contracts is the achievable ceiling on a campaign's whole length — and on
-    // its history, and on its traces, all three of which reuse this constant.
-    expect(shipped.heroes.size * shipped.contracts.size).toBeLessThanOrEqual(
-      MAX_APPLIED_COMMANDS
-    );
-  });
+  // No test here asserts `shipped.heroes.size * shipped.contracts.size <=
+  // MAX_APPLIED_COMMANDS` any more (removed in the whole-branch fix wave, `DEC-008`
+  // Task 22). It stood on "a hero answers each contract at most once, ever"
+  // (`ContractState.respondedBy`), which `composeOffer` broke: a revision is itself an
+  // applied command, `respondedBy` resets to empty on every version bump
+  // (`NEGOTIATION_SPEC` §2.1), and a player free to revise a draft indefinitely can
+  // produce arbitrarily many applied commands on a single hero/contract pair. The
+  // assertion still passed — 6 heroes × 4 contracts = 24 sits well under 96 — but it was
+  // proving a bound that no longer follows from the premise it cited, which is worse than
+  // proving nothing: it read as a guard against a campaign outgrowing
+  // `MAX_APPLIED_COMMANDS`, and was not one. `MAX_APPLIED_COMMANDS`'s own comment
+  // (`snapshot-codec.ts`) already retracts the same premise and states the constant is a
+  // generous ceiling against today's content, not one derived from it — this test
+  // restated a derivation the codec had already disowned. A real content-vs-ceiling
+  // guard, if the shipped tree ever needs one, would have to bound the number of
+  // `composeOffer` revisions a playable campaign can reach, which nothing here
+  // measures; that is a new check, not a fix to this one, and is left for its own task.
 });
