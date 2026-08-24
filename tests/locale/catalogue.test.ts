@@ -13,6 +13,7 @@ import {
 import {
   ACTION_KEYS,
   FIELD_KEYS,
+  PROMISE_TERMS_KEYS,
   QUALITATIVE_KEYS,
   REASON_DIRECTION_KEYS,
   SAVES_TITLE_KEY,
@@ -153,6 +154,15 @@ function everyKeyTheScreenCanShow(): readonly string[] {
  * `SAVE_SLOTS` is `packages/application`'s. Neither package can state these nine keys on
  * its own, so they are stated here — which is the same reason `errorKey` has no list
  * beside it either.
+ *
+ * `PROMISE_TERMS_KEYS` (Task 15's `toPromiseTerms`, `NEGOTIATION_SPEC` §5.1, §5.2) was
+ * missing from this list from the moment it shipped: `offer.promise.fulfil` and
+ * `offer.promise.breach` are texts the interface invents, exactly the class this
+ * function exists to list, and the omission left both the completeness check above and
+ * the orphan check below unable to see them — a key emitted with nothing to resolve it,
+ * and a gate that structurally could not catch that either catalogue was missing it.
+ * Confirmed by running before `ui-text/ru.json` grew the two entries: both checks
+ * reddened, `answer every key either layer can produce…` on the two missing keys.
  */
 function everyKeyTheInterfaceCanShow(): readonly string[] {
   return [
@@ -163,6 +173,7 @@ function everyKeyTheInterfaceCanShow(): readonly string[] {
     ...SAVE_FIELD_KEYS,
     ...SAVE_OVERWRITE_KEYS,
     ...SCREEN_LINK_KEYS,
+    ...PROMISE_TERMS_KEYS,
     ...SAVE_SLOTS.map(saveSlotDisplayNameKey),
     ...SAVE_SLOTS.map(saveSlotSaveKey),
     ...SAVE_SLOTS.map(saveSlotLoadKey)

@@ -1,6 +1,21 @@
 import { SaveErrorCodes, SaveReadError, type SaveErrorCode } from '@oath-and-coin/content';
 import { LOADING_SCREEN, contractOfferScreenModel } from '@oath-and-coin/presentation';
-import { parseContentId, type ContentId } from '@oath-and-coin/simulation';
+import {
+  composeOffer as applyComposeOffer,
+  lockOffer as applyLockOffer,
+  parseContentId,
+  pollCrew as applyPollCrew,
+  proposeContractToHero as applyProposeContractToHero,
+  settleContract as applySettleContract,
+  type CommandResult,
+  type ComposeOffer,
+  type ContentId,
+  type GameState,
+  type LockOffer,
+  type PollCrew,
+  type ProposeContractToHero,
+  type SettleContract
+} from '@oath-and-coin/simulation';
 
 import type { SaveStorePort } from './ports.ts';
 import { buildSave, readSave, snapshotHash } from './save/envelope.ts';
@@ -103,11 +118,55 @@ export interface SessionLoadResult {
   readonly failure: SaveFailure | null;
 }
 
+/**
+ * What a caller supplies for one of the five negotiation commands — the engine's own
+ * command shape (`ComposeOffer` and the rest, `@oath-and-coin/simulation`) minus the two
+ * fields this controller generates itself. `Omit` over the engine's own type rather than
+ * a hand-written mirror of it: there is one declaration of what `composeOffer` (say)
+ * takes, and this is what is left of it once `commandId` and `expectedStateVersion` —
+ * this layer's own to supply, see {@link dispatchNegotiationCommand} — are removed. A
+ * second, hand-written parameter list here could drift from the engine's the day either
+ * command grows a field.
+ */
+type NegotiationCommandInput<
+  TCommand extends { readonly commandId: number; readonly expectedStateVersion: number }
+> = Omit<TCommand, 'commandId' | 'expectedStateVersion'>;
+
 export interface SessionController {
   /** The observable session. A screen subscribes here; nothing else publishes to it. */
   readonly store: Store<SessionState>;
   /** Runs the scenario the request names and publishes the screen it lands on. */
   start(): Promise<void>;
+  /**
+   * Dispatches one of the five negotiation commands (`NEGOTIATION_SPEC` §3.1) against
+   * the campaign currently on screen, the same way `packages/content`'s scenario runner
+   * already applies a scripted one: `commandId` and `expectedStateVersion` are supplied
+   * here rather than by the caller, read off the campaign this session is holding right
+   * now — never invented at the call site, never carried over from an earlier call.
+   *
+   * **A rejection is a value, never a throw.** `result.rejectionCode` is a
+   * `RejectionCodes` member a screen can show; the engine already answers this way
+   * (`CommandResult`), and wrapping it in a second, throwing surface here would be
+   * exactly the "invent an answer per caller" failure {@link SessionState.saveFailure}'s
+   * own doc comment names for a save refusal. Nothing about the session moves on a
+   * rejection: the store is untouched, and a caller may compare `store.snapshot()`
+   * before and after by reference to confirm it.
+   *
+   * Synchronous, like every other read of a `GameState` in this layer: the engine
+   * functions underneath are pure and every input already lives in memory, so there is
+   * nothing here to await.
+   */
+  composeOffer(input: NegotiationCommandInput<ComposeOffer>): CommandResult;
+  proposeContractToHero(input: NegotiationCommandInput<ProposeContractToHero>): CommandResult;
+  lockOffer(input: NegotiationCommandInput<LockOffer>): CommandResult;
+  /**
+   * Answers with **every** decision the poll produced (`CommandResult.decisions`), not
+   * the first: `NEGOTIATION_SPEC` §3.3 asks the whole remaining roster in one command,
+   * up to six heroes' worth of decisions behind one `commandId`, and a caller reading
+   * only `decisions[0]` would show one hero's answer and silently drop the rest.
+   */
+  pollCrew(input: NegotiationCommandInput<PollCrew>): CommandResult;
+  settleContract(input: NegotiationCommandInput<SettleContract>): CommandResult;
   /** Writes the campaign on screen into `slot`, or records why it could not. */
   save(slot: SaveSlot): Promise<void>;
   /**
@@ -218,8 +277,143 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
 
     save: (slot) => save(deps, store, observed, slot),
     load: (slot) => load(deps, store, slot, turnstile),
-    slots: () => slots(deps, store, observed)
+    slots: () => slots(deps, store, observed),
+
+    composeOffer: (input) =>
+      dispatchNegotiationCommand(
+        store,
+        input.contractId,
+        (state, commandId, expectedStateVersion) =>
+          applyComposeOffer(state, { ...input, commandId, expectedStateVersion })
+      ),
+    proposeContractToHero: (input) =>
+      dispatchNegotiationCommand(
+        store,
+        input.contractId,
+        (state, commandId, expectedStateVersion) =>
+          applyProposeContractToHero(state, { ...input, commandId, expectedStateVersion })
+      ),
+    lockOffer: (input) =>
+      dispatchNegotiationCommand(
+        store,
+        input.contractId,
+        (state, commandId, expectedStateVersion) =>
+          applyLockOffer(state, { ...input, commandId, expectedStateVersion })
+      ),
+    pollCrew: (input) =>
+      dispatchNegotiationCommand(
+        store,
+        input.contractId,
+        (state, commandId, expectedStateVersion) =>
+          applyPollCrew(state, { ...input, commandId, expectedStateVersion })
+      ),
+    settleContract: (input) =>
+      dispatchNegotiationCommand(
+        store,
+        input.contractId,
+        (state, commandId, expectedStateVersion) =>
+          applySettleContract(state, { ...input, commandId, expectedStateVersion })
+      )
   };
+}
+
+/**
+ * The one place a negotiation command becomes an engine call — every one of the five
+ * goes through here, for the same reason `packages/content`'s scenario runner has a
+ * single `apply` rather than five near-duplicates of the read-decide-write sequence.
+ *
+ * `apply` is handed the campaign, a fresh `commandId` and the campaign's own current
+ * `expectedStateVersion`, and builds the concrete command itself — this function never
+ * sees the command's own shape, only the `CommandResult` it produces, which is what lets
+ * one implementation serve `composeOffer` through `settleContract` alike.
+ *
+ * **A rejection leaves the store untouched.** `result.state` is the same object the
+ * campaign already was (`CommandResult.rejected`'s own contract), so there is nothing to
+ * publish and nothing to compare — the caller's `store.snapshot()` before and after a
+ * rejected dispatch are `Object.is`-equal by construction, without this function having
+ * to assert it.
+ *
+ * **An applied command rebuilds the screen the same way a loaded save does**
+ * (`restore`, below): `restoreDecidedSteps` reads the whole answered history back out of
+ * the resulting `GameState` rather than this layer accumulating a parallel `StepOutcome`
+ * list across calls, which is exactly the second-source-of-truth `restoreDecidedSteps`'s
+ * own doc comment already rejects for a reloaded save. `focusedContract` is the command's
+ * own `contractId`, not whatever the screen happened to be showing before: a dispatch is
+ * always about one contract, and keeping the screen pointed at it is what lets a player
+ * watch their own action land.
+ *
+ * `canonicalHash` moves to `null` on every applied command, the same way it already does
+ * for a loaded save (`restore`, `SessionState.canonicalHash`'s own doc comment): that
+ * hash is computed over a whole scripted `ScenarioOutcome`, and a live command was never
+ * one of that run's steps, so carrying the old number forward would claim a campaign this
+ * layer has since changed is still the one the run produced.
+ */
+function dispatchNegotiationCommand(
+  store: Store<SessionState>,
+  focusedContract: ContentId,
+  apply: (state: GameState, commandId: number, expectedStateVersion: number) => CommandResult
+): CommandResult {
+  const session = store.snapshot();
+  const state = activeState(session);
+  const result = apply(state, nextCommandId(state), state.metadata.stateVersion);
+
+  if (!result.applied) {
+    return result;
+  }
+
+  store.replace({
+    ...session,
+    screen: contractOfferScreenModel(
+      result.state,
+      restoreDecidedSteps(result.state),
+      focusedContract
+    ),
+    state: result.state,
+    canonicalHash: null
+  });
+
+  return result;
+}
+
+/**
+ * The campaign a negotiation command is dispatched against, or a thrown defect when
+ * there is none.
+ *
+ * Not a refusal: a screen with no campaign behind it (`Loading`, `Empty`, `Error`) offers
+ * no negotiation action to press in the first place, so a caller reaching this with
+ * `session.state === null` did not follow a screen the player could see — the same class
+ * of bug `focusOf`'s callers already treat as a defect in this build rather than
+ * something a player did.
+ */
+function activeState(session: SessionState): GameState {
+  if (session.state === null) {
+    throw new Error(
+      'A negotiation command was dispatched against a session with no campaign — a defect in ' +
+        'the caller, which must not offer a negotiation command with nothing behind it to apply ' +
+        'one to.'
+    );
+  }
+
+  return session.state;
+}
+
+/**
+ * A `commandId` this campaign has never applied, read off the campaign itself rather
+ * than counted by this controller.
+ *
+ * `state.appliedCommandIds` is exactly the set every engine command already checks a
+ * `commandId` against (`RejectionCodes.DuplicateCommand`), so reading its own maximum is
+ * what keeps a live command from colliding with one a scripted scenario already spent to
+ * reach this screen — `start()` can hand a session a campaign whose `appliedCommandIds`
+ * already holds any ids at all, and a counter kept in this module, starting fresh at 1,
+ * would know nothing about them. Read anew on every dispatch rather than cached, for the
+ * same reason `record` re-reads the session instead of closing over it: a fixed offset
+ * computed once would go stale the moment a second command applied.
+ */
+function nextCommandId(state: GameState): number {
+  const applied = state.appliedCommandIds.values();
+
+  return (applied.at(-1) ?? 0) + 1;
 }
 
 /**

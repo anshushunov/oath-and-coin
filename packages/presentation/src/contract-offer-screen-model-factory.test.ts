@@ -1044,7 +1044,7 @@ describe('what the screen shows about the negotiation itself', () => {
     // every test above would still pass. `toEqual` closes that: a projection missing a
     // key compares unequal to an expectation that states one, the same property the
     // `LOADING_SCREEN` projection test above already leans on for its five `null`s — so
-    // this single assertion is sensitive to each of the fifteen sub-fields below on its
+    // this single assertion is sensitive to each of the sixteen sub-fields below on its
     // own, not only to whether `offer`/`promise_terms`/`settlement` are `null`.
     const model = contractOfferScreenModel(crewedCampaignWithPromise(), []);
     const projection = describeReadModel(model) as Record<string, unknown>;
@@ -1053,6 +1053,9 @@ describe('what the screen shows about the negotiation itself', () => {
     // 500 + 100 − 15×2 − 30 = 540 kept, 570 broken (the 30 not paid).
     expect(projection['treasury']).toBe(500);
     expect(projection['treasury_forecast']).toBe(540);
+    // requiredCrew is 2 here (`crewedCampaignWithPromise`), so `lockCommitment` reads
+    // `commitmentOf` — 15 × 2 + 30 = 60 — the full-crew price `lockOffer` would have
+    // reserved, not the `acceptedBy.size`-scaled figure `treasuryForecast` uses.
     expect(projection['offer']).toEqual({
       version: 3,
       phase: 'locked',
@@ -1060,7 +1063,8 @@ describe('what the screen shows about the negotiation itself', () => {
       method_tag_key: 'tag.method.open',
       method_option_keys: ['tag.method.open', 'tag.method.deception'],
       promised_bonus: 30,
-      key_hero_definition: ids.bram
+      key_hero_definition: ids.bram,
+      lock_commitment: 60
     });
     expect(projection['promise_terms']).toEqual({
       fulfil_key: 'offer.promise.fulfil',

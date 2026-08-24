@@ -43,7 +43,8 @@ function anOfferLine(): OfferLine {
     methodTagKey: null,
     methodOptionKeys: [],
     promisedBonus: 0,
-    keyHeroDefinition: null
+    keyHeroDefinition: null,
+    lockCommitment: 0
   };
 }
 

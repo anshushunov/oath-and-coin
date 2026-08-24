@@ -123,6 +123,27 @@ export interface OfferLine {
   readonly methodOptionKeys: readonly string[];
   readonly promisedBonus: number;
   readonly keyHeroDefinition: string | null;
+  /**
+   * What locking this package would reserve from the treasury — `advance ×
+   * requiredCrew + promisedBonus` (`commitmentOf`, `@oath-and-coin/simulation`), the
+   * exact quantity `lockOffer`'s own treasury check holds the campaign to
+   * (`NEGOTIATION_SPEC` §2.3, §3.3).
+   *
+   * Deliberately not the same money {@link OfferLine.advance} times {@link
+   * ContractLine.acceptedCount} would suggest, and not what drives {@link
+   * ContractOfferScreenModel.treasuryForecast} during `draft`: that field is a
+   * settlement forecast, faithful to `settleContract`'s own formula, which pays only
+   * the seats actually filled — zero or one, before a package is locked, since only the
+   * key hero can be in `acceptedBy` that early. A player composing a package sees
+   * almost no price there for exactly that reason. `lockCommitment` is the other of the
+   * two prices `NEGOTIATION_SPEC` §5.1 asks this screen to show "before anything is
+   * signed": what committing the *whole* crew the contract has room for will cost the
+   * moment `lockOffer` is pressed, which is the number a locked offer is actually
+   * refused over (`rejected.treasury_cannot_cover_the_offer`) — and the one
+   * `treasuryForecast` alone cannot warn a player about while the package is still a
+   * draft.
+   */
+  readonly lockCommitment: number;
 }
 
 /**

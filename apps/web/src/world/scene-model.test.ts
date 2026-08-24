@@ -125,7 +125,8 @@ function aModel(rosterDefinitions: readonly string[], responders: readonly strin
       methodTagKey: null,
       methodOptionKeys: [],
       promisedBonus: 0,
-      keyHeroDefinition: null
+      keyHeroDefinition: null,
+      lockCommitment: 0
     },
     treasuryForecast: 400,
     promiseTerms: null,

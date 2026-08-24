@@ -4,6 +4,7 @@ import {
   OfferPhase,
   ReasonCodes,
   canonicalSha256,
+  commitmentOf,
   compareContentIds,
   compareStrings,
   type CanonicalValue,
@@ -327,7 +328,8 @@ function toOfferLine(
     methodOptionKeys: methodOptionKeysOf(contract),
     promisedBonus: offer.promisedBonus,
     keyHeroDefinition:
-      offer.keyHero === null ? null : definitionOfHero(offer.keyHero, heroDefinitionByHeroId)
+      offer.keyHero === null ? null : definitionOfHero(offer.keyHero, heroDefinitionByHeroId),
+    lockCommitment: commitmentOf(contract)
   };
 }
 
@@ -825,7 +827,8 @@ function describeOffer(offer: OfferLine): CanonicalValue {
     method_tag_key: offer.methodTagKey,
     method_option_keys: [...offer.methodOptionKeys],
     promised_bonus: offer.promisedBonus,
-    key_hero_definition: offer.keyHeroDefinition
+    key_hero_definition: offer.keyHeroDefinition,
+    lock_commitment: offer.lockCommitment
   };
 }
 

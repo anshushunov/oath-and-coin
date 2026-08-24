@@ -23,6 +23,9 @@
     "screen.saves.open": "Сохранения",
     "screen.contract_offer.open": "Вернуться к контракту",
 
+    "offer.promise.fulfil": "Слово сдержано, если при расчёте гильдия выплатит обещанную надбавку.",
+    "offer.promise.breach": "Слово нарушено, если при расчёте гильдия откажется от обещанной надбавки.",
+
     "save.slot.slot_a.name": "Слот A",
     "save.slot.slot_a.save": "Сохранить в слот A",
     "save.slot.slot_a.load": "Загрузить слот A",
