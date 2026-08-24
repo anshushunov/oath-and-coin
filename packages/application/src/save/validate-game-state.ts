@@ -60,12 +60,16 @@ export function validateGameState(state: GameState): void {
  */
 function checkReferentialIntegrity(state: GameState): void {
   for (const event of state.history) {
-    // `offer_revised` and `offer_locked` name no hero — composing or locking an offer
-    // is the player's own choice, not a decision a hero made (`domain-event.ts`).
-    // Every other event kind today is a hero's response, and does.
+    // `offer_revised`, `offer_locked` and the three `settleContract` events name no
+    // hero — composing, locking or settling an offer is the player's own choice,
+    // not a decision a hero made (`domain-event.ts`). Only the two hero-response
+    // kinds do.
     if (
       event.kind !== 'offer_revised' &&
       event.kind !== 'offer_locked' &&
+      event.kind !== 'contract_settled' &&
+      event.kind !== 'contract_settled_promise_kept' &&
+      event.kind !== 'contract_settled_promise_broken' &&
       !state.heroes.has(event.heroId)
     ) {
       throw inconsistent(
@@ -133,14 +137,14 @@ function checkReferentialIntegrity(state: GameState): void {
  * "why" and `restoreDecidedSteps` answers `null` — and the second let the interface show a
  * hero *accepting* a contract that its own trace says a red line closed.
  *
- * **Why every event, with the two exceptions non-decision events now need.**
- * `DomainEvent` is a closed union of four members (`domain-event.ts`); two are hero
- * decisions, and the other two — `offer_revised` and `offer_locked` — are the
- * player's own choice and carry no trace by construction. The loop below writes
- * that exception explicitly — refusing an `offer_revised` or `offer_locked` event
- * that *does* carry a `causalTraceId`, rather than silently admitting an unexplained
- * decision — and treats every other kind as a decision that
- * must carry one. The nullability on `DomainEventBase.causalTraceId` exists for exactly
+ * **Why every event, with the exceptions non-decision events now need.**
+ * `DomainEvent` is a closed union of seven members (`domain-event.ts`); two are
+ * hero decisions, and the other five — `offer_revised`, `offer_locked` and the
+ * three `settleContract` events — are the player's own choice and carry no trace
+ * by construction. The loop below writes that exception explicitly — refusing one
+ * of the five that *does* carry a `causalTraceId`, rather than silently admitting
+ * an unexplained decision — and treats every other kind as a decision that must
+ * carry one. The nullability on `DomainEventBase.causalTraceId` exists for exactly
  * this shape of event.
  *
  * **Coverage is a bijection, in both directions.** An event names exactly one trace, and
@@ -163,19 +167,26 @@ function checkDecisionTraces(state: GameState): void {
   const explains = new Map<number, number>();
 
   for (const event of state.history) {
-    // The non-decision events this build produces today: composing or locking an
-    // offer is the player's own choice, so each explains itself and carries no trace
-    // (`domain-event.ts`'s `OfferRevised`, `OfferLocked`). This is the exception
-    // `DomainEventBase.causalTraceId`'s own doc anticipated the day a non-decision
-    // event arrived — refusing the first tick or player-choice event that carries an
-    // explanation it should not, rather than silently admitting an unexplained
-    // decision.
-    if (event.kind === 'offer_revised' || event.kind === 'offer_locked') {
+    // The non-decision events this build produces today: composing, locking or
+    // settling an offer is the player's own choice, so each explains itself and
+    // carries no trace (`domain-event.ts`'s `OfferRevised`, `OfferLocked`,
+    // `ContractSettled` and its two promise-outcome siblings). This is the
+    // exception `DomainEventBase.causalTraceId`'s own doc anticipated the day a
+    // non-decision event arrived — refusing the first tick or player-choice event
+    // that carries an explanation it should not, rather than silently admitting an
+    // unexplained decision.
+    if (
+      event.kind === 'offer_revised' ||
+      event.kind === 'offer_locked' ||
+      event.kind === 'contract_settled' ||
+      event.kind === 'contract_settled_promise_kept' ||
+      event.kind === 'contract_settled_promise_broken'
+    ) {
       if (event.causalTraceId !== null) {
         throw inconsistent(
           `history event ${String(event.eventId)} ('${event.kind}') carries causalTraceId ` +
-            `${String(event.causalTraceId)}; composing or locking an offer is the player's own ` +
-            'choice, not a decision, and explains itself.'
+            `${String(event.causalTraceId)}; composing, locking or settling an offer is the ` +
+            "player's own choice, not a decision, and explains itself."
         );
       }
       continue;
@@ -331,6 +342,18 @@ function checkResponseBookkeeping(state: GameState): void {
       // Locking names no hero and changes neither `respondedBy` nor `acceptedBy`
       // (`engine.ts`'s `lockOffer`) — unlike a revision, there is no window to reset
       // here, only nothing to add.
+      continue;
+    }
+
+    if (
+      event.kind === 'contract_settled' ||
+      event.kind === 'contract_settled_promise_kept' ||
+      event.kind === 'contract_settled_promise_broken'
+    ) {
+      // Settling names no hero either and changes neither `respondedBy` nor
+      // `acceptedBy` (`engine.ts`'s `settleContract` only moves `offer.phase` to
+      // `settled`) — the same reason `offer_locked` above needs no window reset,
+      // only nothing to add.
       continue;
     }
 

@@ -17,6 +17,7 @@ import {
   compareContentIds,
   compareHeroIds,
   compareNumbers,
+  createContractState,
   freezeDeep,
   heroId,
   parseContentId,
@@ -95,16 +96,22 @@ const MAX_FACTORS_PER_TRACE_SIDE = 2 * (3 + MAX_TRAITS_PER_HERO + MAX_RELATIONSH
 const MAX_BLOCKS_PER_TRACE = 2 * MAX_TRAITS_PER_HERO;
 
 /**
- * `engine.ts` records a command id in `appliedCommandIds`, and appends exactly
- * one event to `history`, only for a command that actually decided something —
- * and `ContractState.respondedBy` refuses a hero a second decision on the same
- * contract, ever. So across a campaign's whole life, the number of applied
- * commands (and therefore of history events) cannot exceed
- * `heroes × contracts`. Today's content (`content/heroes`, `content/contracts`)
- * has 6 heroes and 4 contracts — an achievable ceiling of 24. This constant is a
- * multiple of that (`4×`), not the achievable number itself, so it does not have
- * to move every time content grows, while a save claiming an impossible campaign
- * length is still refused rather than allocated.
+ * `engine.ts` records a command id in `appliedCommandIds` only for a command that
+ * actually applied, and every applied command appends at least one event to
+ * `history` — never zero (`validate-game-state.ts`'s `checkCounters` states the
+ * resulting inequality, `appliedCommandIds.size <= history.length`, and why it is
+ * `<=` rather than `=`).
+ *
+ * **It does not append exactly one**, and a comment here once claimed it did.
+ * `pollCrew` (`DEC-008` Task 13) can leave several events behind under a single
+ * command id — one per hero the poll actually asks — so "the number of applied
+ * commands cannot exceed `heroes × contracts`" stopped holding the moment that
+ * command existed: one `pollCrew` call can record one command id and still
+ * append up to `heroes − 1` events. This constant is, and remains, a ceiling on
+ * `appliedCommandIds.size` and on `history.length` independently — each has its
+ * own `.max()` below — generous against today's content (`content/heroes`,
+ * `content/contracts`: 6 heroes, 4 contracts) rather than a tight count derived
+ * from it.
  */
 export const MAX_APPLIED_COMMANDS = 4 * 24;
 
@@ -218,21 +225,20 @@ const offerPhaseSchema = z.union([
  * `patronFee`: the tighter, per-contract relationship (`0 ≤ advance ≤ patronFee`) is
  * not a shape this schema can state without cross-referencing a sibling field.
  *
- * **This schema bounds shape only, and — unlike `contractStatusSchema`'s sibling
- * fields — the domain invariants above that shape are not enforced anywhere in this
- * module.** `createContractState` (`NEGOTIATION_SPEC` §2.1) was routed in here once,
- * in review, and reverted: at the time, `engine.ts`'s `proposeContractToHero`
- * predated the offer protocol and never restricted who could answer a draft, so a
- * save this build's own engine genuinely produced could already violate the draft
- * invariant the moment a non-key hero had answered — wiring the check in here made a
- * real engine-produced save of that shape refuse to decode. `DEC-008` Task 11 closed
- * that gap in the engine (`proposeContractToHero` now refuses anyone but the key hero
- * while `phase = 'draft'`, `RejectionCodes.NotTheKeyHero`), so the shape that
- * reverted this wiring can no longer be produced — but the wiring itself is not yet
- * back in. See `decodeSnapshot`'s contract builder, a few dozen lines down, for the
- * current state of that call site. `advance > patronFee`, `settled` on an uncrewed
- * contract, `acceptedBy.size > requiredCrew` and the rest of §2.1 therefore still
- * read back from a save unchecked, pending that wiring (Task 14).
+ * **This schema bounds shape only — the domain invariants above that shape are
+ * enforced by `decodeSnapshot`'s own contract builder, not restated here.**
+ * `createContractState` (`NEGOTIATION_SPEC` §2.1) was routed in there once, in
+ * review, and reverted: at the time, `engine.ts`'s `proposeContractToHero` predated
+ * the offer protocol and never restricted who could answer a draft, so a save this
+ * build's own engine genuinely produced could already violate the draft invariant
+ * the moment a non-key hero had answered — wiring the check in made a real
+ * engine-produced save of that shape refuse to decode. `DEC-008` Task 11 closed that
+ * gap in the engine (`proposeContractToHero` now refuses anyone but the key hero
+ * while `phase = 'draft'`, `RejectionCodes.NotTheKeyHero`), and Task 14 put the
+ * wiring back — `requireConsistentContract`, at `decodeSnapshot`'s contract
+ * builder, a few dozen lines down. `advance > patronFee`, `settled` on an uncrewed
+ * contract, `acceptedBy.size > requiredCrew` and the rest of §2.1 are refused there
+ * now, as `SAVE_INCONSISTENT`.
  */
 const offerValueSchema = z.strictObject({
   version: z.int().min(1),
@@ -384,6 +390,32 @@ const domainEventSchema = z.discriminatedUnion('kind', [
     logicalTime: z.int().min(0),
     causalTraceId: z.int().min(0).nullable(),
     contractId: contentId
+  }),
+  // No `heroId`, same shape and same reason as `offer_revised`/`offer_locked`:
+  // settling a contract is the player's own act (`domain-event.ts`'s
+  // `ContractSettled`), not a hero's decision. Three more members of the same
+  // existing union — `DEC-008` Task 14 — so this did not need to move
+  // `SAVE_SCHEMA_VERSION` either.
+  z.strictObject({
+    kind: z.literal('contract_settled'),
+    eventId: z.int().min(0),
+    logicalTime: z.int().min(0),
+    causalTraceId: z.int().min(0).nullable(),
+    contractId: contentId
+  }),
+  z.strictObject({
+    kind: z.literal('contract_settled_promise_kept'),
+    eventId: z.int().min(0),
+    logicalTime: z.int().min(0),
+    causalTraceId: z.int().min(0).nullable(),
+    contractId: contentId
+  }),
+  z.strictObject({
+    kind: z.literal('contract_settled_promise_broken'),
+    eventId: z.int().min(0),
+    logicalTime: z.int().min(0),
+    causalTraceId: z.int().min(0).nullable(),
+    contractId: contentId
   })
 ]);
 
@@ -403,12 +435,16 @@ const snapshotSchema = z.strictObject({
   contracts: entries(contentId, contractValueSchema),
   appliedCommandIds: z.array(z.int().min(0)).max(MAX_APPLIED_COMMANDS),
   traitRules: entries(contentId, traitRuleValueSchema),
-  // A trace is stored at most once per applied command: `withEvent` only ever
-  // adds a *new* trace id, never overwrites an existing one (`game-state.ts`).
-  // So `traces.size` can never exceed `appliedCommandIds.size`, which is
-  // already bounded by `MAX_APPLIED_COMMANDS` — reusing that ceiling here
-  // states the fact instead of leaving `traces` under `entries()`'s own
-  // generic 4096, a cap 40x looser than what this map can actually hold.
+  // A trace is stored at most once per *decision*: `withEvent` only ever adds a
+  // *new* trace id, never overwrites an existing one (`game-state.ts`), and every
+  // decision is exactly one history event. So `traces.size` can never exceed
+  // `history.length` — **not** `appliedCommandIds.size`, which a comment here
+  // once claimed: `pollCrew` (`DEC-008` Task 13) can store several traces under
+  // one command id, one per hero it actually asks a full decision, so that bound
+  // parted ways with reality the moment that command existed. `history` carries
+  // its own `.max(MAX_APPLIED_COMMANDS)` below, so reusing the same constant
+  // here still states a real ceiling — it is derived through `history.length`
+  // now, not through `appliedCommandIds.size`.
   traces: entries(z.int().min(0), causalTraceValueSchema).max(MAX_APPLIED_COMMANDS),
   history: z.array(domainEventSchema).max(MAX_APPLIED_COMMANDS),
   // `NEGOTIATION_SPEC` §2.3 — never negative, and otherwise unbounded above the same
@@ -571,10 +607,11 @@ export function decodeSnapshot(value: unknown): GameState {
     parsed.contracts,
     (rawKey) => parseContentId(rawKey),
     (raw) => parseContentId(raw.id),
-    // NOT routed through `createContractState` — tried, and reverted, back when
-    // `engine.ts`'s `proposeContractToHero` (pre-`DEC-008` offer protocol) recorded a
-    // response without restricting who could answer a draft, so a save this build's
-    // engine could produce might already violate "phase = 'draft' ⇒ respondedBy ⊆
+    // Routed through `createContractState` (`requireConsistentContract`, below) —
+    // tried once before, in review, and reverted then: `engine.ts`'s
+    // `proposeContractToHero` (pre-`DEC-008` offer protocol) recorded a response
+    // without restricting who could answer a draft, so a save this build's engine
+    // could produce might already violate "phase = 'draft' ⇒ respondedBy ⊆
     // {keyHero}" — measured directly at the time: wiring this in made
     // `envelope.test.ts`'s own guard-over-guards case — "accepts the campaign the
     // engine actually produced" — refuse a save built from a real engine run.
@@ -583,36 +620,40 @@ export function decodeSnapshot(value: unknown): GameState {
     // refuses anyone but the offer's key hero while `phase = 'draft'`
     // (`RejectionCodes.NotTheKeyHero`), routes its post-response `ContractState`
     // through `createContractState` itself, and — by the same review's own
-    // measurement — cannot produce the shape that reverted this wiring. The wiring
-    // is still not back in, though: routing `decodeSnapshot`'s own contract builder
-    // through the door, and mapping a violation to `SaveErrorCodes`, is separate work
-    // this task does not do (Task 14). Left as a plain literal here for that reason,
-    // not because a save could still fail this check.
-    (raw) => ({
-      id: parseContentId(raw.id),
-      patronFee: raw.patronFee,
-      risk: raw.risk,
-      requiredCrew: raw.requiredCrew,
-      tags: SortedSet.from(compareContentIds, raw.tags.map((tag) => parseContentId(tag))),
-      // Absent reads as "nothing negotiable" — see `contractValueSchema`'s own comment
-      // on why this key is optional rather than required.
-      negotiableTags: SortedSet.from(
-        compareContentIds,
-        (raw.negotiableTags ?? []).map((tag) => parseContentId(tag))
-      ),
-      status: raw.status,
-      offer: {
-        version: raw.offer.version,
-        keyHero: raw.offer.keyHero === null ? null : heroId(raw.offer.keyHero),
-        advance: raw.offer.advance,
-        methodTag: raw.offer.methodTag === null ? null : parseContentId(raw.offer.methodTag),
-        promisedBonus: raw.offer.promisedBonus,
-        phase: raw.offer.phase,
-        respondedBy: SortedSet.from(compareHeroIds, raw.offer.respondedBy.map((id) => heroId(id))),
-        acceptedBy: SortedSet.from(compareHeroIds, raw.offer.acceptedBy.map((id) => heroId(id)))
-      },
-      moodOrdinals: buildMoodOrdinals(raw.moodOrdinals)
-    }),
+    // measurement — cannot produce the shape that reverted this wiring. `DEC-008`
+    // Task 14 is what puts the wiring back: `advance > patronFee`, a `settled`
+    // offer on an un-crewed contract, `acceptedBy.size > requiredCrew` and the
+    // rest of §2.1 are refused here now, as `SAVE_INCONSISTENT`
+    // (`requireConsistentContract`), rather than read back unchecked.
+    (raw) =>
+      requireConsistentContract({
+        id: parseContentId(raw.id),
+        patronFee: raw.patronFee,
+        risk: raw.risk,
+        requiredCrew: raw.requiredCrew,
+        tags: SortedSet.from(compareContentIds, raw.tags.map((tag) => parseContentId(tag))),
+        // Absent reads as "nothing negotiable" — see `contractValueSchema`'s own comment
+        // on why this key is optional rather than required.
+        negotiableTags: SortedSet.from(
+          compareContentIds,
+          (raw.negotiableTags ?? []).map((tag) => parseContentId(tag))
+        ),
+        status: raw.status,
+        offer: {
+          version: raw.offer.version,
+          keyHero: raw.offer.keyHero === null ? null : heroId(raw.offer.keyHero),
+          advance: raw.offer.advance,
+          methodTag: raw.offer.methodTag === null ? null : parseContentId(raw.offer.methodTag),
+          promisedBonus: raw.offer.promisedBonus,
+          phase: raw.offer.phase,
+          respondedBy: SortedSet.from(
+            compareHeroIds,
+            raw.offer.respondedBy.map((id) => heroId(id))
+          ),
+          acceptedBy: SortedSet.from(compareHeroIds, raw.offer.acceptedBy.map((id) => heroId(id)))
+        },
+        moodOrdinals: buildMoodOrdinals(raw.moodOrdinals)
+      }),
     'contracts'
   );
 
@@ -789,17 +830,28 @@ function fromEntriesOrInconsistent<K, V>(
   }
 }
 
-// A `requireConsistentContract` function stood here — a `createContractState`
-// wrapper mirroring `fromEntriesOrInconsistent` above, rethrowing as
-// `SaveReadError(SaveErrorCodes.Inconsistent, ...)` the same way. It was wired into
-// `decodeSnapshot`'s contract builder and reverted, at a time when the engine could
-// still produce a state that wiring would refuse; `DEC-008` Task 11 closed that
-// engine-side gap (see that call site's own comment and `createContractState`'s doc,
-// `offer-state.ts`, for the current state of both). Wiring this back in — and
-// mapping what it would throw to `SaveErrorCodes` — is Task 14's, not resurrected
-// here as dead code for the same reason it wasn't kept the first time: deleting the
-// function along with the wiring does not lose the reason, which is recorded at both
-// of those places instead.
+/**
+ * `createContractState` (`NEGOTIATION_SPEC` §2.1), rethrowing as
+ * `SaveReadError(SaveErrorCodes.Inconsistent, ...)` the same way
+ * {@link fromEntriesOrInconsistent} does for `SortedMap.from`. This is the wiring
+ * `decodeSnapshot`'s contract builder's own comment describes the history of: tried
+ * once, reverted because the engine at the time could produce a state this would
+ * refuse, and put back now that `DEC-008` Task 11 closed that engine-side gap. A
+ * save carrying `advance > patronFee`, a `settled` offer on an un-crewed contract,
+ * `acceptedBy.size > requiredCrew`, or any other violation of §2.1 is refused here
+ * as `SAVE_INCONSISTENT` rather than decoded into a `ContractState` no engine
+ * command could have produced.
+ */
+function requireConsistentContract(contract: ContractState): ContractState {
+  try {
+    return createContractState(contract);
+  } catch (error) {
+    throw new SaveReadError(
+      SaveErrorCodes.Inconsistent,
+      error instanceof Error ? error.message : String(error)
+    );
+  }
+}
 
 function toTraceFactor(factor: RawFactor): TraceFactor {
   return {
@@ -830,6 +882,23 @@ function toDomainEvent(domainEvent: RawDomainEvent): DomainEvent {
   if (domainEvent.kind === 'offer_locked') {
     return {
       kind: 'offer_locked',
+      eventId: domainEvent.eventId,
+      logicalTime: domainEvent.logicalTime,
+      causalTraceId: domainEvent.causalTraceId,
+      contractId: parseContentId(domainEvent.contractId)
+    };
+  }
+
+  // The three `settleContract` events (`DEC-008` Task 14) share `offer_revised`/
+  // `offer_locked`'s shape and the same reason: settling is the player's own act,
+  // not a hero's decision, so none of the three name a hero.
+  if (
+    domainEvent.kind === 'contract_settled' ||
+    domainEvent.kind === 'contract_settled_promise_kept' ||
+    domainEvent.kind === 'contract_settled_promise_broken'
+  ) {
+    return {
+      kind: domainEvent.kind,
       eventId: domainEvent.eventId,
       logicalTime: domainEvent.logicalTime,
       causalTraceId: domainEvent.causalTraceId,

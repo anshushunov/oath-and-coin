@@ -317,6 +317,9 @@ function describeEvent(domainEvent: DomainEvent): CanonicalValue {
       return { ...base, hero_id: domainEvent.heroId, contract_id: domainEvent.contractId };
     case 'offer_revised':
     case 'offer_locked':
+    case 'contract_settled':
+    case 'contract_settled_promise_kept':
+    case 'contract_settled_promise_broken':
       return { ...base, contract_id: domainEvent.contractId };
   }
 }

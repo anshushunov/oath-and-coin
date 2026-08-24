@@ -22,7 +22,7 @@ import { ScenarioCommandKind, type ScenarioCommand } from './scenario-commands.t
  * the seed. A constant rather than a parameter because a run cannot choose which rules
  * the binary contains.
  */
-export const RULESET_VERSION = 'm1-decision/1';
+export const RULESET_VERSION = 'm1-negotiation/1';
 
 /**
  * One decision a step produced, with the hero it belongs to when the step's decisions do

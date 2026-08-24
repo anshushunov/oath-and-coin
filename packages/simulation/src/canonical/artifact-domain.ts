@@ -32,7 +32,7 @@
 /**
  * Lowercase letters, digits, and the four punctuation marks the existing vocabulary
  * uses: `_` in identifiers, `.` in localization keys, `:` in content ids, `/` and `-`
- * in a ruleset version like `m1-decision/1`.
+ * in a ruleset version like `m1-negotiation/1`.
  */
 export const ARTIFACT_SAFE_TEXT_PATTERN = '^[a-z0-9_.:/-]+$';
 

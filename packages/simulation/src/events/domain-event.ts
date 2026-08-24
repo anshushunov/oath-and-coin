@@ -56,6 +56,40 @@ export interface OfferLocked extends DomainEventBase {
 }
 
 /**
+ * The player settled a contract whose offer promised no bonus (`settleContract`,
+ * `NEGOTIATION_SPEC` §3.3): `pay` is ignored (there was nothing to pay or withhold)
+ * and no hero's `grievance` moves. `causalTraceId` is always `null` for the same
+ * reason `OfferRevised`'s is: settling is the player's own act, not a hero's
+ * decision.
+ */
+export interface ContractSettled extends DomainEventBase {
+  readonly kind: 'contract_settled';
+  readonly contractId: ContentId;
+}
+
+/**
+ * The player settled a contract whose offer promised a bonus, and chose to pay it
+ * (`settleContract`, `NEGOTIATION_SPEC` §3.3). `causalTraceId` is always `null`, the
+ * same reason `ContractSettled`'s is.
+ */
+export interface ContractSettledPromiseKept extends DomainEventBase {
+  readonly kind: 'contract_settled_promise_kept';
+  readonly contractId: ContentId;
+}
+
+/**
+ * The player settled a contract whose offer promised a bonus, and withheld it
+ * (`settleContract`, `NEGOTIATION_SPEC` §3.3): the key hero's
+ * `believesGuildPromises` turns `false` and every accepted hero's `grievance` grows
+ * — the victim's by more than a witness's (`negotiation/grievance.ts`).
+ * `causalTraceId` is always `null`, the same reason `ContractSettled`'s is.
+ */
+export interface ContractSettledPromiseBroken extends DomainEventBase {
+  readonly kind: 'contract_settled_promise_broken';
+  readonly contractId: ContentId;
+}
+
+/**
  * A discriminated union rather than an abstract base class with subtypes, and the
  * discriminant is the exact string the canonical artifact writes.
  *
@@ -67,4 +101,11 @@ export interface OfferLocked extends DomainEventBase {
  * `noImplicitReturns` see to it — and the projection cannot even reach the payload
  * fields without narrowing on `kind` first.
  */
-export type DomainEvent = HeroAcceptedContract | HeroDeclinedContract | OfferRevised | OfferLocked;
+export type DomainEvent =
+  | HeroAcceptedContract
+  | HeroDeclinedContract
+  | OfferRevised
+  | OfferLocked
+  | ContractSettled
+  | ContractSettledPromiseKept
+  | ContractSettledPromiseBroken;

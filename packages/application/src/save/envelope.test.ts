@@ -30,7 +30,7 @@ import {
  * The envelope: version, signature and refusal table (design spec §2.3-§2.4).
  *
  * The plan this suite executes (`task-16-4-brief.md`) writes its tamper-test fixture
- * against `m1-decision/1` / `5d03734fd9c7abaa` — the real shipped tree's ruleset and
+ * against `m1-negotiation/1` / `5d03734fd9c7abaa` — the real shipped tree's ruleset and
  * content version, the same pair `packages/content/src/save/snapshot-codec.test.ts` and
  * `packages/simulation/src/testing/fixtures.ts`'s own `aState()` use. This suite cannot
  * reach that tree the same way: `packages/application/tsconfig.json` carries `types: []`
@@ -399,6 +399,18 @@ it('отказывает на байтах, которые не разбираю
   expect(() => readSave(encodeUtf8('{не json'), expectedVersions)).toThrow(/SAVE_MALFORMED/u);
 });
 
+it('отказывает сохранению, записанному предыдущей версией снимка', () => {
+  // `NEGOTIATION_SPEC` §2.5: окно совместимости нулевое (`ADR-006`) — `readSave`'s
+  // own version gate, not the codec, is the layer that says no to a save the
+  // *previous* schema actually wrote, not merely to an arbitrary foreign number
+  // (the `'чужая версия снимка'` case above already covers that). `1` is not a
+  // made-up value: it is `SAVE_SCHEMA_VERSION`'s own value before `DEC-008` Task 6
+  // raised it to 2, so this is the exact save a pre-negotiation build produced.
+  const file = parseSave(aValidSave());
+  file.save_schema_version = 1;
+  expect(() => readSave(resign(file), expectedVersions)).toThrow(/SAVE_SCHEMA_UNSUPPORTED/u);
+});
+
 it('называет первый по порядку отказ, когда сломано два поля сразу', () => {
   const file = parseSave(aValidSave());
   file.format_version = 99;
@@ -479,25 +491,36 @@ describe('referential integrity across the snapshot’s own maps', () => {
     [
       'контракт называет отсутствующего героя в respondedBy',
       (snapshot) => {
-        snapshot.contracts[0]!.value.offer.respondedBy = [
-          ...snapshot.contracts[0]!.value.offer.respondedBy,
-          999
-        ];
+        const offer = snapshot.contracts[0]!.value.offer;
+        // `DEC-008` Task 14 routes `decodeSnapshot`'s own contract builder through
+        // `createContractState`, which refuses `phase = 'draft'` the moment
+        // `respondedBy` holds anyone but the key hero — and would catch id 999
+        // there first, before this test's own referential-integrity check ever
+        // ran. Moved to `locked`, where that draft-only restriction does not
+        // apply, so the mutation below still reaches the check this case is
+        // about.
+        offer.phase = 'locked';
+        offer.respondedBy = [...offer.respondedBy, 999];
       },
       'in respondedBy, but the save carries no such hero'
     ],
     [
       'контракт называет отсутствующего героя в acceptedBy',
       (snapshot) => {
-        // `respondedBy` намеренно НЕ трогается: добавь 999 в оба множества — и первой
-        // отвечает проверка `respondedBy` двумя строками выше, а эта не измеряется
-        // вовсе. Ровно так она и оставалась непокрытой до второго раунда ревью на шве.
+        // `respondedBy` намеренно НЕ трогается — тот же приём, которым этот кейс
+        // изолировали от соседнего. Но `DEC-008` Task 14 сделал изоляцию
+        // недостижимой другим способом: `createContractState` требует
+        // `acceptedBy ⊆ respondedBy` структурно, и id, добавленный только в
+        // `acceptedBy`, ловится этой проверкой на входе в `decodeSnapshot` — раньше,
+        // чем успевает сработать собственная проверка `validateGameState`. Отказ,
+        // которого добивался этот кейс, по-прежнему происходит; он происходит у
+        // двери декодирования, под её собственным сообщением, а не под этим.
         snapshot.contracts[0]!.value.offer.acceptedBy = [
           ...snapshot.contracts[0]!.value.offer.acceptedBy,
           999
         ];
       },
-      'in acceptedBy, but the save carries no such hero'
+      'must be a subset of respondedBy'
     ]
   ];
 
@@ -558,7 +581,12 @@ interface RawSnapshot {
     value: {
       requiredCrew: number;
       status: string;
-      offer: { respondedBy: number[]; acceptedBy: number[] };
+      offer: {
+        phase: string;
+        keyHero: number | null;
+        respondedBy: number[];
+        acceptedBy: number[];
+      };
     };
   }[];
   appliedCommandIds: number[];
@@ -613,7 +641,11 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
         snapshot.contracts[0]!.value.offer.respondedBy = [];
         snapshot.contracts[0]!.value.status = 'offered';
       },
-      'in acceptedBy but not in respondedBy'
+      // `DEC-008` Task 14: this exact shape (`acceptedBy ⊄ respondedBy`) is now caught
+      // by `createContractState` at `decodeSnapshot`'s own door, earlier than
+      // `validateGameState`'s own `checkOneContract` ever runs — the same rule, one
+      // layer sooner.
+      'must be a subset of respondedBy'
     ],
     [
       'история говорит «принял», контракт — «не в составе»',
@@ -660,14 +692,18 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
       (snapshot) => {
         snapshot.contracts[0]!.value.status = 'offered';
       },
-      'a contract is crewed exactly when its required crew has accepted'
+      // `DEC-008` Task 14: `createContractState`'s own two-directional check
+      // (`status = 'crewed' ⇔ acceptedBy.size = requiredCrew`) catches this at
+      // `decodeSnapshot`'s door now, before `validateGameState`'s `checkOneContract`
+      // gets a turn — the same biconditional, worded by the earlier check instead.
+      "must be 'crewed' exactly when acceptedBy.size equals requiredCrew"
     ],
     [
       'контракт закрыт составом, которого не хватает',
       (snapshot) => {
         snapshot.contracts[0]!.value.requiredCrew = 2;
       },
-      'a contract is crewed exactly when its required crew has accepted'
+      "must be 'crewed' exactly when acceptedBy.size equals requiredCrew"
     ],
     [
       'nextEventId не совпадает с длиной истории',
@@ -774,6 +810,11 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
           }
         ];
         const other = snapshot.contracts.find((entry) => entry.key === OTHER_CONTRACT)!;
+        // `DEC-008` Task 14: `createContractState` refuses `phase = 'draft'` the
+        // moment `respondedBy` names anyone but the key hero — `keyHero` is set to
+        // the same hero here so this fixture still reaches the clock check this
+        // case is about, not that earlier, unrelated one.
+        other.value.offer.keyHero = first!.heroId;
         other.value.offer.respondedBy = [first!.heroId];
         snapshot.appliedCommandIds = [1, 2];
         snapshot.metadata.nextEventId = 2;
@@ -888,8 +929,12 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
             contractId: OTHER_CONTRACT
           }
         ];
-        snapshot.contracts.find((entry) => entry.key === OTHER_CONTRACT)!.value.offer.respondedBy =
-          [first!.heroId];
+        // `DEC-008` Task 14: same reason as the clock case above — `keyHero` set to
+        // match, so `createContractState`'s draft restriction does not pre-empt the
+        // check this case is about.
+        const other = snapshot.contracts.find((entry) => entry.key === OTHER_CONTRACT)!;
+        other.value.offer.keyHero = first!.heroId;
+        other.value.offer.respondedBy = [first!.heroId];
         snapshot.appliedCommandIds = [1, 2];
         snapshot.metadata.nextEventId = 2;
         snapshot.metadata.stateVersion = 2;

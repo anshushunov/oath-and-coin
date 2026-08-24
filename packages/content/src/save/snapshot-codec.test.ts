@@ -1,6 +1,17 @@
 import { join, resolve } from 'node:path';
 
-import { ReasonCodes, deepEqual, proposeContractToHero } from '@oath-and-coin/simulation';
+import {
+  ContractStatus,
+  OfferPhase,
+  ReasonCodes,
+  SortedSet,
+  compareHeroIds,
+  createContractState,
+  deepEqual,
+  proposeContractToHero,
+  settleContract,
+  type GameState
+} from '@oath-and-coin/simulation';
 import { describe, expect, it } from 'vitest';
 
 import { createInitialState } from '../initial-state.ts';
@@ -13,9 +24,88 @@ import { decodeSnapshot, encodeSnapshot } from './snapshot-codec.ts';
 const repoRoot = resolve(import.meta.dirname, '..', '..', '..', '..');
 const content = loadContentSet(join(repoRoot, 'content'));
 
+/**
+ * A campaign carrying every field `DEC-008` added, all away from their defaults at
+ * once: an aggrieved hero (`grievance > 0`), a hero who stopped believing the
+ * guild's word (`believesGuildPromises = false`), and a treasury that has actually
+ * moved (`treasury !== STARTING_TREASURY`). Task 6's `offer`/`moodOrdinals`
+ * round-trip wiring was correct by inspection but untested against a non-default
+ * value — every round-trip test before this one would pass identically if the
+ * decoder reverted to hardcoded defaults for these three fields. This fixture is
+ * what closes that: it locks the shipped tree's first contract to one seat, one
+ * hero, a real bonus, breaks the promise through the real `settleContract`, and
+ * round-trips whatever that produced.
+ */
+function campaignWithABrokenPromise(): GameState {
+  const base = createInitialState(content, 7n, 'm1-negotiation/1');
+  const [heroKey] = base.heroes.keys();
+  const [contractKey] = base.contracts.keys();
+  const contract = base.contracts.get(contractKey!)!;
+  const keyOnly = SortedSet.from(compareHeroIds, [heroKey!]);
+
+  // `requiredCrew: 1`, overriding whatever the shipped contract authored: this
+  // fixture needs a crew of exactly one hero so `settleContract` can run without
+  // a `pollCrew` this test is not about. `createContractState` (`NEGOTIATION_SPEC`
+  // §2.1) validates the override rather than merely hoping it is consistent.
+  const lockedAndCrewed = createContractState({
+    ...contract,
+    requiredCrew: 1,
+    status: ContractStatus.Crewed,
+    offer: {
+      ...contract.offer,
+      keyHero: heroKey!,
+      advance: 10,
+      promisedBonus: Math.min(20, contract.patronFee),
+      phase: OfferPhase.Locked,
+      respondedBy: keyOnly,
+      acceptedBy: keyOnly
+    }
+  });
+
+  const locked: GameState = {
+    ...base,
+    contracts: base.contracts.set(lockedAndCrewed.id, lockedAndCrewed)
+  };
+
+  const settled = settleContract(locked, {
+    commandId: 1,
+    contractId: lockedAndCrewed.id,
+    pay: false,
+    expectedStateVersion: locked.metadata.stateVersion
+  });
+
+  if (!settled.applied) {
+    throw new Error(
+      `campaignWithABrokenPromise: settleContract was refused (${String(settled.rejectionCode)}), ` +
+        'not the non-default state this fixture is supposed to build.'
+    );
+  }
+
+  return settled.state;
+}
+
 describe('snapshot codec', () => {
+  it('carries the offer, the treasury and a hero memory through a snapshot round trip', () => {
+    // `NEGOTIATION_SPEC` §2.3 (treasury), §2.2 (grievance, believesGuildPromises) and
+    // §2.1 (offer) all round-trip through the same `decodeSnapshot`/`encodeSnapshot`
+    // pair the other cases in this file exercise — this is the one case among them
+    // that starts from a state where all three have actually moved away from their
+    // defaults, so a decoder that silently reverted any of them to a hardcoded
+    // default would be caught here and nowhere else in this file.
+    const state = campaignWithABrokenPromise();
+
+    expect(state.treasury).not.toBe(400);
+    const [heroKey] = state.heroes.keys();
+    expect(state.heroes.get(heroKey!)!.grievance).toBeGreaterThan(0);
+    expect(state.heroes.get(heroKey!)!.believesGuildPromises).toBe(false);
+
+    const decoded = decodeSnapshot(JSON.parse(JSON.stringify(encodeSnapshot(state))));
+
+    expect(deepEqual(decoded, state)).toBe(true);
+  });
+
   it('переживает 64-битные значения, которых нет в корпусе', () => {
-    const base = createInitialState(content, 7n, 'm1-decision/1');
+    const base = createInitialState(content, 7n, 'm1-negotiation/1');
     // 2^64 − 1 и 2^64 − 2. Проекция артефакта детерминизма здесь теряет точность —
     // это закреплено её собственным тестом `canonical-json.test.ts`. Кодек
     // сохранения обязан вернуть ровно эти числа, поэтому 64-битные значения
@@ -36,7 +126,7 @@ describe('snapshot codec', () => {
   });
 
   it('отказывается читать карту, где ключ не равен id значения', () => {
-    const state = createInitialState(content, 7n, 'm1-decision/1');
+    const state = createInitialState(content, 7n, 'm1-negotiation/1');
     const encoded = encodeSnapshot(state) as { heroes: { key: number }[] };
     encoded.heroes[0]!.key = 999;
 
@@ -44,7 +134,7 @@ describe('snapshot codec', () => {
   });
 
   it('отказывается читать героя с числом черт больше предела', () => {
-    const state = createInitialState(content, 7n, 'm1-decision/1');
+    const state = createInitialState(content, 7n, 'm1-negotiation/1');
     const encoded = encodeSnapshot(state) as { heroes: { value: { traits: string[] } }[] };
     // MAX_TRAITS_PER_HERO = 4. Длинный список — путь, которым сумма склонностей
     // переполняет int32 и расходится с суммой факторов следа (§1.3 спеки).
@@ -60,7 +150,7 @@ describe('snapshot codec', () => {
     // всё равно производит событие и след, `engine.ts`) заполняет их и делает
     // `toEqual`/`deepEqual` первой проверкой, которую выброс поля целиком из
     // `encodeSnapshot`/схемы не может пройти молча.
-    const base = createInitialState(content, 7n, 'm1-decision/1');
+    const base = createInitialState(content, 7n, 'm1-negotiation/1');
     const [heroKey] = base.heroes.keys();
     const [contractKey] = base.contracts.keys();
     // `proposeContractToHero` (`DEC-008` Task 11) only lets the offer's key hero
@@ -94,7 +184,7 @@ describe('snapshot codec', () => {
   });
 
   it('отказывается читать снимок, чьи метаданные не проходят Zod', () => {
-    const state = createInitialState(content, 7n, 'm1-decision/1');
+    const state = createInitialState(content, 7n, 'm1-negotiation/1');
     const encoded = encodeSnapshot(state) as { metadata: Record<string, unknown> };
     encoded.metadata.logicalTime = 'nope';
 
@@ -102,7 +192,7 @@ describe('snapshot codec', () => {
   });
 
   it('отказывается читать имя героя вне artifact-safe алфавита', () => {
-    const state = createInitialState(content, 7n, 'm1-decision/1');
+    const state = createInitialState(content, 7n, 'm1-negotiation/1');
     const encoded = encodeSnapshot(state) as { heroes: { value: { displayNameKey: string } }[] };
     // Кириллица и `<>&` — ровно то множество, на котором C#-писатель и RFC 8785
     // расходятся (`artifact-domain.ts`); значение сюда не пришло бы через
@@ -116,7 +206,7 @@ describe('snapshot codec', () => {
     // 100 — PATRON_FEE_MAX/RISK_MAX, потолок MAX_FACTOR_MAGNITUDE. 101 — на единицу
     // больше того, что `decide()` может когда-либо записать в след (§1.3 спеки:
     // границы содержимого недостаточно, нужен ещё и потолок величины фактора).
-    const state = createInitialState(content, 7n, 'm1-decision/1');
+    const state = createInitialState(content, 7n, 'm1-negotiation/1');
     const encoded = encodeSnapshot(state) as {
       traces: { key: number; value: unknown }[];
     };
@@ -147,7 +237,7 @@ describe('snapshot codec', () => {
   });
 
   it('отказывается читать карту с двумя записями на один и тот же ключ', () => {
-    const state = createInitialState(content, 7n, 'm1-decision/1');
+    const state = createInitialState(content, 7n, 'm1-negotiation/1');
     const encoded = encodeSnapshot(state) as { heroes: { key: number; value: unknown }[] };
     // Оба совпадают со своим `id` по отдельности — проверка «ключ === id» из
     // шага 6 их пропускает. Дубликат ловит только `SortedMap.from`, и он не
@@ -176,7 +266,7 @@ describe('коды причин в следе замкнуты на словар
   /** A snapshot with one trace, built from `trace`. `createInitialState` produces none,
    * so this is the whole trace map. */
   function aSnapshotWithTrace(trace: Record<string, unknown>): unknown {
-    const state = createInitialState(content, 7n, 'm1-decision/1');
+    const state = createInitialState(content, 7n, 'm1-negotiation/1');
     const encoded = encodeSnapshot(state) as { traces: { key: number; value: unknown }[] };
     encoded.traces.push({ key: 0, value: { traceId: 0, ...trace } });
 

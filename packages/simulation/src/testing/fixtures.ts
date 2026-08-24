@@ -183,7 +183,7 @@ export function aState(overrides: Partial<GameState> = {}): GameState {
       // `SAVE_SCHEMA_VERSION` symbolically the way `initial-state.test.ts` does.
       // Kept in step with it by hand — currently 2 (`DEC-008` Task 6 fix round).
       saveSchemaVersion: 2,
-      rulesetVersion: 'm1-decision/1',
+      rulesetVersion: 'm1-negotiation/1',
       contentVersion: '5d03734fd9c7abaa',
       campaignSeed: 7n,
       stateVersion: 0,

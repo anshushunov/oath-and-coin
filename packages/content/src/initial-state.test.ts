@@ -27,7 +27,7 @@ const content = loadContentSet(join(repoRoot, 'content'));
  */
 
 describe('createInitialState', () => {
-  const state = createInitialState(content, 7n, 'm1-decision/1');
+  const state = createInitialState(content, 7n, 'm1-negotiation/1');
 
   it('assigns hero ids in content-id order, which is what the corpus recorded', () => {
     // Filesystem order is not a property of the content: it varies by platform, by
@@ -48,7 +48,7 @@ describe('createInitialState', () => {
   it('carries the reproducibility tuple into metadata', () => {
     expect(state.metadata).toEqual({
       saveSchemaVersion: SAVE_SCHEMA_VERSION,
-      rulesetVersion: 'm1-decision/1',
+      rulesetVersion: 'm1-negotiation/1',
       contentVersion: '08975dbb0d527f6e',
       campaignSeed: 7n,
       stateVersion: 0,
@@ -63,7 +63,7 @@ describe('createInitialState', () => {
     // The mutant that made this test necessary lives in the corpus's own history: with
     // one seed frozen, `createInitialState(seed, …)` → `createInitialState(7UL, …)` left
     // every oracle test green — a port ignoring the seed entirely matched perfectly.
-    expect(createInitialState(content, 424242n, 'm1-decision/1').metadata.campaignSeed).toBe(
+    expect(createInitialState(content, 424242n, 'm1-negotiation/1').metadata.campaignSeed).toBe(
       424242n
     );
   });
@@ -133,22 +133,22 @@ describe('createInitialState', () => {
   it.each([-1n, -7n, 2n ** 64n, 2n ** 70n])('refuses the seed %s', (seed) => {
     // The floor `bigint` lost when it replaced `ulong`. The RNG masks whatever it is
     // given back to 64 bits, so a negative seed silently aliases a valid unsigned one.
-    expect(() => createInitialState(content, seed, 'm1-decision/1')).toThrow(
+    expect(() => createInitialState(content, seed, 'm1-negotiation/1')).toThrow(
       /outside the 64-bit unsigned range/
     );
   });
 
   it('accepts both ends of the seed range', () => {
-    expect(createInitialState(content, 0n, 'm1-decision/1').metadata.campaignSeed).toBe(0n);
+    expect(createInitialState(content, 0n, 'm1-negotiation/1').metadata.campaignSeed).toBe(0n);
     expect(
-      createInitialState(content, 2n ** 64n - 1n, 'm1-decision/1').metadata.campaignSeed
+      createInitialState(content, 2n ** 64n - 1n, 'm1-negotiation/1').metadata.campaignSeed
     ).toBe(2n ** 64n - 1n);
   });
 
   it('hands back a tree nothing can edit afterwards', () => {
     // Persistence used to exist only in the types: `readonly` is erased, so a caller
     // holding a reference could rewrite state behind every check that had passed.
-    const built = createInitialState(content, 7n, 'm1-decision/1');
+    const built = createInitialState(content, 7n, 'm1-negotiation/1');
 
     expect(Object.isFrozen(built)).toBe(true);
     expect(Object.isFrozen(built.metadata)).toBe(true);
@@ -175,6 +175,6 @@ describe('createInitialState', () => {
       throw new Error(sentinel);
     });
 
-    expect(() => createInitialState(content, 7n, 'm1-decision/1')).toThrow(sentinel);
+    expect(() => createInitialState(content, 7n, 'm1-negotiation/1')).toThrow(sentinel);
   });
 });

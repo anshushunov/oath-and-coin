@@ -11,6 +11,7 @@ import type { ComposeOffer } from './commands/compose-offer.ts';
 import type { LockOffer } from './commands/lock-offer.ts';
 import type { PollCrew } from './commands/poll-crew.ts';
 import type { ProposeContractToHero } from './commands/propose-contract-to-hero.ts';
+import type { SettleContract } from './commands/settle-contract.ts';
 import { Actions } from './decisions/actions.ts';
 import type { DecisionResult } from './decisions/causal-trace.ts';
 import { decide, type HeroDecision } from './decisions/contract-decision-rule.ts';
@@ -19,6 +20,7 @@ import type { DomainEvent } from './events/domain-event.ts';
 import { compareContentIds, type ContentId } from './ids/content-id.ts';
 import { compareHeroIds, type HeroId } from './ids/hero-id.ts';
 import { canCover } from './negotiation/commitments.ts';
+import { GRIEVANCE_MAX, grievanceForBrokenPromise } from './negotiation/grievance.ts';
 import type { ContractState } from './state/contract-state.ts';
 import { ContractStatus } from './state/contract-state.ts';
 import { heroOf, withEvent, type GameState } from './state/game-state.ts';
@@ -662,4 +664,182 @@ export function pollCrew(state: GameState, command: PollCrew): CommandResult {
   };
 
   return fromDecisions(currentState, events, decisions);
+}
+
+/**
+ * Every accepted hero's `HeroState`, updated for a promise the guild just broke
+ * (`NEGOTIATION_SPEC` §3.3): the key hero — the one the promise was made to —
+ * stops believing the guild's word and carries the larger share of the grievance;
+ * every other accepted hero carries a witness's smaller share. Factored out of
+ * `settleContract` itself so that function's own body reads as the money movement
+ * it mostly is, with the one branch that touches heroes at all named for what it
+ * does.
+ *
+ * `contract.offer.keyHero` is read as non-null without a fallback: `promisedBonus
+ * > 0 ⇒ keyHero ≠ null` is enforced by `createContractState` on every
+ * `ContractState` this package can build in memory (`NEGOTIATION_SPEC` §2.1), and
+ * `settleContract` only calls this when `offer.promisedBonus > 0` — so a `null`
+ * here would mean that invariant had already broken upstream of this call, which
+ * this function reports loudly rather than silently crediting the bonus to nobody.
+ */
+function applyBrokenPromise(
+  state: GameState,
+  contract: ContractState
+): SortedMap<HeroId, HeroState> {
+  const { offer } = contract;
+  const keyHeroId = offer.keyHero;
+
+  if (keyHeroId === null) {
+    throw new Error(
+      `Contract '${contract.id}' promises a bonus of ${String(offer.promisedBonus)} but names no ` +
+        'keyHero; createContractState (NEGOTIATION_SPEC §2.1) requires promisedBonus > 0 to imply ' +
+        'keyHero !== null on every ContractState this package can build, so this state should have ' +
+        'been unreachable.'
+    );
+  }
+
+  const { victim: victimGrievance, witness: witnessGrievance } = grievanceForBrokenPromise(
+    offer.promisedBonus,
+    contract.patronFee
+  );
+
+  const victim = heroOf(state, keyHeroId);
+  let heroes = state.heroes.set(victim.id, {
+    ...victim,
+    believesGuildPromises: false,
+    grievance: Math.min(victim.grievance + victimGrievance, GRIEVANCE_MAX)
+  });
+
+  // Every hero who accepted this offer, except the victim, is a witness
+  // (`NEGOTIATION_SPEC` §3.3: "Свидетель определяется по acceptedBy на момент
+  // расчёта: он был в отряде, когда гильдия не заплатила"). Read off the *original*
+  // `state.heroes`, not the map this loop is building, so a witness read after the
+  // victim's own update is unaffected by it — the two updates are independent, and
+  // reading through `heroes` here would only matter if a hero could be both, which
+  // `acceptedBy` being a `SortedSet` (no duplicate ids) already rules out.
+  for (const heroId of offer.acceptedBy.values()) {
+    if (heroId === keyHeroId) {
+      continue;
+    }
+
+    const witness = heroOf(state, heroId);
+    heroes = heroes.set(witness.id, {
+      ...witness,
+      grievance: Math.min(witness.grievance + witnessGrievance, GRIEVANCE_MAX)
+    });
+  }
+
+  return heroes;
+}
+
+/**
+ * Settles a contract's locked, crewed package (`NEGOTIATION_SPEC` §3.1, §3.3,
+ * §6.1) — the point every negotiation this build can carry out ends at: money
+ * moves exactly once, here, out of the campaign treasury, and a broken promise
+ * costs what it was worth.
+ *
+ * Checks run in §6.1's order: the three general checks, then this command's own
+ * phase and status preconditions. `AlreadySettled` is checked *before*
+ * `CrewNotFilled` — a settled offer's `phase` is `settled`, which also fails the
+ * `phase !== 'locked'` half of the `CrewNotFilled` test below, so without this
+ * ordering a second `settleContract` against an already-settled contract would
+ * answer with the wrong one of the two codes this command owns.
+ *
+ * **The formula (`NEGOTIATION_SPEC` §3.3):**
+ *
+ * ```text
+ * treasury += patronFee − advance × acceptedBy.size − (pay ? promisedBonus : 0)
+ * ```
+ *
+ * `acceptedBy.size`, not `requiredCrew` — the two are equal here by construction
+ * (`ContractStatus.Crewed ⇔ acceptedBy.size = requiredCrew`, `NEGOTIATION_SPEC`
+ * §2.1, enforced by `createContractState`), but the formula pays the heroes who
+ * actually joined the crew, which is what `acceptedBy` names.
+ *
+ * A bonus is paid only when the offer actually promised one *and* the player
+ * chose to pay it — `offer.promisedBonus === 0` settles as `contract_settled`
+ * regardless of `pay` (`NEGOTIATION_SPEC` §6: "Расчёт без обещания — законен;
+ * `pay` игнорируется, обид не возникает"), and no hero's `grievance` or
+ * `believesGuildPromises` moves. A kept promise (`promisedBonus > 0`, `pay =
+ * true`) settles as `contract_settled_promise_kept` and, likewise, touches no
+ * hero — the guild kept its word, so there is nothing for §3.3's grievance
+ * arithmetic to do. Only a broken promise (`promisedBonus > 0`, `pay = false`)
+ * settles as `contract_settled_promise_broken` and runs
+ * {@link applyBrokenPromise}.
+ */
+export function settleContract(state: GameState, command: SettleContract): CommandResult {
+  if (command.expectedStateVersion !== state.metadata.stateVersion) {
+    return rejected(state, RejectionCodes.StaleState);
+  }
+
+  if (state.appliedCommandIds.has(command.commandId)) {
+    return rejected(state, RejectionCodes.DuplicateCommand);
+  }
+
+  const contract = state.contracts.get(command.contractId);
+  if (contract === undefined) {
+    return rejected(state, RejectionCodes.UnknownContract);
+  }
+
+  if (contract.offer.phase === OfferPhase.Settled) {
+    return rejected(state, RejectionCodes.AlreadySettled);
+  }
+
+  // §3.1's table: `settleContract` is legal only against a `locked` package whose
+  // contract has filled its crew. Covers both unready shapes at once — a package
+  // still `draft` (never locked, or a single-seat contract the key hero already
+  // filled but `lockOffer` has not yet frozen, `NEGOTIATION_SPEC` §6) and a
+  // `locked` package `pollCrew` has not yet filled — because `settleContract`
+  // owns no third code to tell them apart.
+  if (contract.offer.phase !== OfferPhase.Locked || contract.status !== ContractStatus.Crewed) {
+    return rejected(state, RejectionCodes.CrewNotFilled);
+  }
+
+  const { offer } = contract;
+  const promised = offer.promisedBonus > 0;
+  const paysBonus = promised && command.pay;
+
+  const nextTreasury =
+    state.treasury +
+    contract.patronFee -
+    offer.advance * offer.acceptedBy.size -
+    (paysBonus ? offer.promisedBonus : 0);
+
+  const heroes = promised && !command.pay ? applyBrokenPromise(state, contract) : state.heroes;
+
+  const settledContract = createContractState({
+    ...contract,
+    offer: { ...offer, phase: OfferPhase.Settled }
+  });
+
+  const domainEvent: DomainEvent = {
+    kind: !promised
+      ? 'contract_settled'
+      : command.pay
+        ? 'contract_settled_promise_kept'
+        : 'contract_settled_promise_broken',
+    eventId: state.metadata.nextEventId,
+    logicalTime: state.metadata.logicalTime,
+    causalTraceId: null,
+    contractId: command.contractId
+  };
+
+  // No decision, no trace, no randomness spent — settling is the player's own act
+  // (`NEGOTIATION_SPEC` §3.3), the same reason `composeOffer` and `lockOffer`
+  // spend none: whatever a hero decided about this offer is already recorded, on
+  // the acceptance that put them in `acceptedBy`.
+  const nextState = withEvent(
+    {
+      ...state,
+      heroes,
+      treasury: nextTreasury,
+      contracts: state.contracts.set(settledContract.id, settledContract),
+      appliedCommandIds: state.appliedCommandIds.add(command.commandId)
+    },
+    domainEvent,
+    null,
+    0n
+  );
+
+  return fromEvent(nextState, domainEvent);
 }

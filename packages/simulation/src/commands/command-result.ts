@@ -92,7 +92,25 @@ export const RejectionCodes = Object.freeze({
    * one a legal, applied command that appended zero events and grew
    * `appliedCommandIds` without bound.
    */
-  NobodyLeftToPoll: 'rejected.nobody_left_to_poll'
+  NobodyLeftToPoll: 'rejected.nobody_left_to_poll',
+  /**
+   * `settleContract` only settles a package that is `locked` **and** whose contract
+   * is `crewed` (`NEGOTIATION_SPEC` §3.1's table) — every other reachable shape,
+   * from an untouched `draft` through a `locked` package still waiting on
+   * `pollCrew`, answers here. Also covers the one case `NEGOTIATION_SPEC` §6 names
+   * without a code of its own: a single-seat contract the key hero has already
+   * filled in `draft`, before `lockOffer` (Task 12) ever ran — money has not moved
+   * and nothing has been committed, so "the crew is not (yet, lockedly) filled" is
+   * the accurate refusal, not a distinct one this table would otherwise need.
+   */
+  CrewNotFilled: 'rejected.crew_not_filled',
+  /**
+   * `settleContract` pays out exactly once per contract (`NEGOTIATION_SPEC` §2.3,
+   * §3.3): a settled offer's `phase` becomes `settled` and never moves again, so a
+   * second `settleContract` against the same contract is refused here rather than
+   * paying the patron fee, and any promised bonus, a second time.
+   */
+  AlreadySettled: 'rejected.already_settled'
 });
 
 export type RejectionCode = (typeof RejectionCodes)[keyof typeof RejectionCodes];
