@@ -172,6 +172,20 @@ export const FieldKeys = Object.freeze({
  */
 export const FIELD_KEYS: readonly string[] = Object.freeze(Object.values(FieldKeys));
 
+/**
+ * The two keys `promiseTerms` resolves to (`NEGOTIATION_SPEC` §5.1, §5.2): what counts
+ * as keeping the guild's word and what counts as breaking it. Interface text, not
+ * content's — the predicate belongs to the screen, not to any one contract — so both
+ * keys are fixed rather than built from a contract's own identifier the way
+ * {@link contractDisplayNameKey} is.
+ */
+export const PromiseTermsKeys = Object.freeze({
+  Fulfil: 'offer.promise.fulfil',
+  Breach: 'offer.promise.breach'
+});
+
+export const PROMISE_TERMS_KEYS: readonly string[] = Object.freeze(Object.values(PromiseTermsKeys));
+
 /** The save-slots screen's title. Its own key, not a second use of {@link TITLE_KEY}. */
 export const SAVES_TITLE_KEY = 'screen.saves.title';
 

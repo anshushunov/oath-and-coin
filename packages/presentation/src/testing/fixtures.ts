@@ -51,7 +51,9 @@ export const ids = {
   squeamish: parseContentId('core:fears_undeath'),
   refusesTemples: parseContentId('core:will_not_strike_a_temple'),
   merchants: parseContentId('patron:merchant_guild'),
-  undead: parseContentId('target:undead')
+  undead: parseContentId('target:undead'),
+  methodOpen: parseContentId('method:open'),
+  methodDeception: parseContentId('method:deception')
 } as const;
 
 export function aHero(overrides: Partial<HeroState> = {}): HeroState {

@@ -2,13 +2,17 @@ import { describe, expect, it } from 'vitest';
 
 import {
   Actions,
+  ContractStatus,
+  OfferPhase,
   ReasonCodes,
   SortedMap,
   SortedSet,
   compareContentIds,
   compareHeroIds,
   heroId,
+  parseContentId,
   type ContentId,
+  type GameState,
   type HeroId,
   type HeroState
 } from '@oath-and-coin/simulation';
@@ -803,7 +807,185 @@ describe('the read-model hash', () => {
       error_code: null,
       contract: null,
       roster: [],
-      responses: []
+      responses: [],
+      treasury: 0,
+      offer: null,
+      treasury_forecast: 0,
+      promise_terms: null,
+      settlement: null
     });
+  });
+});
+
+describe('what the screen shows about the negotiation itself', () => {
+  /** A draft package promising the key hero a bonus, before anything is signed. */
+  function draftWithAPromise(): GameState {
+    const hero = aHero({
+      id: heroId(0),
+      definition: ids.bram,
+      displayNameKey: 'hero.core.bram.name'
+    });
+    const contract = aContract({
+      patronFee: 100,
+      negotiableTags: SortedSet.from(compareContentIds, [ids.methodDeception, ids.methodOpen]),
+      offer: anOffer({
+        keyHero: heroId(0),
+        methodTag: ids.methodOpen,
+        promisedBonus: 25
+      })
+    });
+
+    return withContracts(withHeroes(aState(), [hero]), [contract]);
+  }
+
+  /**
+   * The same contract, hero and negotiable tags as {@link draftWithAPromise} — byte for
+   * byte, down to `patronFee` — with nothing promised and no method chosen.
+   * `readModelHash`'s own test needs the two fixtures to disagree about *only* the
+   * offer: a stray difference anywhere else (a different `patronFee`, say) would let
+   * that test pass for the wrong reason, agreeing with a `describeReadModel` that
+   * dropped the new fields entirely as readily as with a correct one.
+   */
+  function draftWithoutAPromise(): GameState {
+    const hero = aHero({
+      id: heroId(0),
+      definition: ids.bram,
+      displayNameKey: 'hero.core.bram.name'
+    });
+    const contract = aContract({
+      patronFee: 100,
+      negotiableTags: SortedSet.from(compareContentIds, [ids.methodDeception, ids.methodOpen]),
+      offer: anOffer()
+    });
+
+    return withContracts(withHeroes(aState(), [hero]), [contract]);
+  }
+
+  /**
+   * A `locked` package over a roster one hero larger than `crew`, so the extra hero has
+   * not answered yet and the screen reads `Incomplete` by construction — the shape
+   * `lockedCampaign()`'s own test needs, without that test having to state it. The first
+   * `crew` heroes both answered and accepted, so `crew` also doubles as `acceptedBy.size`
+   * for the test that reads the treasury forecast off it.
+   */
+  function lockedCampaign(
+    overrides: {
+      readonly treasury?: number;
+      readonly patronFee?: number;
+      readonly advance?: number;
+      readonly crew?: number;
+      readonly promisedBonus?: number;
+    } = {}
+  ): GameState {
+    const { treasury = 400, patronFee = 60, advance = 0, crew = 2, promisedBonus = 0 } = overrides;
+
+    const roster = Array.from({ length: crew + 1 }, (_unused, index) =>
+      aHero({
+        id: heroId(index),
+        definition: parseContentId(`core:hero${String(index)}`),
+        displayNameKey: `hero.core.hero${String(index)}.name`
+      })
+    );
+    const acceptedBy = SortedSet.from(
+      compareHeroIds,
+      roster.slice(0, crew).map((hero) => hero.id)
+    );
+
+    const contract = aContract({
+      patronFee,
+      requiredCrew: crew,
+      offer: anOffer({
+        phase: OfferPhase.Locked,
+        keyHero: roster[0]!.id,
+        advance,
+        promisedBonus,
+        respondedBy: acceptedBy,
+        acceptedBy
+      })
+    });
+
+    return withContracts(withHeroes(aState({ treasury }), roster), [contract]);
+  }
+
+  /** `locked`, one seat still open — `NEGOTIATION_SPEC` §3.2's "отряд не набран" branch. */
+  function lockedButUncrewed(): GameState {
+    const roster = heroes(ids.bram, ids.doran);
+    const contract = aContract({
+      requiredCrew: 2,
+      status: ContractStatus.Offered,
+      offer: anOffer({
+        phase: OfferPhase.Locked,
+        keyHero: heroId(0),
+        respondedBy: responded(0),
+        acceptedBy: responded(0)
+      })
+    });
+
+    return withContracts(withHeroes(aState(), roster), [contract]);
+  }
+
+  /** `locked`, every seat filled — the phase/status pair `settleContract` waits on. */
+  function crewedCampaign(): GameState {
+    const roster = heroes(ids.bram, ids.doran);
+    const contract = aContract({
+      requiredCrew: 2,
+      status: ContractStatus.Crewed,
+      offer: anOffer({
+        phase: OfferPhase.Locked,
+        keyHero: heroId(0),
+        respondedBy: responded(0, 1),
+        acceptedBy: responded(0, 1)
+      })
+    });
+
+    return withContracts(withHeroes(aState(), roster), [contract]);
+  }
+
+  it('shows what fulfilment and breach will mean, before anything is signed', () => {
+    const model = contractOfferScreenModel(draftWithAPromise(), []);
+
+    expect(model.promiseTerms).toEqual({
+      fulfilKey: 'offer.promise.fulfil',
+      breachKey: 'offer.promise.breach',
+      bonus: 25
+    });
+  });
+
+  it('shows no promise terms when nothing was promised', () => {
+    expect(contractOfferScreenModel(draftWithoutAPromise(), []).promiseTerms).toBeNull();
+  });
+
+  it('forecasts the treasury as keeping the word would leave it', () => {
+    const model = contractOfferScreenModel(
+      lockedCampaign({ treasury: 400, patronFee: 60, advance: 10, crew: 3, promisedBonus: 20 }),
+      []
+    );
+
+    expect(model.treasuryForecast).toBe(400 + 60 - 30 - 20);
+  });
+
+  it('keeps the phase out of the five screen states', () => {
+    const model = contractOfferScreenModel(lockedCampaign(), []);
+
+    expect(model.state).toBe(ScreenState.Incomplete);
+    expect(model.offer?.phase).toBe(OfferPhase.Locked);
+  });
+
+  it('names both alternatives of a negotiable tag, not only the chosen one', () => {
+    expect(contractOfferScreenModel(draftWithAPromise(), []).offer?.methodOptionKeys).toEqual([
+      'tag.method.open',
+      'tag.method.deception'
+    ]);
+  });
+
+  it('shows the settlement only once the crew is filled', () => {
+    expect(contractOfferScreenModel(lockedButUncrewed(), []).settlement).toBeNull();
+    expect(contractOfferScreenModel(crewedCampaign(), []).settlement).not.toBeNull();
+  });
+
+  it('changes the read model hash when the offer changes and not when a translation does', () => {
+    expect(readModelHash(contractOfferScreenModel(draftWithAPromise(), []))).not.toBe(
+      readModelHash(contractOfferScreenModel(draftWithoutAPromise(), []))
+    );
   });
 });

@@ -29,6 +29,8 @@ export {
   ACTION_KEYS,
   FIELD_KEYS,
   FieldKeys,
+  PROMISE_TERMS_KEYS,
+  PromiseTermsKeys,
   REASON_DIRECTION_KEYS,
   SAVES_TITLE_KEY,
   SAVE_FIELD_KEYS,
@@ -66,8 +68,11 @@ export {
   type DecidedOutcome,
   type DecidedStep,
   type HeroCard,
+  type OfferLine,
+  type PromiseTermsLine,
   type ReasonLine,
-  type ResponseLine
+  type ResponseLine,
+  type SettlementLine
 } from './contract-offer-screen-model.ts';
 
 export {

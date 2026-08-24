@@ -109,7 +109,23 @@ function aModel(rosterDefinitions: readonly string[], responders: readonly strin
     roster: rosterDefinitions.map(aHeroCard),
     responses: responders.map(aResponse),
     errorCode: null,
-    errorDetail: null
+    errorDetail: null,
+    // The negotiation fields (`DEC-008` Task 15) are not this file's question — the
+    // scene reads only `contract` and `roster` (`describeScene`'s own rule) — so a
+    // minimal, legal offer is enough to keep the model itself valid.
+    treasury: 400,
+    offer: {
+      version: 1,
+      phase: 'draft',
+      advance: 0,
+      methodTagKey: null,
+      methodOptionKeys: [],
+      promisedBonus: 0,
+      keyHeroDefinition: null
+    },
+    treasuryForecast: 400,
+    promiseTerms: null,
+    settlement: null
   });
 }
 

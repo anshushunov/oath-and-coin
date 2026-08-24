@@ -1,10 +1,12 @@
+import { OfferPhase } from '@oath-and-coin/simulation';
 import { describe, expect, it } from 'vitest';
 
 import {
   createContractOfferScreenModel,
   type ContractLine,
   type ContractOfferScreenModel,
-  type HeroCard
+  type HeroCard,
+  type OfferLine
 } from './contract-offer-screen-model.ts';
 import { QualitativeGrade } from './qualitative-scale.ts';
 import { ScreenState } from './screen-state.ts';
@@ -30,6 +32,19 @@ const aHeroCard: HeroCard = {
   inclinationKeys: []
 };
 
+/** A minimal, legal `OfferLine` — no promise, no method chosen, no key hero yet. */
+function anOfferLine(): OfferLine {
+  return {
+    version: 1,
+    phase: OfferPhase.Draft,
+    advance: 0,
+    methodTagKey: null,
+    methodOptionKeys: [],
+    promisedBonus: 0,
+    keyHeroDefinition: null
+  };
+}
+
 function aModel(overrides: Partial<ContractOfferScreenModel> = {}): ContractOfferScreenModel {
   return {
     state: ScreenState.Normal,
@@ -39,8 +54,20 @@ function aModel(overrides: Partial<ContractOfferScreenModel> = {}): ContractOffe
     responses: [],
     errorCode: null,
     errorDetail: null,
+    treasury: 400,
+    offer: anOfferLine(),
+    treasuryForecast: 400,
+    promiseTerms: null,
+    settlement: null,
     ...overrides
   };
+}
+
+/** A model with nothing to offer — the shape {@link anOfferLine} must never ride along on. */
+function anEmptyModel(): ContractOfferScreenModel {
+  return createContractOfferScreenModel(
+    aModel({ state: ScreenState.Empty, contract: null, roster: [], offer: null })
+  );
 }
 
 describe('the combinations a screen model refuses', () => {
@@ -51,12 +78,12 @@ describe('the combinations a screen model refuses', () => {
     ).not.toThrow();
     expect(() =>
       createContractOfferScreenModel(
-        aModel({ state: ScreenState.Loading, contract: null, roster: [] })
+        aModel({ state: ScreenState.Loading, contract: null, roster: [], offer: null })
       )
     ).not.toThrow();
     expect(() =>
       createContractOfferScreenModel(
-        aModel({ state: ScreenState.Empty, contract: null, roster: [] })
+        aModel({ state: ScreenState.Empty, contract: null, roster: [], offer: null })
       )
     ).not.toThrow();
     expect(() =>
@@ -65,6 +92,7 @@ describe('the combinations a screen model refuses', () => {
           state: ScreenState.Error,
           contract: null,
           roster: [],
+          offer: null,
           errorCode: 'CONTENT_ROOT_NOT_FOUND',
           errorDetail: 'no such directory'
         })
@@ -140,5 +168,14 @@ describe('the combinations a screen model refuses', () => {
     expect(() => createContractOfferScreenModel(aModel({ state: 'Blank' as never }))).toThrow(
       /Unknown screen state/u
     );
+  });
+
+  it('refuses a model that carries an offer with no contract', () => {
+    // The same failure shape `requireNoContractContent` already refused for a roster
+    // riding along on an Empty screen (above) — an offer from some earlier contract is
+    // exactly the same kind of leftover.
+    expect(() =>
+      createContractOfferScreenModel({ ...anEmptyModel(), offer: anOfferLine() })
+    ).toThrow(/offer/u);
   });
 });

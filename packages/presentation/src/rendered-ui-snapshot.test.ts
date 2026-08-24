@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ReasonCodes } from '@oath-and-coin/simulation';
+import { OfferPhase, ReasonCodes } from '@oath-and-coin/simulation';
 
 import {
   createContractOfferScreenModel,
@@ -144,7 +144,24 @@ const aFullModel = createContractOfferScreenModel({
     }
   ],
   errorCode: null,
-  errorDetail: null
+  errorDetail: null,
+  // The negotiation fields (`DEC-008` Task 15) are not part of this file's own
+  // question — nothing here walks or resolves them yet, that is Tasks 16-17's — so a
+  // minimal, legal offer exercises no branch of the projection this file did not
+  // already exercise before those fields existed.
+  treasury: 400,
+  offer: {
+    version: 1,
+    phase: OfferPhase.Draft,
+    advance: 0,
+    methodTagKey: null,
+    methodOptionKeys: [],
+    promisedBonus: 0,
+    keyHeroDefinition: null
+  },
+  treasuryForecast: 400,
+  promiseTerms: null,
+  settlement: null
 });
 
 describe('the texts a correctly bound screen produces', () => {
@@ -165,7 +182,12 @@ describe('the texts a correctly bound screen produces', () => {
       roster: [],
       responses: [],
       errorCode: null,
-      errorDetail: null
+      errorDetail: null,
+      treasury: 0,
+      offer: null,
+      treasuryForecast: 0,
+      promiseTerms: null,
+      settlement: null
     });
 
     const loadingTexts = expectedSnapshot(LOADING_SCREEN, everyKeyOf(LOADING_SCREEN));
