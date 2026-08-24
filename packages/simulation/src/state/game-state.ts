@@ -103,12 +103,14 @@ export interface GameState {
   readonly history: readonly DomainEvent[];
   /**
    * The guild's money (`NEGOTIATION_SPEC` §2.3) — an integer, never negative.
-   * `STARTING_TREASURY` (`negotiation/commitments.ts`) at campaign start; no command
-   * moves it yet — `lockOffer` and `settleContract` are what will, and neither is wired
-   * to this field by this package today. The reserve a `locked` offer already holds
-   * against it is deliberately **not** a field here: `reservedCommitments`
-   * (`negotiation/commitments.ts`) derives it from `contracts` on every call, so it
-   * cannot become a second, driftable source of the same fact.
+   * `STARTING_TREASURY` (`negotiation/commitments.ts`) at campaign start.
+   * `settleContract` (Task 14, `engine.ts`) is the only command that moves it, paying
+   * the patron fee in and the advance (and, if kept, the promised bonus) out on every
+   * settlement — `lockOffer` never touches this field; it only checks the treasury can
+   * cover a commitment, through `reservedCommitments` below. The reserve a `locked`
+   * offer already holds against it is deliberately **not** a field here:
+   * `reservedCommitments` (`negotiation/commitments.ts`) derives it from `contracts` on
+   * every call, so it cannot become a second, driftable source of the same fact.
    */
   readonly treasury: number;
 }

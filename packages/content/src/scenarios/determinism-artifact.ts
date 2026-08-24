@@ -189,7 +189,7 @@ function describeDecision(decision: StepDecision): CanonicalValue {
   };
 }
 
-function describeState(state: GameState): CanonicalValue {
+export function describeState(state: GameState): CanonicalValue {
   return {
     metadata: {
       save_schema_version: state.metadata.saveSchemaVersion,
@@ -207,6 +207,16 @@ function describeState(state: GameState): CanonicalValue {
     traces: state.traces.values().map(describeTrace),
     history: state.history.map(describeEvent),
     applied_command_ids: state.appliedCommandIds.values(),
+
+    // The second field this projection left unwritten while a command already moved
+    // it: `settleContract` (Task 14) has paid the patron fee in and the advance out on
+    // every settlement since it shipped (`engine.ts`'s own `nextTreasury`), and nothing
+    // here described the number that changed. Found the same way `grievance` and
+    // `believesGuildPromises` were — external review of this task's own snapshots,
+    // after the fact, not by a mechanical guard (`scenarios/negotiation-scenarios.test.ts`'s
+    // `describeState covers every GameState key` test is the guard this omission is why
+    // it exists).
+    treasury: state.treasury,
 
     // The rulebook every decision is weighed against was the one part of state the
     // projection did not carry, so two states differing only in what a trait *means* —
@@ -228,7 +238,7 @@ function describeState(state: GameState): CanonicalValue {
  * `describeContract` is the nearest precedent for the shape — a campaign fact with no
  * home on `HeroState`'s authored siblings above, appended rather than interleaved.
  */
-function describeHero(hero: HeroState): CanonicalValue {
+export function describeHero(hero: HeroState): CanonicalValue {
   return {
     hero_id: hero.id,
     definition: hero.definition,
@@ -254,7 +264,7 @@ function describeHero(hero: HeroState): CanonicalValue {
  * this function describes. Nothing here catches that mechanically; this note is the
  * whole guard, which is the point being flagged, not a claim that it is enforced.
  */
-function describeContract(contract: ContractState): CanonicalValue {
+export function describeContract(contract: ContractState): CanonicalValue {
   return {
     id: contract.id,
     patron_fee: contract.patronFee,

@@ -161,11 +161,16 @@ describe('promise_broken', () => {
     expect(victim?.grievance).toBeGreaterThan(0);
 
     // Every other accepted hero witnessed it and carries a smaller grievance, but
-    // keeps believing the guild's word — the promise was not made to them.
-    for (const heroId of contract?.offer.acceptedBy.values() ?? []) {
-      if (heroId === keyHero) {
-        continue;
-      }
+    // keeps believing the guild's word — the promise was not made to them. The length
+    // check matters as much as the loop: without it, a regression that left only the
+    // key hero in `acceptedBy` would run this loop zero times and pass in silence —
+    // the same shape `witness_remembers`' own `toBeGreaterThan(1)` guards against.
+    const witnessIds = (contract?.offer.acceptedBy.values() ?? []).filter(
+      (heroId) => heroId !== keyHero
+    );
+    expect(witnessIds.length).toBeGreaterThan(0);
+
+    for (const heroId of witnessIds) {
       const witness = outcome.finalState.heroes.get(heroId);
       expect(witness?.believesGuildPromises, witness?.definition).toBe(true);
       expect(witness?.grievance, witness?.definition).toBeGreaterThan(0);

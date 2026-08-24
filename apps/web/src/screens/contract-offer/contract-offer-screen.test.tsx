@@ -67,12 +67,15 @@ const SCREEN_SCENARIOS = [
  *
  * **The `wavered` branch is `grey_zone_flip` again, restored rather than replaced.**
  * `DEC-008` Task 8 moved the decision rule's benefit term from `contract.patronFee`
- * onto `contract.offer.advance` (`NEGOTIATION_SPEC` §4) and removed this entry: no
- * shipped scenario could give an offer a nonzero advance without `composeOffer`, which
- * `DEC-008` Tasks 10-14 had not built yet. Task 20 is the first point a shipped
- * scenario can compose a real offer, so `grey_zone_flip`'s own commands were rewritten
- * (an offer on `core:escort_the_caravan`, `advance = 22`, no promise) to land a score
- * back inside the mood's grey band at the CLI's default seed — the same seed every
+ * onto `contract.offer.advance` (`NEGOTIATION_SPEC` §4) and removed this entry — not
+ * because no scenario could compose an offer (`grey_zone_flip` already did, `advance =
+ * 70` on `core:cleanse_the_crypt`, the full patron fee, the same number `patronFee`
+ * itself used to supply as the benefit term before Task 8), but because that particular
+ * number stopped landing inside the mood's grey band once it started being read as an
+ * `advance` rather than assumed as the full fee. Task 20's fix is a retune, not a new
+ * capability: `grey_zone_flip`'s own commands were rewritten to a different offer
+ * entirely (`core:escort_the_caravan`, `advance = 22`, no promise) whose pre-mood score
+ * lands back inside the grey band at the CLI's default seed — the same seed every
  * canonical snapshot is recorded at, so the branch and the snapshot agree on which run
  * they are both describing.
  */
