@@ -47,6 +47,10 @@ describe('exit codes are the interface', () => {
   it('answers 2 when run has no scenario', () => {
     expect(main(['run'])).toBe(2);
   });
+
+  it('answers 2 when contrast has no --contrast', () => {
+    expect(main(['contrast'])).toBe(2);
+  });
 });
 
 describe('the process exit code, driven as a process', () => {
@@ -129,5 +133,16 @@ describe('run', () => {
   it('reports the loading screen without running anything', () => {
     expect(main(['run', '--scenario', 'screen_loading', '--repo', repoRoot])).toBe(0);
     expect(output).toContain('before content is read');
+  });
+});
+
+describe('contrast', () => {
+  it('reports a shipped contrast that flips as it declares', () => {
+    expect(main(['contrast', '--contrast', 'payment_raised', '--repo', repoRoot])).toBe(0);
+    expect(output).toContain('flipped:  true');
+  });
+
+  it('answers 2 for a contrast name that names no file, the same as a malformed argument', () => {
+    expect(main(['contrast', '--contrast', 'no_such_contrast', '--repo', repoRoot])).toBe(2);
   });
 });

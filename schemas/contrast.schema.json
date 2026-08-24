@@ -55,18 +55,22 @@
         "input": {
           "type": "string",
           "enum": [
-            "contract.payment",
+            "contract.patron_fee",
             "contract.risk",
             "contract.tags",
-            "contract.accepted_by"
+            "offer.advance",
+            "offer.method_tag",
+            "offer.promised_bonus",
+            "hero.grievance",
+            "hero.believes_guild_promises"
           ],
-          "description": "The only conditions a player can perceive changing. Closed rather than open: any field ContractDefinition carries could technically be varied, but only these four are things a player at the table could have noticed."
+          "description": "The only conditions a player can perceive changing. Closed rather than open: any field ContractState/HeroState carries could technically be varied, but only these eight are things a player at the table could have noticed. Renamed from contract.payment (Task 3's rename of the field everywhere else) and widened by DEC-008's negotiation slice: a flat contract.payment became a composed offer.advance/offer.method_tag/offer.promised_bonus, and a hero's grievance and belief in the guild's word joined as inputs. contract.accepted_by — a pre-state difference in who has already accepted, not a content field — was dropped rather than renamed; the property it demonstrated is pinned at the unit level instead (contract-decision-rule.test.ts)."
         },
         "from": {
-          "description": "The value the first branch's contract carries for this input before the hero is asked. An integer for contract.payment/contract.risk, an array of content ids for contract.tags/contract.accepted_by."
+          "description": "The value the first branch carries for this input before the hero is asked. An integer for contract.patron_fee/contract.risk/offer.advance/offer.promised_bonus/hero.grievance, an array of content ids for contract.tags, a content id or null for offer.method_tag, a boolean for hero.believes_guild_promises."
         },
         "to": {
-          "description": "The value the second branch's contract carries for the same input. Must differ from 'from' — a contrast with nothing to compare proves nothing."
+          "description": "The value the second branch carries for the same input. Must differ from 'from' — a contrast with nothing to compare proves nothing."
         }
       }
     },

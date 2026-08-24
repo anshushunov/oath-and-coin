@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "contrast": "method_switched_to_deception",
+  "content_root": "scenarios/fixtures/negotiable_deception",
+  "seed": 6,
+  "hero": "fixture:mercenary_hero",
+  "contract": "fixture:negotiable_job",
+  "vary": { "input": "offer.method_tag", "from": "method:open", "to": "method:deception" },
+  "expect": "accept_to_decline"
+}

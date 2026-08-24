@@ -11,10 +11,11 @@ import { describe, expect, it } from 'vitest';
  * beside `scripts/check-schemas.mjs` broader than the mechanism under it: the
  * docblock says the hand-written schemas are the one statement of the content
  * rules not derived from the loader's own code, and the script reads four of the
- * six files in `schemas/`. `scenario-manifest.schema.json` and
- * `contrast.schema.json` are read by nothing at all since the .NET stack that
- * read them was deleted, and `scenarios/contrasts/*.json` lost its only consumer
- * with `ContrastRunner.cs`. Nothing reddened, because nothing was looking.
+ * six files in `schemas/`. `scenario-manifest.schema.json` is read by nothing at
+ * all since the .NET stack that read it was deleted, and — until DEC-008 Task
+ * 19 built one — the same was true of `contrast.schema.json` and
+ * `scenarios/contrasts/*.json`, whose only reader (`ContrastRunner.cs`) went
+ * with it. Nothing reddened, because nothing was looking.
  *
  * That is the same shape as `release-gate.test.ts` and `workspace.test.ts`: a
  * disappearance nothing reports. The cure is the same one — an accounting that
@@ -57,29 +58,19 @@ const SCHEMAS: Readonly<Record<string, Accounting>> = {
       'already does for the four above.'
   },
   'contrast.schema.json': {
-    orphaned:
-      'nothing reads it and nothing reads the data it describes — see CONTRAST_FIXTURES ' +
-      'below. It stops being an orphan when the contrast fixtures get a consumer, or when ' +
-      'both are deleted together.'
+    // DEC-008 Task 19 gave the fixtures this schema describes their first consumer:
+    // `loadContrastDefinition` (`packages/content/src/scenarios/contrast-definition.ts`)
+    // states the same rules in Zod, and `contrast-runner.ts` is what now reads
+    // `scenarios/contrasts/*.json` for real — `tools/scenario-runner/src/cli.ts`'s
+    // `contrast` subcommand and `contrast-runner.test.ts`'s
+    // `EveryShippedContrastFlipsAsDeclared`-equivalent both exercise it. Not held to the
+    // stricter bar `scenario-manifest.schema.json` above still fails — nothing here
+    // cross-checks this document's fields against the Zod contract the way
+    // `check-schemas.mjs` does for the four fully `checkedBy` schemas — because that bar
+    // was never this entry's stated exit condition; "the contrast fixtures get a
+    // consumer" was.
+    checkedBy: 'packages/content/src/scenarios/contrast-definition.ts'
   }
-};
-
-/**
- * The contrast fixtures: declared "flip" pairs, evidence for `DEC-010`, and read
- * by nobody since `ContrastRunner.cs` went.
- *
- * They are still **shipped**: `apps/web/src/content-source.ts` globs
- * `scenarios/**` minus `*.canonical.json`, so all four travel into the browser
- * bundle. That is the part worth a check rather than a comment — dead data that
- * costs bytes at a player is different from dead data that costs a directory
- * listing.
- */
-const CONTRAST_FIXTURES: Accounting = {
-  orphaned:
-    'the runner that executed them was C# and was deleted at cutover; they are design ' +
-    'evidence cited by DEC-010 and are still bundled into the browser build. Deleting ' +
-    'authored design data is the owner’s call, not a tidy-up, so they stay declared until ' +
-    'that call is made.'
 };
 
 function topLevelJson(directory: string): readonly string[] {
@@ -130,14 +121,5 @@ describe('every hand-written schema is accounted for', () => {
       checker,
       `${entry.checkedBy} does not name ${name} as a key, so the accounting claims a check that is not there`
     ).toContain(`'${name}'`);
-  });
-});
-
-describe('the contrast fixtures are declared rather than forgotten', () => {
-  it('are still on disk, and still read by nothing', () => {
-    const fixtures = topLevelJson(join('scenarios', 'contrasts'));
-
-    expect(fixtures.length, 'the contrast fixtures are gone; delete this block with them').toBe(4);
-    expect(CONTRAST_FIXTURES.orphaned).toBeDefined();
   });
 });

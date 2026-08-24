@@ -5,6 +5,6 @@
   "seed": 1,
   "hero": "core:kestrel",
   "contract": "core:escort_the_caravan",
-  "vary": { "input": "contract.payment", "from": 0, "to": 100 },
+  "vary": { "input": "contract.patron_fee", "from": 0, "to": 100 },
   "expect": "decline_to_accept"
 }

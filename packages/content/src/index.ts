@@ -114,6 +114,20 @@ export {
 export { commandsUpTo, resolveCheckpoint } from './scenarios/checkpoint-resolver.ts';
 export { resolveContentRoot } from './scenarios/content-root.ts';
 export {
+  ALLOWED_CONTRAST_INPUTS,
+  ContrastExpectation,
+  SUPPORTED_CONTRAST_SCHEMA_VERSION,
+  loadContrastDefinition,
+  type ContrastDefinition,
+  type ContrastInput,
+  type ContrastVary
+} from './scenarios/contrast-definition.ts';
+export {
+  runContrast,
+  type ContrastRun,
+  type ContrastSideResult
+} from './scenarios/contrast-runner.ts';
+export {
   RULESET_VERSION,
   applyScenarioCommands,
   runScenario,

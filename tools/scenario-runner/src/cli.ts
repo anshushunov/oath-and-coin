@@ -2,20 +2,33 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import process from 'node:process';
 
-import { artifactHash, toCanonicalJson } from '@oath-and-coin/content';
-import { loadAndRunScenario } from '@oath-and-coin/content/node';
+import {
+  artifactHash,
+  loadContrastDefinition,
+  runContrast,
+  toCanonicalJson
+} from '@oath-and-coin/content';
+import { loadAndRunScenario, loadContentSet, nodeFileSource } from '@oath-and-coin/content/node';
 
 /**
- * Headless scenario execution.
+ * Headless scenario and contrast execution.
  *
  *   node tools/scenario-runner/src/cli.ts run --scenario gate0 [--checkpoint NAME]
  *                                            [--seed N] [--content DIR] [--output FILE]
+ *   node tools/scenario-runner/src/cli.ts contrast --contrast payment_raised
+ *                                                  [--contrasts DIR] [--repo DIR]
  *
  * A plain `node` invocation over `.ts` sources, not a test pretending to be a script and
  * not a build step. `FULL_TYPESCRIPT_MIGRATION` §8.3 records why that works and what it
  * costs: Node executes TypeScript by stripping types, so imports must name the `.ts`
  * extension and no construct with a runtime effect may appear — which is what
  * `erasableSyntaxOnly` in the base tsconfig enforces for the whole workspace.
+ *
+ * `contrast` is `DEC-008` Task 19's own subcommand: `scenarios/contrasts/*.json` had no
+ * reader from cutover until this task built one (`tests/architecture/orphaned-data.test.ts`),
+ * and a contrast run headlessly through this CLI is what lets a pipeline — not only
+ * `contrast-runner.test.ts`'s own sweep of the shipped set — ask "does this one still flip
+ * as declared" of a single named contrast.
  *
  * Exit codes are the interface a pipeline reads: 0 the run completed, 2 the command line
  * itself was wrong. `parity` — replaying the frozen corpus byte for byte — lived here
@@ -26,15 +39,17 @@ import { loadAndRunScenario } from '@oath-and-coin/content/node';
 const USAGE = [
   'usage:',
   '  scenario-runner run --scenario <id> [--checkpoint <name>] [--seed <n>]',
-  '                      [--scenarios <dir>] [--content <dir>] [--output <file>]'
+  '                      [--scenarios <dir>] [--content <dir>] [--output <file>]',
+  '  scenario-runner contrast --contrast <name> [--contrasts <dir>] [--repo <dir>]'
 ].join('\n');
 
 const EXIT_OK = 0;
 const EXIT_USAGE = 2;
 
-/** Every option `run` accepts. An unknown one is a usage error, not a no-op. */
+/** Every option each command accepts. An unknown one is a usage error, not a no-op. */
 const KNOWN_OPTIONS: Readonly<Record<string, readonly string[]>> = Object.freeze({
-  run: ['--scenario', '--checkpoint', '--seed', '--scenarios', '--content', '--repo', '--output']
+  run: ['--scenario', '--checkpoint', '--seed', '--scenarios', '--content', '--repo', '--output'],
+  contrast: ['--contrast', '--contrasts', '--repo']
 });
 
 /**
@@ -56,7 +71,7 @@ export function main(argv: readonly string[]): number {
   // it is `string | undefined` and no `default` can ever be dropped from it. A `switch`
   // here would have to carry a `case undefined` that exists only to satisfy a rule
   // whose whole point is elsewhere.
-  if (command !== 'run') {
+  if (command !== 'run' && command !== 'contrast') {
     console.error(command === undefined ? USAGE : `Unknown command '${command}'.\n${USAGE}`);
     return EXIT_USAGE;
   }
@@ -70,7 +85,7 @@ export function main(argv: readonly string[]): number {
   }
 
   try {
-    return runCommand(options);
+    return command === 'run' ? runCommand(options) : contrastCommand(options);
   } catch (cause) {
     // A malformed argument value — a `--seed` that is not a number — reaches this. It is
     // still the command line being wrong, so it is still 2. A genuine defect in the run
@@ -130,6 +145,47 @@ function runCommand(options: Options): number {
       return EXIT_OK;
     }
   }
+}
+
+/**
+ * Runs one named contrast headlessly: loads it, loads the content it names its own
+ * `content_root` — never the production tree by default, the same lesson `run`'s own
+ * `contentOverride` handling above already had to learn — and reports both sides' answers
+ * against what the contrast declared.
+ *
+ * Always exits 0 once the contrast itself ran, printing `flipped: true`/`false` — the same
+ * "0 means the run completed, the printed data is the result" contract `run`'s own
+ * `screen_error` case follows, rather than folding a data outcome into the usage-error code.
+ */
+function contrastCommand(options: Options): number {
+  const contrastName = options.get('--contrast');
+  if (contrastName === undefined) {
+    console.error(`contrast needs --contrast.\n${USAGE}`);
+    return EXIT_USAGE;
+  }
+
+  const repositoryRoot = resolve(options.get('--repo') ?? '.');
+  const contrastsRoot = resolve(
+    options.get('--contrasts') ?? join(repositoryRoot, 'scenarios', 'contrasts')
+  );
+
+  const definition = loadContrastDefinition(nodeFileSource(contrastsRoot), `${contrastName}.json`);
+  const content = loadContentSet(resolve(repositoryRoot, definition.contentRoot));
+  const run = runContrast(definition, content);
+
+  console.log(`contrast: ${definition.contrast}`);
+  console.log(`hero:     ${definition.hero}`);
+  console.log(`contract: ${definition.contract}`);
+  console.log(
+    `vary:     ${definition.vary.input} ${JSON.stringify(definition.vary.from)} -> ` +
+      `${JSON.stringify(definition.vary.to)}`
+  );
+  console.log(`left:     ${run.left.action}`);
+  console.log(`right:    ${run.right.action}`);
+  console.log(`expect:   ${definition.expect}`);
+  console.log(`flipped:  ${String(run.flipped)}`);
+
+  return EXIT_OK;
 }
 
 interface Options {

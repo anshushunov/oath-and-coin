@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "contrast": "advance_raised",
+  "content_root": "content",
+  "seed": 5,
+  "hero": "core:bram",
+  "contract": "core:collect_the_debt",
+  "vary": { "input": "offer.advance", "from": 0, "to": 30 },
+  "expect": "decline_to_accept"
+}
