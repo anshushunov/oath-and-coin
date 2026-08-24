@@ -2,16 +2,26 @@ import { Sha256, utf8Bytes } from '@oath-and-coin/simulation';
 
 import {
   FieldKeys,
+  OfferFieldKeys,
+  SettlementActionKeys,
+  SettlementFieldKeys,
+  TreasuryFieldKeys,
   actionKey,
   errorKey,
+  offerPhaseKey,
   reasonDirectionKey,
   screenStateKey,
   waveredKey
 } from './keys.ts';
 import {
   createContractOfferScreenModel,
-  type ContractOfferScreenModel
+  type ContractOfferScreenModel,
+  type HeroCard,
+  type OfferLine,
+  type PromiseTermsLine,
+  type SettlementLine
 } from './contract-offer-screen-model.ts';
+import { ScreenState } from './screen-state.ts';
 import { qualitativeKey } from './qualitative-scale.ts';
 
 /**
@@ -151,7 +161,163 @@ export function expectedSnapshot(
     resolve(waveredKey(response.wavered));
   }
 
+  const heroDisplayNameKeyOf = displayNameKeyResolver(model.roster);
+
+  if (model.offer !== null) {
+    resolveOffer(model.offer, resolve, texts, heroDisplayNameKeyOf);
+  }
+
+  // Not gated on `contract !== null`: `NEGOTIATION_SPEC` §5.1 treats the treasury as a
+  // campaign-wide fact, one `GDD` §16.3 already keeps a plain number, and it reads on
+  // `Empty` exactly as it reads on `Normal` — a campaign with nothing to offer still
+  // has a treasury. `Loading` and `Error` are excluded because there is no campaign
+  // behind either to read one from at all (`ContractOfferScreenModel.treasury`'s own
+  // doc comment): both are `0` by construction, and showing a manufactured `0` beside
+  // a title that has not finished loading would claim a fact this screen does not
+  // have.
+  if (model.state !== ScreenState.Loading && model.state !== ScreenState.Error) {
+    resolve(TreasuryFieldKeys.Treasury);
+    texts.push(String(model.treasury));
+    resolve(TreasuryFieldKeys.Forecast);
+    texts.push(String(model.treasuryForecast));
+  }
+
+  if (model.promiseTerms !== null) {
+    resolvePromiseTerms(model.promiseTerms, resolve, texts);
+  }
+
+  if (model.settlement !== null) {
+    resolveSettlement(model.settlement, resolve, texts, heroDisplayNameKeyOf);
+  }
+
   return texts;
+}
+
+/**
+ * The negotiation package (`NEGOTIATION_SPEC` §5.1): version and phase first — the two
+ * facts about the package itself, rather than its terms — then the three levers a
+ * player pulls (advance, method, promised bonus) in the order the screen groups them
+ * as one draft block, the key hero the package names when it names one, and last the
+ * reservation locking it would make, which is the price those three levers together
+ * produce.
+ */
+function resolveOffer(
+  offer: OfferLine,
+  resolve: (key: string) => void,
+  texts: string[],
+  heroDisplayNameKeyOf: (definition: string) => string
+): void {
+  resolve(OfferFieldKeys.Version);
+  texts.push(String(offer.version));
+  resolve(offerPhaseKey(offer.phase));
+
+  resolve(OfferFieldKeys.Advance);
+  texts.push(String(offer.advance));
+
+  // Both alternatives, chosen one first — the order `methodOptionKeysOf` already
+  // builds (`contract-offer-screen-model-factory.ts`'s own doc comment): a player
+  // choosing between two things has to see both, and an empty list means the contract
+  // carries no negotiable tag at all, so there is no caption for nothing to choose
+  // between.
+  if (offer.methodOptionKeys.length > 0) {
+    resolve(OfferFieldKeys.Method);
+    offer.methodOptionKeys.forEach(resolve);
+  }
+
+  resolve(OfferFieldKeys.PromisedBonus);
+  texts.push(String(offer.promisedBonus));
+
+  if (offer.keyHeroDefinition !== null) {
+    resolve(OfferFieldKeys.KeyHero);
+    resolve(heroDisplayNameKeyOf(offer.keyHeroDefinition));
+  }
+
+  resolve(OfferFieldKeys.LockCommitment);
+  texts.push(String(offer.lockCommitment));
+}
+
+/**
+ * The two predicates of the promise (`NEGOTIATION_SPEC` §5.1, §5.2) and the amount
+ * they are both about — the same amount {@link resolveOffer} already showed under
+ * {@link OfferFieldKeys.PromisedBonus}, shown again here because it belongs to this
+ * sentence too, not because it is a second fact.
+ */
+function resolvePromiseTerms(
+  promiseTerms: PromiseTermsLine,
+  resolve: (key: string) => void,
+  texts: string[]
+): void {
+  resolve(promiseTerms.fulfilKey);
+  resolve(promiseTerms.breachKey);
+  resolve(OfferFieldKeys.PromisedBonus);
+  texts.push(String(promiseTerms.bonus));
+}
+
+/**
+ * What the promise costs and who is bound by it, once there is a crew to bind
+ * (`NEGOTIATION_SPEC` §5.1). `Crew` is skipped on an empty list for the same reason
+ * {@link FieldKeys.ContractTags} is: a caption over nothing is a heading for an
+ * absence, not a fact.
+ */
+function resolveSettlement(
+  settlement: SettlementLine,
+  resolve: (key: string) => void,
+  texts: string[],
+  heroDisplayNameKeyOf: (definition: string) => string
+): void {
+  resolve(OfferFieldKeys.PromisedBonus);
+  texts.push(String(settlement.promisedBonus));
+
+  if (settlement.keyHeroDefinition !== null) {
+    resolve(OfferFieldKeys.KeyHero);
+    resolve(heroDisplayNameKeyOf(settlement.keyHeroDefinition));
+  }
+
+  if (settlement.crew.length > 0) {
+    resolve(SettlementFieldKeys.Crew);
+    settlement.crew.forEach((definition) => {
+      resolve(heroDisplayNameKeyOf(definition));
+    });
+  }
+
+  resolve(SettlementFieldKeys.TreasuryIfKept);
+  texts.push(String(settlement.treasuryIfKept));
+  resolve(SettlementFieldKeys.TreasuryIfBroken);
+  texts.push(String(settlement.treasuryIfBroken));
+
+  resolve(SettlementActionKeys.Pay);
+  resolve(SettlementActionKeys.Refuse);
+}
+
+/**
+ * A hero's display-name key, joined from the raw content id {@link OfferLine} and
+ * {@link SettlementLine} carry for bookkeeping — the same convention
+ * {@link ResponseLine.heroDefinition} uses, and the same lookup both screens this
+ * projection serves have to build for themselves. Built once per call rather than
+ * searched per id: `model.roster` is small, but a linear search repeated for every
+ * crew member is the kind of quadratic cost a reviewer has to re-derive is harmless
+ * every time this file changes.
+ *
+ * @throws when `definition` names nobody in the roster — a content-loading or
+ * roster-building bug this projection refuses to paper over, the same refusal
+ * {@link resolveSourceDisplayNameKey} already makes for a comrade-sourced reason.
+ */
+function displayNameKeyResolver(roster: readonly HeroCard[]): (definition: string) => string {
+  const byDefinition = new Map(roster.map((hero) => [hero.definition, hero.displayNameKey]));
+
+  return (definition) => {
+    const key = byDefinition.get(definition);
+
+    if (key === undefined) {
+      throw new Error(
+        `The negotiation package names hero '${definition}', but the roster this model carries ` +
+          'has no display-name key for it — a content-loading or roster-building bug, not a hero ' +
+          'with no name.'
+      );
+    }
+
+    return key;
+  };
 }
 
 /** SHA-256 over the texts, in order, separated, lowercase hex. */

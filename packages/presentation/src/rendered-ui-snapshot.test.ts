@@ -145,24 +145,36 @@ const aFullModel = createContractOfferScreenModel({
   ],
   errorCode: null,
   errorDetail: null,
-  // The negotiation fields (`DEC-008` Task 15) are not part of this file's own
-  // question — nothing here walks or resolves them yet, that is Tasks 16-17's — so a
-  // minimal, legal offer exercises no branch of the projection this file did not
-  // already exercise before those fields existed.
+  // The negotiation fields (`DEC-008` Tasks 15-16) are this file's own question as of
+  // Task 17, which is what walks and resolves them. Every optional branch of that
+  // projection appears here too, for the same reason the rest of the fixture is
+  // deliberately richer than any single scenario: a chosen method tag among two
+  // alternatives, a promise (so `promiseTerms` is not `null`), a key hero distinct from
+  // the roster's first entry, and a filled crew's settlement.
   treasury: 400,
   offer: {
-    version: 1,
-    phase: OfferPhase.Draft,
-    advance: 0,
-    methodTagKey: null,
-    methodOptionKeys: [],
-    promisedBonus: 0,
-    keyHeroDefinition: null,
-    lockCommitment: 0
+    version: 3,
+    phase: OfferPhase.Locked,
+    advance: 15,
+    methodTagKey: 'tag.method.deception',
+    methodOptionKeys: ['tag.method.deception', 'tag.method.open'],
+    promisedBonus: 20,
+    keyHeroDefinition: 'core:doran',
+    lockCommitment: 80
   },
-  treasuryForecast: 400,
-  promiseTerms: null,
-  settlement: null
+  treasuryForecast: 380,
+  promiseTerms: {
+    fulfilKey: 'offer.promise.fulfil',
+    breachKey: 'offer.promise.breach',
+    bonus: 20
+  },
+  settlement: {
+    promisedBonus: 20,
+    keyHeroDefinition: 'core:doran',
+    crew: ['core:bram', 'core:doran'],
+    treasuryIfKept: 380,
+    treasuryIfBroken: 400
+  }
 });
 
 describe('the texts a correctly bound screen produces', () => {
@@ -260,7 +272,42 @@ describe('the texts a correctly bound screen produces', () => {
       'text(hero.core.bram.name)',
       'text(action.accept)',
       'text(hero.decision.no_reason_to_refuse)',
-      'text(response.wavered.false)'
+      'text(response.wavered.false)',
+      'text(field.offer.version)',
+      '3',
+      'text(offer.phase.locked)',
+      'text(field.offer.advance)',
+      '15',
+      'text(field.offer.method)',
+      'text(tag.method.deception)',
+      'text(tag.method.open)',
+      'text(field.offer.promised_bonus)',
+      '20',
+      'text(field.offer.key_hero)',
+      'text(hero.core.doran.name)',
+      'text(field.offer.lock_commitment)',
+      '80',
+      'text(field.treasury)',
+      '400',
+      'text(field.treasury_forecast)',
+      '380',
+      'text(offer.promise.fulfil)',
+      'text(offer.promise.breach)',
+      'text(field.offer.promised_bonus)',
+      '20',
+      'text(field.offer.promised_bonus)',
+      '20',
+      'text(field.offer.key_hero)',
+      'text(hero.core.doran.name)',
+      'text(field.settlement.crew)',
+      'text(hero.core.bram.name)',
+      'text(hero.core.doran.name)',
+      'text(field.settlement.treasury_if_kept)',
+      '380',
+      'text(field.settlement.treasury_if_broken)',
+      '400',
+      'text(settlement.pay)',
+      'text(settlement.refuse)'
     ]);
   });
 
@@ -288,19 +335,41 @@ describe('the texts a correctly bound screen produces', () => {
         ]),
         ...(response.blockedByDisplayNameKey === null ? [] : [response.blockedByDisplayNameKey]),
         ...(response.tieBreakCode === null ? [] : [response.tieBreakCode])
-      ])
+      ]),
+      ...aFullModel.offer!.methodOptionKeys,
+      'hero.core.doran.name',
+      aFullModel.promiseTerms!.fulfilKey,
+      aFullModel.promiseTerms!.breachKey,
+      ...aFullModel.settlement!.crew.map(() => 'hero.core.bram.name')
     ]) {
       expect(shown, `the frame must resolve '${key}'`).toContain(key);
     }
   });
 
-  it('shows the three objective numbers literally and nothing else unresolved', () => {
+  it('shows the objective numbers literally and nothing else unresolved', () => {
     const texts = expectedSnapshot(aFullModel, everyKeyOf(aFullModel));
     const literals = texts.filter((text) => !text.startsWith('text('));
 
-    // Payment, required crew, accepted count — the values spec keeps as numbers on
-    // purpose. Any fourth literal is a key or an identifier that escaped resolution.
-    expect(literals).toEqual(['40', '4', '3']);
+    // Payment, required crew, accepted count, then the offer's own version, advance and
+    // promised bonus, its lock commitment, the treasury and its forecast, the promise's
+    // own bonus (shown again beside its two predicates) and the settlement's promised
+    // bonus and its two treasury outcomes — the values spec keeps as numbers on purpose.
+    // Any extra literal is a key or an identifier that escaped resolution.
+    expect(literals).toEqual([
+      '40',
+      '4',
+      '3',
+      '3',
+      '15',
+      '20',
+      '80',
+      '400',
+      '380',
+      '20',
+      '20',
+      '380',
+      '400'
+    ]);
   });
 
   it('keeps every raw content id off the screen', () => {
@@ -309,6 +378,7 @@ describe('the texts a correctly bound screen produces', () => {
     for (const identifier of [
       'core:escort_the_caravan',
       'core:bram',
+      'core:doran',
       'core:loyal_to_the_merchant_guild',
       'action:accept'
     ]) {

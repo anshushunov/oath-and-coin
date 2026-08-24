@@ -41,18 +41,25 @@ export function Label({ text }: { readonly text: string }) {
  * different kinds of thing: a caption is always a catalogue entry, while a value is
  * sometimes one (a qualitative grade) and sometimes an objective number the model
  * carries literally (`patronFee`, `requiredCrew`, `acceptedCount`).
+ *
+ * `testId`, when given, marks the pair itself — never a player-facing string, so it
+ * costs nothing against the "no literal on screen" rule, and it exists for the one
+ * value `NEGOTIATION_SPEC` §5.1 asks a test to be able to find without depending on
+ * which locale is loaded: the treasury the current package would leave.
  */
 export function Captioned({
   captionKey,
-  value
+  value,
+  testId
 }: {
   readonly captionKey: string;
   readonly value: string;
+  readonly testId?: string;
 }) {
   const text = useText();
 
   return (
-    <div className="captioned">
+    <div className="captioned" data-testid={testId}>
       <Label text={text(captionKey)} />
       <Label text={value} />
     </div>

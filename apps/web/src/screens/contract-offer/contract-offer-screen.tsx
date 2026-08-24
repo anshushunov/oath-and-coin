@@ -1,7 +1,13 @@
 import {
   FieldKeys,
+  OfferFieldKeys,
+  ScreenState,
+  SettlementActionKeys,
+  SettlementFieldKeys,
+  TreasuryFieldKeys,
   actionKey,
   errorKey,
+  offerPhaseKey,
   qualitativeKey,
   reasonDirectionKey,
   screenStateKey,
@@ -9,7 +15,9 @@ import {
   type ContractLine,
   type ContractOfferScreenModel,
   type HeroCard,
-  type ResponseLine
+  type OfferLine,
+  type ResponseLine,
+  type SettlementLine
 } from '@oath-and-coin/presentation';
 
 import { useText } from '../../text.tsx';
@@ -56,6 +64,16 @@ import { Captioned, KeyList, Label } from '../labels.tsx';
  */
 export function ContractOfferScreen({ model }: { readonly model: ContractOfferScreenModel }) {
   const text = useText();
+  // The one join this screen has to make for itself: `OfferLine.keyHeroDefinition` and
+  // `SettlementLine.keyHeroDefinition`/`crew` carry a hero's raw content id for
+  // bookkeeping (`OfferLine`'s own doc comment), and the roster already carries that
+  // id's display-name key — the same convention `ResponseLine.heroDefinition` uses.
+  // Built once per render rather than per field that needs it.
+  const heroDisplayNameKeyOf = buildHeroDisplayNameKeyOf(model.roster);
+  // `NEGOTIATION_SPEC` §5.1: the treasury reads on `Empty` exactly as it reads on
+  // `Normal` — a campaign with nothing to offer still has one — and only `Loading` and
+  // `Error` have no campaign behind them to read a figure from at all.
+  const showTreasury = model.state !== ScreenState.Loading && model.state !== ScreenState.Error;
 
   return (
     <section className="contract-offer" data-testid="contract-offer-screen">
@@ -80,8 +98,76 @@ export function ContractOfferScreen({ model }: { readonly model: ContractOfferSc
           </div>
         </div>
       )}
+
+      {model.offer === null ? null : (
+        <OfferBlock offer={model.offer} heroDisplayNameKeyOf={heroDisplayNameKeyOf} />
+      )}
+
+      {/* Treasury and its forecast sit beside the promise (`NEGOTIATION_SPEC` §5.1's
+          own "цена уступки, видна до подтверждения"), in the one container both this
+          and `PromiseTermsBlock` render into — the treasury the deal would leave is
+          the price of the very promise stated beside it. */}
+      {showTreasury || model.promiseTerms !== null ? (
+        <div className="row price">
+          {showTreasury ? (
+            <>
+              <Captioned captionKey={TreasuryFieldKeys.Treasury} value={String(model.treasury)} />
+              <Captioned
+                captionKey={TreasuryFieldKeys.Forecast}
+                value={String(model.treasuryForecast)}
+                testId="treasury-forecast"
+              />
+            </>
+          ) : null}
+
+          {model.promiseTerms === null ? null : (
+            <div className="promise">
+              <Label text={text(model.promiseTerms.fulfilKey)} />
+              <Label text={text(model.promiseTerms.breachKey)} />
+              <Captioned
+                captionKey={OfferFieldKeys.PromisedBonus}
+                value={String(model.promiseTerms.bonus)}
+              />
+            </div>
+          )}
+        </div>
+      ) : null}
+
+      {model.settlement === null ? null : (
+        <SettlementBlock
+          settlement={model.settlement}
+          heroDisplayNameKeyOf={heroDisplayNameKeyOf}
+        />
+      )}
     </section>
   );
+}
+
+/**
+ * A hero's display-name key, joined from the raw content id {@link OfferLine} and
+ * {@link SettlementLine} carry for bookkeeping — never shown itself, only used to look
+ * up the name that is (`TDD` §11.1).
+ *
+ * @throws when `definition` names nobody in the roster — a content-loading or
+ * roster-building bug this screen refuses to paper over rather than show a hero with
+ * no name.
+ */
+function buildHeroDisplayNameKeyOf(roster: readonly HeroCard[]): (definition: string) => string {
+  const byDefinition = new Map(roster.map((hero) => [hero.definition, hero.displayNameKey]));
+
+  return (definition) => {
+    const key = byDefinition.get(definition);
+
+    if (key === undefined) {
+      throw new Error(
+        `The negotiation package names hero '${definition}', but the roster this screen was given ` +
+          'has no display-name key for it — a content-loading or roster-building bug, not a hero ' +
+          'with no name.'
+      );
+    }
+
+    return key;
+  };
 }
 
 /**
@@ -205,6 +291,131 @@ function ResponseBlock({ response }: { readonly response: ResponseLine }) {
       {response.tieBreakCode === null ? null : <Label text={text(response.tieBreakCode)} />}
 
       <Label text={text(waveredKey(response.wavered))} />
+    </div>
+  );
+}
+
+/**
+ * The negotiation package as one draft block (`NEGOTIATION_SPEC` §5.1): version and
+ * phase, then the three levers a player pulls together — advance, method, promised
+ * bonus — and last what locking this exact package would reserve. The CK3 layout rule
+ * this segment's plan names: a control that changes money shows the money it changes,
+ * next to it. `lockCommitment` is that money, and the three levers above it are what
+ * produces it — `advance × requiredCrew + promisedBonus` — so it closes the block
+ * rather than sitting apart from what it prices.
+ *
+ * Advance and promised bonus are shown the same way every other objective number on
+ * this screen is — a caption beside a value, `Captioned` — not as editable `<input>`
+ * elements: this task draws what the model carries, and wiring a lever to a command is
+ * explicitly later work (`NEGOTIATION_SPEC` §3.1's five commands are Task 16's, not
+ * this screen's to dispatch). The method choice is a real `role="radio"` group even so,
+ * because which of two named alternatives a package has chosen is a selection among a
+ * closed set the way a number is not, and a screen that already draws it this way costs
+ * nothing extra to keep drawing it this way once a handler lands.
+ */
+function OfferBlock({
+  offer,
+  heroDisplayNameKeyOf
+}: {
+  readonly offer: OfferLine;
+  readonly heroDisplayNameKeyOf: (definition: string) => string;
+}) {
+  const text = useText();
+
+  return (
+    <div className="offer">
+      <Captioned captionKey={OfferFieldKeys.Version} value={String(offer.version)} />
+      <Label text={text(offerPhaseKey(offer.phase))} />
+
+      <div className="row lever">
+        <Captioned captionKey={OfferFieldKeys.Advance} value={String(offer.advance)} />
+
+        {offer.methodOptionKeys.length === 0 ? null : (
+          <div className="method-options">
+            <Label text={text(OfferFieldKeys.Method)} />
+            {offer.methodOptionKeys.map((key) => (
+              <label className="method-option" key={key}>
+                <input
+                  type="radio"
+                  name="offer-method"
+                  checked={key === offer.methodTagKey}
+                  readOnly
+                />
+                <span className="label">{text(key)}</span>
+              </label>
+            ))}
+          </div>
+        )}
+
+        <Captioned captionKey={OfferFieldKeys.PromisedBonus} value={String(offer.promisedBonus)} />
+      </div>
+
+      {offer.keyHeroDefinition === null ? null : (
+        <Captioned
+          captionKey={OfferFieldKeys.KeyHero}
+          value={text(heroDisplayNameKeyOf(offer.keyHeroDefinition))}
+        />
+      )}
+
+      <Captioned captionKey={OfferFieldKeys.LockCommitment} value={String(offer.lockCommitment)} />
+    </div>
+  );
+}
+
+/**
+ * What the promise costs and who is bound by it, shown once there is a crew to bind
+ * (`NEGOTIATION_SPEC` §5.1) — the two settlement buttons only exist here, inside this
+ * same branch, because the model itself carries no settlement to act on before the
+ * crew is filled: `ContractOfferScreenModel.settlement` is `null` until then, and a
+ * button with nothing behind it to press is not drawn absent, it is not drawn at all.
+ */
+function SettlementBlock({
+  settlement,
+  heroDisplayNameKeyOf
+}: {
+  readonly settlement: SettlementLine;
+  readonly heroDisplayNameKeyOf: (definition: string) => string;
+}) {
+  const text = useText();
+
+  return (
+    <div className="settlement">
+      <Captioned
+        captionKey={OfferFieldKeys.PromisedBonus}
+        value={String(settlement.promisedBonus)}
+      />
+
+      {settlement.keyHeroDefinition === null ? null : (
+        <Captioned
+          captionKey={OfferFieldKeys.KeyHero}
+          value={text(heroDisplayNameKeyOf(settlement.keyHeroDefinition))}
+        />
+      )}
+
+      <KeyList
+        captionKey={SettlementFieldKeys.Crew}
+        keys={settlement.crew.map(heroDisplayNameKeyOf)}
+      />
+
+      <div className="row">
+        <Captioned
+          captionKey={SettlementFieldKeys.TreasuryIfKept}
+          value={String(settlement.treasuryIfKept)}
+        />
+        <Captioned
+          captionKey={SettlementFieldKeys.TreasuryIfBroken}
+          value={String(settlement.treasuryIfBroken)}
+        />
+      </div>
+
+      <div className="row actions">
+        <button type="button" data-testid="settlement-pay">
+          {text(SettlementActionKeys.Pay)}
+        </button>
+        <button type="button" data-testid="settlement-refuse">
+          {text(SettlementActionKeys.Refuse)}
+        </button>
+      </div>
     </div>
   );
 }

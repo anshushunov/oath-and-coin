@@ -26,6 +26,27 @@
     "offer.promise.fulfil": "Слово сдержано, если при расчёте гильдия выплатит обещанную надбавку.",
     "offer.promise.breach": "Слово нарушено, если при расчёте гильдия откажется от обещанной надбавки.",
 
+    "offer.phase.draft": "Черновик",
+    "offer.phase.locked": "Заблокирован",
+    "offer.phase.settled": "Рассчитан",
+
+    "field.offer.version": "Версия пакета:",
+    "field.offer.advance": "Аванс:",
+    "field.offer.method": "Метод:",
+    "field.offer.promised_bonus": "Надбавка по возвращении:",
+    "field.offer.key_hero": "Ключевой герой:",
+    "field.offer.lock_commitment": "Резерв при блокировке:",
+
+    "field.treasury": "Казна:",
+    "field.treasury_forecast": "Казна после расчёта:",
+
+    "field.settlement.crew": "Отряд:",
+    "field.settlement.treasury_if_kept": "Казна, если сдержать слово:",
+    "field.settlement.treasury_if_broken": "Казна, если нарушить слово:",
+
+    "settlement.pay": "Выплатить",
+    "settlement.refuse": "Отказаться платить",
+
     "save.slot.slot_a.name": "Слот A",
     "save.slot.slot_a.save": "Сохранить в слот A",
     "save.slot.slot_a.load": "Загрузить слот A",

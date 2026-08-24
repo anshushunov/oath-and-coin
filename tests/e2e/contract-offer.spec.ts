@@ -4,7 +4,11 @@ import { fileURLToPath } from 'node:url';
 
 import { screenFor } from '@oath-and-coin/application';
 import { artifactHash } from '@oath-and-coin/content';
-import { loadAndRunScenario, loadLocaleCatalogue } from '@oath-and-coin/content/node';
+import {
+  loadAndRunScenario,
+  loadLocaleCatalogue,
+  loadUiTextCatalogue
+} from '@oath-and-coin/content/node';
 import { expectedSnapshot, readModelHash, snapshotHash } from '@oath-and-coin/presentation';
 import { canonicalSha256, type CanonicalValue } from '@oath-and-coin/simulation';
 import { expect, test, type ConsoleMessage, type Page, type Request } from '@playwright/test';
@@ -150,11 +154,19 @@ interface FrameMeasurement {
 
 const manifest = readJson<OracleManifest>(join(ORACLE_ROOT, 'manifest.json'));
 
-const catalogue = new Map(
-  // §14.4: `loadLocaleCatalogue` answers a `SortedMap`, whose `entries()` is an array and
-  // which has no `Symbol.iterator`. `new Map(catalogue)` throws at runtime; this does not.
-  loadLocaleCatalogue(join(REPOSITORY_ROOT, 'content', 'locale', `${LOCALE}.json`)).entries()
-);
+// Both catalogues, merged the same way the page itself merges them
+// (`apps/web/src/App.tsx`'s `browserCatalogue`, `ADR-012`): since Task 17 the screen
+// resolves interface-invented keys — the offer's own captions, the treasury, the
+// settlement — as well as content's, and comparing against the content half alone
+// throws on the first one `expectedSnapshot` asks for.
+//
+// §14.4: `loadLocaleCatalogue`/`loadUiTextCatalogue` answer a `SortedMap`, whose
+// `entries()` is an array and which has no `Symbol.iterator`. `new Map(catalogue)`
+// throws at runtime; spreading each `entries()` array does not.
+const catalogue = new Map([
+  ...loadLocaleCatalogue(join(REPOSITORY_ROOT, 'content', 'locale', `${LOCALE}.json`)).entries(),
+  ...loadUiTextCatalogue(join(REPOSITORY_ROOT, 'ui-text', `${LOCALE}.json`)).entries()
+]);
 
 test.beforeAll(() => {
   // Cleared once per run, so a state that stops producing evidence leaves an empty

@@ -190,6 +190,51 @@ body {
 }
 
 /*
+ * The negotiation package (`NEGOTIATION_SPEC` §5.1) — the CK3 layout rule this task
+ * follows: the levers (`advance`, the method choice, `promisedBonus`) sit on one row
+ * inside `.lever`, and what locking them would reserve closes the block right under
+ * it, so the price sits with what produced it rather than apart from it.
+ */
+.offer,
+.settlement {
+  margin: 12px 0;
+  padding: 8px 10px;
+  border-left: 3px solid var(--edge);
+}
+
+.method-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
+.method-option {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+/*
+ * The treasury the deal would leave, next to the promise it prices — one row so a
+ * reader sees both without looking elsewhere on the screen.
+ */
+.price {
+  align-items: flex-start;
+}
+
+.promise {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settlement .actions {
+  margin-top: 6px;
+}
+
+/*
  * The scene sits under the screen at its own aspect ratio. `height: auto` with the
  * element's `width`/`height` attributes is what keeps it undistorted; PixiJS draws at the
  * attribute size and the browser scales the result.
@@ -226,7 +271,8 @@ nav {
 }
 
 nav button,
-.saves button {
+.saves button,
+.settlement button {
   padding: 4px 10px;
   border: 1px solid var(--edge);
   border-radius: 4px;

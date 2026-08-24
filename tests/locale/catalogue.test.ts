@@ -13,6 +13,8 @@ import {
 import {
   ACTION_KEYS,
   FIELD_KEYS,
+  OFFER_FIELD_KEYS,
+  OFFER_PHASE_KEYS,
   PROMISE_TERMS_KEYS,
   QUALITATIVE_KEYS,
   REASON_DIRECTION_KEYS,
@@ -24,7 +26,10 @@ import {
   SCREEN_LINK_KEYS,
   SCREEN_STATES,
   SCREEN_STATE_KEYS,
+  SETTLEMENT_ACTION_KEYS,
+  SETTLEMENT_FIELD_KEYS,
   TITLE_KEY,
+  TREASURY_FIELD_KEYS,
   WAVERED_KEYS,
   contractDisplayNameKey,
   errorKey,
@@ -163,6 +168,18 @@ function everyKeyTheScreenCanShow(): readonly string[] {
  * and a gate that structurally could not catch that either catalogue was missing it.
  * Confirmed by running before `ui-text/ru.json` grew the two entries: both checks
  * reddened, `answer every key either layer can produce…` on the two missing keys.
+ *
+ * `DEC-008` Task 17 grows this list by five: the offer's own phase and captions
+ * (`OFFER_PHASE_KEYS`, `OFFER_FIELD_KEYS`), the two treasury facts
+ * (`TREASURY_FIELD_KEYS`), what a filled crew's settlement shows beyond what the offer
+ * already named (`SETTLEMENT_FIELD_KEYS`) and the two settlement buttons
+ * (`SETTLEMENT_ACTION_KEYS`) — every one of them a text the screen invents rather than
+ * one content authors, exactly the class `ADR-012` sends here. Extended before the
+ * entries landed in `ui-text/ru.json`, not after: with the entries already written and
+ * this list not yet grown, "answer nothing nobody asks for" reddened on all sixteen
+ * keys as orphans, which is the shape a producer-less key takes on this side of the
+ * boundary (`content/locale/ru.json` would instead fail the completeness check above,
+ * because that side is closed by size and by `content_version`).
  */
 function everyKeyTheInterfaceCanShow(): readonly string[] {
   return [
@@ -174,6 +191,11 @@ function everyKeyTheInterfaceCanShow(): readonly string[] {
     ...SAVE_OVERWRITE_KEYS,
     ...SCREEN_LINK_KEYS,
     ...PROMISE_TERMS_KEYS,
+    ...OFFER_PHASE_KEYS,
+    ...OFFER_FIELD_KEYS,
+    ...TREASURY_FIELD_KEYS,
+    ...SETTLEMENT_FIELD_KEYS,
+    ...SETTLEMENT_ACTION_KEYS,
     ...SAVE_SLOTS.map(saveSlotDisplayNameKey),
     ...SAVE_SLOTS.map(saveSlotSaveKey),
     ...SAVE_SLOTS.map(saveSlotLoadKey)

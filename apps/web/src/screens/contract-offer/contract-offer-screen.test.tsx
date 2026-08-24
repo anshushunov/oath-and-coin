@@ -1,14 +1,25 @@
 // @vitest-environment jsdom
 import { startSession, type SessionState } from '@oath-and-coin/application';
 import {
+  OfferFieldKeys,
+  PromiseTermsKeys,
+  QualitativeGrade,
   ScreenState,
+  SettlementActionKeys,
+  TITLE_KEY,
+  createContractOfferScreenModel,
   expectedSnapshot,
+  failedScreen,
   snapshotHash,
   type ContractOfferScreenModel
 } from '@oath-and-coin/presentation';
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import { browserContentSource, browserLocaleCatalogue } from '../../content-source.ts';
+import {
+  browserContentSource,
+  browserLocaleCatalogue,
+  browserUiTextCatalogue
+} from '../../content-source.ts';
 import { collectRenderedAttributes, collectRenderedTexts } from '../../rendered-texts.ts';
 import { render } from '../../testing/render.tsx';
 import { TextSource } from '../../text.tsx';
@@ -101,7 +112,11 @@ const SEED = 424242n;
 let catalogue: ReadonlyMap<string, string>;
 
 beforeAll(() => {
-  catalogue = browserLocaleCatalogue('ru');
+  // Both catalogues, merged the same way `App.tsx`'s `browserCatalogue` merges them:
+  // since Task 17 the screen resolves interface-invented keys (`ADR-012`) — the
+  // offer's own captions, the treasury, the settlement — as well as content's, and a
+  // catalogue holding only the content half would fail every render that reaches one.
+  catalogue = new Map([...browserLocaleCatalogue('ru'), ...browserUiTextCatalogue('ru')]);
 });
 
 function sessionFor(scenario: string, checkpoint: string, seed: bigint): SessionState {
@@ -285,5 +300,407 @@ function rawIdentifiersOf(model: ContractOfferScreenModel): readonly string[] {
     }
   }
 
+  if (model.offer !== null && model.offer.keyHeroDefinition !== null) {
+    identifiers.push(model.offer.keyHeroDefinition);
+  }
+
+  if (model.settlement !== null) {
+    if (model.settlement.keyHeroDefinition !== null) {
+      identifiers.push(model.settlement.keyHeroDefinition);
+    }
+
+    identifiers.push(...model.settlement.crew);
+  }
+
   return identifiers;
+}
+
+/**
+ * Task 17's own five tests: the offer screen draws the draft block, the promise
+ * predicates, the treasury the deal would leave, and the settlement buttons that only
+ * exist once a crew is filled — and does every one of it through `ui-text/ru.json`,
+ * never a literal typed into the component.
+ *
+ * The models below are hand-built rather than run out of a shipped scenario, unlike
+ * the two matrices above. Those exist to prove a real run reaches the markup this
+ * screen draws; these exist to prove one *feature* of the markup in isolation — a
+ * promised bonus greater than zero, a chosen method tag, a crew short of
+ * `requiredCrew` — and no scenario in the corpus composes an offer with a promise or a
+ * method choice yet (`NEGOTIATION_SPEC` §10.3's `promise_kept`, `promise_broken` and
+ * `method_choice_flips_the_key_hero` are Task 20's). A hand-built model is the only way
+ * to exercise those branches before that task lands, and `createContractOfferScreenModel`
+ * still refuses one that violates §2.1.
+ */
+describe('the draft block, the promise, the treasury and the settlement buttons', () => {
+  it('shows the advance, the method choice and the promise as one draft block', () => {
+    const container = renderScreen(draftModel());
+
+    // The lever and its price sit together (the CK3 layout rule this task follows):
+    // the advance and the promised bonus are the two money levers, and both are
+    // visible as a caption beside its value, the same treatment every other objective
+    // number on this screen already gets.
+    expect(captionedValue(container, textOf(OfferFieldKeys.Advance))).toBe('40');
+    expect(captionedValue(container, textOf(OfferFieldKeys.PromisedBonus))).toBe('25');
+
+    // The chosen method tag is a real radio among the two named alternatives — the
+    // other one (`tag.method.deception`) exists on the same package and is not
+    // checked, which the third assertion below is what would fail if the screen drew
+    // both as checked or neither.
+    expect(radioChecked(container, textOf('tag.method.open'))).toBe(true);
+    expect(radioChecked(container, textOf('tag.method.deception'))).toBe(false);
+  });
+
+  it('says what counts as keeping the word and what counts as breaking it', () => {
+    const texts = collectRenderedTexts(renderScreen(draftModel()));
+
+    expect(texts).toContain(textOf(PromiseTermsKeys.Fulfil));
+    expect(texts).toContain(textOf(PromiseTermsKeys.Breach));
+  });
+
+  it('shows the treasury the deal would leave, next to the promise', () => {
+    const container = renderScreen(draftModel());
+    const forecast = container.querySelector('[data-testid="treasury-forecast"]');
+
+    expect(forecast).not.toBeNull();
+    expect(forecast?.textContent).toContain('375');
+
+    // "Next to the promise": the forecast and the promise's own two sentences share
+    // one container, so a reader sees the price and the predicate it prices without
+    // having to look elsewhere on the screen.
+    expect(forecast?.closest('.price')?.textContent).toContain(textOf(PromiseTermsKeys.Fulfil));
+  });
+
+  it('offers no settlement buttons until the crew is filled', () => {
+    const container = renderScreen(lockedUncrewedModel());
+
+    expect(container.querySelector('[data-testid="settlement-pay"]')).toBeNull();
+    expect(container.querySelector('[data-testid="settlement-refuse"]')).toBeNull();
+    expect(findButtonByText(container, textOf(SettlementActionKeys.Pay))).toBeNull();
+  });
+
+  it('renders every label from ui-text, never a literal', () => {
+    expect(literalsIn(ContractOfferScreen)).toEqual([]);
+  });
+});
+
+/** The catalogue's own answer for `key`, so a test reads the same text the screen does. */
+function textOf(key: string): string {
+  const text = catalogue.get(key);
+
+  if (text === undefined) {
+    throw new Error(
+      `No catalogue entry for '${key}' — the fixture below asked for a key ` + 'nothing ships.'
+    );
+  }
+
+  return text;
+}
+
+/**
+ * A package mid-negotiation: an advance, a promised bonus and a chosen method among
+ * two alternatives, all still open to revision — `NEGOTIATION_SPEC` §5.1's "draft
+ * block" and its promise predicates, both live at once.
+ */
+function draftModel(): ContractOfferScreenModel {
+  return createContractOfferScreenModel({
+    state: ScreenState.Incomplete,
+    titleKey: TITLE_KEY,
+    contract: {
+      definition: 'core:escort_the_caravan',
+      displayNameKey: 'contract.core.escort_the_caravan.name',
+      patronFee: 40,
+      risk: QualitativeGrade.Moderate,
+      tagKeys: ['tag.target.bandits'],
+      requiredCrew: 3,
+      acceptedCount: 1
+    },
+    roster: [
+      {
+        definition: 'core:bram',
+        displayNameKey: 'hero.core.bram.name',
+        greed: QualitativeGrade.Moderate,
+        caution: QualitativeGrade.Low,
+        pride: QualitativeGrade.Moderate,
+        principleKeys: ['trait.core.will_not_strike_a_temple.name'],
+        inclinationKeys: []
+      }
+    ],
+    responses: [],
+    errorCode: null,
+    errorDetail: null,
+    treasury: 400,
+    offer: {
+      version: 1,
+      phase: 'draft',
+      advance: 40,
+      methodTagKey: 'tag.method.open',
+      methodOptionKeys: ['tag.method.open', 'tag.method.deception'],
+      promisedBonus: 25,
+      keyHeroDefinition: 'core:bram',
+      lockCommitment: 145
+    },
+    // `400 + 40 - 40 * 1 - 25 = 375` — `settleContract`'s own formula
+    // (`NEGOTIATION_SPEC` §3.3) with `pay: true`, over one accepted seat: the draft
+    // phase can only have the key hero in `acceptedBy` (`NEGOTIATION_SPEC` §2.1).
+    treasuryForecast: 375,
+    promiseTerms: {
+      fulfilKey: PromiseTermsKeys.Fulfil,
+      breachKey: PromiseTermsKeys.Breach,
+      bonus: 25
+    },
+    settlement: null
+  });
+}
+
+/**
+ * A package locked with the crew still short a seat: `NEGOTIATION_SPEC` §5.1's
+ * settlement line is `null` here on purpose — `pollCrew` ran and did not fill
+ * `requiredCrew` — which is the one state the fourth test needs and no shipped
+ * scenario reaches through this screen's own matrix above.
+ */
+function lockedUncrewedModel(): ContractOfferScreenModel {
+  return createContractOfferScreenModel({
+    state: ScreenState.Incomplete,
+    titleKey: TITLE_KEY,
+    contract: {
+      definition: 'core:silence_the_cult',
+      displayNameKey: 'contract.core.silence_the_cult.name',
+      patronFee: 55,
+      risk: QualitativeGrade.High,
+      tagKeys: ['tag.target.cult'],
+      requiredCrew: 3,
+      acceptedCount: 1
+    },
+    roster: [
+      {
+        definition: 'core:mira',
+        displayNameKey: 'hero.core.mira.name',
+        greed: QualitativeGrade.Low,
+        caution: QualitativeGrade.High,
+        pride: QualitativeGrade.Moderate,
+        principleKeys: [],
+        inclinationKeys: []
+      }
+    ],
+    responses: [],
+    errorCode: null,
+    errorDetail: null,
+    treasury: 300,
+    offer: {
+      version: 2,
+      phase: 'locked',
+      advance: 20,
+      methodTagKey: null,
+      methodOptionKeys: [],
+      promisedBonus: 0,
+      keyHeroDefinition: 'core:mira',
+      lockCommitment: 60
+    },
+    treasuryForecast: 335,
+    promiseTerms: null,
+    settlement: null
+  });
+}
+
+/**
+ * A package settled — crew filled, a promise on the table — for the fifth test's
+ * second pass through the component: {@link SettlementBlock}'s own captions, its
+ * crew list and its two buttons all have to answer {@link literalsIn} clean too, and
+ * {@link draftModel} never reaches that branch at all.
+ */
+function crewedModel(): ContractOfferScreenModel {
+  return createContractOfferScreenModel({
+    state: ScreenState.Normal,
+    titleKey: TITLE_KEY,
+    contract: {
+      definition: 'core:collect_the_debt',
+      displayNameKey: 'contract.core.collect_the_debt.name',
+      patronFee: 30,
+      risk: QualitativeGrade.Low,
+      tagKeys: ['tag.patron.slavers'],
+      requiredCrew: 2,
+      acceptedCount: 2
+    },
+    roster: [
+      {
+        definition: 'core:bram',
+        displayNameKey: 'hero.core.bram.name',
+        greed: QualitativeGrade.Moderate,
+        caution: QualitativeGrade.Low,
+        pride: QualitativeGrade.Moderate,
+        principleKeys: [],
+        inclinationKeys: ['trait.core.hungry_for_renown.name']
+      },
+      {
+        definition: 'core:doran',
+        displayNameKey: 'hero.core.doran.name',
+        greed: QualitativeGrade.High,
+        caution: QualitativeGrade.Negligible,
+        pride: QualitativeGrade.Extreme,
+        principleKeys: ['trait.core.will_not_serve_slavers.name'],
+        inclinationKeys: []
+      }
+    ],
+    responses: [],
+    errorCode: null,
+    errorDetail: null,
+    treasury: 300,
+    offer: {
+      version: 3,
+      phase: 'locked',
+      advance: 15,
+      methodTagKey: null,
+      methodOptionKeys: [],
+      promisedBonus: 10,
+      keyHeroDefinition: 'core:bram',
+      lockCommitment: 40
+    },
+    treasuryForecast: 290,
+    promiseTerms: {
+      fulfilKey: PromiseTermsKeys.Fulfil,
+      breachKey: PromiseTermsKeys.Breach,
+      bonus: 10
+    },
+    settlement: {
+      promisedBonus: 10,
+      keyHeroDefinition: 'core:bram',
+      crew: ['core:bram', 'core:doran'],
+      treasuryIfKept: 290,
+      treasuryIfBroken: 300
+    }
+  });
+}
+
+/** The visible value of the `Captioned` pair whose caption text is `caption`. */
+function captionedValue(container: HTMLElement, caption: string): string {
+  const pair = [...container.querySelectorAll('.captioned')].find(
+    (element) => element.querySelectorAll('.label')[0]?.textContent === caption
+  );
+
+  if (pair === undefined) {
+    throw new Error(`No captioned field with caption '${caption}' was rendered.`);
+  }
+
+  return pair.querySelectorAll('.label')[1]?.textContent ?? '';
+}
+
+/** Whether the method-choice radio labelled `optionText` is the one currently checked. */
+function radioChecked(container: HTMLElement, optionText: string): boolean {
+  const label = [...container.querySelectorAll('label.method-option')].find(
+    (element) => element.querySelector('.label')?.textContent === optionText
+  );
+
+  if (label === undefined) {
+    throw new Error(`No method option labelled '${optionText}' was rendered.`);
+  }
+
+  const input = label.querySelector('input[type="radio"]');
+
+  if (input === null) {
+    throw new Error(`Method option '${optionText}' carries no radio input.`);
+  }
+
+  return (input as HTMLInputElement).checked;
+}
+
+/** The first `<button>` whose own text is exactly `text`, or `null`. */
+function findButtonByText(container: HTMLElement, text: string): HTMLButtonElement | null {
+  return (
+    [...container.querySelectorAll('button')].find((button) => button.textContent === text) ?? null
+  );
+}
+
+/**
+ * Every text or attribute value {@link ContractOfferScreen} renders that is neither a
+ * plain integer (the objective numbers `NEGOTIATION_SPEC` §5.1 keeps as numbers on
+ * purpose) nor a string the real catalogue actually answered a key with — the shape
+ * `TDD` §11.1's "no literal" rule takes on a component nobody may add a hand-typed
+ * string to.
+ *
+ * Built by wrapping the real, merged catalogue rather than a fake one: a tracking
+ * catalogue that invented its own text could not tell a resolved value from a literal
+ * that happened to collide with it, and `resolveText`'s own throw-on-miss behaviour
+ * has to keep working for a render that reaches a key with nothing to answer it.
+ * `collectRenderedAttributes` is deliberately not reused here — it walks every
+ * attribute a browser ever sees, including `class`, `type` and `data-testid`, none of
+ * which a player reads — so this looks only at the three attributes a literal could
+ * hide behind unseen by a text-node walk: `aria-label`, `title`, `placeholder`.
+ */
+function literalsIn(
+  Component: (props: {
+    readonly model: ContractOfferScreenModel;
+  }) => ReturnType<typeof ContractOfferScreen>
+): readonly string[] {
+  const seen = new Set<string>();
+  const tracked = new Proxy(catalogue, {
+    get: (target, prop, receiver) => {
+      if (prop === 'get') {
+        return (key: string) => {
+          const value = target.get(key);
+
+          if (value !== undefined) {
+            seen.add(value);
+          }
+
+          return value;
+        };
+      }
+
+      return Reflect.get(target, prop, receiver);
+    }
+  }) as ReadonlyMap<string, string>;
+
+  const isPlainInteger = /^-?\d+$/u;
+  const literals = new Set<string>();
+
+  for (const model of [
+    draftModel(),
+    crewedModel(),
+    failedScreen('CONTENT_ROOT_NOT_FOUND', 'irrelevant to this check')
+  ]) {
+    const container = render(
+      <TextSource catalogue={tracked}>
+        <Component model={model} />
+      </TextSource>
+    );
+
+    for (const value of [
+      ...collectRenderedTexts(container),
+      ...collectLabelledAttributes(container)
+    ]) {
+      if (isPlainInteger.test(value) || seen.has(value)) {
+        continue;
+      }
+
+      literals.add(value);
+    }
+  }
+
+  return [...literals];
+}
+
+/** `aria-label`, `title` and `placeholder` — the attributes a literal could hide behind. */
+function collectLabelledAttributes(root: Node): readonly string[] {
+  const values: string[] = [];
+  const ATTRIBUTES = ['aria-label', 'title', 'placeholder'];
+
+  const walk = (node: Node): void => {
+    if (node.nodeType === node.ELEMENT_NODE) {
+      for (const attribute of ATTRIBUTES) {
+        const value = (node as Element).getAttribute(attribute);
+
+        if (value !== null) {
+          values.push(value);
+        }
+      }
+    }
+
+    for (const child of Array.from(node.childNodes)) {
+      walk(child);
+    }
+  };
+
+  walk(root);
+
+  return values;
 }
