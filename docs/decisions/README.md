@@ -40,7 +40,8 @@ ADR-001-engine-and-language.md
 | [DEC-009](DEC-009-hero-portraits-in-m1.md) | Шесть портретов героев в M1 как исключение из DEC-007 | accepted |
 | [DEC-010](DEC-010-hero-decision-model.md) | Модель решения героя: ворота и взвешенная сумма, непокупаемые красные линии | accepted |
 | [DEC-011](DEC-011-combat-space-and-time.md) | Пространство и время боя: поле 3×3, отряд 4–6, дискретные такты | accepted |
-| [DEC-012](DEC-012-negotiation-offer-protocol.md) | Протокол оффера, обещание доплаты и казна гильдии | accepted |
+| [DEC-012](DEC-012-negotiation-offer-protocol.md) | Протокол оффера, обещание доплаты и казна гильдии | accepted, три пункта изменены поправкой 2026-08-25 ([RESOLUTION_SPEC](../technical/RESOLUTION_SPEC.md) §8) |
+| [DEC-013](DEC-013-hero-capability-layer.md) | Слой способности героя: общая величина и экспертиза по потребностям | accepted |
 
 Технические решения:
 
@@ -59,6 +60,7 @@ ADR-001-engine-and-language.md
 | [ADR-011](ADR-011-electron-gate-without-steam.md) | Desktop-приложение без магазина; Task 4 проверяет Electron, а не Steam | accepted |
 | [ADR-012](ADR-012-interface-text-outside-content.md) | Тексты интерфейса живут вне `content/`, в каталоге `ui-text/` | accepted; срок снят 2026-08-22 — граница постоянная |
 | [ADR-013](ADR-013-retiring-corpus-parity.md) | Снятие паритета с корпусом миграции при первом изменении правил | accepted |
+| [ADR-014](ADR-014-contract-resolver-boundary.md) | Граница резолвера контракта: события первичны, авторитетна одна реализация | accepted |
 
 **Cutover состоялся 2026-08-22** ([`FULL_TYPESCRIPT_MIGRATION`](../production/FULL_TYPESCRIPT_MIGRATION.md), Task 19): Godot/.NET-дерево удалено, действующее решение о движке и языке — `ADR-010`. `ADR-001` получил статус `superseded`, `ADR-008` — `superseded в части механизма`; у обоих сверху стоит датированная заметка cutover.
 

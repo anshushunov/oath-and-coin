@@ -23,6 +23,8 @@ import {
 /**
  * `pollCrew` (`NEGOTIATION_SPEC` §3.1, §3.3, §6.1) — the whole roster, minus the key
  * hero already answered by `lockOffer` time, answers a locked package in one command.
+ * That is `m1-negotiation/1`; the amendment of 2026-08-25 narrows the poll to the invited
+ * crew, and these tests move with the behaviour when the resolution engine builds it.
  *
  * Every fixture below builds its `ContractState` through `createContractState`
  * directly, rather than replaying `composeOffer`/`proposeContractToHero`/`lockOffer`:

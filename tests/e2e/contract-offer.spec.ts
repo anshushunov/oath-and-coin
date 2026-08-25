@@ -97,7 +97,9 @@ const CANVAS = 'world-canvas';
  * The five scenarios whose manifests declare the five states `AGENTS.md` §7 requires,
  * plus the four negotiation-phase scenarios `DEC-008` Task 21 adds — `draft`, `locked`,
  * a locked-and-crewed offer waiting on `settleContract`, and a settled one whose promise
- * was broken. None of the nine can be recorded in `migration/oracle/v1`: that corpus is
+ * was broken. The third of those waits on `resolveContract` once the resolution engine
+ * ships (`RESOLUTION_SPEC` §3.2): under `m1-negotiation/1` there is nothing between a
+ * filled crew and the settlement. None of the nine can be recorded in `migration/oracle/v1`: that corpus is
  * frozen at the Godot/.NET baseline and predates the negotiation protocol entirely
  * (`ADR-013`).
  *

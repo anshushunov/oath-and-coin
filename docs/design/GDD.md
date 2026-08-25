@@ -1081,6 +1081,8 @@
 | [DEC-009](../decisions/DEC-009-hero-portraits-in-m1.md) | Шесть портретов героев в M1 как исключение из DEC-007 | accepted |
 | [DEC-010](../decisions/DEC-010-hero-decision-model.md) | Модель решения героя: ворота и взвешенная сумма | accepted |
 | [DEC-011](../decisions/DEC-011-combat-space-and-time.md) | Пространство и время боя: поле 3×3, отряд 4–6, дискретные такты | accepted |
+| [DEC-012](../decisions/DEC-012-negotiation-offer-protocol.md) | Протокол оффера, обещание доплаты и казна гильдии | accepted, поправка 2026-08-25 |
+| [DEC-013](../decisions/DEC-013-hero-capability-layer.md) | Слой способности героя: общая величина и экспертиза | accepted |
 
 ---
 

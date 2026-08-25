@@ -16,9 +16,11 @@ import { readFile } from '../strict-json.ts';
  *
  * Spelled the way the file spells it (`"compose_offer"`, not `"ComposeOffer"`), so the
  * discriminant a reader sees in the JSON and the one the compiler switches on are the
- * same string. `settle_contract` (Task 20) is the fifth and last: the engine has all
- * five commands `NEGOTIATION_SPEC` §3.1 names now, so a scenario file can drive a
- * negotiation start to finish.
+ * same string. `settle_contract` (Task 20) is the fifth: the engine has all five
+ * commands of the negotiation slice, so a scenario file can drive a negotiation start to
+ * finish. `NEGOTIATION_SPEC` §3.1 names a sixth since 2026-08-25 — `resolve_contract`,
+ * between the poll and the settlement — and it arrives with the resolution engine that
+ * gives it something to do.
  */
 export const ScenarioCommandKind = Object.freeze({
   ComposeOffer: 'compose_offer',

@@ -180,7 +180,7 @@ describe('a command list is refused rather than read on a guess', () => {
     return path;
   }
 
-  it('reads a well-formed one, in all five commands the protocol has', () => {
+  it('reads a well-formed one, in all five commands the wire format has', () => {
     // All five in one file rather than five one-command files: the discriminant is the
     // point of this format, and a list that mixes commands is what every real scenario
     // is. `settle_contract` (Task 20) is the last one — the engine has had it since

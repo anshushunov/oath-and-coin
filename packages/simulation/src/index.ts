@@ -28,6 +28,34 @@ export { deepEqual } from './collections/deep-equal.ts';
 export { SortedMap } from './collections/sorted-map.ts';
 export { SortedSet } from './collections/sorted-set.ts';
 
+/**
+ * The outcome vocabulary (`RESOLUTION_SPEC` §2.1, §2.7). Exported here rather than left
+ * inside the package because `packages/content` validates a hero's `capability` and a
+ * contract's `needs` against it — the same road `CONTENT_ID_PATTERN` already travels.
+ */
+export { NEED_IDS, NeedId, compareNeedIds } from './domain/need-id.ts';
+export { CommitmentState } from './domain/commitment.ts';
+export type { HeroCapability } from './domain/capability.ts';
+export {
+  ConsequenceKind,
+  CoverageVerdict,
+  DeficitKind,
+  OutcomeGrade,
+  OutcomeIntentKind,
+  type ContractResolution,
+  type Deficit,
+  type HeroConsequence,
+  type HeroContribution,
+  type NeedCoverage,
+  type OutcomeIntent,
+  type ResolutionDraft
+} from './domain/outcome.ts';
+export {
+  OUTCOME_REASON_CODES,
+  OutcomeReasonCodes,
+  type OutcomeReasonCode
+} from './domain/outcome-reason-codes.ts';
+
 export {
   createDecisionResult,
   type CausalTrace,

@@ -105,6 +105,28 @@ module.exports = {
       to: { pathNot: '^packages/simulation/' }
     },
     {
+      name: 'domain-vocabulary-imports-only-what-is-below-it',
+      severity: 'error',
+      comment:
+        'RESOLUTION_SPEC §2.7 and ADR-014 §4: the outcome vocabulary is what state is allowed to depend on, so it may not depend on state, on the decision rule or on the engine. Stated as its own rule because `no-circular` does not say this — it reddens only once the import back the other way exists, which means a `domain/ -> decisions/` import can sit green for as long as nothing closes the loop, and the day it closes the cycle is reported at whichever file happened to be edited last rather than at the one that broke the direction.',
+      // What is allowed, not a list of what is banned — the shape every absolute rule in
+      // this file uses, and for the reason `simulation-depends-on-nothing` records: a list
+      // of forbidden neighbours misses whatever is invented next, including a relative
+      // path that walks around it. Below the vocabulary sit exactly three things: the
+      // sorted collections it is keyed by, the identity of a hero, and the canonical
+      // domain (`canonical/` itself imports nothing but `collections/`).
+      //
+      // **No exemption for test files**, deliberately. The first version of this rule had
+      // one, so that `outcome-reason-codes.test.ts` could hold the outcome vocabulary
+      // disjoint from the decision one; external review pointed out that ADR-014 says "no
+      // file in this directory", and a rule that exempts half the directory does not say
+      // that. The assertion moved to `decisions/vocabulary.test.ts` — the file that owns
+      // the decision dictionary and may look down at the outcome one — and the exemption
+      // went away with it.
+      from: { path: '^packages/simulation/src/domain/' },
+      to: { pathNot: '^packages/simulation/src/(domain|collections|ids|canonical)/' }
+    },
+    {
       name: 'content-core-imports-only-simulation-and-zod',
       severity: 'error',
       comment:

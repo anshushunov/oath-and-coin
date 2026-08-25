@@ -8,7 +8,7 @@
 >
 > Редакция 1.1 закрывает четвёртый раунд внешнего ревью (codex `gpt-5.6-sol`). Из исправленного важнее всего два: формула мотивации меняла знак эффекта на отрицательном разрыве — преданный отряд ухудшал провал, обиженный улучшал; и «Чисто» допускало полностью непокрытую потребность, если избыток по другой перевешивал.
 >
-> Связанные: [`HERO_DECISION_SPEC`](HERO_DECISION_SPEC.md), [`NEGOTIATION_SPEC`](NEGOTIATION_SPEC.md), [`TDD`](TDD.md), [`GDD`](../design/GDD.md) §10, §21.4, [`ADR-002`](../decisions/ADR-002-simulation-core-boundary.md), [`ADR-003`](../decisions/ADR-003-deterministic-rng.md), [`ADR-007`](../decisions/ADR-007-events-and-causal-trace.md), [`DEC-006`](../decisions/DEC-006-ranked-reasons-not-probabilities.md), [`DEC-010`](../decisions/DEC-010-hero-decision-model.md), [`DEC-012`](../decisions/DEC-012-negotiation-offer-protocol.md), `DEC-013`, `ADR-014`
+> Связанные: [`HERO_DECISION_SPEC`](HERO_DECISION_SPEC.md), [`NEGOTIATION_SPEC`](NEGOTIATION_SPEC.md), [`TDD`](TDD.md), [`GDD`](../design/GDD.md) §10, §21.4, [`ADR-002`](../decisions/ADR-002-simulation-core-boundary.md), [`ADR-003`](../decisions/ADR-003-deterministic-rng.md), [`ADR-007`](../decisions/ADR-007-events-and-causal-trace.md), [`DEC-006`](../decisions/DEC-006-ranked-reasons-not-probabilities.md), [`DEC-010`](../decisions/DEC-010-hero-decision-model.md), [`DEC-012`](../decisions/DEC-012-negotiation-offer-protocol.md), [`DEC-013`](../decisions/DEC-013-hero-capability-layer.md), [`ADR-014`](../decisions/ADR-014-contract-resolver-boundary.md)
 
 ---
 
@@ -232,7 +232,8 @@ readonly commitments: SortedMap<HeroId, CommitmentState>;
 
 | Инвариант | Почему |
 |---|---|
-| `invited.size === requiredCrew` | §7 продуктовой спеки; без фиксированного размера оптимально звать лишних |
+| `keyHero === null ⇒ invited.isEmpty()` | начальный оффер строится загрузчиком до первой команды (`NEGOTIATION_SPEC` §6.1): звать некого, пока игрок никого не позвал. Безусловный размер означал бы, что состояние, собранное из контента, не проходит собственный конструктор |
+| `keyHero !== null ⇒ invited.size === requiredCrew` | §7 продуктовой спеки; без фиксированного размера оптимально звать лишних |
 | `keyHero === null ∨ invited.has(keyHero)` | пакет обсуждается с тем, кто в него зван |
 | `respondedBy ⊆ invited` | ответ от неприглашённого — состояние, которого не бывает |
 | `acceptedBy ⊆ respondedBy` | принять, не ответив, нельзя |
@@ -252,11 +253,15 @@ readonly commitments: SortedMap<HeroId, CommitmentState>;
 
 ### 2.7. Границы модулей
 
-Наивное размещение даёт цикл, который `lint:deps` (`no-circular`) отвергает:
+Наивное размещение даёт цикл, который `lint:deps` отвергает:
 
 > `ContractState → ContractResolution → CommitmentState → DecisionContext → ContractState`
 
 Поэтому вся лексика §2.1 живёт в `packages/simulation/src/domain/`, и **ни один файл этого каталога не импортирует состояние или правила**. Направление: `domain ← state ← resolution ← engine`; `decisions` зависит от `domain` и `state`, но `state` не зависит ни от `decisions`, ни от `resolution`.
+
+**Два объявления §2.1 из этого правила выпадают, и это не исключение, а то же самое правило.** `ResolutionInput` и `ContractResolver` называют `ContractState` и `HeroState`, поэтому в `domain/` им нельзя: там они замкнули бы ровно тот цикл, ради которого каталог отделён (`domain/outcome.ts → state/contract-state.ts → domain/outcome.ts`). Они живут в `packages/simulation/src/resolution/` вместе с резолвером — выше состояния, и там же, где становятся вызываемыми. Всё остальное §2.1, включая `ResolutionDraft` и `HeroCapability`, состояния не называет и лежит в `domain/`.
+
+**Держит это отдельное правило `domain-vocabulary-imports-only-what-is-below-it`, а не `no-circular`.** Второй запрещает цикл, а не направление: импорт из `domain/` наверх остаётся зелёным до дня, когда кто-нибудь замкнёт петлю обратно. Правило перечисляет разрешённое (`collections/`, `ids/`, `canonical/`), не делает исключения для тестов и проверено мутантом — ациклический импорт `domain/commitment.ts → state/game-state.ts` краснит `lint:deps` по имени правила. Проверка, которой нужны оба словаря сразу, живёт в `decisions/vocabulary.test.ts`: вниз смотреть можно, наверх нельзя.
 
 Экспорт из `packages/simulation/src/index.ts` обязателен: `packages/content` импортирует `NeedId` и `compareNeedIds` оттуда, как уже импортирует `CONTENT_ID_PATTERN`.
 
@@ -288,7 +293,7 @@ export interface ResolveContract {
 }
 ```
 
-`NEGOTIATION_SPEC` §3.1 называет пять команд; эта — шестая, между `pollCrew` и `settleContract`. Оба документа обновляются вместе с этой спекой (§8).
+`NEGOTIATION_SPEC` §3.1 называл пять команд; эта — шестая, между `pollCrew` и `settleContract`. Оба документа приведены в соответствие 2026-08-25 (§8).
 
 ### 3.2. Предусловия, по порядку проверки
 
@@ -596,8 +601,8 @@ worseThan(a, b) = multiplyInt32(supplied(a), required(b)) < multiplyInt32(suppli
 
 **Принятые документы правятся до кода, а не после.**
 
-- **`DEC-012`** сегодня фиксирует пять команд, опрос всего оставшегося ростера и расчёт сразу после `locked + crewed`. Меняется всё три: состав как часть пакета, опрос `invited`, обязательный `resolve` перед `settle`, выплата, зависящая от ступени.
-- **`NEGOTIATION_SPEC`** §3 обновляется теми же тремя пунктами.
+- **`DEC-012`** фиксировал пять команд, опрос всего оставшегося ростера и расчёт сразу после `locked + crewed`. Изменены все три: состав как часть пакета, опрос `invited`, обязательный `resolve` перед `settle`, выплата, зависящая от ступени. Внесено поправкой от 2026-08-25 — прежний текст пунктов сохранён, изменения помечены датой.
+- **`NEGOTIATION_SPEC`** §3 обновлён теми же тремя пунктами.
 - **`DEC-013`** и **`ADR-014`** заводятся со статусом `accepted`: они фиксируют решения, уже принятые владельцем 2026-08-25, а не предлагают их. `proposed` не разрешил бы зависимую реализацию.
 
 ---
@@ -683,7 +688,9 @@ worseThan(a, b) = multiplyInt32(supplied(a), required(b)) < multiplyInt32(suppli
 - **R-07** форма именованного осложнения, когда неопределённость вернётся (§7.4);
 - **R-09** нужен ли `weak` отдельный вклад в разрыв, помимо того что он закрывает путь к «Чисто».
 
-Закрыты этой редакцией: `R-05` (`capability` хранится данными героя), `R-06` (две или три потребности — обе допустимы схемой), `R-08` (раны в M1 без потолка).
+Закрыты этой редакцией: `R-05` (`capability` хранится данными героя — записано решением [`DEC-013`](../decisions/DEC-013-hero-capability-layer.md) §4), `R-06` (две или три потребности — обе допустимы схемой), `R-08` (раны в M1 без потолка).
+
+Ни один из трёх не является решением, принимаемым по ходу реализации: `R-05` закрыт `DEC-013`, `R-06` — §2.3, `R-08` — §2.6. Из оставшихся открытыми `R-01`, `R-07` и `R-09` реализацию не блокирует ни один: первый уточняется батч-прогоном после того, как система заработает, второй относится к неопределённости, которой в первой редакции нет вовсе (§7.4), третий — к возможному будущему вкладу `weak` в разрыв, а не к сегодняшнему поведению.
 
 ---
 

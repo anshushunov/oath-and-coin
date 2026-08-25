@@ -12,8 +12,14 @@ import type { ContentId } from '../ids/content-id.ts';
  * order, and each gets its own decision and its own event — six heroes can answer in
  * the one command a player issued.
  *
- * No `heroId` of its own, unlike `ProposeContractToHero`: this command asks the
- * *entire* remaining roster, not one hero.
+ * No `heroId` of its own, unlike `ProposeContractToHero`: this command asks *many* heroes,
+ * not one.
+ *
+ * **Which many is a rule that has moved, and this shape survives the move.** As
+ * `m1-negotiation/1` implements it, the poll asks the entire remaining roster; the
+ * accepted amendment of 2026-08-25 (`DEC-012`, `NEGOTIATION_SPEC` §3.1, §3.3) narrows it
+ * to the crew the package invited, minus whoever already answered. Either way the command
+ * names no hero, and the change lands with the resolution engine rather than here.
  */
 export interface PollCrew {
   /** Identifies this command for the campaign's lifetime; see `ProposeContractToHero`. */
