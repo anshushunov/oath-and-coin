@@ -1,4 +1,4 @@
-import { MAX_TAGS_PER_CONTRACT, NEED_IDS } from '@oath-and-coin/simulation';
+import { MAX_TAGS_PER_CONTRACT } from '@oath-and-coin/simulation';
 
 /**
  * The ceilings every path that reads external data is held to (`TDD` §18:
@@ -77,16 +77,21 @@ export const NEGOTIABLE_TAGS_COUNT = 2;
 export const MIN_NEEDS_PER_CONTRACT = 2;
 
 /**
- * Most needs a contract may name — the size of the engine vocabulary itself, derived
- * rather than written as a literal `3`.
+ * Most needs a contract may name (`RESOLUTION_SPEC` §2.3).
  *
- * A contract cannot name a need twice (they are object keys) or a need that does not
- * exist (`NeedId` is a closed vocabulary), so this ceiling is not an independent rule
- * the contract has to enforce a second time; it is what the vocabulary already
- * allows, stated where the cardinality rules live so the day a fourth need is
- * authored it moves by itself.
+ * **A literal, deliberately not `NEED_IDS.length`.** The two are equal today and that
+ * is a coincidence of arithmetic, not one rule: how many needs one contract may ask
+ * for is a statement about contracts, and how many needs exist is a statement about
+ * the world. Derived from the vocabulary, adding a fourth `NeedId` would silently
+ * permit a four-need contract — a change to what the game *is*, arriving through a
+ * `.length` and without a decision, which `AGENTS.md` §5 forbids taking inside an
+ * implementation.
+ *
+ * The coincidence is held by a tripwire in `schemas.test.ts` rather than by this
+ * declaration: it reddens the day a fourth need is authored, which is exactly when
+ * somebody has to decide whether contracts may name four.
  */
-export const MAX_NEEDS_PER_CONTRACT = NEED_IDS.length;
+export const MAX_NEEDS_PER_CONTRACT = 3;
 
 /**
  * Longest artifact-safe string anything in this package accepts — authored or read

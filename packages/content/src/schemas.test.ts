@@ -130,17 +130,24 @@ describe("a contract's needs", () => {
     ).toThrow();
   });
 
+  it('refuses needs that are not a map at all', () => {
+    expect(() => contractFileSchema.parse(contractWith(60))).toThrow();
+    expect(() => contractFileSchema.parse(contractWith(['frontline', 'wilderness']))).toThrow();
+  });
+
   it('refuses a contract with no needs field at all', () => {
     const { needs: _dropped, ...withoutNeeds } = validContract;
 
     expect(() => contractFileSchema.parse(withoutNeeds)).toThrow();
   });
 
-  it('cannot be asked for more needs than the vocabulary has', () => {
-    // Not a rule this contract enforces separately — `MAX_NEEDS_PER_CONTRACT` is the
-    // size of the vocabulary itself, so a fourth key is already refused as a key. The
-    // assertion is here so the ceiling stays derived rather than turning into a
-    // literal 3 the day a fourth need is authored.
+  it('has a ceiling that happens to equal the vocabulary, and this is the tripwire', () => {
+    // The two numbers coincide today and are two different facts: how many needs one
+    // contract may ask for, and how many needs exist. `MAX_NEEDS_PER_CONTRACT` is a
+    // literal on purpose (`limits.ts`), so this assertion is not a tautology — it
+    // reddens the day a fourth `NeedId` is authored, which is exactly when somebody has
+    // to decide whether a contract may name four. Derived from `NEED_IDS.length`, that
+    // decision would have been taken by a `.length` and by nobody.
     expect(MAX_NEEDS_PER_CONTRACT).toBe(Object.values(NeedId).length);
   });
 });
@@ -218,6 +225,30 @@ describe("a hero's capability", () => {
   it('refuses a fractional grade', () => {
     expect(() =>
       heroFileSchema.parse(heroWith({ grade: 50.5, expertise: { frontline: 10 } }))
+    ).toThrow();
+  });
+
+  it('refuses a fractional expertise', () => {
+    // Its own case rather than one covered by the grade above: `z.int()` is written
+    // twice in this contract, and a test that exercises only one of the two would stay
+    // green with the other loosened to `z.number()` — regenerating the schemas along
+    // with it, so `schema:check` would agree and the whole gate would pass on a format
+    // that admits a fractional expertise into the integer arithmetic of `TDD` §7.4.
+    expect(() =>
+      heroFileSchema.parse(heroWith({ grade: 50, expertise: { frontline: 10.5 } }))
+    ).toThrow();
+  });
+
+  it('refuses an expertise that is not a map at all', () => {
+    expect(() => heroFileSchema.parse(heroWith({ grade: 50, expertise: 70 }))).toThrow();
+    expect(() =>
+      heroFileSchema.parse(heroWith({ grade: 50, expertise: ['frontline'] }))
+    ).toThrow();
+  });
+
+  it('refuses an expertise weight that is not a number', () => {
+    expect(() =>
+      heroFileSchema.parse(heroWith({ grade: 50, expertise: { frontline: '70' } }))
     ).toThrow();
   });
 

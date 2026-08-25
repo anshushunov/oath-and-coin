@@ -258,9 +258,11 @@ describe('loadContentSet over the shipped tree', () => {
     ]);
   });
 
-  it('keys a contract needs map in declaration order, whatever order the file used', () => {
-    // `core:silence_the_cult` authors all three needs, so this is the one contract where
-    // declaration order is observable at all.
+  it('keys a contract needs map in declaration order', () => {
+    // `core:silence_the_cult` authors all three needs, so this is the one shipped
+    // contract where the order is observable at all. It says nothing about *whose*
+    // order this is — its own file already lists them this way; the tree below is what
+    // separates declaration order from authored order.
     expect(
       content.contracts.get(parseContentId('core:silence_the_cult'))!.needs.entries()
     ).toEqual([
@@ -390,6 +392,66 @@ describe('the shipped content is playable', () => {
     ]) {
       expect(catalogue.has(key), key).toBe(true);
     }
+  });
+});
+
+describe('the two fields RESOLUTION_SPEC adds, through the loader rather than the contract', () => {
+  // A tree of its own, because the shipped one cannot ask either of these questions:
+  // no shipped hero declares a zero expertise, and no shipped file lists its needs in
+  // any order but the declared one. Both properties are about what `toNeedMap` does,
+  // and `schemas.test.ts` — which stops at `parse` — cannot see past it.
+
+  it('keeps a zero expertise and drops nothing, so answerability survives the load', () => {
+    // `RESOLUTION_SPEC` §2.2: a hero answerable for `frontline` at zero skill is not
+    // the same hero as one `frontline` is no business of — the first can earn
+    // `faltered_early` for it and is eligible for a wound on it, the second cannot.
+    // On coverage both contribute nothing, so nothing downstream can recover the
+    // difference if the loader flattens it here. A `.filter(([, w]) => w !== 0)` in
+    // `toNeedMap` passes every other test in this file.
+    const root = treeWith({
+      heroes: [{ ...HERO, capability: { grade: 40, expertise: { frontline: 0 } } }]
+    });
+
+    const expertise = loadContentSet(root).heroes.get(parseContentId('core:bram'))!.capability
+      .expertise;
+
+    expect(expertise.has('frontline')).toBe(true);
+    expect(expertise.get('frontline')).toBe(0);
+    expect(expertise.has('undead_knowledge')).toBe(false);
+    expect(expertise.entries()).toEqual([['frontline', 0]]);
+  });
+
+  it('orders needs by the vocabulary, not by the order the file listed them', () => {
+    // The shipped files all happen to list needs in declaration order, so this is the
+    // only place the two orders are told apart. The order reaches the canonical
+    // artifact, which is why it must be a property of the vocabulary and not of how an
+    // author typed the file.
+    const root = treeWith({
+      contracts: [
+        { ...CONTRACT, needs: { wilderness: 20, undead_knowledge: 30, frontline: 25 } }
+      ]
+    });
+
+    expect(
+      loadContentSet(root).contracts.get(parseContentId('core:cleanse_the_crypt'))!.needs.entries()
+    ).toEqual([
+      ['frontline', 25],
+      ['undead_knowledge', 30],
+      ['wilderness', 20]
+    ]);
+  });
+
+  it('builds those maps with compareNeedIds itself, not with a comparator that agrees', () => {
+    // The tripwire the ordering assertions above cannot be: on today's three literals
+    // declaration order and alphabetical order coincide, so `compareStrings` would pass
+    // both of them. `compareNeedIds` refuses a value outside the vocabulary and a string
+    // comparator answers it happily — which is the one question that tells them apart,
+    // and it is asked here, of the map the *loader* built (`need-id.test.ts` asks it of
+    // the comparator itself; that one stays green if this call site passes the wrong
+    // one).
+    const needs = loadContentSet(treeWith({})).contracts.get(ids.crypt)!.needs;
+
+    expect(() => needs.has('swimming' as never)).toThrow(/not part of this vocabulary/);
   });
 });
 

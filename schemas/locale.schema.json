@@ -29,6 +29,7 @@
       },
       "description": "Localization key to player-facing text. Every key content refers to must appear here (ShippedContentTests).",
       "propertyNames": {
+        "type": "string",
         "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$"
       }
     }
