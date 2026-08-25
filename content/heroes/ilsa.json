@@ -1,11 +1,15 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "id": "core:ilsa",
   "display_name_key": "hero.core.ilsa.name",
   "greed": 25,
   "caution": 55,
   "pride": 70,
   "trust_in_guild": 65,
+  "capability": {
+    "grade": 70,
+    "expertise": { "frontline": 20, "undead_knowledge": 75 }
+  },
   "traits": [
     "core:will_not_abandon_the_wounded",
     "core:will_not_strike_a_temple",

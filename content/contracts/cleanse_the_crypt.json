@@ -1,9 +1,10 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "id": "core:cleanse_the_crypt",
   "display_name_key": "contract.core.cleanse_the_crypt.name",
   "patron_fee": 70,
   "risk": 80,
   "required_crew": 4,
+  "needs": { "frontline": 30, "undead_knowledge": 35 },
   "tags": ["target:undead", "method:public_contract"]
 }

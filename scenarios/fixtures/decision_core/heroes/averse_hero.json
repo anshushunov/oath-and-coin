@@ -1,11 +1,20 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "id": "fixture:averse_hero",
   "display_name_key": "hero.fixture.averse_hero.name",
   "greed": 0,
   "caution": 0,
   "pride": 0,
   "trust_in_guild": 80,
-  "traits": ["fixture:test_aversion"],
+  "capability": {
+    "grade": 50,
+    "expertise": {
+      "frontline": 50,
+      "wilderness": 50
+    }
+  },
+  "traits": [
+    "fixture:test_aversion"
+  ],
   "relationships": []
 }

@@ -20,8 +20,15 @@
  * because a hand-authored version 2 file is a statement about what its author
  * checked it against, and that statement did not include a field this build now
  * understands.
+ *
+ * Raised to 4 by the contract-resolution engine's Task 2 (`RESOLUTION_SPEC` §2.8): a
+ * hero file now declares `capability` and a contract file `needs`, and unlike
+ * `negotiable_tags` **both are required**. That makes the move stronger than the last
+ * one rather than the same kind: a version 3 file is not a legal version 4 file at
+ * all, and reading one would mean inventing a capability for a hero the author never
+ * gave one — the guess a version field exists to refuse.
  */
-export const SUPPORTED_CONTENT_SCHEMA_VERSION = 3;
+export const SUPPORTED_CONTENT_SCHEMA_VERSION = 4;
 
 /** The locale file format, versioned separately because it evolves separately. */
 export const SUPPORTED_LOCALE_SCHEMA_VERSION = 2;

@@ -3,8 +3,11 @@ import type { ZodType } from 'zod';
 import {
   SortedMap,
   compareContentIds,
+  compareNeedIds,
   parseContentId,
-  type ContentId
+  type ContentId,
+  type HeroCapability,
+  type NeedId
 } from '@oath-and-coin/simulation';
 
 import { computeContentVersion } from './content-digest.ts';
@@ -62,6 +65,18 @@ export interface HeroDefinition {
   readonly caution: number;
   readonly pride: number;
   readonly trustInGuild: number;
+  /**
+   * What the hero can do (`DEC-013`, `RESOLUTION_SPEC` §2.2) — the layer kept apart
+   * from the four scales above, both in the file format and here.
+   *
+   * `expertise` arrives as a `SortedMap` keyed by `compareNeedIds` rather than as the
+   * object the file holds: declaration order, not the order the author happened to
+   * type the keys in, is what reaches a canonical artifact, and a definition that
+   * carried the file's own key order would make that artifact a function of authoring
+   * style. An entry of `0` survives the trip — a hero answerable for a need at zero
+   * skill is not the same hero as one the need is no business of (§2.2).
+   */
+  readonly capability: HeroCapability;
   readonly traits: readonly ContentId[];
   readonly relationships: readonly HeroRelationship[];
 }
@@ -77,6 +92,12 @@ export interface ContractDefinition {
   readonly patronFee: number;
   readonly risk: number;
   readonly requiredCrew: number;
+  /**
+   * What the job asks for, and how much of each (`RESOLUTION_SPEC` §2.3): two or three
+   * needs, every weight strictly positive. Keyed by `compareNeedIds` for the reason
+   * {@link HeroDefinition.capability} gives — need order reaches the artifact.
+   */
+  readonly needs: SortedMap<NeedId, number>;
   readonly tags: readonly ContentId[];
   /**
    * The pair of mutually exclusive method tags the player chooses one of
@@ -155,6 +176,23 @@ export function loadContentSet(source: ContentFileSource): ContentSet {
   return { heroes, contracts, traits, contentVersion: computeContentVersion(source) };
 }
 
+/**
+ * A `{ need: weight }` object from a file as the map the domain reads.
+ *
+ * The `undefined` filter is what a `partialRecord`'s type says rather than what a parse
+ * produces — an absent key is absent, never present holding `undefined` — but writing it
+ * out is cheaper than an assertion, and it is the one place where "no entry" and "an
+ * entry of zero" could be conflated by accident. Zero is kept (`RESOLUTION_SPEC` §2.2).
+ */
+function toNeedMap(authored: Partial<Record<string, number>>): SortedMap<NeedId, number> {
+  return SortedMap.from(
+    compareNeedIds,
+    Object.entries(authored)
+      .filter((entry): entry is [string, number] => entry[1] !== undefined)
+      .map(([need, weight]) => [need as NeedId, weight] as const)
+  );
+}
+
 function toHeroDefinition(file: HeroFile): HeroDefinition {
   return {
     id: parseContentId(file.id),
@@ -163,6 +201,10 @@ function toHeroDefinition(file: HeroFile): HeroDefinition {
     caution: file.caution,
     pride: file.pride,
     trustInGuild: file.trust_in_guild,
+    capability: {
+      grade: file.capability.grade,
+      expertise: toNeedMap(file.capability.expertise)
+    },
     traits: file.traits.map((trait) => parseContentId(trait)),
     relationships: file.relationships.map((relationship) => ({
       hero: parseContentId(relationship.hero),
@@ -178,6 +220,7 @@ function toContractDefinition(file: ContractFile): ContractDefinition {
     patronFee: file.patron_fee,
     risk: file.risk,
     requiredCrew: file.required_crew,
+    needs: toNeedMap(file.needs),
     tags: file.tags.map((tag) => parseContentId(tag)),
     negotiableTags: (file.negotiable_tags ?? []).map((tag) => parseContentId(tag))
   };

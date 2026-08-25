@@ -7,7 +7,7 @@
   "properties": {
     "schema_version": {
       "type": "number",
-      "const": 3
+      "const": 4
     },
     "id": {
       "type": "string",
@@ -33,6 +33,22 @@
       "minimum": 1,
       "maximum": 6
     },
+    "needs": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "enum": [
+          "frontline",
+          "undead_knowledge",
+          "wilderness"
+        ]
+      },
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      }
+    },
     "tags": {
       "maxItems": 6,
       "type": "array",
@@ -56,6 +72,7 @@
     "patron_fee",
     "risk",
     "required_crew",
+    "needs",
     "tags"
   ],
   "additionalProperties": false

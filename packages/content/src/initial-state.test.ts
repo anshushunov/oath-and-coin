@@ -52,9 +52,10 @@ describe('createInitialState', () => {
       // `6ec81ab69e9fcec3` until Task 18 authored `core:works_in_the_open` and its
       // localization key, then `9763a54ae7dbff9c` until the same task's own crewability
       // check found `core:collect_the_debt` unreachable and fixed it with
-      // `required_crew: 2 → 1` (`content-set.test.ts` carries the same move's full
-      // history).
-      contentVersion: '46416b20360bbedd',
+      // `required_crew: 2 → 1`, then `46416b20360bbedd` until the resolution engine's
+      // Task 2 raised every file to `schema_version: 4` and authored `capability` and
+      // `needs` (`content-set.test.ts` carries the same move's full history).
+      contentVersion: 'cd159cbb2363d417',
       campaignSeed: 7n,
       stateVersion: 0,
       logicalTime: 0,

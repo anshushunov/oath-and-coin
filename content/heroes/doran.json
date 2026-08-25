@@ -1,11 +1,15 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "id": "core:doran",
   "display_name_key": "hero.core.doran.name",
   "greed": 50,
   "caution": 45,
   "pride": 35,
   "trust_in_guild": 55,
+  "capability": {
+    "grade": 60,
+    "expertise": { "frontline": 55, "wilderness": 35 }
+  },
   "traits": [
     "core:will_not_serve_slavers",
     "core:hates_the_cult",

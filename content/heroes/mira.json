@@ -1,11 +1,15 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "id": "core:mira",
   "display_name_key": "hero.core.mira.name",
   "greed": 40,
   "caution": 80,
   "pride": 50,
   "trust_in_guild": 20,
+  "capability": {
+    "grade": 50,
+    "expertise": { "undead_knowledge": 30, "wilderness": 60 }
+  },
   "traits": [
     "core:refuses_deception",
     "core:fears_undeath",

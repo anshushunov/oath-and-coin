@@ -1,9 +1,10 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "id": "core:collect_the_debt",
   "display_name_key": "contract.core.collect_the_debt.name",
   "patron_fee": 30,
   "risk": 20,
   "required_crew": 1,
+  "needs": { "frontline": 20, "wilderness": 15 },
   "tags": ["patron:slavers", "method:deception", "method:abandon_wounded"]
 }

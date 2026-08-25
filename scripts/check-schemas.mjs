@@ -60,6 +60,10 @@ const { CONTENT_ID_PATTERN } = await moduleAt(
   'ids',
   'content-id.ts'
 );
+// The need vocabulary itself, from the engine that owns it: both schemas spell the
+// three literals out — a schema has no other way to state an enum — and this is what
+// holds those spellings to the closed vocabulary `RESOLUTION_SPEC` §2.1 declares.
+const { NEED_IDS } = await moduleAt('packages', 'simulation', 'src', 'domain', 'need-id.ts');
 
 const failures = [];
 
@@ -124,6 +128,20 @@ const expectations = {
     'properties.pride.maximum': heroScale.maximum,
     'properties.trust_in_guild.minimum': heroScale.minimum,
     'properties.trust_in_guild.maximum': heroScale.maximum,
+    // Capability is checked against its *own* constants, not against `heroScale`, and
+    // that is the point rather than a duplication: the numbers coincide today, and
+    // `DEC-013` §2 requires that raising the range of greed cannot raise how strong a
+    // crew is. Comparing these to `heroScale` here would build exactly the coupling the
+    // two constant pairs exist to prevent.
+    'properties.capability.additionalProperties': false,
+    'properties.capability.required': ['grade', 'expertise'],
+    'properties.capability.properties.grade.minimum': bounds.CAPABILITY_GRADE_MIN,
+    'properties.capability.properties.grade.maximum': bounds.CAPABILITY_GRADE_MAX,
+    'properties.capability.properties.expertise.propertyNames.enum': NEED_IDS,
+    'properties.capability.properties.expertise.additionalProperties.minimum':
+      bounds.CAPABILITY_EXPERTISE_MIN,
+    'properties.capability.properties.expertise.additionalProperties.maximum':
+      bounds.CAPABILITY_EXPERTISE_MAX,
     'properties.traits.maxItems': limits.MAX_TRAITS_PER_HERO,
     'properties.traits.items.pattern': CONTENT_ID_PATTERN,
     'properties.relationships.maxItems': limits.MAX_RELATIONSHIPS_PER_HERO,
@@ -143,6 +161,11 @@ const expectations = {
     'properties.risk.maximum': bounds.RISK_MAX,
     'properties.required_crew.minimum': bounds.REQUIRED_CREW_MIN,
     'properties.required_crew.maximum': bounds.REQUIRED_CREW_MAX,
+    'properties.needs.minProperties': limits.MIN_NEEDS_PER_CONTRACT,
+    'properties.needs.maxProperties': limits.MAX_NEEDS_PER_CONTRACT,
+    'properties.needs.propertyNames.enum': NEED_IDS,
+    'properties.needs.additionalProperties.minimum': bounds.NEED_WEIGHT_MIN,
+    'properties.needs.additionalProperties.maximum': bounds.NEED_WEIGHT_MAX,
     'properties.tags.maxItems': limits.MAX_TAGS_PER_CONTRACT,
     'properties.tags.items.pattern': CONTENT_ID_PATTERN,
     'properties.negotiable_tags.minItems': limits.NEGOTIABLE_TAGS_COUNT,
@@ -313,7 +336,7 @@ for (const fileName of Object.keys(expectations).filter((name) => name !== 'trai
 }
 
 // ---------------------------------------------------------------------------
-// 4. One asymmetry between the two documents, recorded rather than discovered.
+// 4. Two asymmetries between the two documents, recorded rather than discovered.
 // ---------------------------------------------------------------------------
 
 // Zod has no way to express "every item is distinct", so the generated schema does
@@ -342,6 +365,37 @@ for (const [fileName, arrayProperty] of [
         'express it, so either the contracts gained a way to and this check is out of date, or the ' +
         'generated file was edited by hand.'
     );
+  }
+}
+
+// The second asymmetry, and it is a rule rather than a nicety: how many needs a
+// contract names. A `partialRecord` states which keys are legal and nothing about how
+// many are used, so the Zod side enforces the count in `superRefine` — where a schema
+// cannot follow it — while the hand-written document says it in the only form it has,
+// `minProperties`/`maxProperties`. Recorded here so the two halves of one rule stay
+// visible: a `superRefine` deleted on one side and `minProperties` deleted on the other
+// are two separate silent losses of `RESOLUTION_SPEC` §2.3, and this is where the second
+// one is caught.
+{
+  const handWritten = readJson(join(schemasDirectory, 'contract.schema.json'));
+  const generated = readJson(join(schemasDirectory, 'generated', 'contract.schema.json'));
+
+  for (const keyword of ['minProperties', 'maxProperties']) {
+    if (at(handWritten, `properties.needs.${keyword}`) === undefined) {
+      fail(
+        `contract.schema.json: properties.needs.${keyword} is expected to stay — it is how the ` +
+          'hand-written schema states the need count, which the Zod contract enforces in ' +
+          '`superRefine` and cannot emit.'
+      );
+    }
+
+    if (at(generated, `properties.needs.${keyword}`) !== undefined) {
+      fail(
+        `schemas/generated/contract.schema.json: properties.needs.${keyword} appeared. Either the ` +
+          'contracts gained a way to express the count and this check is out of date, or the ' +
+          'generated file was edited by hand.'
+      );
+    }
   }
 }
 

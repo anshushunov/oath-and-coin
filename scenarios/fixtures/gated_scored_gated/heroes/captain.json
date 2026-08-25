@@ -1,11 +1,18 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "id": "fixture:captain",
   "display_name_key": "hero.fixture.captain.name",
   "greed": 80,
   "caution": 0,
   "pride": 0,
   "trust_in_guild": 50,
+  "capability": {
+    "grade": 50,
+    "expertise": {
+      "frontline": 50,
+      "wilderness": 50
+    }
+  },
   "traits": [],
   "relationships": []
 }

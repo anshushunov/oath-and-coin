@@ -31,13 +31,14 @@ function writeTree(files: Readonly<Record<string, string>>): string {
 }
 
 const VALID_HERO = JSON.stringify({
-  schema_version: 3,
+  schema_version: 4,
   id: 'core:bram',
   display_name_key: 'hero.core.bram.name',
   greed: 60,
   caution: 30,
   pride: 45,
   trust_in_guild: 50,
+  capability: { grade: 50, expertise: { frontline: 50, wilderness: 50 } },
   traits: [],
   relationships: []
 });
@@ -70,13 +71,14 @@ describe('validateContentTree', () => {
     const violations = validateContentTree(
       writeTree({
         'heroes/a.json': JSON.stringify({
-          schema_version: 3,
+          schema_version: 4,
           id: 'core:bram',
           display_name_key: 'hero.core.bram.name',
           greed: 60,
           caution: 30,
           pride: 45,
           trust_in_guild: 50,
+          capability: { grade: 50, expertise: { frontline: 50, wilderness: 50 } },
           traits: [],
           relationships: [{ hero: 'core:zara', weight: 999 }]
         })

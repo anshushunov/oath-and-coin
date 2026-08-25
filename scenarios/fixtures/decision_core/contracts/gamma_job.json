@@ -1,9 +1,15 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "id": "fixture:gamma_job",
   "display_name_key": "contract.fixture.gamma_job.name",
   "patron_fee": 0,
   "risk": 0,
   "required_crew": 1,
-  "tags": ["test:gamma"]
+  "needs": {
+    "frontline": 10,
+    "wilderness": 10
+  },
+  "tags": [
+    "test:gamma"
+  ]
 }

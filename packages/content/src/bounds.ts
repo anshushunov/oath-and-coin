@@ -39,6 +39,39 @@ export const RELATIONSHIP_WEIGHT_MAX = 20;
 export const REQUIRED_CREW_MIN = 1;
 export const REQUIRED_CREW_MAX = 6;
 
+/**
+ * What a hero can do, bounded on its own terms (`DEC-013`, `RESOLUTION_SPEC` §2.2).
+ *
+ * The numbers coincide with {@link TRAIT_MIN}/{@link TRAIT_MAX} and the constants
+ * deliberately do not: `greed` and `grade` are different quantities that happen to
+ * share a range today. `TRAIT_MAX` is derived from the simulation's `TRAIT_SCALE`
+ * because the scoring function divides by that span — raising it there has to raise
+ * it here, or every trait-weighted term quietly weakens. Nothing divides by the
+ * capability span, so borrowing `TRAIT_MAX` for it would tie a change in how greedy
+ * a hero may be to a change in how strong a crew is, which is the one coupling
+ * `DEC-013` §2 exists to refuse.
+ *
+ * Both scales are read the same way and are still two constants each rather than one
+ * pair: `grade` is how good a hero is at all, `expertise` how good he is at one
+ * particular need, and a ceiling raised on one is not a statement about the other.
+ */
+export const CAPABILITY_GRADE_MIN = 0;
+export const CAPABILITY_GRADE_MAX = 100;
+
+export const CAPABILITY_EXPERTISE_MIN = 0;
+export const CAPABILITY_EXPERTISE_MAX = 100;
+
+/**
+ * The weight a contract puts on one need (`RESOLUTION_SPEC` §2.3).
+ *
+ * The floor is **1, not 0**, and that is the rule rather than a rounding of it: a
+ * need of weight zero is a second entry that asks for nothing, which leaves the
+ * contract with one real need — the degenerate shape `MIN_NEEDS_PER_CONTRACT`
+ * exists to rule out, arrived at by the back door.
+ */
+export const NEED_WEIGHT_MIN = 1;
+export const NEED_WEIGHT_MAX = 100;
+
 // Pride deliberately gets no constants of its own: it is a hero scale, the same
 // kind of value greed, caution and trust_in_guild are, so its range is
 // TRAIT_MIN..TRAIT_MAX. A second pair of constants carrying the same numbers

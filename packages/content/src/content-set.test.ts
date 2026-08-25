@@ -74,6 +74,12 @@ const shippedContent = join(repoRoot, 'content');
  * gates — so the fix is `required_crew: 1` (`content/contracts/collect_the_debt.json`):
  * the contract reads as dirty work for the one hero with no principle against it,
  * not a patch.
+ *
+ * The contract-resolution engine's Task 2 moved it an eighth time, to
+ * `cd159cbb2363d417`: `SUPPORTED_CONTENT_SCHEMA_VERSION` 3 → 4, a `capability` on every
+ * hero and a `needs` on every contract (`RESOLUTION_SPEC` §2.2, §2.3). Unlike
+ * `negotiable_tags`, both fields are *required*, which is why the version had to move
+ * with them rather than merely alongside them.
  */
 
 const temporaryRoots: string[] = [];
@@ -85,29 +91,31 @@ afterEach(() => {
 });
 
 const HERO = {
-  schema_version: 3,
+  schema_version: 4,
   id: 'core:bram',
   display_name_key: 'hero.core.bram.name',
   greed: 60,
   caution: 30,
   pride: 45,
   trust_in_guild: 50,
+  capability: { grade: 50, expertise: { frontline: 50, wilderness: 50 } },
   traits: [] as unknown[],
   relationships: [] as unknown[]
 };
 
 const CONTRACT = {
-  schema_version: 3,
+  schema_version: 4,
   id: 'core:cleanse_the_crypt',
   display_name_key: 'contract.core.cleanse_the_crypt.name',
   patron_fee: 70,
   risk: 80,
   required_crew: 4,
+  needs: { frontline: 10, wilderness: 10 },
   tags: ['target:undead']
 };
 
 const TRAIT = {
-  schema_version: 3,
+  schema_version: 4,
   id: 'core:hates_the_cult',
   display_name_key: 'trait.core.hates_the_cult.name',
   kind: 'inclination',
@@ -196,8 +204,10 @@ describe('loadContentSet over the shipped tree', () => {
     // `core:collect_the_debt` was unreachable by any package (five of six heroes carry
     // a principle matching one of its three tags), fixed by
     // `required_crew: 2 → 1` (`content/contracts/collect_the_debt.json`) rather than by
-    // touching the tags or any hero.
-    expect(content.contentVersion).toBe('46416b20360bbedd');
+    // touching the tags or any hero. The resolution engine's Task 2 moved it an eighth
+    // time, to `cd159cbb2363d417`, raising every file to `schema_version: 4` and
+    // authoring the two fields `RESOLUTION_SPEC` §2.2 and §2.3 add.
+    expect(content.contentVersion).toBe('cd159cbb2363d417');
   });
 
   it('keys heroes, contracts and traits in content-id order', () => {
@@ -223,28 +233,60 @@ describe('loadContentSet over the shipped tree', () => {
     // `traits` keeps the order the file lists them in. The engine sorts them when it
     // builds a decision context; the definition is not where that happens, and a
     // loader that sorted here would hide the difference.
-    expect(content.heroes.get(parseContentId('core:bram'))).toEqual({
+    const bram = content.heroes.get(parseContentId('core:bram'))!;
+
+    expect(bram).toEqual({
       id: 'core:bram',
       displayNameKey: 'hero.core.bram.name',
       greed: 60,
       caution: 30,
       pride: 45,
       trustInGuild: 50,
+      capability: { grade: 65, expertise: expect.anything() },
       traits: ['core:will_not_strike_a_temple', 'core:hates_the_cult'],
       relationships: [{ hero: 'core:zara', weight: -8 }]
     });
+
+    // Asserted through its own accessors rather than inside the object above: a
+    // `SortedMap` compared by `toEqual` would be compared on its private fields, which
+    // passes for the wrong reason and says nothing about the ordering that is the point
+    // of the type. Declaration order, not the file's key order and not the alphabet —
+    // this is what reaches the canonical artifact (`RESOLUTION_SPEC` §2.1).
+    expect(bram.capability.expertise.entries()).toEqual([
+      ['frontline', 70],
+      ['wilderness', 40]
+    ]);
+  });
+
+  it('keys a contract needs map in declaration order, whatever order the file used', () => {
+    // `core:silence_the_cult` authors all three needs, so this is the one contract where
+    // declaration order is observable at all.
+    expect(
+      content.contracts.get(parseContentId('core:silence_the_cult'))!.needs.entries()
+    ).toEqual([
+      ['frontline', 25],
+      ['undead_knowledge', 30],
+      ['wilderness', 20]
+    ]);
   });
 
   it('carries a contract through unchanged, in authored order', () => {
-    expect(content.contracts.get(parseContentId('core:cleanse_the_crypt'))).toEqual({
+    const crypt = content.contracts.get(parseContentId('core:cleanse_the_crypt'))!;
+
+    expect(crypt).toEqual({
       id: 'core:cleanse_the_crypt',
       displayNameKey: 'contract.core.cleanse_the_crypt.name',
       patronFee: 70,
       risk: 80,
       requiredCrew: 4,
+      needs: expect.anything(),
       tags: ['target:undead', 'method:public_contract'],
       negotiableTags: []
     });
+    expect(crypt.needs.entries()).toEqual([
+      ['frontline', 30],
+      ['undead_knowledge', 35]
+    ]);
   });
 
   it('gives an inclination its weight and a principle none', () => {
@@ -363,12 +405,13 @@ describe('loadContentSet over a tree built for this test', () => {
     const root = treeWith({
       contracts: [
         {
-          schema_version: 3,
+          schema_version: 4,
           id: 'core:cleanse_the_crypt',
           display_name_key: 'contract.core.cleanse_the_crypt.name',
           patron_fee: 55,
           risk: 80,
           required_crew: 4,
+          needs: { frontline: 10, wilderness: 10 },
           tags: ['target:undead']
         }
       ]

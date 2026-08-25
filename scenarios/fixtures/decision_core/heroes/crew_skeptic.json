@@ -1,11 +1,23 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "id": "fixture:crew_skeptic",
   "display_name_key": "hero.fixture.crew_skeptic.name",
   "greed": 0,
   "caution": 0,
   "pride": 0,
   "trust_in_guild": 100,
+  "capability": {
+    "grade": 50,
+    "expertise": {
+      "frontline": 50,
+      "wilderness": 50
+    }
+  },
   "traits": [],
-  "relationships": [{ "hero": "fixture:crew_leader", "weight": -20 }]
+  "relationships": [
+    {
+      "hero": "fixture:crew_leader",
+      "weight": -20
+    }
+  ]
 }

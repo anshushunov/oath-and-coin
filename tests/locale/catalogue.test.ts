@@ -122,8 +122,18 @@ const content = loadContentSet(shippedContent);
  * five of six shipped heroes carry a principle matching one of its three authored tags
  * — on the very first run against the shipped tree, fixed by `required_crew: 2 → 1`
  * (`content/contracts/collect_the_debt.json`) rather than by touching a tag or a hero.
+ *
+ * The contract-resolution engine's Task 2 moved it an eighth time, to
+ * `cd159cbb2363d417`: every content file now declares `schema_version: 4`, every hero a
+ * `capability` and every contract its `needs` (`RESOLUTION_SPEC` §2.2, §2.3). **The key
+ * count did not move, and that is the assertion, not a side note.** Needs and capability
+ * are numbers, not text — a weight is authored, a need never is, because `NeedId` is a
+ * closed engine vocabulary — so the one thing this pair of constants exists to catch,
+ * player-facing text creeping back into `content/` after `ADR-012` moved it out, did not
+ * happen here. The version moved alone, which is exactly the shape a data-only change is
+ * supposed to have.
  */
-const FROZEN_CONTENT_VERSION = '46416b20360bbedd';
+const FROZEN_CONTENT_VERSION = 'cd159cbb2363d417';
 const FROZEN_CONTENT_KEY_COUNT = 98;
 
 /** Every key the presentation layer can produce for the shipped content tree. */

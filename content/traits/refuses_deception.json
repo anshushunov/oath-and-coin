@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "id": "core:refuses_deception",
   "display_name_key": "trait.core.refuses_deception.name",
   "kind": "principle",

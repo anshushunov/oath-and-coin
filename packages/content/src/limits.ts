@@ -1,4 +1,4 @@
-import { MAX_TAGS_PER_CONTRACT } from '@oath-and-coin/simulation';
+import { MAX_TAGS_PER_CONTRACT, NEED_IDS } from '@oath-and-coin/simulation';
 
 /**
  * The ceilings every path that reads external data is held to (`TDD` §18:
@@ -63,6 +63,30 @@ export { MAX_TAGS_PER_CONTRACT };
  * other than two files apart.
  */
 export const NEGOTIABLE_TAGS_COUNT = 2;
+
+/**
+ * Fewest needs a contract may name (`RESOLUTION_SPEC` §2.3).
+ *
+ * **Two, and the number is the model.** One need makes "take the strongest hero
+ * available" the optimal answer to every contract, which is the kill-criterion
+ * `MVP_PLAN` §3.2 names by that word: independent needs with weights are the only
+ * reason "the strongest crew" and "the right crew" are different crews. A floor of
+ * one would leave the whole coverage model reachable but pointless on the contract
+ * that skipped it.
+ */
+export const MIN_NEEDS_PER_CONTRACT = 2;
+
+/**
+ * Most needs a contract may name — the size of the engine vocabulary itself, derived
+ * rather than written as a literal `3`.
+ *
+ * A contract cannot name a need twice (they are object keys) or a need that does not
+ * exist (`NeedId` is a closed vocabulary), so this ceiling is not an independent rule
+ * the contract has to enforce a second time; it is what the vocabulary already
+ * allows, stated where the cardinality rules live so the day a fourth need is
+ * authored it moves by itself.
+ */
+export const MAX_NEEDS_PER_CONTRACT = NEED_IDS.length;
 
 /**
  * Longest artifact-safe string anything in this package accepts — authored or read

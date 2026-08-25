@@ -25,29 +25,31 @@ import { startSession } from './session.ts';
  */
 
 const HERO = {
-  schema_version: 3,
+  schema_version: 4,
   id: 'core:bram',
   display_name_key: 'hero.core.bram.name',
   greed: 60,
   caution: 30,
   pride: 45,
   trust_in_guild: 50,
+  capability: { grade: 50, expertise: { frontline: 50, wilderness: 50 } },
   traits: ['core:greedy'],
   relationships: []
 };
 
 const CONTRACT = {
-  schema_version: 3,
+  schema_version: 4,
   id: 'core:escort',
   display_name_key: 'contract.core.escort.name',
   patron_fee: 70,
   risk: 30,
   required_crew: 1,
+  needs: { frontline: 10, wilderness: 10 },
   tags: ['method:escort']
 };
 
 const TRAIT = {
-  schema_version: 3,
+  schema_version: 4,
   id: 'core:greedy',
   display_name_key: 'trait.core.greedy.name',
   kind: 'inclination',

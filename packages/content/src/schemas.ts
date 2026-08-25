@@ -1,9 +1,15 @@
-import { CONTENT_ID_PATTERN } from '@oath-and-coin/simulation';
+import { CONTENT_ID_PATTERN, NEED_IDS } from '@oath-and-coin/simulation';
 import { z } from 'zod';
 
 import {
+  CAPABILITY_EXPERTISE_MAX,
+  CAPABILITY_EXPERTISE_MIN,
+  CAPABILITY_GRADE_MAX,
+  CAPABILITY_GRADE_MIN,
   INCLINATION_WEIGHT_MAX,
   INCLINATION_WEIGHT_MIN,
+  NEED_WEIGHT_MAX,
+  NEED_WEIGHT_MIN,
   PATRON_FEE_MAX,
   PATRON_FEE_MIN,
   RELATIONSHIP_WEIGHT_MAX,
@@ -17,9 +23,11 @@ import {
 } from './bounds.ts';
 import {
   MAX_ARTIFACT_SAFE_TEXT_LENGTH,
+  MAX_NEEDS_PER_CONTRACT,
   MAX_RELATIONSHIPS_PER_HERO,
   MAX_TAGS_PER_CONTRACT,
   MAX_TRAITS_PER_HERO,
+  MIN_NEEDS_PER_CONTRACT,
   NEGOTIABLE_TAGS_COUNT
 } from './limits.ts';
 import { SUPPORTED_CONTENT_SCHEMA_VERSION, SUPPORTED_LOCALE_SCHEMA_VERSION } from './versions.ts';
@@ -87,6 +95,42 @@ export const relationshipFileSchema = z.strictObject({
   weight: z.int().min(RELATIONSHIP_WEIGHT_MIN).max(RELATIONSHIP_WEIGHT_MAX)
 });
 
+/**
+ * A map keyed by the engine's need vocabulary, with any subset of the keys present.
+ *
+ * `z.partialRecord`, never `z.record(z.enum(NEED_IDS), …)`. The second form is the one
+ * that reads right and is wrong: in Zod 4 a record over an enum requires *every* member
+ * of that enum, so a contract naming two needs of the three — the ordinary shape, and
+ * the one `RESOLUTION_SPEC` §2.3 describes — would be refused for the need it
+ * deliberately does not ask for, and a hero would have to declare expertise in
+ * everything. What both fields need is the closed key set without the completeness:
+ * an unknown key is an error (a misspelled need is a need nothing can ever cover), a
+ * missing key is a fact.
+ *
+ * The vocabulary itself comes from `@oath-and-coin/simulation`, the same one-directional
+ * import `CONTENT_ID_PATTERN` already arrives through (`ADR-002`): needs are engine
+ * lexicon, and content authors a *weight* per need, never a need.
+ */
+const needKeyedMap = (value: z.ZodType<number>): z.ZodType<Partial<Record<string, number>>> =>
+  z.partialRecord(z.enum(NEED_IDS), value);
+
+/**
+ * What a hero can do (`DEC-013`, `RESOLUTION_SPEC` §2.2) — required, which is why the
+ * content format version moves with it.
+ *
+ * `expertise` may name any subset of the needs, including none, and an entry of `0` is
+ * kept rather than treated as absence: `expertise.has(need)` means the hero is
+ * *answerable* for that need even at zero skill, and answerability is what decides which
+ * need can earn him `faltered_early` and whether he is eligible for a wound. On the
+ * arithmetic of coverage the two forms are identical — both contribute nothing — which
+ * is exactly why the distinction has to survive the file rather than be inferred from
+ * the number.
+ */
+export const heroCapabilityFileSchema = z.strictObject({
+  grade: z.int().min(CAPABILITY_GRADE_MIN).max(CAPABILITY_GRADE_MAX),
+  expertise: needKeyedMap(z.int().min(CAPABILITY_EXPERTISE_MIN).max(CAPABILITY_EXPERTISE_MAX))
+});
+
 export const heroFileSchema = z.strictObject({
   schema_version: contentSchemaVersion,
   id: contentIdString,
@@ -95,6 +139,7 @@ export const heroFileSchema = z.strictObject({
   caution: heroScale,
   pride: heroScale,
   trust_in_guild: heroScale,
+  capability: heroCapabilityFileSchema,
   traits: z.array(contentIdString).max(MAX_TRAITS_PER_HERO),
   relationships: z.array(relationshipFileSchema).max(MAX_RELATIONSHIPS_PER_HERO)
 });
@@ -130,10 +175,30 @@ export const contractFileSchema = z
     patron_fee: z.int().min(PATRON_FEE_MIN).max(PATRON_FEE_MAX),
     risk: z.int().min(RISK_MIN).max(RISK_MAX),
     required_crew: z.int().min(REQUIRED_CREW_MIN).max(REQUIRED_CREW_MAX),
+    needs: needKeyedMap(z.int().min(NEED_WEIGHT_MIN).max(NEED_WEIGHT_MAX)),
     tags: z.array(contentIdString).max(MAX_TAGS_PER_CONTRACT),
     negotiable_tags: z.array(contentIdString).optional()
   })
   .superRefine((file, ctx) => {
+    // How many needs, checked here rather than on the field: `partialRecord` states
+    // which keys are legal and says nothing about how many of them a file must use, and
+    // a contract naming one need is the degenerate case `RESOLUTION_SPEC` §2.3 refuses —
+    // "take the strongest" becomes the optimal answer and the coverage model stops
+    // deciding anything. The ceiling is checked alongside it for symmetry; today the
+    // vocabulary already enforces it, and the day a fourth need is authored it will not.
+    const needCount = Object.keys(file.needs).length;
+    if (needCount < MIN_NEEDS_PER_CONTRACT || needCount > MAX_NEEDS_PER_CONTRACT) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['needs'],
+        message:
+          `Contract '${file.id}' names ${String(needCount)} need(s); a contract must name ` +
+          `between ${String(MIN_NEEDS_PER_CONTRACT)} and ${String(MAX_NEEDS_PER_CONTRACT)} ` +
+          '— one need makes taking the strongest hero the answer to every contract, which ' +
+          'is the kill-criterion the coverage model exists to avoid (RESOLUTION_SPEC §2.3).'
+      });
+    }
+
     const negotiableTags = file.negotiable_tags;
     if (negotiableTags === undefined) {
       return;
