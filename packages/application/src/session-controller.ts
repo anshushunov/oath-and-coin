@@ -138,7 +138,10 @@ export interface SessionController {
   /** Runs the scenario the request names and publishes the screen it lands on. */
   start(): Promise<void>;
   /**
-   * Dispatches one of the five negotiation commands (`NEGOTIATION_SPEC` §3.1) against
+   * Dispatches one of the five negotiation commands this build implements
+   * (`m1-negotiation/1`; `NEGOTIATION_SPEC` §3.1 has named a sixth, `resolveContract`,
+   * since the amendment of 2026-08-25, and it arrives with the resolution engine that
+   * gives it something to resolve) against
    * the campaign currently on screen, the same way `packages/content`'s scenario runner
    * already applies a scripted one: `commandId` and `expectedStateVersion` are supplied
    * here rather than by the caller, read off the campaign this session is holding right
@@ -161,9 +164,11 @@ export interface SessionController {
   lockOffer(input: NegotiationCommandInput<LockOffer>): CommandResult;
   /**
    * Answers with **every** decision the poll produced (`CommandResult.decisions`), not
-   * the first: `NEGOTIATION_SPEC` §3.3 asks the whole remaining roster in one command,
-   * up to six heroes' worth of decisions behind one `commandId`, and a caller reading
-   * only `decisions[0]` would show one hero's answer and silently drop the rest.
+   * the first: one poll asks many heroes in one command — the whole remaining roster as
+   * `m1-negotiation/1` implements it, the invited crew once the 2026-08-25 amendment to
+   * `NEGOTIATION_SPEC` §3.3 is built — so up to six heroes' worth of decisions sit behind
+   * one `commandId`, and a caller reading only `decisions[0]` would show one hero's answer
+   * and silently drop the rest. Neither reading changes what this method has to return.
    */
   pollCrew(input: NegotiationCommandInput<PollCrew>): CommandResult;
   settleContract(input: NegotiationCommandInput<SettleContract>): CommandResult;

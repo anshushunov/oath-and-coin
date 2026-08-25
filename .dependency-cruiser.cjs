@@ -112,18 +112,19 @@ module.exports = {
       // What is allowed, not a list of what is banned — the shape every absolute rule in
       // this file uses, and for the reason `simulation-depends-on-nothing` records: a list
       // of forbidden neighbours misses whatever is invented next, including a relative
-      // path that walks around it. Below the vocabulary there are exactly two things: the
-      // sorted collections it is keyed by and the identity of a hero.
+      // path that walks around it. Below the vocabulary sit exactly three things: the
+      // sorted collections it is keyed by, the identity of a hero, and the canonical
+      // domain (`canonical/` itself imports nothing but `collections/`).
       //
-      // Tests are exempt, and narrowly. `outcome-reason-codes.test.ts` holds the outcome
-      // vocabulary disjoint from the decision one and so has to import both, which is the
-      // check itself rather than a leak: a test is not reachable from the package entry,
-      // so it cannot put an import into anything that ships.
-      from: {
-        path: '^packages/simulation/src/domain/',
-        pathNot: '[.]test[.]ts$'
-      },
-      to: { pathNot: '^packages/simulation/src/(domain|collections|ids)/' }
+      // **No exemption for test files**, deliberately. The first version of this rule had
+      // one, so that `outcome-reason-codes.test.ts` could hold the outcome vocabulary
+      // disjoint from the decision one; external review pointed out that ADR-014 says "no
+      // file in this directory", and a rule that exempts half the directory does not say
+      // that. The assertion moved to `decisions/vocabulary.test.ts` — the file that owns
+      // the decision dictionary and may look down at the outcome one — and the exemption
+      // went away with it.
+      from: { path: '^packages/simulation/src/domain/' },
+      to: { pathNot: '^packages/simulation/src/(domain|collections|ids|canonical)/' }
     },
     {
       name: 'content-core-imports-only-simulation-and-zod',

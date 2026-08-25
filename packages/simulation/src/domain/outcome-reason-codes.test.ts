@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import { isArtifactSafeText } from '../canonical/artifact-domain.ts';
-import { REASON_CODES } from '../decisions/reason-codes.ts';
 
 import { OUTCOME_REASON_CODES, OutcomeReasonCodes } from './outcome-reason-codes.ts';
 
@@ -15,6 +14,12 @@ import { OUTCOME_REASON_CODES, OutcomeReasonCodes } from './outcome-reason-codes
  * hero's `CausalTrace`: `FACTOR_REASON_CODES` is the vocabulary of why a person answered
  * the way they did, and an outcome code there would claim a hero was moved by an event
  * that had not happened when he answered.
+ *
+ * That last property — the two vocabularies share no string — is asserted in
+ * `decisions/vocabulary.test.ts` rather than here, and the placement is the boundary rule
+ * doing its job: nothing under `domain/`, tests included, may import the rules
+ * (`ADR-014` §4, `domain-vocabulary-imports-only-what-is-below-it`). The file that owns
+ * the decision dictionary can see both vocabularies; this one cannot, and does not need to.
  */
 
 describe('the outcome reason vocabulary', () => {
@@ -31,18 +36,5 @@ describe('the outcome reason vocabulary', () => {
     for (const code of OUTCOME_REASON_CODES) {
       expect(code.startsWith('outcome.')).toBe(true);
     }
-  });
-
-  it('словарь исхода не пересекается со словарём решения', () => {
-    // Граница, которую легко потерять: `REASON_CODES` — вокабуляр трассы решения героя,
-    // и код исхода там бессмыслен. Пересечение означало бы, что одна строка означает
-    // две разные вещи в зависимости от того, кто её прочитал, — а читают её и кодек
-    // сейва, закрывающий поля трассы на своих множествах, и каталог локализации.
-    const decisionCodes: readonly string[] = REASON_CODES;
-    const shared = OUTCOME_REASON_CODES.filter((code) => decisionCodes.includes(code));
-
-    expect(shared, `объявлены и как код исхода, и как код решения: ${shared.join(', ')}`).toEqual(
-      []
-    );
   });
 });

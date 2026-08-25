@@ -290,7 +290,7 @@ reservedCommitments = Σ по контрактам в фазе locked (advance �
 
 | Команда | Разрешена | Что делает |
 |---|---|---|
-| `composeOffer` | `draft`, либо `locked` при `status = 'offered'` | задаёт `keyHero`, `invited`, `advance`, `methodTag`, `promisedBonus`; `version + 1`; ответы, состав и `commitments` обнуляются, статус → `offered`; фаза → `draft` |
+| `composeOffer` | `draft`, либо `locked` при `status = 'offered'` | задаёт `keyHero`, `invited`, `advance`, `methodTag`, `promisedBonus`; `version + 1`; `invited` **заменяется** составом из команды, `respondedBy`, `acceptedBy` и `commitments` очищаются; статус → `offered`; фаза → `draft` |
 | `proposeContractToHero` | `draft`, только `keyHero`, ещё не ответивший на этой версии | ключевой герой решает по текущей версии |
 | `lockOffer` | `draft`, `keyHero ∈ acceptedBy` | фаза → `locked`; пакет заморожен |
 | `pollCrew` | `locked`, `status = 'offered'` | **приглашённые** за вычетом `respondedBy` решают один раз в порядке `HeroId` |
@@ -321,8 +321,11 @@ reservedCommitments = Σ по контрактам в фазе locked (advance �
 
 **При `requiredCrew = 1` фазы опроса не бывает.** Согласие ключевого героя в черновике уже
 набирает отряд, `lockOffer` переводит контракт сразу в `locked + crewed`, `pollCrew`
-отказывает по `rejected.crew_already_filled`, и следующий легальный ход — расчёт. Это
-законный путь, а не пропущенная ветка.
+отказывает по `rejected.crew_already_filled`, и следующий легальный ход — **разрешение**, и
+только после него расчёт (поправка 2026-08-25). Это законный путь, а не пропущенная ветка.
+
+Проверка «пакет заблокирован» существует и здесь, хотя отряд набран ещё в черновике: без
+неё контракт можно было бы разрешить по редактируемому пакету (`RESOLUTION_SPEC` §3.2).
 
 ### 3.2. Диаграмма
 
@@ -423,6 +426,21 @@ reservedCommitments = Σ по контрактам в фазе locked (advance �
 становится `decisions: readonly DecisionResult[]`. Единственное поле пришлось бы либо
 врать про число решений, либо обзавестись плюральным близнецом — вторым источником правды
 об одном факте.
+
+**`resolveContract(commandId, contractId, expectedStateVersion)`** (поправка 2026-08-25)
+
+Нормативное описание целиком — `RESOLUTION_SPEC` §3; здесь только то, без чего протокол
+этой спеки не читается:
+
+1. семь предусловий по порядку (`RESOLUTION_SPEC` §3.2), из них три частных: пакет
+   заблокирован, отряд набран, исход ещё не записан;
+2. отряд превращается в исход: несколько событий за одну команду, эффект каждого вносится
+   **до** своего `withEvent` (`ADR-007`), последним идёт `contract_resolved`, и именно его
+   эффект записывает исход на контракт;
+3. ординалы не тратятся: разрешение — не решение героя, случайности в нём нет
+   (`RESOLUTION_SPEC` §7.4), и `causalTraceId` у всех событий исхода `null`.
+
+После разрешения следующий легальный ход — расчёт.
 
 **`settleContract(commandId, contractId, pay, expectedStateVersion)`**
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { isArtifactSafeText } from '../canonical/artifact-domain.ts';
+import { OUTCOME_REASON_CODES } from '../domain/outcome-reason-codes.ts';
 
 import { ACTIONS, Actions } from './actions.ts';
 import {
@@ -66,6 +67,25 @@ describe('the vocabulary split by the role a code plays in a trace', () => {
     expect(invented, `listed in a role set and declared nowhere: ${invented.join(', ')}`).toEqual(
       []
     );
+  });
+
+  it('shares no code with the outcome vocabulary, which is a different question entirely', () => {
+    // `OUTCOME_REASON_CODES` (`RESOLUTION_SPEC` §2.1) names what *happened* on a contract;
+    // the codes above name why a *person* answered as he did. A shared string would mean
+    // one code with two meanings depending on who read it — and both a save codec, which
+    // closes a trace's three fields on the sets above, and the locale catalogue read it.
+    //
+    // The check lives here rather than beside the outcome vocabulary because this file is
+    // the one that owns "the decision dictionary is closed and partitioned", and because
+    // `packages/simulation/src/domain/` may not import the rules at all — not even from a
+    // test (`ADR-014` §4, enforced by `domain-vocabulary-imports-only-what-is-below-it`).
+    const outcomeCodes: readonly string[] = OUTCOME_REASON_CODES;
+    const shared = REASON_CODES.filter((code) => outcomeCodes.includes(code));
+
+    expect(
+      shared,
+      `declared as both a decision code and an outcome code: ${shared.join(', ')}`
+    ).toEqual([]);
   });
 
   it('gives each code exactly one role, which is what the split is for', () => {
