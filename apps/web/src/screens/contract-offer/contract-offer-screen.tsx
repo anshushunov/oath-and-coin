@@ -306,8 +306,8 @@ function ResponseBlock({ response }: { readonly response: ResponseLine }) {
  * Advance and promised bonus are shown the same way every other objective number on
  * this screen is — a caption beside a value, `Captioned` — not as editable `<input>`
  * elements: this task draws what the model carries, and wiring a lever to a command is
- * explicitly later work (`NEGOTIATION_SPEC` §3.1's five commands are Task 16's, not
- * this screen's to dispatch). The method choice is a real `role="radio"` group even so,
+ * explicitly later work (the negotiation slice's five commands are Task 16's, not this
+ * screen's to dispatch; `NEGOTIATION_SPEC` §3.1 names a sixth since 2026-08-25). The method choice is a real `role="radio"` group even so,
  * because which of two named alternatives a package has chosen is a selection among a
  * closed set the way a number is not, and a screen that already draws it this way costs
  * nothing extra to keep drawing it this way once a handler lands.

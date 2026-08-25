@@ -1,4 +1,4 @@
-import type { Comparator } from '../collections/comparator.ts';
+import { byDeclarationOrder, type Comparator } from '../collections/comparator.ts';
 
 /**
  * What a contract needs done, and the vocabulary a hero's expertise is expressed in
@@ -35,13 +35,6 @@ export type NeedId = (typeof NeedId)[keyof typeof NeedId];
 export const NEED_IDS: readonly NeedId[] = Object.freeze(Object.values(NeedId));
 
 /**
- * Position in {@link NEED_IDS}, computed once. `indexOf` inside the comparator would be
- * correct and would also make every sort quadratic in a vocabulary that is about to be
- * walked for every hero of every crew of every batch run.
- */
-const POSITION: ReadonlyMap<NeedId, number> = new Map(NEED_IDS.map((need, index) => [need, index]));
-
-/**
  * Declaration order, not alphabet — the single comparator every `SortedMap<NeedId, …>`
  * is built with (`RESOLUTION_SPEC` §2.1).
  *
@@ -49,30 +42,13 @@ const POSITION: ReadonlyMap<NeedId, number> = new Map(NEED_IDS.map((need, index)
  * `needs` and a hero's `expertise` — so a second ordering anywhere would make the artifact
  * a function of which comparator a call site happened to pass rather than of the state.
  *
- * Ordering by position rather than by string is deliberate even though today the two
- * agree, because they agree only by accident of spelling: `frontline`,
- * `undead_knowledge`, `wilderness` are in the same order both ways. Declaration order is
- * the property meant here — a need is where the designer put it — and `need-id.test.ts`
- * carries a tripwire that reddens the day a new literal breaks the coincidence, rather
- * than leaving the difference to be discovered by a moved artifact hash.
+ * Built from {@link NEED_IDS} by a general rule rather than written out here, and that is
+ * what makes the rule testable at all: on today's three literals declaration order and
+ * ordinal order coincide, so no assertion over *these* needs can tell this comparator from
+ * `compareStrings` by its ordering. `comparator.test.ts` exercises `byDeclarationOrder` on
+ * a vocabulary chosen to disagree with the alphabet, `need-id.test.ts` holds the
+ * coincidence with a tripwire that reddens the day a new literal breaks it, and the
+ * throw-on-unknown below is what kills the `compareStrings` substitution outright — that
+ * one answers `1` where this one refuses.
  */
-export const compareNeedIds: Comparator<NeedId> = (left, right) =>
-  positionOf(left) - positionOf(right);
-
-/**
- * Throws rather than sorting an unknown value last. The type says this cannot happen, and
- * the type is checked at compile time only: a decoded save or a content file is where an
- * invented need would come from, and both cross the boundary as data. Sorting it to the
- * end would be a silent answer — one campaign's collections ordered by a rule nobody
- * wrote, and two unknown needs would compare *equal*, which `SortedMap.from` reads as a
- * duplicate key.
- */
-function positionOf(need: NeedId): number {
-  const position = POSITION.get(need);
-
-  if (position === undefined) {
-    throw new Error(`Unknown need id ${String(need)}.`);
-  }
-
-  return position;
-}
+export const compareNeedIds: Comparator<NeedId> = byDeclarationOrder(NEED_IDS);
