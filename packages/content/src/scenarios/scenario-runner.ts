@@ -135,6 +135,7 @@ function apply(state: GameState, command: ScenarioCommand): CommandResult {
         commandId: command.commandId,
         contractId: command.contract,
         keyHero: heroId(command.keyHeroIndex),
+        invited: command.invitedIndexes.map((index) => heroId(index)),
         advance: command.advance,
         methodTag: command.methodTag,
         promisedBonus: command.promisedBonus,

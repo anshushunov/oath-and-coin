@@ -1,9 +1,13 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "id": "fixture:plain_beta",
   "display_name_key": "contract.fixture.plain_beta.name",
   "patron_fee": 50,
   "risk": 10,
-  "required_crew": 6,
+  "required_crew": 3,
+  "needs": {
+    "frontline": 10,
+    "wilderness": 10
+  },
   "tags": []
 }

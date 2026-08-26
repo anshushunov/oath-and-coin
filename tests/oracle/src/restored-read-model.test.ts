@@ -227,7 +227,15 @@ describe('the screen a reloaded campaign draws', () => {
     // (`NEGOTIATION_SPEC` §3.1, `requiredCrew = 1`).
     expect(ranCount).toBe(86);
     expect(blockedSeen).toBe(16);
-    expect(scoredSeen).toBe(234);
-    expect(polledStepsSeen).toBe(26);
+    // 180, not 234, since the resolution engine's Task 3: `pollCrew` asks the crew the
+    // package invited rather than the whole remaining roster (`DEC-012` as amended,
+    // `RESOLUTION_SPEC` §8), so every polled scenario produces exactly as many scored
+    // decisions as it has seats — fifty-four fewer across the corpus, and every one of
+    // them a question about a hero the player never asked.
+    expect(scoredSeen).toBe(180);
+    // 20, not 26, for the same reason: three scenarios whose crew is now filled by the
+    // invited heroes alone reach `pollCrew` with nobody left to ask, so the step is
+    // refused and carries no decision to count.
+    expect(polledStepsSeen).toBe(20);
   });
 });

@@ -1,11 +1,15 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "id": "core:bram",
   "display_name_key": "hero.core.bram.name",
   "greed": 60,
   "caution": 30,
   "pride": 45,
   "trust_in_guild": 50,
+  "capability": {
+    "grade": 65,
+    "expertise": { "frontline": 70, "wilderness": 40 }
+  },
   "traits": ["core:will_not_strike_a_temple", "core:hates_the_cult"],
   "relationships": [{ "hero": "core:zara", "weight": -8 }]
 }

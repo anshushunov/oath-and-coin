@@ -48,17 +48,18 @@ const repoRoot = resolve(import.meta.dirname, '..', '..', '..', '..');
 const shipped = loadContentSet(join(repoRoot, 'content'));
 
 const CONTRACT_FILE = JSON.stringify({
-  schema_version: 3,
+  schema_version: 4,
   id: 'core:cleanse_the_crypt',
   display_name_key: 'contract.core.cleanse_the_crypt.name',
   patron_fee: 70,
   risk: 30,
   required_crew: 1,
+  needs: { frontline: 10, wilderness: 10 },
   tags: []
 });
 
 const TRAIT_FILE = JSON.stringify({
-  schema_version: 3,
+  schema_version: 4,
   id: 'core:greedy',
   display_name_key: 'trait.core.greedy.name',
   kind: 'inclination',
@@ -75,13 +76,14 @@ function keyOfLength(length: number): string {
 function treeWithHeroNamed(displayNameKey: string): Record<string, string> {
   return {
     'heroes/bram.json': JSON.stringify({
-      schema_version: 3,
+      schema_version: 4,
       id: 'core:bram',
       display_name_key: displayNameKey,
       greed: 60,
       caution: 30,
       pride: 45,
       trust_in_guild: 50,
+      capability: { grade: 50, expertise: { frontline: 50, wilderness: 50 } },
       traits: [],
       relationships: []
     }),

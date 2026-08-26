@@ -1,12 +1,15 @@
 import {
   Actions,
+  CommitmentState,
   ContractStatus,
+  NeedId,
   ReasonCodes,
   STARTING_TREASURY,
   SortedMap,
   SortedSet,
   compareContentIds,
   compareHeroIds,
+  compareNeedIds,
   compareNumbers,
   createDecisionResult,
   heroId,
@@ -65,6 +68,14 @@ export function aHero(overrides: Partial<HeroState> = {}): HeroState {
     caution: 30,
     pride: 45,
     trustInGuild: 50,
+    capability: {
+      grade: 50,
+      expertise: SortedMap.from<NeedId, number>(compareNeedIds, [
+        [NeedId.Frontline, 50],
+        [NeedId.Wilderness, 50]
+      ])
+    },
+    wounds: 0,
     traits: [],
     relationships: SortedMap.empty<ContentId, number>(compareContentIds),
     believesGuildPromises: true,
@@ -73,9 +84,34 @@ export function aHero(overrides: Partial<HeroState> = {}): HeroState {
   };
 }
 
-/** An `OfferState`, for tests overriding just the answers or terms they need. */
+/**
+ * An `OfferState`, for tests overriding just the answers or terms they need.
+ *
+ * Valid by default the same way the simulation package's own fixture is, and for the
+ * same reason: `RESOLUTION_SPEC` §2.5 ties `invited` to `keyHero` and `commitments` to
+ * `acceptedBy`, and a screen-model test naming a key hero is not asking about either.
+ */
 export function anOffer(overrides: Partial<OfferState> = {}): OfferState {
-  return { ...initialOffer(), ...overrides };
+  const offer = { ...initialOffer(), ...overrides };
+
+  const invited =
+    overrides.invited ??
+    (offer.keyHero === null
+      ? offer.invited
+      : SortedSet.from(compareHeroIds, [
+          offer.keyHero,
+          ...offer.respondedBy.values(),
+          ...offer.acceptedBy.values()
+        ]));
+
+  const commitments =
+    overrides.commitments ??
+    SortedMap.from(
+      compareHeroIds,
+      offer.acceptedBy.values().map((hero) => [hero, CommitmentState.Committed] as const)
+    );
+
+  return { ...offer, invited, commitments };
 }
 
 export function aContract(overrides: Partial<ContractState> = {}): ContractState {
@@ -84,10 +120,15 @@ export function aContract(overrides: Partial<ContractState> = {}): ContractState
     patronFee: 40,
     risk: 55,
     requiredCrew: 2,
+    needs: SortedMap.from<NeedId, number>(compareNeedIds, [
+      [NeedId.Frontline, 40],
+      [NeedId.Wilderness, 42]
+    ]),
     tags: SortedSet.from(compareContentIds, [ids.merchants]),
     status: ContractStatus.Offered,
     offer: anOffer(),
     moodOrdinals: SortedMap.empty<HeroId, bigint>(compareHeroIds),
+    resolution: null,
     ...overrides
   };
 }

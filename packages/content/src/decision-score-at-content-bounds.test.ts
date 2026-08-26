@@ -1,10 +1,12 @@
 import {
   ContractStatus,
   GRIEVANCE_MAX,
+  NeedId,
   SortedMap,
   SortedSet,
   compareContentIds,
   compareHeroIds,
+  compareNeedIds,
   decide,
   heroId,
   initialOffer,
@@ -17,6 +19,12 @@ import {
   type HeroState
 } from '@oath-and-coin/simulation';
 import { describe, expect, it } from 'vitest';
+
+import {
+  CAPABILITY_EXPERTISE_MAX,
+  CAPABILITY_GRADE_MAX,
+  NEED_WEIGHT_MAX
+} from './bounds.ts';
 
 import {
   INCLINATION_WEIGHT_MAX,
@@ -165,7 +173,17 @@ function aHeroAt(scales: {
     // `NEGOTIATION_SPEC` §2.2's starting value — this sweep is not about a promise this
     // hero has stopped believing, only about the ones still standing.
     believesGuildPromises: true,
-    grievance: scales.grievance
+    grievance: scales.grievance,
+    // Neither field reaches `decide()` — `RESOLUTION_SPEC` §2.2's whole point is that
+    // the capability layer is separate from the four scales this sweep is about — so
+    // both are held at a fixed, ordinary value rather than swept.
+    capability: {
+      grade: CAPABILITY_GRADE_MAX,
+      expertise: SortedMap.from<NeedId, number>(compareNeedIds, [
+        [NeedId.Frontline, CAPABILITY_EXPERTISE_MAX]
+      ])
+    },
+    wounds: 0
   };
 }
 
@@ -182,6 +200,11 @@ function aContractAt(risk: number, advance: number, promisedBonus: number): Cont
     patronFee: PATRON_FEE_MAX,
     risk,
     requiredCrew: 1,
+    needs: SortedMap.from<NeedId, number>(compareNeedIds, [
+      [NeedId.Frontline, NEED_WEIGHT_MAX],
+      [NeedId.Wilderness, NEED_WEIGHT_MAX]
+    ]),
+    resolution: null,
     tags: SortedSet.from(compareContentIds, TAG_IDS),
     status: ContractStatus.Offered,
     offer: {

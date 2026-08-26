@@ -1,9 +1,17 @@
 import { join, resolve } from 'node:path';
 
 import {
+  CommitmentState,
+  ConsequenceKind,
   ContractStatus,
+  CoverageVerdict,
+  DeficitKind,
+  NeedId,
   OfferPhase,
+  OutcomeGrade,
+  OutcomeReasonCodes,
   ReasonCodes,
+  SortedMap,
   SortedSet,
   compareHeroIds,
   createContractState,
@@ -11,7 +19,10 @@ import {
   proposeContractToHero,
   settleContract,
   type ContentId,
-  type GameState
+  type ContractResolution,
+  type GameState,
+  type HeroContribution,
+  type HeroId
 } from '@oath-and-coin/simulation';
 import { describe, expect, it } from 'vitest';
 
@@ -56,8 +67,14 @@ function lockedSingleHeroCampaign(): {
       advance: 10,
       promisedBonus: Math.min(20, contract.patronFee),
       phase: OfferPhase.Locked,
+      // One seat, one invited, one commitment recorded for the one acceptance
+      // (`RESOLUTION_SPEC` §2.5). Written out rather than composed through the engine
+      // for the reason this whole fixture is: it exists to hold a state where every
+      // round-tripped field has moved off its default, not to replay the protocol.
+      invited: keyOnly,
       respondedBy: keyOnly,
-      acceptedBy: keyOnly
+      acceptedBy: keyOnly,
+      commitments: SortedMap.from(compareHeroIds, [[heroKey!, CommitmentState.Committed]])
     }
   });
 
@@ -126,7 +143,145 @@ function campaignWithAKeptPromise(): GameState {
   return settled.state;
 }
 
+/**
+ * A resolution with **every branch of {@link ContractResolution} filled** — coverage with
+ * a contributor row, a contribution with a commitment and a provenance, a deficit, a
+ * non-null `dominant`, and a consequence.
+ *
+ * External review of PR #33: every round-trip case in this file used `resolution = null`
+ * and `wounds = 0`, so the encoder's `deficits`, `consequences`, `contributions` and
+ * `dominant` projections were never executed against a non-empty value. Mutants writing
+ * `deficits: []` or `wounds: 0` on the write path stayed green. Nothing below is a
+ * number the resolver would actually produce — the resolver arrives in Task 7 — and it
+ * does not need to be: what is under test is that the codec carries what it is handed.
+ */
+function aFullResolution(hero: HeroId): ContractResolution {
+  return {
+    grade: OutcomeGrade.Costly,
+    coverage: [
+      {
+        need: NeedId.Frontline,
+        weight: 30,
+        required: 54,
+        supplied: 41,
+        effective: 41,
+        verdict: CoverageVerdict.Weak,
+        contributors: [{ hero, amount: 41 }]
+      }
+    ],
+    contributions: SortedMap.from<HeroId, HeroContribution>(compareHeroIds, [
+      [
+        hero,
+        {
+          amount: 41,
+          commitment: CommitmentState.Fragile,
+          provenance: [OutcomeReasonCodes.NeedWeak, OutcomeReasonCodes.FalteredEarly]
+        }
+      ]
+    ]),
+    deficits: [
+      {
+        kind: DeficitKind.Capability,
+        magnitude: 13,
+        needs: [NeedId.Frontline],
+        heroes: [hero]
+      }
+    ],
+    dominant: DeficitKind.Capability,
+    consequences: [
+      {
+        hero,
+        kind: ConsequenceKind.Wound,
+        reason: OutcomeReasonCodes.WoundOnThePoint,
+        magnitude: 1
+      }
+    ]
+  };
+}
+
+/**
+ * {@link lockedSingleHeroCampaign} carried all the way to a resolved contract and a
+ * wounded hero — the two fields `RESOLUTION_SPEC` §2.5 and §2.6 added that no other
+ * fixture in this file ever moves off its default.
+ *
+ * Built through `createContractState`, so the §2.5 invariants a resolution has to satisfy
+ * (`phase ∈ {Locked, Settled} ∧ status = Crewed`, `contributions.keys() === acceptedBy`)
+ * hold by construction rather than by hope.
+ */
+function campaignWithAResolvedContract(): GameState {
+  const { state, contractId } = lockedSingleHeroCampaign();
+  const [heroKey] = state.heroes.keys();
+  const contract = state.contracts.get(contractId)!;
+  const hero = state.heroes.get(heroKey!)!;
+
+  return {
+    ...state,
+    heroes: state.heroes.set(heroKey!, { ...hero, wounds: 2 }),
+    contracts: state.contracts.set(
+      contractId,
+      createContractState({ ...contract, resolution: aFullResolution(heroKey!) })
+    )
+  };
+}
+
 describe('snapshot codec', () => {
+  it('carries a resolution and a wound through a snapshot round trip', () => {
+    const state = campaignWithAResolvedContract();
+    const [heroKey] = state.heroes.keys();
+    const [contractKey] = state.contracts.keys();
+
+    // Guards against the fixture quietly degenerating into the `null`/`0` case the rest
+    // of the file already covers — a round trip of two defaults would prove nothing and
+    // would still be green.
+    expect(state.heroes.get(heroKey!)!.wounds).toBe(2);
+    expect(state.contracts.get(contractKey!)!.resolution).not.toBeNull();
+
+    const decoded = decodeSnapshot(JSON.parse(JSON.stringify(encodeSnapshot(state))));
+
+    expect(deepEqual(decoded, state)).toBe(true);
+  });
+
+  it.each([
+    ['hero', 'capability'],
+    ['hero', 'wounds'],
+    ['contract', 'needs'],
+    ['contract', 'resolution'],
+    ['offer', 'invited'],
+    ['offer', 'commitments']
+  ])('отказывается читать снимок без обязательного ключа %s.%s', (owner, key) => {
+    // `RESOLUTION_SPEC` §2.5, §2.2, §2.6: все шесть ключей обязательны — они приходят
+    // вместе с собственным поднятием `SAVE_SCHEMA_VERSION`, поэтому сейва под этой
+    // версией, у которого их законно нет, не существует. Утверждение стояло в
+    // комментарии кодека, но не проверялось ничем: мутант `wounds: z.int().default(0)`
+    // оставлял весь файл зелёным (внешнее ревью PR #33).
+    const encoded = JSON.parse(JSON.stringify(encodeSnapshot(campaignWithAResolvedContract())));
+    const target =
+      owner === 'hero'
+        ? encoded.heroes[0].value
+        : owner === 'contract'
+          ? encoded.contracts[0].value
+          : encoded.contracts[0].value.offer;
+
+    delete target[key];
+
+    expect(() => decodeSnapshot(encoded)).toThrow(/SAVE_MALFORMED/u);
+  });
+
+  it.each([0, 1])('отказывается читать контракт с %i потребностями', (count) => {
+    // `RESOLUTION_SPEC` §2.3: ровно две-три потребности. Одна возвращает доминирующую
+    // стратегию «бери сильнейшего» — тот самый kill-criterion `MVP_PLAN` §3.2, ради
+    // которого потребностей больше одной. Схема кодека держала только потолок, и
+    // повреждённый сейв с пустым `needs` читался (внешнее ревью PR #33).
+    //
+    // `SAVE_OUT_OF_BOUNDS`, not `SAVE_MALFORMED`: this codec classifies a violated size
+    // as a bound, the same way the too-many-traits case below does. The shape is well
+    // formed; the count is outside what the domain allows.
+    const encoded = JSON.parse(JSON.stringify(encodeSnapshot(campaignWithAResolvedContract())));
+    encoded.contracts[0].value.needs = encoded.contracts[0].value.needs.slice(0, count);
+
+    expect(() => decodeSnapshot(encoded)).toThrow(/SAVE_OUT_OF_BOUNDS/u);
+  });
+
   it('carries the offer, the treasury and a hero memory through a snapshot round trip', () => {
     // `NEGOTIATION_SPEC` §2.3 (treasury), §2.2 (grievance, believesGuildPromises) and
     // §2.1 (offer) all round-trip through the same `decodeSnapshot`/`encodeSnapshot`
@@ -222,7 +377,15 @@ describe('snapshot codec', () => {
       ...base,
       contracts: base.contracts.set(contractKey!, {
         ...contract,
-        offer: { ...contract.offer, keyHero: heroKey! }
+        // One seat, so the key hero is the whole crew (`RESOLUTION_SPEC` §2.5) — the
+        // shipped crypt asks for four, and this case is about a decision surviving a
+        // round trip, not about filling a crew.
+        requiredCrew: 1,
+        offer: {
+          ...contract.offer,
+          keyHero: heroKey!,
+          invited: SortedSet.from(compareHeroIds, [heroKey!])
+        }
       })
     };
     const result = proposeContractToHero(keyed, {

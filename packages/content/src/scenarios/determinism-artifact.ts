@@ -5,6 +5,7 @@ import {
   canonicalize,
   type CanonicalValue,
   type CausalTrace,
+  type ContractResolution,
   type ContractState,
   type DomainEvent,
   type GameState,
@@ -61,11 +62,20 @@ import type { ScenarioOutcome, StepDecision, StepOutcome } from './scenario-runn
  * shipped. The plan's own final value for this constant is `4`; one bump covering every
  * shift reaches it without an intermediate, momentarily-false `3` sitting in the tree for
  * the tasks between Task 6 and Task 14, which is where the schedule originally placed the
- * move. **Task 14 must not bump this again** — `ARTIFACT_VERSION` is already at the
- * plan's target, and a second increment there would move it to `5` for no shape change of
- * its own.
+ * move. Task 14 did not bump it again — at that point it was already at the negotiation
+ * slice's own target, and an increment there would have moved it for no shape change.
+ *
+ * **5, moved by the contract-resolution engine's Task 3 (`RESOLUTION_SPEC` §2.8).**
+ * `describeHero` gained `capability` and `wounds`, `describeContract` gained `needs` and
+ * `resolution`, `describeOffer` gained `invited` and `commitments`, and
+ * `describeCommand`'s `compose_offer` branch gained `invited` — every one of them a
+ * shape change, and every one describing a field a later task will move. Like
+ * `SAVE_SCHEMA_VERSION`, this number moves **again** when the resolution events and the
+ * sixth command arrive: they are a second change to this shape, and one number covering
+ * both would make an artifact written between them indistinguishable from one written
+ * before.
  */
-export const ARTIFACT_VERSION = 4;
+export const ARTIFACT_VERSION = 5;
 
 /** The canonical text of a whole run. */
 export function toCanonicalJson(outcome: ScenarioOutcome): string {
@@ -145,6 +155,7 @@ function describeCommand(command: ScenarioCommand): CanonicalValue {
       return {
         ...base,
         key_hero_index: command.keyHeroIndex,
+        invited_indexes: command.invitedIndexes,
         advance: command.advance,
         // `null`, never elided. Everywhere else in this projection an absent key means
         // "there is no such thing" (`selected_score` on a blocked decision, `key_hero` on
@@ -250,7 +261,16 @@ export function describeHero(hero: HeroState): CanonicalValue {
     traits: hero.traits,
     relationships: Object.fromEntries(hero.relationships.entries()),
     grievance: hero.grievance,
-    believes_guild_promises: hero.believesGuildPromises
+    believes_guild_promises: hero.believesGuildPromises,
+    // `RESOLUTION_SPEC` §2.2, §2.6. `wounds` is written although nothing moves it yet,
+    // and that is the lesson of `grievance` above applied before it costs anything: the
+    // command that will move it arrives two tasks from now, and a field this projection
+    // does not read is a state change a determinism check cannot see.
+    capability: {
+      grade: hero.capability.grade,
+      expertise: Object.fromEntries(hero.capability.expertise.entries())
+    },
+    wounds: hero.wounds
   };
 }
 
@@ -270,6 +290,7 @@ export function describeContract(contract: ContractState): CanonicalValue {
     patron_fee: contract.patronFee,
     risk: contract.risk,
     required_crew: contract.requiredCrew,
+    needs: Object.fromEntries(contract.needs.entries()),
     tags: contract.tags.values(),
     status: contract.status,
     offer: describeOffer(contract.offer),
@@ -282,7 +303,65 @@ export function describeContract(contract: ContractState): CanonicalValue {
     // re-sort is deterministic, so nothing here threatens determinism — it just means
     // this object's insertion order is not the reason the output is reproducible; the
     // canonicalizer's own rule is.
-    mood_ordinals: Object.fromEntries(contract.moodOrdinals.entries())
+    mood_ordinals: Object.fromEntries(contract.moodOrdinals.entries()),
+    // `undefined`, not `null`, for a contract nobody has resolved — `canonicalize` drops
+    // an undefined key, which is what every other absent-by-nature field here already
+    // does (`key_hero` on an uncomposed offer). The distinction `method_tag` draws does
+    // not arise: there is no "resolved to nothing" outcome, only "not resolved yet".
+    resolution: describeResolution(contract.resolution)
+  };
+}
+
+/**
+ * The stored outcome (`RESOLUTION_SPEC` §2.5), written whole.
+ *
+ * Every number the debrief screen shows has to be here, because an artifact that
+ * described the *grade* alone would let two runs differing in why they got it compare
+ * equal — and "why" is the thing this whole system exists to produce (§9's first
+ * criterion).
+ */
+function describeResolution(resolution: ContractResolution | null): CanonicalValue | undefined {
+  if (resolution === null) {
+    return undefined;
+  }
+
+  return {
+    grade: resolution.grade,
+    coverage: resolution.coverage.map((entry) => ({
+      need: entry.need,
+      weight: entry.weight,
+      required: entry.required,
+      supplied: entry.supplied,
+      effective: entry.effective,
+      verdict: entry.verdict,
+      contributors: entry.contributors.map((contributor) => ({
+        hero: contributor.hero,
+        amount: contributor.amount
+      }))
+    })),
+    contributions: Object.fromEntries(
+      resolution.contributions.entries().map(([hero, contribution]) => [
+        String(hero),
+        {
+          amount: contribution.amount,
+          commitment: contribution.commitment,
+          provenance: contribution.provenance
+        }
+      ])
+    ),
+    deficits: resolution.deficits.map((deficit) => ({
+      kind: deficit.kind,
+      magnitude: deficit.magnitude,
+      needs: deficit.needs,
+      heroes: deficit.heroes
+    })),
+    dominant: resolution.dominant ?? undefined,
+    consequences: resolution.consequences.map((consequence) => ({
+      hero: consequence.hero,
+      kind: consequence.kind,
+      reason: consequence.reason,
+      magnitude: consequence.magnitude
+    }))
   };
 }
 
@@ -299,6 +378,8 @@ function describeOffer(offer: OfferState): CanonicalValue {
     method_tag: offer.methodTag ?? undefined,
     promised_bonus: offer.promisedBonus,
     phase: offer.phase,
+    invited: offer.invited.values(),
+    commitments: Object.fromEntries(offer.commitments.entries()),
     responded_by: offer.respondedBy.values(),
     accepted_by: offer.acceptedBy.values()
   };

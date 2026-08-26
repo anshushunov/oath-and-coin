@@ -1,11 +1,18 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "id": "fixture:crew_leader",
   "display_name_key": "hero.fixture.crew_leader.name",
   "greed": 100,
   "caution": 0,
   "pride": 0,
   "trust_in_guild": 100,
+  "capability": {
+    "grade": 50,
+    "expertise": {
+      "frontline": 50,
+      "wilderness": 50
+    }
+  },
   "traits": [],
   "relationships": []
 }

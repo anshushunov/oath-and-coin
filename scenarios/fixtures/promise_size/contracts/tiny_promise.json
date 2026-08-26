@@ -1,9 +1,13 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "id": "fixture:tiny_promise",
   "display_name_key": "contract.fixture.tiny_promise.name",
   "patron_fee": 40,
   "risk": 0,
   "required_crew": 1,
+  "needs": {
+    "frontline": 10,
+    "wilderness": 10
+  },
   "tags": []
 }

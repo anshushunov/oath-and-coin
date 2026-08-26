@@ -1,6 +1,7 @@
 import {
   Actions,
   OfferPhase,
+  CommitmentState,
   SortedMap,
   SortedSet,
   compareContentIds,
@@ -179,13 +180,61 @@ function buildSide(
       // An accepted comrade has necessarily responded — the same set both ways, since
       // this baseline asks nothing of anyone the contrast does not name.
       respondedBy: acceptedBy,
-      acceptedBy
+      acceptedBy,
+      // The crew is the hero being asked plus whichever comrades the contrast named as
+      // already accepted, padded from the roster up to `requiredCrew`
+      // (`RESOLUTION_SPEC` §2.5). Padding is what keeps a contrast a statement about
+      // *one* varied input: the seats a contract declares are not something a contrast
+      // varies, so filling them with whoever is left keeps the invariant satisfied
+      // without changing anything the decision reads — `decide` looks at `acceptedBy`,
+      // never at `invited`.
+      invited: invitedCrew(state, baseContract.requiredCrew, baseHero.id, acceptedBy),
+      commitments: SortedMap.from(
+        compareHeroIds,
+        acceptedBy.values().map((hero) => [hero, CommitmentState.Committed] as const)
+      )
     }
   });
 
   const hero: HeroState = { ...baseHero, grievance, believesGuildPromises };
 
   return { contract, hero };
+}
+
+/**
+ * Exactly `requiredCrew` heroes: the one being asked, everyone the contrast already had
+ * accept, then the rest of the roster in id order until the seats are full.
+ *
+ * @throws if the roster is smaller than the contract's seats — a content defect
+ * (`content-set.test.ts` already refuses such a contract), reported here rather than
+ * left to `createContractState` to describe as an invariant violation two frames away.
+ */
+function invitedCrew(
+  state: GameState,
+  requiredCrew: number,
+  asked: HeroId,
+  accepted: SortedSet<HeroId>
+): SortedSet<HeroId> {
+  const crew: HeroId[] = [asked, ...accepted.values().filter((hero) => hero !== asked)];
+
+  for (const heroId of state.heroes.keys()) {
+    if (crew.length >= requiredCrew) {
+      break;
+    }
+    if (!crew.includes(heroId)) {
+      crew.push(heroId);
+    }
+  }
+
+  if (crew.length !== requiredCrew) {
+    throw new Error(
+      `A contrast baseline needs ${String(requiredCrew)} invited hero(es) but the roster holds ` +
+        `only ${String(state.heroes.keys().length)}; a contract with more seats than the campaign ` +
+        'has heroes cannot be crewed at all.'
+    );
+  }
+
+  return SortedSet.from(compareHeroIds, crew);
 }
 
 /** The runtime id of the hero `contentId` names, resolved against `state`. */

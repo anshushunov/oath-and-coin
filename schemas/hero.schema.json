@@ -13,13 +13,14 @@
     "caution",
     "pride",
     "trust_in_guild",
+    "capability",
     "traits",
     "relationships"
   ],
   "properties": {
     "schema_version": {
       "type": "integer",
-      "const": 3,
+      "const": 4,
       "description": "Version of this content format (TDD 11.1). Pinned by const so a file authored for a later format is refused by tooling, not read under today's assumptions; ContentSet.SupportedContentSchemaVersion states the same number and SchemaAgreementTests keeps the two equal."
     },
     "id": {
@@ -51,6 +52,40 @@
       "type": "integer",
       "minimum": 0,
       "maximum": 100
+    },
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "grade",
+        "expertise"
+      ],
+      "properties": {
+        "grade": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "How good this hero is at all, on its own scale (DEC-013, RESOLUTION_SPEC 2.2). The range coincides with the hero scales above and the constants deliberately do not: nothing divides by this span, so raising the range of greed must not raise how strong a crew is."
+        },
+        "expertise": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "enum": [
+              "frontline",
+              "undead_knowledge",
+              "wilderness"
+            ]
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "description": "How good this hero is at each need he is answerable for. Any subset of the vocabulary, including none. A present key at 0 and a missing key are different facts: the first means the hero is answerable for that need at zero skill, the second that it is not his business (RESOLUTION_SPEC 2.2)."
+        }
+      },
+      "description": "What this hero can do — the layer DEC-013 keeps apart from greed, caution, pride and trust_in_guild."
     },
     "traits": {
       "type": "array",

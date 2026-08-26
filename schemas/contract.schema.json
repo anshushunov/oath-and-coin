@@ -12,12 +12,13 @@
     "patron_fee",
     "risk",
     "required_crew",
+    "needs",
     "tags"
   ],
   "properties": {
     "schema_version": {
       "type": "integer",
-      "const": 3,
+      "const": 4,
       "description": "Version of this content format (TDD 11.1). Pinned by const so a file authored for a later format is refused by tooling, not read under today's assumptions; ContentSet.SupportedContentSchemaVersion states the same number and SchemaAgreementTests keeps the two equal."
     },
     "id": {
@@ -44,6 +45,25 @@
       "type": "integer",
       "minimum": 1,
       "maximum": 6
+    },
+    "needs": {
+      "type": "object",
+      "minProperties": 2,
+      "maxProperties": 3,
+      "propertyNames": {
+        "type": "string",
+        "enum": [
+          "frontline",
+          "undead_knowledge",
+          "wilderness"
+        ]
+      },
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      },
+      "description": "What this job asks for, and how much of each (RESOLUTION_SPEC 2.3). Two or three needs — one makes taking the strongest hero the answer to every contract, the kill-criterion MVP_PLAN 3.2 names. Every weight is strictly positive: a need of weight 0 is a second entry asking for nothing, which is the one-need contract by the back door."
     },
     "tags": {
       "type": "array",

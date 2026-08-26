@@ -7,7 +7,7 @@ import {
 } from '@oath-and-coin/simulation';
 import { z } from 'zod';
 
-import { PATRON_FEE_MAX } from '../bounds.ts';
+import { PATRON_FEE_MAX, REQUIRED_CREW_MAX } from '../bounds.ts';
 import type { ContentFileSource } from '../file-source.ts';
 import { readFile } from '../strict-json.ts';
 
@@ -56,6 +56,15 @@ export interface ComposeOfferScenarioCommand extends ScenarioCommandBase {
   readonly kind: typeof ScenarioCommandKind.ComposeOffer;
   /** Who the package is negotiated with, by roster position — see {@link ScenarioCommand}. */
   readonly keyHeroIndex: number;
+  /**
+   * Who the package asks, by roster position (`RESOLUTION_SPEC` §2.5) — exactly
+   * `required_crew` of them, {@link keyHeroIndex} among them.
+   *
+   * Indexes, like `key_hero_index` beside it and for the same reason: a scenario file
+   * names roster positions, not `HeroId`s, so a file stays readable against a content
+   * tree whose ids it does not have to know.
+   */
+  readonly invitedIndexes: readonly number[];
   readonly advance: number;
   readonly methodTag: ContentId | null;
   readonly promisedBonus: number;
@@ -163,6 +172,10 @@ const composeOfferFileSchema = z.strictObject({
   command: z.literal(ScenarioCommandKind.ComposeOffer),
   ...commandBaseFields,
   key_hero_index: heroIndexNumber,
+  // Required, not optional: `invited` is required on the command it becomes, and a step
+  // that omitted it would be a scenario file that cannot say who went. Bounded by the
+  // largest crew a contract may ask for — the file is external data like any other.
+  invited_indexes: z.array(heroIndexNumber).max(REQUIRED_CREW_MAX),
   advance: offerMoneyNumber,
   method_tag: contentIdString.nullable(),
   promised_bonus: offerMoneyNumber
@@ -221,6 +234,7 @@ function toCommand(command: CommandFile): ScenarioCommand {
         kind: ScenarioCommandKind.ComposeOffer,
         ...base,
         keyHeroIndex: command.key_hero_index,
+        invitedIndexes: command.invited_indexes,
         advance: command.advance,
         methodTag: command.method_tag === null ? null : parseContentId(command.method_tag),
         promisedBonus: command.promised_bonus

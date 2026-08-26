@@ -4,18 +4,26 @@ import {
   ARTIFACT_SAFE_TEXT_PATTERN,
   BLOCK_REASON_CODES,
   CONTENT_ID_PATTERN,
+  CommitmentState,
+  ConsequenceKind,
   ContractStatus,
+  CoverageVerdict,
+  DeficitKind,
   FACTOR_REASON_CODES,
   GRIEVANCE_MAX,
   HERO_ID_MAX,
   HERO_ID_MIN,
+  NEED_IDS,
+  OUTCOME_REASON_CODES,
   OfferPhase,
+  OutcomeGrade,
   SortedMap,
   SortedSet,
   TIE_BREAK_REASON_CODES,
   UINT64_MAX,
   compareContentIds,
   compareHeroIds,
+  compareNeedIds,
   compareNumbers,
   createContractState,
   freezeDeep,
@@ -24,19 +32,28 @@ import {
   type CausalTrace,
   type Comparator,
   type ContentId,
+  type ContractResolution,
   type ContractState,
   type DomainEvent,
   type GameState,
   type HeldTrait,
+  type HeroContribution,
   type HeroId,
   type HeroState,
+  type NeedId,
   type TraceBlock,
   type TraceFactor
 } from '@oath-and-coin/simulation';
 
 import {
+  CAPABILITY_EXPERTISE_MAX,
+  CAPABILITY_EXPERTISE_MIN,
+  CAPABILITY_GRADE_MAX,
+  CAPABILITY_GRADE_MIN,
   INCLINATION_WEIGHT_MAX,
   INCLINATION_WEIGHT_MIN,
+  NEED_WEIGHT_MAX,
+  NEED_WEIGHT_MIN,
   PATRON_FEE_MAX,
   PATRON_FEE_MIN,
   RELATIONSHIP_WEIGHT_MAX,
@@ -50,10 +67,14 @@ import {
 } from '../bounds.ts';
 import {
   MAX_ARTIFACT_SAFE_TEXT_LENGTH,
+  MAX_NEEDS_PER_CONTRACT,
   MAX_RELATIONSHIPS_PER_HERO,
+  MAX_RESOLUTION_MAGNITUDE,
   MAX_TAGS_PER_CONTRACT,
   MAX_TRAITS_PER_HERO,
-  NEGOTIABLE_TAGS_COUNT
+  MIN_NEEDS_PER_CONTRACT,
+  NEGOTIABLE_TAGS_COUNT,
+  WOUNDS_CEILING
 } from '../limits.ts';
 
 import { SaveErrorCodes, SaveReadError, type SaveErrorCode } from './save-error-codes.ts';
@@ -184,6 +205,24 @@ const artifactSafeText = z
 const entries = <K extends z.ZodTypeAny, V extends z.ZodTypeAny>(key: K, value: V) =>
   z.array(z.object({ key, value })).max(4096);
 
+/**
+ * A `{ need: weight }` map, on the wire as the same `entries` pairs every other
+ * `SortedMap` in this file uses.
+ *
+ * Pairs rather than a plain object, and it matters here more than elsewhere: the map's
+ * comparator is `compareNeedIds` (declaration order), and a JSON object would arrive
+ * with whatever key order the writer emitted, silently rebuilt into a map that agrees
+ * only because `SortedMap.from` re-sorts. Pairs make the round trip say what it does.
+ */
+const needEntries = <V extends z.ZodTypeAny>(value: V) =>
+  entries(z.enum(NEED_IDS), value).max(MAX_NEEDS_PER_CONTRACT);
+
+/** `HeroCapability` (`RESOLUTION_SPEC` §2.2) — the bounds `bounds.ts` states, restated. */
+const capabilityValueSchema = z.strictObject({
+  grade: z.int().min(CAPABILITY_GRADE_MIN).max(CAPABILITY_GRADE_MAX),
+  expertise: needEntries(z.int().min(CAPABILITY_EXPERTISE_MIN).max(CAPABILITY_EXPERTISE_MAX))
+});
+
 const relationshipsSchema = entries(
   contentId,
   z.int().min(RELATIONSHIP_WEIGHT_MIN).max(RELATIONSHIP_WEIGHT_MAX)
@@ -203,7 +242,97 @@ const heroValueSchema = z.strictObject({
   // every other field above is bounded by the true ceiling `decide()`/`settleContract`
   // can produce, not left as an unbounded int the way a campaign counter is.
   believesGuildPromises: z.boolean(),
-  grievance: z.int().min(0).max(GRIEVANCE_MAX)
+  grievance: z.int().min(0).max(GRIEVANCE_MAX),
+  // `RESOLUTION_SPEC` §2.2, §2.6. Required keys, not optional ones: unlike
+  // `negotiableTags`, these arrive with a `SAVE_SCHEMA_VERSION` bump of their own, so
+  // there is no save under this version that legitimately lacks them.
+  capability: capabilityValueSchema,
+  // Bounded by `WOUNDS_CEILING` and not by a domain rule, because M1 has no domain
+  // ceiling on wounds (`R-08`). What this bound is for is the same thing every other
+  // ceiling in this file is for: a tampered save must not be able to claim a number the
+  // arithmetic downstream cannot carry (`TDD` §18).
+  wounds: z.int().min(0).max(WOUNDS_CEILING)
+});
+
+const commitmentStateSchema = z.enum([
+  CommitmentState.Committed,
+  CommitmentState.Fragile,
+  CommitmentState.Resentful
+]);
+
+/**
+ * A stored `ContractResolution` (`RESOLUTION_SPEC` §2.1, §2.5).
+ *
+ * Every enum here is written from the domain's own frozen object rather than as string
+ * literals, so a value renamed there stops round-tripping loudly instead of quietly:
+ * these literals reach the canonical artifact and become localization keys, which is
+ * what makes a rename a save-format change rather than a rename.
+ *
+ * The numbers are bounded by {@link MAX_RESOLUTION_MAGNITUDE} — a read-path guard, not
+ * a domain rule; see its own declaration for why none of them can be bounded by a
+ * content bound. The *relationships* between them (contributions keyed by exactly the
+ * crew, coverage naming exactly the contract's needs) are not shapes a schema can state
+ * and are refused by `requireConsistentContract` as `SAVE_INCONSISTENT`.
+ */
+const magnitude = z.int().min(-MAX_RESOLUTION_MAGNITUDE).max(MAX_RESOLUTION_MAGNITUDE);
+
+const outcomeReasonCodeSchema = z.enum(OUTCOME_REASON_CODES);
+
+const needCoverageSchema = z.strictObject({
+  need: z.enum(NEED_IDS),
+  weight: z.int().min(NEED_WEIGHT_MIN).max(NEED_WEIGHT_MAX),
+  required: magnitude,
+  supplied: magnitude,
+  effective: magnitude,
+  verdict: z.enum([CoverageVerdict.Closed, CoverageVerdict.Weak, CoverageVerdict.Uncovered]),
+  contributors: z
+    .array(z.strictObject({ hero: heroIdSchema, amount: magnitude }))
+    .max(MAX_HEROES_PER_CONTRACT)
+});
+
+const heroContributionSchema = z.strictObject({
+  amount: magnitude,
+  commitment: commitmentStateSchema,
+  provenance: z.array(outcomeReasonCodeSchema).max(OUTCOME_REASON_CODES.length)
+});
+
+const deficitKindSchema = z.enum([
+  DeficitKind.Capability,
+  DeficitKind.Coverage,
+  DeficitKind.Commitment
+]);
+
+const resolutionValueSchema = z.strictObject({
+  grade: z.enum([
+    OutcomeGrade.Clean,
+    OutcomeGrade.Costly,
+    OutcomeGrade.Failed,
+    OutcomeGrade.Disaster
+  ]),
+  coverage: z.array(needCoverageSchema).max(MAX_NEEDS_PER_CONTRACT),
+  contributions: entries(heroIdSchema, heroContributionSchema).max(MAX_HEROES_PER_CONTRACT),
+  deficits: z
+    .array(
+      z.strictObject({
+        kind: deficitKindSchema,
+        magnitude,
+        needs: z.array(z.enum(NEED_IDS)).max(MAX_NEEDS_PER_CONTRACT),
+        heroes: z.array(heroIdSchema).max(MAX_HEROES_PER_CONTRACT)
+      })
+    )
+    // Three kinds, and a ranked list holds each at most once (`RESOLUTION_SPEC` §4.7).
+    .max(3),
+  dominant: deficitKindSchema.nullable(),
+  consequences: z
+    .array(
+      z.strictObject({
+        hero: heroIdSchema,
+        kind: z.enum([ConsequenceKind.Wound, ConsequenceKind.Grudge, ConsequenceKind.TrustLost]),
+        reason: outcomeReasonCodeSchema,
+        magnitude
+      })
+    )
+    .max(MAX_HEROES_PER_CONTRACT)
 });
 
 const contractStatusSchema = z.union([
@@ -247,8 +376,17 @@ const offerValueSchema = z.strictObject({
   methodTag: contentId.nullable(),
   promisedBonus: z.int().min(PATRON_FEE_MIN).max(PATRON_FEE_MAX),
   phase: offerPhaseSchema,
+  // `RESOLUTION_SPEC` §2.5, §2.4. Required, like every other key of this schema and
+  // unlike `negotiableTags` below: they arrive with a version bump of their own, so
+  // there is no save under this version that legitimately lacks them. The relationships
+  // between the three sets — size against `requiredCrew`, `respondedBy ⊆ invited`,
+  // `commitments.keys() === acceptedBy` — are not shapes this schema can state, and are
+  // refused by `requireConsistentContract` as `SAVE_INCONSISTENT`, the same way §2.1's
+  // are.
+  invited: z.array(heroIdSchema).max(MAX_HEROES_PER_CONTRACT),
   respondedBy: z.array(heroIdSchema).max(MAX_HEROES_PER_CONTRACT),
-  acceptedBy: z.array(heroIdSchema).max(MAX_HEROES_PER_CONTRACT)
+  acceptedBy: z.array(heroIdSchema).max(MAX_HEROES_PER_CONTRACT),
+  commitments: entries(heroIdSchema, commitmentStateSchema).max(MAX_HEROES_PER_CONTRACT)
 });
 
 const contractValueSchema = z.strictObject({
@@ -256,6 +394,16 @@ const contractValueSchema = z.strictObject({
   patronFee: z.int().min(PATRON_FEE_MIN).max(PATRON_FEE_MAX),
   risk: z.int().min(RISK_MIN).max(RISK_MAX),
   requiredCrew: z.int().min(REQUIRED_CREW_MIN).max(REQUIRED_CREW_MAX),
+  // **Floor as well as ceiling, and only here.** `RESOLUTION_SPEC` §2.3 puts a contract
+  // at two or three needs; one collapses the coverage model into "bring the strongest
+  // hero", which is the kill-criterion `MVP_PLAN` §3.2 names and the whole reason a
+  // contract has more than one need. `needEntries` itself keeps no floor because
+  // `HeroCapability.expertise` shares it and an expertise of nothing is a legitimate
+  // hero — a shared minimum would refuse him. Found by external review of PR #33: the
+  // ceiling alone let a tampered save arrive with `needs: []`.
+  needs: needEntries(z.int().min(NEED_WEIGHT_MIN).max(NEED_WEIGHT_MAX)).min(
+    MIN_NEEDS_PER_CONTRACT
+  ),
   tags: z.array(contentId).max(MAX_TAGS_PER_CONTRACT),
   // Optional, not `ContractState.negotiableTags`'s own default made required: this key
   // is new (`DEC-008` Task 10), and declaring it optional rather than required keeps a
@@ -266,7 +414,11 @@ const contractValueSchema = z.strictObject({
   negotiableTags: z.array(contentId).max(NEGOTIABLE_TAGS_COUNT).optional(),
   status: contractStatusSchema,
   offer: offerValueSchema,
-  moodOrdinals: entries(heroIdSchema, uint64).max(MAX_HEROES_PER_CONTRACT)
+  moodOrdinals: entries(heroIdSchema, uint64).max(MAX_HEROES_PER_CONTRACT),
+  // `null`, never absent, for a contract nobody has resolved — the same distinction
+  // `method_tag` draws in the artifact: "resolved to nothing" and "never asked" are
+  // different facts, and a nullable required key says which one this is.
+  resolution: resolutionValueSchema.nullable()
 });
 
 const traitRuleValueSchema = z.strictObject({
@@ -513,7 +665,14 @@ export function encodeSnapshot(state: GameState): unknown {
           .entries()
           .map(([relationshipKey, weight]) => ({ key: relationshipKey, value: weight })),
         believesGuildPromises: value.believesGuildPromises,
-        grievance: value.grievance
+        grievance: value.grievance,
+        capability: {
+          grade: value.capability.grade,
+          expertise: value.capability.expertise
+            .entries()
+            .map(([need, amount]) => ({ key: need, value: amount }))
+        },
+        wounds: value.wounds
       }
     })),
     contracts: state.contracts.entries().map(([key, value]) => ({
@@ -523,6 +682,7 @@ export function encodeSnapshot(state: GameState): unknown {
         patronFee: value.patronFee,
         risk: value.risk,
         requiredCrew: value.requiredCrew,
+        needs: value.needs.entries().map(([need, weight]) => ({ key: need, value: weight })),
         tags: value.tags.values(),
         negotiableTags: value.negotiableTags?.values(),
         status: value.status,
@@ -533,12 +693,17 @@ export function encodeSnapshot(state: GameState): unknown {
           methodTag: value.offer.methodTag,
           promisedBonus: value.offer.promisedBonus,
           phase: value.offer.phase,
+          invited: value.offer.invited.values(),
           respondedBy: value.offer.respondedBy.values(),
-          acceptedBy: value.offer.acceptedBy.values()
+          acceptedBy: value.offer.acceptedBy.values(),
+          commitments: value.offer.commitments
+            .entries()
+            .map(([heroKey, commitment]) => ({ key: heroKey, value: commitment }))
         },
         moodOrdinals: value.moodOrdinals
           .entries()
-          .map(([heroKey, ordinal]) => ({ key: heroKey, value: String(ordinal) }))
+          .map(([heroKey, ordinal]) => ({ key: heroKey, value: String(ordinal) })),
+        resolution: value.resolution === null ? null : encodeResolution(value.resolution)
       }
     })),
     appliedCommandIds: state.appliedCommandIds.values(),
@@ -597,7 +762,15 @@ export function decodeSnapshot(value: unknown): GameState {
       // reason `moodOrdinals` (below, on a contract) is a real schema field and not a
       // hard-coded default despite nothing writing to it yet either.
       believesGuildPromises: raw.believesGuildPromises,
-      grievance: raw.grievance
+      grievance: raw.grievance,
+      // `RESOLUTION_SPEC` §2.2, §2.6. `expertise` is rebuilt through `compareNeedIds`
+      // rather than trusted in file order, for the reason every other map here is:
+      // enumeration order reaches the artifact, and a file's order is the writer's.
+      capability: {
+        grade: raw.capability.grade,
+        expertise: buildNeedMap(raw.capability.expertise)
+      },
+      wounds: raw.wounds
     }),
     'heroes'
   );
@@ -631,6 +804,7 @@ export function decodeSnapshot(value: unknown): GameState {
         patronFee: raw.patronFee,
         risk: raw.risk,
         requiredCrew: raw.requiredCrew,
+        needs: buildNeedMap(raw.needs),
         tags: SortedSet.from(compareContentIds, raw.tags.map((tag) => parseContentId(tag))),
         // Absent reads as "nothing negotiable" — see `contractValueSchema`'s own comment
         // on why this key is optional rather than required.
@@ -646,13 +820,21 @@ export function decodeSnapshot(value: unknown): GameState {
           methodTag: raw.offer.methodTag === null ? null : parseContentId(raw.offer.methodTag),
           promisedBonus: raw.offer.promisedBonus,
           phase: raw.offer.phase,
+          invited: SortedSet.from(compareHeroIds, raw.offer.invited.map((id) => heroId(id))),
           respondedBy: SortedSet.from(
             compareHeroIds,
             raw.offer.respondedBy.map((id) => heroId(id))
           ),
-          acceptedBy: SortedSet.from(compareHeroIds, raw.offer.acceptedBy.map((id) => heroId(id)))
+          acceptedBy: SortedSet.from(compareHeroIds, raw.offer.acceptedBy.map((id) => heroId(id))),
+          commitments: SortedMap.from(
+            compareHeroIds,
+            raw.offer.commitments.map(
+              (entry) => [heroId(entry.key), entry.value] as readonly [HeroId, CommitmentState]
+            )
+          )
         },
-        moodOrdinals: buildMoodOrdinals(raw.moodOrdinals)
+        moodOrdinals: buildMoodOrdinals(raw.moodOrdinals),
+        resolution: raw.resolution === null ? null : toResolution(raw.resolution)
       }),
     'contracts'
   );
@@ -798,6 +980,82 @@ function buildRelationships(
  * value to check it against — except the value is a decision ordinal, written as a
  * decimal string like every other 64-bit value this codec carries.
  */
+/**
+ * `{ need, weight }` pairs off a save, keyed by the vocabulary's own comparator.
+ *
+ * Rebuilt rather than trusted in file order for the reason every map here is: the
+ * enumeration order reaches the canonical artifact, and the order a file happens to
+ * carry is the writer's, not the domain's.
+ */
+function buildNeedMap(
+  raw: readonly { key: NeedId; value: number }[]
+): SortedMap<NeedId, number> {
+  return fromEntriesOrInconsistent(
+    compareNeedIds,
+    raw.map((entry) => [entry.key, entry.value] as const)
+  );
+}
+
+/** The mirror of {@link encodeResolution}: pairs back into the maps the domain reads. */
+function toResolution(raw: z.infer<typeof resolutionValueSchema>): ContractResolution {
+  return {
+    grade: raw.grade,
+    coverage: raw.coverage.map((entry) => ({
+      need: entry.need,
+      weight: entry.weight,
+      required: entry.required,
+      supplied: entry.supplied,
+      effective: entry.effective,
+      verdict: entry.verdict,
+      contributors: entry.contributors.map((contributor) => ({
+        hero: heroId(contributor.hero),
+        amount: contributor.amount
+      }))
+    })),
+    contributions: fromEntriesOrInconsistent<HeroId, HeroContribution>(
+      compareHeroIds,
+      raw.contributions.map(
+        (entry) =>
+          [
+            heroId(entry.key),
+            {
+              amount: entry.value.amount,
+              commitment: entry.value.commitment,
+              provenance: entry.value.provenance
+            }
+          ] as const
+      )
+    ),
+    deficits: raw.deficits.map((deficit) => ({
+      kind: deficit.kind,
+      magnitude: deficit.magnitude,
+      needs: deficit.needs,
+      heroes: deficit.heroes.map((hero) => heroId(hero))
+    })),
+    dominant: raw.dominant,
+    consequences: raw.consequences.map((consequence) => ({
+      hero: heroId(consequence.hero),
+      kind: consequence.kind,
+      reason: consequence.reason,
+      magnitude: consequence.magnitude
+    }))
+  };
+}
+
+/** The mirror of {@link toResolution}: maps out as the `entries` pairs the schema states. */
+function encodeResolution(resolution: ContractResolution): unknown {
+  return {
+    grade: resolution.grade,
+    coverage: resolution.coverage,
+    contributions: resolution.contributions
+      .entries()
+      .map(([hero, contribution]) => ({ key: hero, value: contribution })),
+    deficits: resolution.deficits,
+    dominant: resolution.dominant,
+    consequences: resolution.consequences
+  };
+}
+
 function buildMoodOrdinals(
   raw: readonly { key: number; value: string }[]
 ): SortedMap<HeroId, bigint> {

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "scenario": "screen_settlement_due",
   "expected_outcome": "success",
-  "expected_screen_state": "incomplete",
+  "expected_screen_state": "normal",
   "checkpoints": [
     {
       "name": "screen_settlement_due",

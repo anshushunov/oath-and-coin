@@ -52,40 +52,43 @@ import {
  */
 
 const BRAM = {
-  schema_version: 3,
+  schema_version: 4,
   id: 'core:bram',
   display_name_key: 'hero.core.bram.name',
   greed: 60,
   caution: 30,
   pride: 45,
   trust_in_guild: 50,
+  capability: { grade: 50, expertise: { frontline: 50, wilderness: 50 } },
   traits: ['core:greedy'],
   relationships: []
 };
 
 /** Sorts before `core:escort`, and is deliberately never the contract anyone answers. */
 const ARCHIVE_RUN = {
-  schema_version: 3,
+  schema_version: 4,
   id: 'core:archive_run',
   display_name_key: 'contract.core.archive_run.name',
   patron_fee: 30,
   risk: 10,
   required_crew: 1,
+  needs: { frontline: 10, wilderness: 10 },
   tags: []
 };
 
 const ESCORT = {
-  schema_version: 3,
+  schema_version: 4,
   id: 'core:escort',
   display_name_key: 'contract.core.escort.name',
   patron_fee: 70,
   risk: 30,
   required_crew: 1,
+  needs: { frontline: 10, wilderness: 10 },
   tags: ['method:escort']
 };
 
 const GREEDY = {
-  schema_version: 3,
+  schema_version: 4,
   id: 'core:greedy',
   display_name_key: 'trait.core.greedy.name',
   kind: 'inclination',
@@ -115,14 +118,20 @@ function contentTree(): ContentFileSource {
 const DORAN = { ...BRAM, id: 'core:doran', display_name_key: 'hero.core.doran.name' };
 const ZARA = { ...BRAM, id: 'core:zara', display_name_key: 'hero.core.zara.name' };
 
-/** Two seats, so the key hero's own draft acceptance leaves one for `pollCrew` to still fill. */
+/**
+ * Three seats, so the key hero's own draft acceptance leaves two for `pollCrew` to ask.
+ * Two rather than one because the poll now asks the *invited* crew minus whoever has
+ * answered (`DEC-012` as amended, `RESOLUTION_SPEC` §8), and "every decision a poll
+ * produced" needs more than one decision to be a claim about a list.
+ */
 const CRYPT = {
-  schema_version: 3,
+  schema_version: 4,
   id: 'core:cleanse_the_crypt',
   display_name_key: 'contract.core.cleanse_the_crypt.name',
   patron_fee: 70,
   risk: 10,
-  required_crew: 2,
+  required_crew: 3,
+  needs: { frontline: 10, wilderness: 10 },
   tags: []
 };
 
@@ -178,6 +187,7 @@ const composeEscort = {
   command_id: 1,
   contract: 'core:escort',
   key_hero_index: 0,
+  invited_indexes: [0],
   advance: 70,
   method_tag: null,
   promised_bonus: 0,
@@ -275,6 +285,7 @@ const unscreenableScenario: ScenarioFixture = {
         command_id: 1,
         contract: 'core:contract_nobody_authored',
         key_hero_index: 0,
+        invited_indexes: [0],
         advance: 0,
         method_tag: null,
         promised_bonus: 0,
@@ -315,6 +326,7 @@ const pollCrewScenario: ScenarioFixture = {
         command_id: 1,
         contract: 'core:cleanse_the_crypt',
         key_hero_index: 0,
+        invited_indexes: [0, 1, 2],
         advance: 10,
         method_tag: null,
         promised_bonus: 0,
@@ -1392,6 +1404,7 @@ describe('dispatching the five negotiation commands', () => {
     const result = controller.composeOffer({
       contractId: escort,
       keyHero: bram,
+      invited: [bram],
       advance: 40,
       methodTag: null,
       promisedBonus: 0
@@ -1461,6 +1474,7 @@ describe('dispatching the five negotiation commands', () => {
     const composed = controller.composeOffer({
       contractId: escort,
       keyHero: bram,
+      invited: [bram],
       advance: 70,
       methodTag: null,
       promisedBonus: 0

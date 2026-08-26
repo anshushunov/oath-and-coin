@@ -32,54 +32,61 @@ import { buildSave, readSave } from './envelope.ts';
  */
 
 const KEY_HERO_FILE = {
-  schema_version: 3,
+  schema_version: 4,
   id: 'core:bram',
   display_name_key: 'hero.core.bram.name',
   greed: 60,
   caution: 0,
   pride: 0,
   trust_in_guild: 50,
+  capability: { grade: 50, expertise: { frontline: 50, wilderness: 50 } },
   traits: [],
   relationships: []
 };
 
 const OTHER_HERO_FILE = {
-  schema_version: 3,
+  schema_version: 4,
   id: 'core:doran',
   display_name_key: 'hero.core.doran.name',
   greed: 60,
   caution: 0,
   pride: 0,
   trust_in_guild: 50,
+  capability: { grade: 50, expertise: { frontline: 50, wilderness: 50 } },
   traits: [],
   relationships: []
 };
 
 const THIRD_HERO_FILE = {
-  schema_version: 3,
+  schema_version: 4,
   id: 'core:zara',
   display_name_key: 'hero.core.zara.name',
   greed: 60,
   caution: 0,
   pride: 0,
   trust_in_guild: 50,
+  capability: { grade: 50, expertise: { frontline: 50, wilderness: 50 } },
   traits: [],
   relationships: []
 };
 
 const CONTRACT_FILE = {
-  schema_version: 3,
+  schema_version: 4,
   id: 'core:cleanse_the_crypt',
   display_name_key: 'contract.core.cleanse_the_crypt.name',
   patron_fee: 70,
   risk: 0,
-  required_crew: 2,
+  // Three seats and three invited: the poll asks the invited crew minus whoever has
+  // already answered (`DEC-012` as amended, `RESOLUTION_SPEC` §8), so two events from one
+  // `pollCrew` needs two invited heroes besides the key one.
+  required_crew: 3,
+  needs: { frontline: 10, wilderness: 10 },
   tags: []
 };
 
 /** Unused by any hero here — `loadContentSet` still requires a `traits/` directory. */
 const UNUSED_TRAIT_FILE = {
-  schema_version: 3,
+  schema_version: 4,
   id: 'core:greedy',
   display_name_key: 'trait.core.greedy.name',
   kind: 'inclination',
@@ -112,6 +119,7 @@ function pollCrewCampaign(): { readonly state: ReturnType<typeof createInitialSt
     commandId: 1,
     contractId: contractId!,
     keyHero: keyHero!,
+    invited: base.heroes.keys(),
     advance: 10,
     methodTag: null,
     promisedBonus: 0,

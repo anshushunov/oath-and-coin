@@ -1,4 +1,5 @@
 import type { SortedMap } from '../collections/sorted-map.ts';
+import type { HeroCapability } from '../domain/capability.ts';
 import type { ContentId } from '../ids/content-id.ts';
 import type { HeroId } from '../ids/hero-id.ts';
 
@@ -20,6 +21,26 @@ export interface HeroState {
   readonly caution: number;
   readonly pride: number;
   readonly trustInGuild: number;
+  /**
+   * What this hero can do (`DEC-013`, `RESOLUTION_SPEC` §2.2) — a layer of its own,
+   * beside the four scales above rather than among them. The scales say what he wants;
+   * this says what he is good at, and no rule reads both.
+   *
+   * Copied from the hero's definition at campaign start and never moved by any command
+   * in M1: `grade` becomes a derivative of attributes, skills and equipment when
+   * `BQ-013` closes, and nothing downstream has to change for that to happen.
+   */
+  readonly capability: HeroCapability;
+  /**
+   * How many wounds this hero has taken (`RESOLUTION_SPEC` §2.6). `0` at campaign
+   * start; a `Wound` consequence adds its magnitude.
+   *
+   * **No domain ceiling, and nothing reads it.** That is the declared boundary of M1,
+   * not a mechanic somebody forgot (`R-08`): wounds accumulate and are visible, and
+   * healing, a cap and any effect on a decision are M2's. A ceiling invented here would
+   * be a balance decision taken inside an implementation.
+   */
+  readonly wounds: number;
   /**
    * Trait ids the hero carries, in the order content authored them. Identifiers, not
    * trait definitions: state must stay serializable and must never pull the content it

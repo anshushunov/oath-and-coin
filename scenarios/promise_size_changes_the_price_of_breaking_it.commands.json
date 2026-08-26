@@ -5,6 +5,9 @@
       "command_id": 1,
       "contract": "fixture:tiny_promise",
       "key_hero_index": 1,
+      "invited_indexes": [
+        1
+      ],
       "advance": 0,
       "method_tag": null,
       "promised_bonus": 1,
@@ -41,6 +44,9 @@
       "command_id": 6,
       "contract": "fixture:big_promise",
       "key_hero_index": 0,
+      "invited_indexes": [
+        0
+      ],
       "advance": 0,
       "method_tag": null,
       "promised_bonus": 40,

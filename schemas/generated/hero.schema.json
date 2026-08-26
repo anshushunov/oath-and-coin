@@ -7,7 +7,7 @@
   "properties": {
     "schema_version": {
       "type": "number",
-      "const": 3
+      "const": 4
     },
     "id": {
       "type": "string",
@@ -37,6 +37,37 @@
       "type": "integer",
       "minimum": 0,
       "maximum": 100
+    },
+    "capability": {
+      "type": "object",
+      "properties": {
+        "grade": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "expertise": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "enum": [
+              "frontline",
+              "undead_knowledge",
+              "wilderness"
+            ]
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          }
+        }
+      },
+      "required": [
+        "grade",
+        "expertise"
+      ],
+      "additionalProperties": false
     },
     "traits": {
       "maxItems": 4,
@@ -78,6 +109,7 @@
     "caution",
     "pride",
     "trust_in_guild",
+    "capability",
     "traits",
     "relationships"
   ],

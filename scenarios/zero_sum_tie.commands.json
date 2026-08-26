@@ -5,6 +5,11 @@
       "command_id": 1,
       "contract": "fixture:plain_alpha",
       "key_hero_index": 0,
+      "invited_indexes": [
+        0,
+        1,
+        2
+      ],
       "advance": 50,
       "method_tag": null,
       "promised_bonus": 0,
@@ -22,6 +27,11 @@
       "command_id": 3,
       "contract": "fixture:plain_beta",
       "key_hero_index": 0,
+      "invited_indexes": [
+        0,
+        1,
+        2
+      ],
       "advance": 50,
       "method_tag": null,
       "promised_bonus": 0,
@@ -39,6 +49,11 @@
       "command_id": 5,
       "contract": "fixture:plain_gamma",
       "key_hero_index": 0,
+      "invited_indexes": [
+        0,
+        1,
+        2
+      ],
       "advance": 50,
       "method_tag": null,
       "promised_bonus": 0,
@@ -56,6 +71,11 @@
       "command_id": 7,
       "contract": "fixture:plain_alpha",
       "key_hero_index": 1,
+      "invited_indexes": [
+        0,
+        1,
+        2
+      ],
       "advance": 50,
       "method_tag": null,
       "promised_bonus": 0,
@@ -73,6 +93,11 @@
       "command_id": 9,
       "contract": "fixture:plain_beta",
       "key_hero_index": 1,
+      "invited_indexes": [
+        0,
+        1,
+        2
+      ],
       "advance": 50,
       "method_tag": null,
       "promised_bonus": 0,
@@ -90,6 +115,11 @@
       "command_id": 11,
       "contract": "fixture:plain_gamma",
       "key_hero_index": 1,
+      "invited_indexes": [
+        0,
+        1,
+        2
+      ],
       "advance": 50,
       "method_tag": null,
       "promised_bonus": 0,
@@ -107,6 +137,11 @@
       "command_id": 13,
       "contract": "fixture:plain_alpha",
       "key_hero_index": 2,
+      "invited_indexes": [
+        0,
+        1,
+        2
+      ],
       "advance": 50,
       "method_tag": null,
       "promised_bonus": 0,

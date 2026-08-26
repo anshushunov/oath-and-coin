@@ -1,9 +1,13 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "id": "fixture:crew_job",
   "display_name_key": "contract.fixture.crew_job.name",
   "patron_fee": 50,
   "risk": 0,
   "required_crew": 2,
+  "needs": {
+    "frontline": 10,
+    "wilderness": 10
+  },
   "tags": []
 }

@@ -1,7 +1,10 @@
+import { SortedMap } from '../collections/sorted-map.ts';
 import { SortedSet } from '../collections/sorted-set.ts';
+import type { CommitmentState } from '../domain/commitment.ts';
 import type { ContentId } from '../ids/content-id.ts';
 import { compareHeroIds, type HeroId } from '../ids/hero-id.ts';
 
+import { requireStoredResolutionConsistency } from './contract-resolution.ts';
 import {
   ContractStatus,
   OfferPhase,
@@ -50,8 +53,13 @@ export function initialOffer(): OfferState {
     methodTag: null,
     promisedBonus: 0,
     phase: OfferPhase.Draft,
+    // Empty, not "every hero": nobody is invited to a package nobody has composed yet
+    // (`RESOLUTION_SPEC` §2.5). This is the state the conditional form of the crew-size
+    // invariant exists for.
+    invited: SortedSet.empty<HeroId>(compareHeroIds),
     respondedBy: SortedSet.empty<HeroId>(compareHeroIds),
-    acceptedBy: SortedSet.empty<HeroId>(compareHeroIds)
+    acceptedBy: SortedSet.empty<HeroId>(compareHeroIds),
+    commitments: SortedMap.empty<HeroId, CommitmentState>(compareHeroIds)
   };
 }
 
@@ -215,6 +223,74 @@ export function createContractState(contract: ContractState): ContractState {
         "method tag that pushes the contract's effective tags past that ceiling."
     );
   }
+
+  // commitments.keys() === acceptedBy, in both directions (`RESOLUTION_SPEC` §2.4,
+  // §2.5). Without the equality, `commitments.get(hero)` returns `undefined` for a hero
+  // the crew demonstrably contains, and the resolver would have to invent a state for
+  // him — which is exactly the guess recording the commitment at answer time exists to
+  // avoid.
+  const committed = offer.commitments.keys();
+  if (committed.length !== offer.acceptedBy.size) {
+    throw new Error(
+      `Contract '${contract.id}' offer records ${String(committed.length)} commitment(s) for ` +
+        `${String(offer.acceptedBy.size)} acceptance(s); every acceptance carries exactly one ` +
+        'commitment state, recorded at the moment the answer was given.'
+    );
+  }
+
+  for (const heroId of committed) {
+    if (!offer.acceptedBy.has(heroId)) {
+      throw new Error(
+        `Contract '${contract.id}' offer records a commitment for hero#${String(heroId)}, who is ` +
+          'not among those who accepted; a commitment is a fact about an acceptance.'
+      );
+    }
+  }
+
+  // The crew this package asks (`RESOLUTION_SPEC` §2.5), conditional on there being a
+  // package at all. The condition is not a softening: `initialOffer` builds every
+  // contract of a freshly loaded campaign with `keyHero: null`, so the unconditional
+  // form would mean a state assembled from content cannot pass its own constructor —
+  // measured, not feared, and the reason the spec's first edition was amended.
+  if (offer.keyHero === null) {
+    if (offer.invited.size > 0) {
+      throw new Error(
+        `Contract '${contract.id}' offer invites ${String(offer.invited.size)} hero(es) but has ` +
+          'no key hero; a package nobody has composed yet has nobody to invite.'
+      );
+    }
+  } else {
+    if (offer.invited.size !== contract.requiredCrew) {
+      throw new Error(
+        `Contract '${contract.id}' offer invites ${String(offer.invited.size)} hero(es), but the ` +
+          `contract has ${String(contract.requiredCrew)} seats (requiredCrew); a composed package ` +
+          'invites exactly as many heroes as the job has places.'
+      );
+    }
+
+    if (!offer.invited.has(offer.keyHero)) {
+      throw new Error(
+        `Contract '${contract.id}' offer is negotiated with hero#${String(offer.keyHero)} as its ` +
+          'key hero, but that hero is not among the invited; a package is discussed with somebody ' +
+          'it asks.'
+      );
+    }
+  }
+
+  // respondedBy ⊆ invited — an answer from somebody this package never asked is a
+  // state no command produces. Distinct from the draft rule further down: that one
+  // bounds *when* a non-key hero may answer, this one bounds *who* may answer at all.
+  for (const respondedHeroId of offer.respondedBy.values()) {
+    if (!offer.invited.has(respondedHeroId)) {
+      throw new Error(
+        `Contract '${contract.id}' offer records an answer from hero#${String(respondedHeroId)}, ` +
+          `who is not among the ${String(offer.invited.size)} invited hero(es); only an invited ` +
+          'hero is ever asked.'
+      );
+    }
+  }
+
+  requireStoredResolutionConsistency(contract);
 
   return contract;
 }

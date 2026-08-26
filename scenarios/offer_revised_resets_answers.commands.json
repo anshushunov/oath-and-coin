@@ -5,6 +5,11 @@
       "command_id": 1,
       "contract": "core:silence_the_cult",
       "key_hero_index": 3,
+      "invited_indexes": [
+        0,
+        1,
+        3
+      ],
       "advance": 5,
       "method_tag": null,
       "promised_bonus": 0,
@@ -22,6 +27,11 @@
       "command_id": 3,
       "contract": "core:silence_the_cult",
       "key_hero_index": 3,
+      "invited_indexes": [
+        0,
+        1,
+        3
+      ],
       "advance": 55,
       "method_tag": null,
       "promised_bonus": 0,

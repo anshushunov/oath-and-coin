@@ -60,6 +60,10 @@ const { CONTENT_ID_PATTERN } = await moduleAt(
   'ids',
   'content-id.ts'
 );
+// The need vocabulary itself, from the engine that owns it: both schemas spell the
+// three literals out — a schema has no other way to state an enum — and this is what
+// holds those spellings to the closed vocabulary `RESOLUTION_SPEC` §2.1 declares.
+const { NEED_IDS } = await moduleAt('packages', 'simulation', 'src', 'domain', 'need-id.ts');
 
 const failures = [];
 
@@ -124,6 +128,20 @@ const expectations = {
     'properties.pride.maximum': heroScale.maximum,
     'properties.trust_in_guild.minimum': heroScale.minimum,
     'properties.trust_in_guild.maximum': heroScale.maximum,
+    // Capability is checked against its *own* constants, not against `heroScale`, and
+    // that is the point rather than a duplication: the numbers coincide today, and
+    // `DEC-013` §2 requires that raising the range of greed cannot raise how strong a
+    // crew is. Comparing these to `heroScale` here would build exactly the coupling the
+    // two constant pairs exist to prevent.
+    'properties.capability.additionalProperties': false,
+    'properties.capability.required': ['grade', 'expertise'],
+    'properties.capability.properties.grade.minimum': bounds.CAPABILITY_GRADE_MIN,
+    'properties.capability.properties.grade.maximum': bounds.CAPABILITY_GRADE_MAX,
+    'properties.capability.properties.expertise.propertyNames.enum': NEED_IDS,
+    'properties.capability.properties.expertise.additionalProperties.minimum':
+      bounds.CAPABILITY_EXPERTISE_MIN,
+    'properties.capability.properties.expertise.additionalProperties.maximum':
+      bounds.CAPABILITY_EXPERTISE_MAX,
     'properties.traits.maxItems': limits.MAX_TRAITS_PER_HERO,
     'properties.traits.items.pattern': CONTENT_ID_PATTERN,
     'properties.relationships.maxItems': limits.MAX_RELATIONSHIPS_PER_HERO,
@@ -143,6 +161,11 @@ const expectations = {
     'properties.risk.maximum': bounds.RISK_MAX,
     'properties.required_crew.minimum': bounds.REQUIRED_CREW_MIN,
     'properties.required_crew.maximum': bounds.REQUIRED_CREW_MAX,
+    'properties.needs.minProperties': limits.MIN_NEEDS_PER_CONTRACT,
+    'properties.needs.maxProperties': limits.MAX_NEEDS_PER_CONTRACT,
+    'properties.needs.propertyNames.enum': NEED_IDS,
+    'properties.needs.additionalProperties.minimum': bounds.NEED_WEIGHT_MIN,
+    'properties.needs.additionalProperties.maximum': bounds.NEED_WEIGHT_MAX,
     'properties.tags.maxItems': limits.MAX_TAGS_PER_CONTRACT,
     'properties.tags.items.pattern': CONTENT_ID_PATTERN,
     'properties.negotiable_tags.minItems': limits.NEGOTIABLE_TAGS_COUNT,
@@ -187,6 +210,12 @@ for (const [fileName, paths] of Object.entries(expectations)) {
 // weight and an inclination omit one, both of which Zod refuses — left this command
 // green. A gate that checks only the numbers is a gate that says "the schemas agree"
 // about two documents that no longer describe the same shape.
+//
+// External review of the resolution engine's Task 2 found the same blindness one level
+// down: the comparison walked *top-level* properties only, so `capability.grade` could
+// say `number` in one document and `integer` in the other, or `expertise` could lose its
+// `type: object` entirely, and this command stayed green. Nested objects are exactly
+// where the two new fields live, so the walk below recurses.
 
 /** `integer` and `number` are the same claim when a `const` pins an integral value. */
 function normalisedType(node) {
@@ -202,44 +231,95 @@ function propertiesOf(document) {
 
 const asSet = (values) => [...(values ?? [])].sort().join(',');
 
-// The trait schema is compared separately, below: the two documents express one rule in
-// two shapes. The hand-written one declares every property at the top level and refines
-// them in a two-branch `oneOf`; the Zod union emits two *complete* branches and nothing at
-// the top. Comparing those structurally would report a disagreement that is not one.
-for (const fileName of Object.keys(expectations).filter((name) => name !== 'trait.schema.json')) {
-  const handWritten = readJson(join(schemasDirectory, fileName));
-  const generated = readJson(join(schemasDirectory, 'generated', fileName));
+/** A schema node, or `undefined` for the keywords that hold a boolean instead. */
+const subSchema = (node, keyword) => {
+  const value = node?.[keyword];
+  return typeof value === 'object' && value !== null && !Array.isArray(value) ? value : undefined;
+};
+
+/**
+ * Whether two schema nodes describe the same shape, to any depth.
+ *
+ * Compares only what both documents can state: `type`, `enum`, `required`, and the
+ * children reachable through `properties`, `items`, `additionalProperties` and
+ * `propertyNames`. Everything the hand-written document carries alone — `description`,
+ * `uniqueItems`, `minProperties`/`maxProperties` — is a recorded asymmetry (section 4)
+ * and is deliberately not compared here; bounds are compared by name in section 2.
+ */
+function compareShapes(fileName, path, handWritten, generated) {
+  const left = normalisedType(handWritten);
+  const right = normalisedType(generated);
+  if (left !== right) {
+    fail(
+      `${fileName}: ${path}.type is '${left}' in the hand-written schema and '${right}' in the ` +
+        'generated one'
+    );
+  }
+
+  if (asSet(handWritten?.enum) !== asSet(generated?.enum)) {
+    fail(
+      `${fileName}: ${path}.enum is [${asSet(handWritten?.enum)}] in the hand-written schema and ` +
+        `[${asSet(generated?.enum)}] in the generated one`
+    );
+  }
+
+  // A set, not a list: order carries no meaning in JSON Schema, and a reordering would
+  // otherwise read as a disagreement.
+  if (asSet(handWritten?.required) !== asSet(generated?.required)) {
+    fail(
+      `${fileName}: ${path}.required differs — hand-written [${asSet(handWritten?.required)}], ` +
+        `generated [${asSet(generated?.required)}]`
+    );
+  }
 
   const handWrittenProperties = Object.keys(propertiesOf(handWritten)).sort();
   const generatedProperties = Object.keys(propertiesOf(generated)).sort();
   if (handWrittenProperties.join(',') !== generatedProperties.join(',')) {
     fail(
-      `${fileName}: the two documents declare different properties — hand-written ` +
+      `${fileName}: ${path} declares different properties — hand-written ` +
         `[${handWrittenProperties.join(', ')}], generated [${generatedProperties.join(', ')}]`
     );
+    return;
   }
 
   for (const property of handWrittenProperties) {
-    const left = normalisedType(propertiesOf(handWritten)[property]);
-    const right = normalisedType(propertiesOf(generated)[property]);
-    if (left !== right) {
-      fail(
-        `${fileName}: properties.${property}.type is '${left}' in the hand-written schema and ` +
-          `'${right}' in the generated one`
-      );
-    }
-  }
-
-  // `required` is compared as a set: order carries no meaning in JSON Schema, and a
-  // reordering would otherwise read as a disagreement.
-  const handWrittenRequired = [...(handWritten.required ?? [])].sort();
-  const generatedRequired = [...(generated.required ?? [])].sort();
-  if (handWrittenRequired.join(',') !== generatedRequired.join(',')) {
-    fail(
-      `${fileName}: required differs — hand-written [${handWrittenRequired.join(', ')}], ` +
-        `generated [${generatedRequired.join(', ')}]`
+    compareShapes(
+      fileName,
+      `${path}.properties.${property}`,
+      propertiesOf(handWritten)[property],
+      propertiesOf(generated)[property]
     );
   }
+
+  for (const keyword of ['items', 'additionalProperties', 'propertyNames']) {
+    const left = subSchema(handWritten, keyword);
+    const right = subSchema(generated, keyword);
+
+    if ((left === undefined) !== (right === undefined)) {
+      fail(
+        `${fileName}: ${path}.${keyword} is present in only one of the two documents ` +
+          `(hand-written: ${String(left !== undefined)}, generated: ${String(right !== undefined)})`
+      );
+      continue;
+    }
+
+    if (left !== undefined && right !== undefined) {
+      compareShapes(fileName, `${path}.${keyword}`, left, right);
+    }
+  }
+}
+
+// The trait schema is compared separately, below: the two documents express one rule in
+// two shapes. The hand-written one declares every property at the top level and refines
+// them in a two-branch `oneOf`; the Zod union emits two *complete* branches and nothing at
+// the top. Comparing those structurally would report a disagreement that is not one.
+for (const fileName of Object.keys(expectations).filter((name) => name !== 'trait.schema.json')) {
+  compareShapes(
+    fileName,
+    'the document',
+    readJson(join(schemasDirectory, fileName)),
+    readJson(join(schemasDirectory, 'generated', fileName))
+  );
 }
 
 // The trait union, compared as the rule it encodes: an inclination declares a weight, a
@@ -313,7 +393,7 @@ for (const fileName of Object.keys(expectations).filter((name) => name !== 'trai
 }
 
 // ---------------------------------------------------------------------------
-// 4. One asymmetry between the two documents, recorded rather than discovered.
+// 4. Two asymmetries between the two documents, recorded rather than discovered.
 // ---------------------------------------------------------------------------
 
 // Zod has no way to express "every item is distinct", so the generated schema does
@@ -342,6 +422,44 @@ for (const [fileName, arrayProperty] of [
         'express it, so either the contracts gained a way to and this check is out of date, or the ' +
         'generated file was edited by hand.'
     );
+  }
+}
+
+// The second asymmetry, and it is a rule rather than a nicety: how many needs a
+// contract names. A `partialRecord` states which keys are legal and nothing about how
+// many are used, so the Zod side enforces the count in `superRefine` — which
+// `z.toJSONSchema` cannot project — while the hand-written document says it in the only
+// form a schema has, `minProperties`/`maxProperties`.
+//
+// **What this block catches and what it does not, stated precisely, because the first
+// draft of it claimed more than it does.** It catches the *hand-written* half going
+// missing, and it catches the generated file being edited by hand to fake the rule. It
+// does **not** catch the Zod half going missing: deleting the `superRefine` changes
+// neither JSON document, so this command stays green over a loader that has begun
+// accepting a one-need contract. That mutant is caught by
+// `packages/content/src/schemas.test.ts` ("refuses one need, naming the floor" and
+// "refuses no needs at all") — measured, both red — and the point of writing it down is
+// that this is the one content rule of the three whose statements are two, not three.
+{
+  const handWritten = readJson(join(schemasDirectory, 'contract.schema.json'));
+  const generated = readJson(join(schemasDirectory, 'generated', 'contract.schema.json'));
+
+  for (const keyword of ['minProperties', 'maxProperties']) {
+    if (at(handWritten, `properties.needs.${keyword}`) === undefined) {
+      fail(
+        `contract.schema.json: properties.needs.${keyword} is expected to stay — it is how the ` +
+          'hand-written schema states the need count, which the Zod contract enforces in ' +
+          '`superRefine` and cannot emit.'
+      );
+    }
+
+    if (at(generated, `properties.needs.${keyword}`) !== undefined) {
+      fail(
+        `schemas/generated/contract.schema.json: properties.needs.${keyword} appeared. Either the ` +
+          'contracts gained a way to express the count and this check is out of date, or the ' +
+          'generated file was edited by hand.'
+      );
+    }
   }
 }
 

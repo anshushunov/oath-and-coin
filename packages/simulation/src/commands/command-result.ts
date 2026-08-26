@@ -46,6 +46,20 @@ export const RejectionCodes = Object.freeze({
    */
   OfferTermsOutOfBounds: 'rejected.offer_terms_out_of_bounds',
   /**
+   * `composeOffer` was given a crew that is not exactly `requiredCrew` distinct heroes
+   * (`RESOLUTION_SPEC` §2.5). A repeated hero answers here too, and reads correctly: two
+   * names for one person is a crew of one, however many entries the array had.
+   *
+   * Its own code rather than `OfferTermsOutOfBounds`: the terms are the money and the
+   * method, and a player who named the wrong number of people has not got a term wrong.
+   */
+  CrewSizeMismatch: 'rejected.crew_size_mismatch',
+  /**
+   * `composeOffer` was given a key hero who is not among the invited
+   * (`RESOLUTION_SPEC` §2.5) — a package discussed with somebody it does not ask.
+   */
+  KeyHeroNotInvited: 'rejected.key_hero_not_invited',
+  /**
    * `lockOffer` only freezes a package the key hero has answered *and* accepted, on
    * the exact version currently in play (`NEGOTIATION_SPEC` §3.1, §3.3). `composeOffer`
    * empties `acceptedBy` on every revision, so an acceptance given to a package the

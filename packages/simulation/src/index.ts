@@ -56,6 +56,21 @@ export {
   type OutcomeReasonCode
 } from './domain/outcome-reason-codes.ts';
 
+/**
+ * The coverage arithmetic (`RESOLUTION_SPEC` §4.1–§4.3). Exported because the shipped
+ * content's own viability — every contract reachable, and a crew that fits beating a
+ * crew that is merely strong — is a claim about *content*, and the only place a check
+ * can hold content and this arithmetic at once is `tests/oracle` (`ADR-002`: this
+ * package cannot read a file).
+ */
+export {
+  COVERAGE_FLOOR_PERCENT,
+  SURPLUS_CAP_PERCENT,
+  coverNeeds,
+  type CoverageContext,
+  type CoverageParticipant
+} from './resolution/needs-coverage.ts';
+
 export {
   createDecisionResult,
   type CausalTrace,

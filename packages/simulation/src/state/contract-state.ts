@@ -1,5 +1,8 @@
 import type { SortedMap } from '../collections/sorted-map.ts';
 import type { SortedSet } from '../collections/sorted-set.ts';
+import type { CommitmentState } from '../domain/commitment.ts';
+import type { NeedId } from '../domain/need-id.ts';
+import type { ContractResolution } from '../domain/outcome.ts';
 import type { ContentId } from '../ids/content-id.ts';
 import type { HeroId } from '../ids/hero-id.ts';
 
@@ -40,6 +43,21 @@ export interface OfferState {
   readonly promisedBonus: number;
   readonly phase: OfferPhase;
   /**
+   * Who this package asks (`RESOLUTION_SPEC` §2.5). Exactly `requiredCrew` heroes once
+   * a package has been composed, and empty before that — `keyHero` is `null` until the
+   * first `composeOffer`, and there is nobody to invite to a package nobody has made.
+   *
+   * Part of the package rather than beside it, for the reason `respondedBy` is: a
+   * revision names a new crew, and an answer from somebody the new package does not ask
+   * is not an answer this package ever received.
+   *
+   * A fixed size is the rule, not a convenience (`RESOLUTION_SPEC` §7 of the product
+   * spec): with a variable one, inviting spare heroes is always weakly better, and the
+   * choice the whole loop is about — *these* people, not more people — stops being a
+   * choice.
+   */
+  readonly invited: SortedSet<HeroId>;
+  /**
    * Heroes who have answered this exact version — accepted or declined. Lives inside
    * the offer, not beside it (`ContractState.offer`): a revision is a new version with
    * a new, empty `respondedBy`, so an answer to a package a player has since changed
@@ -48,6 +66,21 @@ export interface OfferState {
   readonly respondedBy: SortedSet<HeroId>;
   /** Heroes who accepted this version and joined the crew — a subset of {@link respondedBy}. */
   readonly acceptedBy: SortedSet<HeroId>;
+  /**
+   * How each acceptance was given — freely, bought, or resented (`RESOLUTION_SPEC`
+   * §2.4). Keyed by exactly the heroes in {@link acceptedBy}.
+   *
+   * **Recorded at the moment of the answer, never recomputed at resolution.** The
+   * `DecisionContext` a hero answers on carries the crew as it stood *then*, and the
+   * crew grows between the key hero's yes and the contract's resolution — so the same
+   * rule run again later gives a different answer. A key hero who agreed alone, and only
+   * because of a promised bonus, would look freely committed once the rest of the crew
+   * had joined him.
+   *
+   * Cleared with {@link respondedBy} on every revision, and for the same reason: a
+   * commitment is a fact about the package that was answered.
+   */
+  readonly commitments: SortedMap<HeroId, CommitmentState>;
 }
 
 /**
@@ -76,6 +109,15 @@ export interface ContractState {
   readonly risk: number;
   /** How many heroes must accept before this offer is crewed (`HERO_DECISION_SPEC` §1.5). */
   readonly requiredCrew: number;
+  /**
+   * What the job asks for, and how much of each (`RESOLUTION_SPEC` §2.3): two or three
+   * needs from the engine's own vocabulary, every weight strictly positive.
+   *
+   * Authored content, carried through unchanged — a contract's needs never move during
+   * a campaign. Keyed by `compareNeedIds`, so the order in the canonical artifact is the
+   * vocabulary's and not the author's.
+   */
+  readonly needs: SortedMap<NeedId, number>;
   /**
    * Content ids a hero's traits latch onto (`HERO_DECISION_SPEC` §1.5). Identifiers,
    * not the trait definitions the tags happen to name — same reason as
@@ -125,4 +167,13 @@ export interface ContractState {
    * `proposeContractToHero`); empty at construction.
    */
   readonly moodOrdinals: SortedMap<HeroId, bigint>;
+  /**
+   * What happened when the crew went out, once it has (`RESOLUTION_SPEC` §2.5). `null`
+   * until `resolveContract` writes it, and never written twice.
+   *
+   * Everything the debrief screen needs that the event history does not already carry —
+   * and deliberately not the chronology, which lives in `history` and which one stored
+   * result could not reconstruct.
+   */
+  readonly resolution: ContractResolution | null;
 }

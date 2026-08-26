@@ -5,6 +5,12 @@
       "command_id": 1,
       "contract": "core:cleanse_the_crypt",
       "key_hero_index": 0,
+      "invited_indexes": [
+        0,
+        1,
+        2,
+        3
+      ],
       "advance": 70,
       "method_tag": null,
       "promised_bonus": 0,

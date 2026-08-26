@@ -56,9 +56,11 @@ const shippedContent = join(repoRoot, 'content');
  * moved it a seventh time: its own `EveryContractCanBeCrewedBySomePackage` check found
  * `core:collect_the_debt` unreachable by any package on its first run — five of six
  * shipped heroes carry a principle matching one of its three authored tags — fixed by
- * `required_crew: 2 → 1` rather than by touching the tags or any hero. What this
- * constant still buys is what both sources have to answer — not merely each other —
- * just no longer corpus parity.
+ * `required_crew: 2 → 1` rather than by touching the tags or any hero. The
+ * contract-resolution engine's Task 2 moved it an eighth time: `schema_version: 4` on
+ * every file, `capability` on every hero, `needs` on every contract (`RESOLUTION_SPEC`
+ * §2.2, §2.3). What this constant still buys is what both sources have to answer — not
+ * merely each other — just no longer corpus parity.
  *
  * The same hash is pinned a second time, in `tests/locale/catalogue.test.ts` as
  * `FROZEN_CONTENT_VERSION`, where it states a different claim: that nothing has been
@@ -66,7 +68,7 @@ const shippedContent = join(repoRoot, 'content');
  * purpose — neither file may own the other's claim — and Task 19 retires **both** when
  * the corpus stops being the oracle.
  */
-const RECORDED_CONTENT_VERSION = '46416b20360bbedd';
+const RECORDED_CONTENT_VERSION = 'cd159cbb2363d417';
 
 /** Every file under `directory`, root-relative and POSIX, by this test's own walk. */
 function everyFileUnder(directory: string, prefix = ''): readonly string[] {

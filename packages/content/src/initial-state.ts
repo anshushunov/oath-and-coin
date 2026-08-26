@@ -79,6 +79,13 @@ export function createInitialState(
           caution: definition.caution,
           pride: definition.pride,
           trustInGuild: definition.trustInGuild,
+          // Carried through from the definition unchanged (`RESOLUTION_SPEC` §2.2). The
+          // loader has already keyed `expertise` by `compareNeedIds`, so this is a copy
+          // and not a rebuild — the artifact's need order is the vocabulary's either way.
+          capability: definition.capability,
+          // `RESOLUTION_SPEC` §2.6's starting value. Campaign state, not content: no
+          // hero is authored wounded, and only a `Wound` consequence raises it.
+          wounds: 0,
           traits: definition.traits,
           relationships: SortedMap.from(
             compareContentIds,
@@ -104,6 +111,8 @@ export function createInitialState(
         patronFee: definition.patronFee,
         risk: definition.risk,
         requiredCrew: definition.requiredCrew,
+        // Authored, and never moved by any command (`RESOLUTION_SPEC` §2.3).
+        needs: definition.needs,
         tags: SortedSet.from(compareContentIds, definition.tags),
         // Already resolved by the content loader (`content-set.ts`, `DEC-012`/Task 4);
         // simply not carried into simulation state until now. `composeOffer`
@@ -111,7 +120,10 @@ export function createInitialState(
         negotiableTags: SortedSet.from(compareContentIds, definition.negotiableTags),
         status: ContractStatus.Offered,
         offer: initialOffer(),
-        moodOrdinals: SortedMap.empty<HeroId, bigint>(compareHeroIds)
+        moodOrdinals: SortedMap.empty<HeroId, bigint>(compareHeroIds),
+        // Nothing has been resolved at campaign start, and `null` says so definitely —
+        // the same reason `negotiableTags` is `[]` rather than absent.
+        resolution: null
       })
     ])
   );

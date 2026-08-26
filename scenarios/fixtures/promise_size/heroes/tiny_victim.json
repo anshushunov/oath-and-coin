@@ -1,11 +1,18 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "id": "fixture:tiny_victim",
   "display_name_key": "hero.fixture.tiny_victim.name",
   "greed": 100,
   "caution": 0,
   "pride": 0,
   "trust_in_guild": 50,
+  "capability": {
+    "grade": 50,
+    "expertise": {
+      "frontline": 50,
+      "wilderness": 50
+    }
+  },
   "traits": [],
   "relationships": []
 }

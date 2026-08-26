@@ -65,6 +65,35 @@ export { MAX_TAGS_PER_CONTRACT };
 export const NEGOTIABLE_TAGS_COUNT = 2;
 
 /**
+ * Fewest needs a contract may name (`RESOLUTION_SPEC` §2.3).
+ *
+ * **Two, and the number is the model.** One need makes "take the strongest hero
+ * available" the optimal answer to every contract, which is the kill-criterion
+ * `MVP_PLAN` §3.2 names by that word: independent needs with weights are the only
+ * reason "the strongest crew" and "the right crew" are different crews. A floor of
+ * one would leave the whole coverage model reachable but pointless on the contract
+ * that skipped it.
+ */
+export const MIN_NEEDS_PER_CONTRACT = 2;
+
+/**
+ * Most needs a contract may name (`RESOLUTION_SPEC` §2.3).
+ *
+ * **A literal, deliberately not `NEED_IDS.length`.** The two are equal today and that
+ * is a coincidence of arithmetic, not one rule: how many needs one contract may ask
+ * for is a statement about contracts, and how many needs exist is a statement about
+ * the world. Derived from the vocabulary, adding a fourth `NeedId` would silently
+ * permit a four-need contract — a change to what the game *is*, arriving through a
+ * `.length` and without a decision, which `AGENTS.md` §5 forbids taking inside an
+ * implementation.
+ *
+ * The coincidence is held by a tripwire in `schemas.test.ts` rather than by this
+ * declaration: it reddens the day a fourth need is authored, which is exactly when
+ * somebody has to decide whether contracts may name four.
+ */
+export const MAX_NEEDS_PER_CONTRACT = 3;
+
+/**
  * Longest artifact-safe string anything in this package accepts — authored or read
  * back off a save file.
  *
@@ -90,3 +119,37 @@ export const NEGOTIABLE_TAGS_COUNT = 2;
  * field (`TDD` §18).
  */
 export const MAX_ARTIFACT_SAFE_TEXT_LENGTH = 256;
+
+/**
+ * Most wounds a save file may claim for one hero.
+ *
+ * **A read-path ceiling, not a domain rule.** `RESOLUTION_SPEC` §2.6 states plainly that
+ * M1 gives wounds no domain cap — they accumulate, they are visible, and nothing reads
+ * them — so this number must not be mistaken for one: it is the same kind of guard
+ * `MAX_ARTIFACT_SAFE_TEXT_LENGTH` is, and lives here for the same reason. A save is
+ * external data (`TDD` §18), and a hero claiming a wound count no sequence of contracts
+ * could have produced is a file to refuse, not a campaign to load.
+ *
+ * Generous by two orders of magnitude on purpose: a campaign of the length M1 plays
+ * cannot approach it, so a legitimate save never brushes this the way a real
+ * `content_version` never brushes the text ceiling. Raising the domain cap later, if one
+ * is ever introduced, is a separate decision from raising this.
+ */
+export const WOUNDS_CEILING = 10_000;
+
+/**
+ * Largest magnitude any number inside a stored `ContractResolution` may carry.
+ *
+ * The same argument as {@link WOUNDS_CEILING} and as the trace-factor ceiling in
+ * `save/snapshot-codec.ts`: these are *derived* quantities — coverage totals, margins,
+ * counterfactual deficit sizes — so no content bound constrains them directly, and
+ * `RESOLUTION_SPEC` §4.8 promises only that every one of them stays inside `int32`. What
+ * a save must not be able to do is claim a number outside that promise and hand the
+ * debrief screen arithmetic the engine could never have produced.
+ *
+ * Real values are small: a contribution is capped by `grade` (100), a requirement by a
+ * weight raised by risk (200), and a crew is at most six heroes over three needs. This
+ * ceiling sits far above all of them and far below `int32`, which is exactly where a
+ * guard against a tampered file belongs.
+ */
+export const MAX_RESOLUTION_MAGNITUDE = 1_000_000;
