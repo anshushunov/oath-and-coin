@@ -71,6 +71,40 @@ export {
   type CoverageParticipant
 } from './resolution/needs-coverage.ts';
 
+/**
+ * The rest of the outcome arithmetic (`RESOLUTION_SPEC` §4.4–§4.8, §5.1, §5.3).
+ *
+ * Exported for the same reason as the coverage above, plus one more: `settleContract`'s
+ * own payout reads `termsOf(grade)`, and the balancing questions these answer — "is any
+ * shipped contract impossible to fail gently", "does a fragile crew ever dominate" — are
+ * claims about content that only `tests/oracle` can hold both halves of.
+ */
+export { MOTIVE_LIMIT_PERCENT, motiveOf, percentOf, reduceMargin } from './resolution/margin.ts';
+export {
+  COSTLY_PERCENT,
+  FAILED_PERCENT,
+  PARTIAL_FEE_PERCENT,
+  gradeFromIntents,
+  severityOf,
+  termsOf,
+  type GradeInput,
+  type OutcomeTerms
+} from './resolution/outcome-grade.ts';
+export {
+  coverageIntentsFor,
+  falteredEarlyIntentsFor,
+  objectiveIntentsFor,
+  worstCoveredNeed,
+  type CrewMember,
+  type IntentInput
+} from './resolution/outcome-intent.ts';
+export {
+  DOMINANCE_MARGIN_PERCENT,
+  rankDeficits,
+  type DeficitInput,
+  type RankedDeficits
+} from './resolution/deficits.ts';
+
 export {
   createDecisionResult,
   type CausalTrace,
