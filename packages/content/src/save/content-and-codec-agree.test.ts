@@ -101,7 +101,7 @@ describe('what the content contract accepts, the save codec reads back', () => {
     expect(displayNameKey).toHaveLength(MAX_ARTIFACT_SAFE_TEXT_LENGTH);
 
     const content = loadFromMemory(memoryFileSource(treeWithHeroNamed(displayNameKey)));
-    const state = createInitialState(content, 7n, 'm1-negotiation/1');
+    const state = createInitialState(content, 7n, 'm1-resolution/1');
 
     const decoded = decodeSnapshot(JSON.parse(JSON.stringify(encodeSnapshot(state))));
 

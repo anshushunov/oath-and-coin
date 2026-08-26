@@ -139,8 +139,8 @@ export interface SessionController {
   start(): Promise<void>;
   /**
    * Dispatches one of the five negotiation commands this build implements
-   * (`m1-negotiation/1`; `NEGOTIATION_SPEC` §3.1 has named a sixth, `resolveContract`,
-   * since the amendment of 2026-08-25, and it arrives with the resolution engine that
+   * (`m1-resolution/1`; `NEGOTIATION_SPEC` §3.1 has named a sixth, `resolveContract`,
+   * since the amendment of 2026-08-25, and it arrives with the resolver that
    * gives it something to resolve) against
    * the campaign currently on screen, the same way `packages/content`'s scenario runner
    * already applies a scripted one: `commandId` and `expectedStateVersion` are supplied
@@ -164,11 +164,11 @@ export interface SessionController {
   lockOffer(input: NegotiationCommandInput<LockOffer>): CommandResult;
   /**
    * Answers with **every** decision the poll produced (`CommandResult.decisions`), not
-   * the first: one poll asks many heroes in one command — the whole remaining roster as
-   * `m1-negotiation/1` implements it, the invited crew once the 2026-08-25 amendment to
-   * `NEGOTIATION_SPEC` §3.3 is built — so up to six heroes' worth of decisions sit behind
-   * one `commandId`, and a caller reading only `decisions[0]` would show one hero's answer
-   * and silently drop the rest. Neither reading changes what this method has to return.
+   * the first: one poll asks many heroes in one command — the package's invited crew,
+   * since the 2026-08-25 amendment to `NEGOTIATION_SPEC` §3.3 narrowed it from the whole
+   * remaining roster `m1-negotiation/1` asked — so several heroes' worth of decisions sit
+   * behind one `commandId`, and a caller reading only `decisions[0]` would show one hero's
+   * answer and silently drop the rest. Neither reading changes what this method returns.
    */
   pollCrew(input: NegotiationCommandInput<PollCrew>): CommandResult;
   settleContract(input: NegotiationCommandInput<SettleContract>): CommandResult;
