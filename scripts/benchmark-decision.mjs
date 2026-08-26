@@ -114,7 +114,7 @@ const state = {
   metadata: {
     // Literal — currently 2 (`DEC-008` Task 6 fix round), kept in step by hand.
     saveSchemaVersion: 2,
-    rulesetVersion: 'm1-negotiation/1',
+    rulesetVersion: 'm1-resolution/1',
     contentVersion: '5d03734fd9c7abaa',
     campaignSeed: 424242n,
     stateVersion: 0,

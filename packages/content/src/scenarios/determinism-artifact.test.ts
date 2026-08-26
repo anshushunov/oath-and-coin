@@ -98,7 +98,7 @@ describe('the artifact says which shape it is', () => {
     expect(JSON.parse(toCanonicalJson(ran('gate0').outcome))).toMatchObject({
       artifact_version: 5,
       rng_algorithm: 'splitmix64-composed/1',
-      ruleset_version: 'm1-negotiation/1'
+      ruleset_version: 'm1-resolution/1'
     });
   });
 

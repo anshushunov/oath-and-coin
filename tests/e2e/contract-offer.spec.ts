@@ -98,7 +98,7 @@ const CANVAS = 'world-canvas';
  * plus the four negotiation-phase scenarios `DEC-008` Task 21 adds — `draft`, `locked`,
  * a locked-and-crewed offer waiting on `settleContract`, and a settled one whose promise
  * was broken. The third of those waits on `resolveContract` once the resolution engine
- * ships (`RESOLUTION_SPEC` §3.2): under `m1-negotiation/1` there is nothing between a
+ * ships (`RESOLUTION_SPEC` §3.2): under `m1-resolution/1` there is still nothing between a
  * filled crew and the settlement. None of the nine can be recorded in `migration/oracle/v1`: that corpus is
  * frozen at the Godot/.NET baseline and predates the negotiation protocol entirely
  * (`ADR-013`).

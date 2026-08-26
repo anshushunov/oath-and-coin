@@ -22,8 +22,21 @@ import { ScenarioCommandKind, type ScenarioCommand } from './scenario-commands.t
  * the reproducibility tuple (`TDD` §7.1) — the other halves are the content version and
  * the seed. A constant rather than a parameter because a run cannot choose which rules
  * the binary contains.
+ *
+ * **`m1-negotiation/1` → `m1-resolution/1` (`RESOLUTION_SPEC` §2.4, §2.8).** The
+ * commitment rule is the first change that makes the *same* seed, content and ruleset
+ * produce a *different* canonical state — a yes that a promised bonus carried now records
+ * as `fragile` where it recorded as `committed`. `TDD` §7.4 states the contract this would
+ * otherwise break: rebuilding the same ruleset must not change a replay. Left unmoved, a
+ * campaign saved under the old rules would be reloaded under the new ones without
+ * `session-controller.ts`'s ruleset check ever noticing.
+ *
+ * Adding fields did not require this and did not get it (`SAVE_SCHEMA_VERSION` and
+ * `ARTIFACT_VERSION` say a *format* changed); changing what the rules answer does. If a
+ * later task changes an answer again, it takes `m1-resolution/2` — one number per set of
+ * rules anyone could have saved a campaign under.
  */
-export const RULESET_VERSION = 'm1-negotiation/1';
+export const RULESET_VERSION = 'm1-resolution/1';
 
 /**
  * One decision a step produced, with the hero it belongs to when the step's decisions do

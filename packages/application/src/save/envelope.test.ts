@@ -33,7 +33,7 @@ import {
  * The envelope: version, signature and refusal table (design spec §2.3-§2.4).
  *
  * The plan this suite executes (`task-16-4-brief.md`) writes its tamper-test fixture
- * against `m1-negotiation/1` / `5d03734fd9c7abaa` — the real shipped tree's ruleset and
+ * against `m1-resolution/1` / the shipped digest — the real shipped tree's ruleset and
  * content version, the same pair `packages/content/src/save/snapshot-codec.test.ts` and
  * `packages/simulation/src/testing/fixtures.ts`'s own `aState()` use. This suite cannot
  * reach that tree the same way: `packages/application/tsconfig.json` carries `types: []`

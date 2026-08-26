@@ -51,7 +51,7 @@ function lockedSingleHeroCampaign(): {
   readonly state: GameState;
   readonly contractId: ContentId;
 } {
-  const base = createInitialState(content, 7n, 'm1-negotiation/1');
+  const base = createInitialState(content, 7n, 'm1-resolution/1');
   const [heroKey] = base.heroes.keys();
   const [contractKey] = base.contracts.keys();
   const contract = base.contracts.get(contractKey!)!;
@@ -319,7 +319,7 @@ describe('snapshot codec', () => {
   });
 
   it('переживает 64-битные значения, которых нет в корпусе', () => {
-    const base = createInitialState(content, 7n, 'm1-negotiation/1');
+    const base = createInitialState(content, 7n, 'm1-resolution/1');
     // 2^64 − 1 и 2^64 − 2. Проекция артефакта детерминизма здесь теряет точность —
     // это закреплено её собственным тестом `canonical-json.test.ts`. Кодек
     // сохранения обязан вернуть ровно эти числа, поэтому 64-битные значения
@@ -340,7 +340,7 @@ describe('snapshot codec', () => {
   });
 
   it('отказывается читать карту, где ключ не равен id значения', () => {
-    const state = createInitialState(content, 7n, 'm1-negotiation/1');
+    const state = createInitialState(content, 7n, 'm1-resolution/1');
     const encoded = encodeSnapshot(state) as { heroes: { key: number }[] };
     encoded.heroes[0]!.key = 999;
 
@@ -348,7 +348,7 @@ describe('snapshot codec', () => {
   });
 
   it('отказывается читать героя с числом черт больше предела', () => {
-    const state = createInitialState(content, 7n, 'm1-negotiation/1');
+    const state = createInitialState(content, 7n, 'm1-resolution/1');
     const encoded = encodeSnapshot(state) as { heroes: { value: { traits: string[] } }[] };
     // MAX_TRAITS_PER_HERO = 4. Длинный список — путь, которым сумма склонностей
     // переполняет int32 и расходится с суммой факторов следа (§1.3 спеки).
@@ -364,7 +364,7 @@ describe('snapshot codec', () => {
     // всё равно производит событие и след, `engine.ts`) заполняет их и делает
     // `toEqual`/`deepEqual` первой проверкой, которую выброс поля целиком из
     // `encodeSnapshot`/схемы не может пройти молча.
-    const base = createInitialState(content, 7n, 'm1-negotiation/1');
+    const base = createInitialState(content, 7n, 'm1-resolution/1');
     const [heroKey] = base.heroes.keys();
     const [contractKey] = base.contracts.keys();
     // `proposeContractToHero` (`DEC-008` Task 11) only lets the offer's key hero
@@ -406,7 +406,7 @@ describe('snapshot codec', () => {
   });
 
   it('отказывается читать снимок, чьи метаданные не проходят Zod', () => {
-    const state = createInitialState(content, 7n, 'm1-negotiation/1');
+    const state = createInitialState(content, 7n, 'm1-resolution/1');
     const encoded = encodeSnapshot(state) as { metadata: Record<string, unknown> };
     encoded.metadata.logicalTime = 'nope';
 
@@ -414,7 +414,7 @@ describe('snapshot codec', () => {
   });
 
   it('отказывается читать имя героя вне artifact-safe алфавита', () => {
-    const state = createInitialState(content, 7n, 'm1-negotiation/1');
+    const state = createInitialState(content, 7n, 'm1-resolution/1');
     const encoded = encodeSnapshot(state) as { heroes: { value: { displayNameKey: string } }[] };
     // Кириллица и `<>&` — ровно то множество, на котором C#-писатель и RFC 8785
     // расходятся (`artifact-domain.ts`); значение сюда не пришло бы через
@@ -428,7 +428,7 @@ describe('snapshot codec', () => {
     // 100 — PATRON_FEE_MAX/RISK_MAX, потолок MAX_FACTOR_MAGNITUDE. 101 — на единицу
     // больше того, что `decide()` может когда-либо записать в след (§1.3 спеки:
     // границы содержимого недостаточно, нужен ещё и потолок величины фактора).
-    const state = createInitialState(content, 7n, 'm1-negotiation/1');
+    const state = createInitialState(content, 7n, 'm1-resolution/1');
     const encoded = encodeSnapshot(state) as {
       traces: { key: number; value: unknown }[];
     };
@@ -459,7 +459,7 @@ describe('snapshot codec', () => {
   });
 
   it('отказывается читать карту с двумя записями на один и тот же ключ', () => {
-    const state = createInitialState(content, 7n, 'm1-negotiation/1');
+    const state = createInitialState(content, 7n, 'm1-resolution/1');
     const encoded = encodeSnapshot(state) as { heroes: { key: number; value: unknown }[] };
     // Оба совпадают со своим `id` по отдельности — проверка «ключ === id» из
     // шага 6 их пропускает. Дубликат ловит только `SortedMap.from`, и он не
@@ -488,7 +488,7 @@ describe('коды причин в следе замкнуты на словар
   /** A snapshot with one trace, built from `trace`. `createInitialState` produces none,
    * so this is the whole trace map. */
   function aSnapshotWithTrace(trace: Record<string, unknown>): unknown {
-    const state = createInitialState(content, 7n, 'm1-negotiation/1');
+    const state = createInitialState(content, 7n, 'm1-resolution/1');
     const encoded = encodeSnapshot(state) as { traces: { key: number; value: unknown }[] };
     encoded.traces.push({ key: 0, value: { traceId: 0, ...trace } });
 

@@ -612,12 +612,13 @@ export function lockOffer(state: GameState, command: LockOffer): CommandResult {
  * crew back to `composeOffer` for a new package, not to a second poll of the one
  * already fully answered).
  *
- * **The poll asks `state.heroes.keys()`, in that order — already sorted by
- * `HeroId` — skipping anyone already in `offer.respondedBy`.** That is the rule of
- * `m1-negotiation/1`; the accepted amendment of 2026-08-25 (`DEC-012`,
- * `NEGOTIATION_SPEC` §3.3) polls `offer.invited` instead, and the seat-allocation
- * paragraph below goes away with it, because a crew that is the package cannot overflow.
- * The order and the skip survive the change. That excludes the key
+ * **The poll asks `offer.invited`, in `HeroId` order, skipping anyone already in
+ * `offer.respondedBy`.** `m1-negotiation/1` asked `state.heroes.keys()` — the whole
+ * remaining roster; the amendment of 2026-08-25 (`DEC-012`, `NEGOTIATION_SPEC` §3.3)
+ * narrowed it to the package's own crew, and the order and the skip survived the change.
+ * The seat-allocation paragraph below is what did not go away with it: a crew that *is*
+ * the package cannot overflow, so `hasRoom` is now a guard against hand-built state
+ * rather than a rule the poll can reach. That excludes the key
  * hero, who answered this exact version before `lockOffer` froze it and is not asked
  * again: `lockOffer` never raises the offer's version, so the acceptance the package
  * was locked on is an answer to the package `pollCrew` is polling, not a stale one.
@@ -850,7 +851,8 @@ function applyBrokenPromise(
  * ordering a second `settleContract` against an already-settled contract would
  * answer with the wrong one of the two codes this command owns.
  *
- * **The formula (`NEGOTIATION_SPEC` §3.3, as `m1-negotiation/1` implements it):**
+ * **The formula (`NEGOTIATION_SPEC` §3.3, as `m1-resolution/1` implements it — the
+ * patron's share becomes a function of the outcome's grade in `RESOLUTION_SPEC` §5.3):**
  *
  * ```text
  * treasury += patronFee − advance × acceptedBy.size − (pay ? promisedBonus : 0)
