@@ -72,6 +72,7 @@ import {
   MAX_RESOLUTION_MAGNITUDE,
   MAX_TAGS_PER_CONTRACT,
   MAX_TRAITS_PER_HERO,
+  MIN_NEEDS_PER_CONTRACT,
   NEGOTIABLE_TAGS_COUNT,
   WOUNDS_CEILING
 } from '../limits.ts';
@@ -393,7 +394,16 @@ const contractValueSchema = z.strictObject({
   patronFee: z.int().min(PATRON_FEE_MIN).max(PATRON_FEE_MAX),
   risk: z.int().min(RISK_MIN).max(RISK_MAX),
   requiredCrew: z.int().min(REQUIRED_CREW_MIN).max(REQUIRED_CREW_MAX),
-  needs: needEntries(z.int().min(NEED_WEIGHT_MIN).max(NEED_WEIGHT_MAX)),
+  // **Floor as well as ceiling, and only here.** `RESOLUTION_SPEC` §2.3 puts a contract
+  // at two or three needs; one collapses the coverage model into "bring the strongest
+  // hero", which is the kill-criterion `MVP_PLAN` §3.2 names and the whole reason a
+  // contract has more than one need. `needEntries` itself keeps no floor because
+  // `HeroCapability.expertise` shares it and an expertise of nothing is a legitimate
+  // hero — a shared minimum would refuse him. Found by external review of PR #33: the
+  // ceiling alone let a tampered save arrive with `needs: []`.
+  needs: needEntries(z.int().min(NEED_WEIGHT_MIN).max(NEED_WEIGHT_MAX)).min(
+    MIN_NEEDS_PER_CONTRACT
+  ),
   tags: z.array(contentId).max(MAX_TAGS_PER_CONTRACT),
   // Optional, not `ContractState.negotiableTags`'s own default made required: this key
   // is new (`DEC-008` Task 10), and declaring it optional rather than required keeps a

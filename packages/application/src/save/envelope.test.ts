@@ -562,7 +562,36 @@ describe('referential integrity across the snapshot’s own maps', () => {
       'the save carries no rule for it'
     ],
     [
-      'контракт называет отсутствующего героя в respondedBy',
+      'контракт зовёт в состав героя, которого нет в ростере',
+      (snapshot) => {
+        // `RESOLUTION_SPEC` §2.5, вторая колонка: существование каждого `HeroId` из
+        // `invited` проверяют команды, валидатор загрузчика и декодер — конструктор
+        // пакета ростера не видит и физически этого не может. Внешнее ревью PR #33
+        // нашло, что валидатор обходил `respondedBy` и `acceptedBy`, но не `invited`:
+        // приглашённый-призрак доезжал до `pollCrew`, который падал обычным `Error`
+        // на поиске героя.
+        //
+        // Порча сделана так, чтобы сейв был структурно безупречен и неверен ровно в
+        // одном — герой 999 не существует: два места в отряде, оба заняты, ответил
+        // только ключевой, так что `invited.size = requiredCrew`,
+        // `respondedBy ⊆ invited` и `acceptedBy ⊆ respondedBy` держатся, и
+        // `createContractState` пропускает это состояние.
+        const contract = snapshot.contracts[0]!.value;
+        contract.requiredCrew = 2;
+        contract.status = 'offered';
+        contract.offer.invited = [...contract.offer.invited, 999];
+      },
+      'in invited, but the save carries no such hero'
+    ],
+    [
+      // Renamed by the same reasoning that renamed the `acceptedBy` case below, and for
+      // the same kind of cause. `RESOLUTION_SPEC` §2.5 makes `respondedBy ⊆ invited`
+      // structural, so an unknown hero can no longer stand *alone* in `respondedBy`:
+      // reaching that set at all means being in `invited` too, and the crew's own
+      // existence check (added by external review of PR #33) runs one loop earlier. The
+      // refusal this case wanted still happens — it happens under the crew's message.
+      // The title names what the fixture actually exercises rather than what it used to.
+      'контракт держит в respondedBy id, которого нет в ростере — ловится составом',
       (snapshot) => {
         const offer = snapshot.contracts[0]!.value.offer;
         // `DEC-008` Task 14 routes `decodeSnapshot`'s own contract builder through
@@ -573,19 +602,18 @@ describe('referential integrity across the snapshot’s own maps', () => {
         // apply, so the mutation below still reaches the check this case is
         // about.
         offer.phase = 'locked';
-        // `RESOLUTION_SPEC` §2.5 added `respondedBy ⊆ invited` and tied `invited.size`
-        // to `requiredCrew`, so a dangling id dropped into `respondedBy` alone is now
-        // caught by the *structure* first, one check before the referential one this
-        // case is about. The tamper therefore builds a save that is structurally
-        // coherent and wrong about exactly one thing — hero 999 does not exist — which
-        // is the shape a referential-integrity test needs its input to have.
+        // §2.5 added `respondedBy ⊆ invited` and tied `invited.size` to `requiredCrew`,
+        // so a dangling id dropped into `respondedBy` alone is caught by the *structure*
+        // first. The tamper therefore builds a save that is structurally coherent and
+        // wrong about exactly one thing — hero 999 does not exist — which is the shape a
+        // referential-integrity test needs its input to have.
         const contract = snapshot.contracts[0]!.value;
         contract.requiredCrew = 2;
         contract.status = 'offered';
         offer.invited = [...offer.invited, 999];
         offer.respondedBy = [...offer.respondedBy, 999];
       },
-      'in respondedBy, but the save carries no such hero'
+      'in invited, but the save carries no such hero'
     ],
     [
       // Renamed (external review of Task 14): this fixture no longer isolates an

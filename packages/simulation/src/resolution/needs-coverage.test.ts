@@ -102,6 +102,22 @@ describe('the requirement risk raises (§4.2)', () => {
     );
   });
 
+  it.each([
+    // 30 × 155 = 4650 → 46.5. Truncation answers 46; `Math.round` answers 47.
+    [30, 55, 46],
+    // 25 × 165 = 4125 → 41.25. Truncation answers 41; `Math.ceil` answers 42.
+    [25, 65, 41]
+  ])('truncates toward zero: weight %i at risk %i is %i', (weight, risk, expected) => {
+    // Every other row of this table divides evenly, so `Math.round` and `Math.ceil` are
+    // both indistinguishable from `divideTowardZero` there and a rounding mutant survives
+    // the whole file (external review of PR #33). These two do not divide evenly, and one
+    // of them lands exactly on the half — the point `round` and `trunc` disagree hardest.
+    // `TDD` §7.4: every division in this system truncates toward zero.
+    expect(frontlineOf(coverNeeds(needs({ frontline: weight }), one(0), { risk })).required).toBe(
+      expected
+    );
+  });
+
   it('leaves the authored weight visible beside the raised requirement', () => {
     const covered = frontlineOf(coverNeeds(needs({ frontline: 60 }), one(0), { risk: 80 }));
 
@@ -119,6 +135,22 @@ describe('what a crew supplies together (§4.3)', () => {
     expect(
       frontlineOf(coverNeeds(needs({ frontline: 60 }), sameContributors(count, 40), { risk: 0 }))
         .supplied
+    ).toBe(expected);
+  });
+
+  it.each([
+    // 3 + 3/2 → 3 + 1 = 4 truncated; `Math.round` would answer 3 + 2 = 5.
+    [2, 3, 4],
+    // 3 + 1 + 0 (3/4 = 0.75) = 4; `Math.ceil` would answer 3 + 2 + 1 = 6.
+    [3, 3, 4]
+  ])('halves toward zero: %i participants of %i supply %i', (count, amount, expected) => {
+    // The halving table above uses 40, which divides evenly three times over, so a
+    // rounding mutant in the halving is invisible there. An odd contribution is what
+    // makes the direction of the truncation observable (external review of PR #33).
+    expect(
+      frontlineOf(
+        coverNeeds(needs({ frontline: 60 }), sameContributors(count, amount), { risk: 0 })
+      ).supplied
     ).toBe(expected);
   });
 
@@ -170,6 +202,16 @@ describe('the ceiling on a surplus (§4.3)', () => {
     expect(frontlineOf(coverage).effective).toBeLessThanOrEqual(60);
     expect(wilderness.verdict).toBe(CoverageVerdict.Uncovered);
     expect(wilderness.effective).toBe(0);
+  });
+
+  it('truncates the ceiling toward zero rather than rounding it up', () => {
+    // Requirement 49 at risk 0: the ceiling is 49 × 120 / 100 = 58.8, so 58 counts and
+    // the fraction does not. The case above uses 50, whose ceiling is exactly 60 — there
+    // `Math.round` and `Math.ceil` are both indistinguishable from truncation, and a
+    // mutant in this one division survives the file (external review of PR #33).
+    const covered = frontlineOf(coverNeeds(needs({ frontline: 49 }), one(100), { risk: 0 }));
+
+    expect(covered.effective).toBe(58);
   });
 
   it('leaves a supply below the ceiling exactly as it is', () => {

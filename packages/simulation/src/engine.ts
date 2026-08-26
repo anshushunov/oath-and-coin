@@ -338,11 +338,29 @@ export function composeOffer(state: GameState, command: ComposeOffer): CommandRe
     return rejected(state, RejectionCodes.UnknownHero);
   }
 
+  // §3.1's table: composeOffer is legal in `draft`, or in `locked` for as long as the
+  // crew it had has not filled. Once the crew has filled, the deal is struck and a
+  // revision would undo it out from under `settleContract`.
+  //
+  // **Ahead of the crew rules, not behind them** (`NEGOTIATION_SPEC` §6.1 step 4): phase
+  // and status come before a command's own private preconditions, and the crew rules are
+  // private to `composeOffer` (§3.3 step 2). A struck deal answers that it is struck —
+  // reporting `crew_size_mismatch` for a package no revision could touch would name the
+  // wrong one of two broken things, and the order of refusals is part of the canonical
+  // result of a command, not an implementation detail.
+  const revisable =
+    contract.offer.phase === OfferPhase.Draft ||
+    (contract.offer.phase === OfferPhase.Locked && contract.status === ContractStatus.Offered);
+  if (!revisable) {
+    return rejected(state, RejectionCodes.OfferNotInDraft);
+  }
+
   // The crew, checked here rather than in `createContractState`: hero *existence* needs
   // the roster, and the constructor never receives it (`RESOLUTION_SPEC` §2.5's second
   // column). Size first, from the distinct count — a repeated hero is two names for one
   // person, so it is a crew of one however long the array was, and reporting it as a
-  // size mismatch names what the caller actually did.
+  // size mismatch names what the caller actually did. Existence last, which is §3.3
+  // step 2's own order for these three.
   const invited = SortedSet.from(compareHeroIds, command.invited);
   if (invited.size !== contract.requiredCrew) {
     return rejected(state, RejectionCodes.CrewSizeMismatch);
@@ -356,16 +374,6 @@ export function composeOffer(state: GameState, command: ComposeOffer): CommandRe
     if (!state.heroes.has(heroId)) {
       return rejected(state, RejectionCodes.UnknownHero);
     }
-  }
-
-  // §3.1's table: composeOffer is legal in `draft`, or in `locked` for as long as the
-  // crew it had has not filled. Once the crew has filled, the deal is struck and a
-  // revision would undo it out from under `settleContract`.
-  const revisable =
-    contract.offer.phase === OfferPhase.Draft ||
-    (contract.offer.phase === OfferPhase.Locked && contract.status === ContractStatus.Offered);
-  if (!revisable) {
-    return rejected(state, RejectionCodes.OfferNotInDraft);
   }
 
   // `Number.isInteger` first, and separately from the range: `x < 0 || x > patronFee`

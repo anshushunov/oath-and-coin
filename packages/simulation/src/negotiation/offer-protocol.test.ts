@@ -330,6 +330,24 @@ describe('composeOffer', () => {
     );
   });
 
+  it.each([
+    ['a crew of the wrong size', { invited: [KEY_HERO, OTHER_HERO] }],
+    ['a key hero nobody invited', { invited: [OTHER_HERO] }]
+  ])('checks the phase before the crew — %s', (_name, overrides) => {
+    // §6.1's step 4 puts phase and status *ahead* of a command's own private
+    // preconditions, and the crew rules are private to `composeOffer`
+    // (`NEGOTIATION_SPEC` §3.3 step 2). This contract is locked and crewed — the deal
+    // is struck — so the answer names that, not a crew the command was never going to
+    // be allowed to write. Kills an implementation that checks size or membership
+    // first and reports `crew_size_mismatch`/`key_hero_not_invited` on a package no
+    // revision can touch.
+    const state = lockedAndCrewed();
+
+    expect(composeOffer(state, aCompose(overrides)).rejectionCode).toBe(
+      RejectionCodes.OfferNotInDraft
+    );
+  });
+
   it('carries moodOrdinals forward untouched', () => {
     const withMood = aCampaign(
       {},

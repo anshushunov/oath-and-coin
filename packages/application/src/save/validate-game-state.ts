@@ -103,6 +103,29 @@ function checkReferentialIntegrity(state: GameState): void {
   }
 
   for (const [contractId, contract] of state.contracts.entries()) {
+    // `invited` first, and it is not a formality: it is the *largest* of the three sets
+    // and the only one whose members need never have answered, so it is the one place a
+    // hero id can sit alone in a structurally perfect package. `RESOLUTION_SPEC` §2.5
+    // names this file in its second column — `createContractState` never receives
+    // `GameState.heroes` and physically cannot make this check, so a save whose crew
+    // holds a hero the roster does not carry reaches `pollCrew`, which throws a plain
+    // `Error` on the lookup rather than refusing the file. Found by external review of
+    // PR #33: the loop below covered `respondedBy` and `acceptedBy` and skipped this.
+    for (const heroId of contract.offer.invited.values()) {
+      if (!state.heroes.has(heroId)) {
+        throw inconsistent(
+          `contract '${contractId}' lists hero#${String(heroId)} in invited, but the save ` +
+            'carries no such hero.'
+        );
+      }
+    }
+
+    // **Unreachable as of the crew check above, and left in place for the same reason
+    // the `acceptedBy` loop below is.** `RESOLUTION_SPEC` §2.5 makes `respondedBy ⊆
+    // invited` structural (`createContractState`), so every hero who reaches this set
+    // has already been checked for existence one loop up. The message stays distinct so
+    // that removing the `invited` loop — the mutant this ordering invites — surfaces
+    // here rather than nowhere.
     for (const heroId of contract.offer.respondedBy.values()) {
       if (!state.heroes.has(heroId)) {
         throw inconsistent(
