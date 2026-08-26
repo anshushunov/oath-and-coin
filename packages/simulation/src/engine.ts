@@ -15,13 +15,15 @@ import type { SettleContract } from './commands/settle-contract.ts';
 import { Actions } from './decisions/actions.ts';
 import type { DecisionResult } from './decisions/causal-trace.ts';
 import { decide, type HeroDecision } from './decisions/contract-decision-rule.ts';
+import type { DecisionContext } from './decisions/context.ts';
 import type { HeldTrait } from './decisions/held-trait.ts';
-import { CommitmentState } from './domain/commitment.ts';
+import type { CommitmentState } from './domain/commitment.ts';
 import type { DomainEvent } from './events/domain-event.ts';
 import { compareContentIds, type ContentId } from './ids/content-id.ts';
 import { compareHeroIds, type HeroId } from './ids/hero-id.ts';
 import { canCover } from './negotiation/commitments.ts';
 import { GRIEVANCE_MAX, grievanceForBrokenPromise } from './negotiation/grievance.ts';
+import { commitmentFor } from './resolution/commitment.ts';
 import type { ContractState } from './state/contract-state.ts';
 import { ContractStatus } from './state/contract-state.ts';
 import { heroOf, withEvent, type GameState } from './state/game-state.ts';
@@ -62,6 +64,16 @@ interface HeroResponse {
   readonly moodOrdinals: SortedMap<HeroId, bigint>;
   /** What `withEvent` should be told this decision cost — `0n` for a pinned mood. */
   readonly ordinalsConsumed: bigint;
+  /**
+   * How willingly the hero said yes (`RESOLUTION_SPEC` §2.4), or `null` if he said no —
+   * a commitment is a fact about an acceptance, and a decline records none.
+   *
+   * Computed here rather than by the caller because here is where the `DecisionContext`
+   * this answer was given on still exists. The crew grows between one hero's answer and
+   * the next; asked again later, on a fuller package, the same hero would answer
+   * differently, and the record would describe a decision nobody made.
+   */
+  readonly commitment: CommitmentState | null;
 }
 
 /**
@@ -141,7 +153,11 @@ function decideHeroResponse(
   const knownMoodOrdinal = contract.moodOrdinals.get(hero.id);
   const decisionOrdinal = knownMoodOrdinal ?? state.metadata.nextDecisionOrdinal;
 
-  const decision = decide({
+  // Named rather than inlined into the call: `commitmentFor` below needs *this* context,
+  // the one the answer was actually given on, and a second object built to look like it
+  // would be a second place the assembly above could drift out of step (`RESOLUTION_SPEC`
+  // §2.4).
+  const context: DecisionContext = {
     hero,
     contract,
     traits,
@@ -149,7 +165,9 @@ function decideHeroResponse(
     campaignSeed: state.metadata.campaignSeed,
     decisionOrdinal,
     traceId: state.metadata.nextTraceId
-  });
+  };
+
+  const decision = decide(context);
 
   // A mood ordinal is recorded only on the draw that actually happened: `decide`
   // itself reports `0n` on the gated path — its own `HeroDecision.ordinalsConsumed`
@@ -168,7 +186,14 @@ function decideHeroResponse(
     : contract.moodOrdinals;
   const ordinalsConsumed = knownMoodOrdinal !== undefined ? 0n : decision.ordinalsConsumed;
 
-  return { decision, moodOrdinals, ordinalsConsumed };
+  // Only for a yes, and on the same context the yes was given on. `commitmentFor` runs
+  // `decide` a second time on the same ordinal, which draws the same mood and costs the
+  // campaign nothing — `ordinalsConsumed` above is already fixed and the second run's own
+  // report is discarded (`RESOLUTION_SPEC` §2.4, `ADR-003`).
+  const commitment =
+    decision.result.selectedAction === Actions.Accept ? commitmentFor(context) : null;
+
+  return { decision, moodOrdinals, ordinalsConsumed, commitment };
 }
 
 /**
@@ -220,7 +245,11 @@ export function proposeContractToHero(
     return rejected(state, RejectionCodes.AlreadyResponded);
   }
 
-  const { decision, moodOrdinals, ordinalsConsumed } = decideHeroResponse(state, hero, contract);
+  const { decision, moodOrdinals, ordinalsConsumed, commitment } = decideHeroResponse(
+    state,
+    hero,
+    contract
+  );
   const accepted = decision.result.selectedAction === Actions.Accept;
 
   // Declining adds the hero to `offer.respondedBy` and leaves the offer open — the
@@ -245,7 +274,7 @@ export function proposeContractToHero(
     offer: {
       ...contract.offer,
       acceptedBy,
-      commitments: withCommitmentFor(contract.offer, command.heroId, accepted),
+      commitments: withCommitmentFor(contract.offer, command.heroId, commitment),
       respondedBy: contract.offer.respondedBy.add(command.heroId)
     },
     moodOrdinals
@@ -299,24 +328,20 @@ export function proposeContractToHero(
 /**
  * The commitment recorded for a hero who has just answered (`RESOLUTION_SPEC` §2.4).
  *
- * **The value is a placeholder, the plumbing is not.** `commitments.keys() ===
- * acceptedBy` is an invariant from the moment the field exists, so every acceptance has
- * to record *something* here — but the rule that decides *which* state (grievance first,
- * then a counterfactual re-run of the same decision with the promised bonus removed)
- * needs the `DecisionContext` this transition has already finished with, and lands with
- * the commitment module. Until then every acceptance is recorded as freely given, which
- * is what §2.4's rule answers for a hero with no grievance whom no bonus was decisive
- * for — the common case, and the one this constant is wrong about only when a bonus or a
- * grievance is in play.
+ * `null` records nothing, and there are two ways to get one: the hero declined, or he
+ * accepted into a crew that was already full. Both mean no seat was taken, and
+ * `commitments.keys() === acceptedBy` is what makes that the same thing — a commitment is
+ * a fact about an acceptance that landed.
  *
- * A decline records nothing: a commitment is a fact about an acceptance.
+ * The *value* is decided by `commitmentFor`, at the moment of the answer, on the context
+ * the answer was given on; this function only writes it down.
  */
 function withCommitmentFor(
   offer: OfferState,
   heroId: HeroId,
-  accepted: boolean
+  commitment: CommitmentState | null
 ): SortedMap<HeroId, CommitmentState> {
-  return accepted ? offer.commitments.set(heroId, CommitmentState.Committed) : offer.commitments;
+  return commitment === null ? offer.commitments : offer.commitments.set(heroId, commitment);
 }
 
 export function composeOffer(state: GameState, command: ComposeOffer): CommandResult {
@@ -678,7 +703,7 @@ export function pollCrew(state: GameState, command: PollCrew): CommandResult {
     }
 
     const hero = heroOf(currentState, heroId);
-    const { decision, moodOrdinals, ordinalsConsumed } = decideHeroResponse(
+    const { decision, moodOrdinals, ordinalsConsumed, commitment } = decideHeroResponse(
       currentState,
       hero,
       currentContract
@@ -703,7 +728,10 @@ export function pollCrew(state: GameState, command: PollCrew): CommandResult {
       offer: {
         ...currentContract.offer,
         acceptedBy,
-        commitments: withCommitmentFor(currentContract.offer, heroId, accepted && hasRoom),
+        // `hasRoom` gates the record the same way it gates the seat: a hero who agreed to
+        // a crew already full took none, so there is no acceptance for a commitment to be
+        // a fact about (`RESOLUTION_SPEC` §2.5's `commitments.keys() === acceptedBy`).
+        commitments: withCommitmentFor(currentContract.offer, heroId, hasRoom ? commitment : null),
         respondedBy: currentContract.offer.respondedBy.add(heroId)
       },
       moodOrdinals
