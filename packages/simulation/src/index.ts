@@ -104,6 +104,28 @@ export {
   type DeficitInput,
   type RankedDeficits
 } from './resolution/deficits.ts';
+export {
+  GRUDGE_MAGNITUDE,
+  TRUST_LOST_MAGNITUDE,
+  WOUND_MAGNITUDE,
+  consequencesFor,
+  type ConsequenceInput
+} from './resolution/consequences.ts';
+
+/**
+ * The resolver itself (`RESOLUTION_SPEC` §2.1, §4, §5) — a contract and the crew that went
+ * out on it, answered as the events to raise and the result to store.
+ *
+ * `ResolutionInput` and `ContractResolver` are declared beside it rather than with the
+ * rest of the outcome vocabulary because both name `ContractState` and `HeroState`
+ * (§2.7); this is the export that makes them reachable, and the one `tests/oracle` needs
+ * to run the shipped roster against the shipped contracts.
+ */
+export {
+  draftResolution,
+  type ContractResolver,
+  type ResolutionInput
+} from './resolution/contract-resolver.ts';
 
 export {
   createDecisionResult,
