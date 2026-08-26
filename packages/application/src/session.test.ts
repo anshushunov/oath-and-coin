@@ -113,6 +113,7 @@ const ranScenario: ScenarioFixture = {
         command_id: 1,
         contract: 'core:escort',
         key_hero_index: 0,
+        invited_indexes: [0],
         advance: 70,
         method_tag: null,
         promised_bonus: 0,

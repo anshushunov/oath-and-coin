@@ -77,6 +77,14 @@ function lockedCampaign(
         keyHero: KEY_HERO,
         advance,
         phase: OfferPhase.Locked,
+        // Exactly `requiredCrew` heroes, taken from the front of the roster
+        // (`RESOLUTION_SPEC` §2.5). Stated rather than defaulted, because who is invited
+        // is now what `pollCrew` iterates: these tests are about the poll, so the set it
+        // walks has to be the fixture's own statement, not a fixture default.
+        invited: SortedSet.from(
+          compareHeroIds,
+          heroes.slice(0, requiredCrew).map((hero) => hero.id)
+        ),
         respondedBy: keyOnly,
         acceptedBy: keyOnly
       })
@@ -123,12 +131,17 @@ function gatedThenScoredThenGated(): GameState {
 
   const contract = createContractState(
     aContract({
-      requiredCrew: 5,
+      // Four, not five: `invited.size === requiredCrew` now, and the whole roster is
+      // four. The seat count was only ever chosen above the roster so no seat could
+      // fill; with the crew fixed to the package, "nobody fills a seat" comes from the
+      // two principles and the untuned third hero instead.
+      requiredCrew: 4,
       tags: SortedSet.from(compareContentIds, [ids.temple]),
       status: ContractStatus.Offered,
       offer: anOffer({
         keyHero: KEY_HERO,
         phase: OfferPhase.Locked,
+        invited: SortedSet.from(compareHeroIds, [0, 1, 2, 3].map(heroId)),
         respondedBy: keyOnly,
         acceptedBy: keyOnly
       })
@@ -163,11 +176,15 @@ function fullyRespondedButUncrewedCampaign(): GameState {
 
   const contract = createContractState(
     aContract({
-      requiredCrew: 3,
+      // Four seats and four invited, every one of them already answered and only the
+      // key hero among them accepted: the crew is still open and there is nobody left
+      // to ask.
+      requiredCrew: 4,
       status: ContractStatus.Offered,
       offer: anOffer({
         keyHero: KEY_HERO,
         phase: OfferPhase.Locked,
+        invited: everyone,
         respondedBy: everyone,
         acceptedBy: keyOnly
       })
@@ -203,30 +220,32 @@ describe('pollCrew', () => {
     ).toEqual([heroId(1), heroId(2), heroId(3)]);
   });
 
-  it('does not stop asking once the seats are full', () => {
-    // `everyoneAcceptsCampaign`, not the plain `lockedCampaign` the brief's own
-    // fixture would have used: with every polled hero tuned toward acceptance,
-    // seats genuinely fill partway through the roster (the key hero plus one more
-    // of two required), so this test is only discharged by an implementation that
-    // keeps asking past that point. Against `lockedCampaign`'s untuned heroes —
-    // review of `DEC-008` Task 13 found this — every polled hero declines (advance
-    // 0 against risk 80), `acceptedBy` never grows past the key hero alone, and
-    // `toHaveLength(3)` holds just as well for a `pollCrew` that stops the moment
-    // seats fill, since none ever do.
-    expect(pollCrew(everyoneAcceptsCampaign({ requiredCrew: 2 }), aPoll()).decisions).toHaveLength(
-      3
-    );
+  it('asks the invited crew and nobody else, however large the roster is', () => {
+    // The amended `DEC-012` (2026-08-25, `RESOLUTION_SPEC` §8): the crew is part of the
+    // package, so a poll asks `invited` minus `respondedBy`. The roster here is four and
+    // the crew is two — the key hero plus one — so exactly one hero is asked. Before the
+    // amendment this same command asked all three of the remaining roster.
+    const polled = pollCrew(everyoneAcceptsCampaign({ requiredCrew: 2 }), aPoll());
+
+    expect(polled.decisions).toHaveLength(1);
+    expect(offerOf(polled.state).respondedBy.values()).toEqual([heroId(0), heroId(1)]);
   });
 
-  it('seats only as many as the contract has room for', () => {
+  it('fills every seat when every invited hero accepts, and none beyond them', () => {
+    // The seat cap stops being something the poll has to enforce: `invited.size ===
+    // requiredCrew` and `acceptedBy ⊆ invited`, so there is no crew a poll could
+    // overfill. What used to be a runtime race — keep asking, but stop seating — is now
+    // a property of the package. `pollCrew` still checks its own room, as defence in
+    // depth over a state built by hand rather than composed.
     const polled = pollCrew(everyoneAcceptsCampaign({ requiredCrew: 2 }), aPoll()).state;
-    expect(offerOf(polled).acceptedBy.values()).toHaveLength(2);
-    expect(offerOf(polled).respondedBy.values()).toHaveLength(4);
-  });
 
-  it('gives the seats to the first heroes in id order', () => {
-    const polled = pollCrew(everyoneAcceptsCampaign({ requiredCrew: 2 }), aPoll()).state;
     expect(offerOf(polled).acceptedBy.values()).toEqual([heroId(0), heroId(1)]);
+    expect(offerOf(polled).respondedBy.values()).toHaveLength(2);
+  });
+
+  it('asks the invited in hero id order', () => {
+    const polled = pollCrew(everyoneAcceptsCampaign({ requiredCrew: 3 }), aPoll()).state;
+    expect(offerOf(polled).acceptedBy.values()).toEqual([heroId(0), heroId(1), heroId(2)]);
   });
 
   it('refuses to poll a contract whose crew is already complete', () => {

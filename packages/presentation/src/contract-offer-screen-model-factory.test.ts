@@ -161,7 +161,10 @@ describe('whether everyone has answered', () => {
 
   it('is Normal when the contract records an answer from every hero', () => {
     const state = withContracts(withHeroes(aState(), roster), [
-      aContract({ offer: anOffer({ respondedBy: responded(0, 1) }) })
+      // The crew the package invited is the two heroes who answered — "everyone has
+      // answered" is measured against `invited`, not against the roster
+      // (`DEC-012` as amended, `RESOLUTION_SPEC` §8).
+      aContract({ offer: anOffer({ keyHero: heroId(0), respondedBy: responded(0, 1) }) })
     ]);
 
     expect(contractOfferScreenModel(state, [aStep()]).state).toBe(ScreenState.Normal);
@@ -734,11 +737,21 @@ describe('the read-model hash', () => {
     // the state were outside the hash, a screen still waiting on a hero would be
     // indistinguishable from one that finished.
     const roster = heroes(ids.bram, ids.doran);
+    // Same invited crew on both sides, so the only difference is how many of them have
+    // answered — which is what makes this a test about `state` and not about the crew.
     const incomplete = withContracts(withHeroes(aState(), roster), [
-      aContract({ offer: anOffer({ respondedBy: responded(0) }) })
+      aContract({
+        offer: anOffer({ keyHero: heroId(0), invited: responded(0, 1), respondedBy: responded(0) })
+      })
     ]);
     const complete = withContracts(withHeroes(aState(), roster), [
-      aContract({ offer: anOffer({ respondedBy: responded(0, 1) }) })
+      aContract({
+        offer: anOffer({
+          keyHero: heroId(0),
+          invited: responded(0, 1),
+          respondedBy: responded(0, 1)
+        })
+      })
     ]);
 
     const left = contractOfferScreenModel(incomplete, [aStep()]);
@@ -1050,7 +1063,26 @@ describe('what the screen shows about the negotiation itself', () => {
   });
 
   it('keeps the phase out of the five screen states', () => {
-    const model = contractOfferScreenModel(lockedCampaign(), []);
+    // A locked package one of whose invited heroes has not answered: `Incomplete`
+    // means "somebody the package asked has not answered yet", and `locked` is a fact
+    // about the negotiation — the two axes are independent, which is what this asserts.
+    // `lockedCampaign()` itself no longer serves: every hero it invites has accepted,
+    // and since the crew became part of the package that is exactly `Normal`.
+    const roster = [aHero({ id: heroId(0) }), aHero({ id: heroId(1), definition: ids.doran })];
+    const state = withContracts(withHeroes(aState(), roster), [
+      aContract({
+        requiredCrew: 2,
+        offer: anOffer({
+          phase: OfferPhase.Locked,
+          keyHero: heroId(0),
+          invited: responded(0, 1),
+          respondedBy: responded(0),
+          acceptedBy: responded(0)
+        })
+      })
+    ]);
+
+    const model = contractOfferScreenModel(state, []);
 
     expect(model.state).toBe(ScreenState.Incomplete);
     expect(model.offer?.phase).toBe(OfferPhase.Locked);

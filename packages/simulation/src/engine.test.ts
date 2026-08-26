@@ -9,11 +9,20 @@ import type { HeldTrait } from './decisions/held-trait.ts';
 import { ReasonCodes } from './decisions/reason-codes.ts';
 import { proposeContractToHero } from './engine.ts';
 import { compareContentIds, parseContentId, type ContentId } from './ids/content-id.ts';
-import { compareHeroIds, heroId } from './ids/hero-id.ts';
+import { compareHeroIds, heroId, type HeroId } from './ids/hero-id.ts';
 import { ContractStatus } from './state/contract-state.ts';
 import type { GameState } from './state/game-state.ts';
 import { OfferPhase } from './state/offer-state.ts';
 import { aContract, aHero, anOffer, aState, aTrait, ids } from './testing/fixtures.ts';
+
+/**
+ * The crew a package invites (`RESOLUTION_SPEC` §2.5), stated explicitly wherever a
+ * fixture here declares more than one seat: `anOffer` defaults `invited` to the heroes
+ * already involved, which is a crew of one, and a two-seat contract needs two.
+ */
+function setOfHeroes(...ids: readonly HeroId[]): SortedSet<HeroId> {
+  return SortedSet.from(compareHeroIds, ids);
+}
 
 /**
  * What the engine adds on top of the rule: the order commands are refused in, and the
@@ -137,7 +146,13 @@ describe('a refused command changes nothing at all', () => {
     // command would be refused as already-resolved and this case would never be reached.
     const twoSeats = aCampaign({
       contracts: SortedMap.from(compareContentIds, [
-        [ids.crypt, aContract({ requiredCrew: 2, offer: anOffer({ keyHero: bram.id }) })]
+        [
+          ids.crypt,
+          aContract({
+            requiredCrew: 2,
+            offer: anOffer({ keyHero: bram.id, invited: setOfHeroes(bram.id, zara.id) })
+          })
+        ]
       ])
     });
 
@@ -272,7 +287,7 @@ describe('an applied command records what the hero decided', () => {
             patronFee: 100,
             risk: 0,
             requiredCrew: 2,
-            offer: anOffer({ keyHero: bram.id })
+            offer: anOffer({ keyHero: bram.id, invited: setOfHeroes(bram.id, zara.id) })
           })
         ]
       ])
@@ -327,7 +342,7 @@ describe('an applied command records what the hero decided', () => {
             patronFee: 0,
             risk: 100,
             requiredCrew: 3,
-            offer: anOffer({ keyHero: bram.id })
+            offer: anOffer({ keyHero: bram.id, invited: setOfHeroes(bram.id, zara.id, heroId(2)) })
           })
         ]
       ])
@@ -372,7 +387,7 @@ describe('an applied command records what the hero decided', () => {
             patronFee: 100,
             risk: 0,
             requiredCrew: 2,
-            offer: anOffer({ keyHero: bram.id })
+            offer: anOffer({ keyHero: bram.id, invited: setOfHeroes(bram.id, zara.id) })
           })
         ]
       ])

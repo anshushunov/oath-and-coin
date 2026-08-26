@@ -53,5 +53,18 @@ export const SUPPORTED_LOCALE_SCHEMA_VERSION = 2;
  * do that. This is the plan's own final value (§2.5); one bump inside this
  * unreleased slice reaches it directly. **Task 14 must not bump this again** —
  * `SAVE_SCHEMA_VERSION` is already at the plan's target.
+ *
+ * **3, moved by the contract-resolution engine's Task 3 (`RESOLUTION_SPEC` §2.8): the
+ * fields of state.** `HeroState` gained `capability` and `wounds`, `ContractState`
+ * gained `needs` and `resolution`, and `OfferState` gained `invited` and `commitments`
+ * — all required keys of `strictObject` schemas, so a version 2 save is unreadable
+ * under this one and the reverse.
+ *
+ * **This number moves a second time, and deliberately not now.** The event variants
+ * `resolveContract` raises — and the closed discriminated union plus hand-written
+ * `toDomainEvent` that carry them — are a separate change to this format, arriving in a
+ * separate task. One number covering both would leave a stretch where the format had
+ * changed and the version had not: a save written after the fields landed would claim
+ * the same number as one written before them.
  */
-export const SAVE_SCHEMA_VERSION = 2;
+export const SAVE_SCHEMA_VERSION = 3;

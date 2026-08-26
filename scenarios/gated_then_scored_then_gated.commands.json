@@ -5,6 +5,12 @@
       "command_id": 1,
       "contract": "fixture:warded_job",
       "key_hero_index": 0,
+      "invited_indexes": [
+        0,
+        1,
+        2,
+        3
+      ],
       "advance": 50,
       "method_tag": null,
       "promised_bonus": 0,

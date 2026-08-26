@@ -4,7 +4,7 @@
   "display_name_key": "contract.fixture.plain_gamma.name",
   "patron_fee": 50,
   "risk": 10,
-  "required_crew": 6,
+  "required_crew": 3,
   "needs": {
     "frontline": 10,
     "wilderness": 10

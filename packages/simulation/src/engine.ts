@@ -16,6 +16,7 @@ import { Actions } from './decisions/actions.ts';
 import type { DecisionResult } from './decisions/causal-trace.ts';
 import { decide, type HeroDecision } from './decisions/contract-decision-rule.ts';
 import type { HeldTrait } from './decisions/held-trait.ts';
+import { CommitmentState } from './domain/commitment.ts';
 import type { DomainEvent } from './events/domain-event.ts';
 import { compareContentIds, type ContentId } from './ids/content-id.ts';
 import { compareHeroIds, type HeroId } from './ids/hero-id.ts';
@@ -25,7 +26,12 @@ import type { ContractState } from './state/contract-state.ts';
 import { ContractStatus } from './state/contract-state.ts';
 import { heroOf, withEvent, type GameState } from './state/game-state.ts';
 import type { HeroState } from './state/hero-state.ts';
-import { createContractState, MAX_TAGS_PER_CONTRACT, OfferPhase } from './state/offer-state.ts';
+import {
+  createContractState,
+  MAX_TAGS_PER_CONTRACT,
+  OfferPhase,
+  type OfferState
+} from './state/offer-state.ts';
 
 /**
  * Applies commands to a {@link GameState} and returns the state that results.
@@ -239,6 +245,7 @@ export function proposeContractToHero(
     offer: {
       ...contract.offer,
       acceptedBy,
+      commitments: withCommitmentFor(contract.offer, command.heroId, accepted),
       respondedBy: contract.offer.respondedBy.add(command.heroId)
     },
     moodOrdinals
@@ -289,6 +296,29 @@ export function proposeContractToHero(
  * declares `negotiableTags`) still throws — that is a loudly-broken authoring
  * invariant, not a value this command's own caller chose.
  */
+/**
+ * The commitment recorded for a hero who has just answered (`RESOLUTION_SPEC` §2.4).
+ *
+ * **The value is a placeholder, the plumbing is not.** `commitments.keys() ===
+ * acceptedBy` is an invariant from the moment the field exists, so every acceptance has
+ * to record *something* here — but the rule that decides *which* state (grievance first,
+ * then a counterfactual re-run of the same decision with the promised bonus removed)
+ * needs the `DecisionContext` this transition has already finished with, and lands with
+ * the commitment module. Until then every acceptance is recorded as freely given, which
+ * is what §2.4's rule answers for a hero with no grievance whom no bonus was decisive
+ * for — the common case, and the one this constant is wrong about only when a bonus or a
+ * grievance is in play.
+ *
+ * A decline records nothing: a commitment is a fact about an acceptance.
+ */
+function withCommitmentFor(
+  offer: OfferState,
+  heroId: HeroId,
+  accepted: boolean
+): SortedMap<HeroId, CommitmentState> {
+  return accepted ? offer.commitments.set(heroId, CommitmentState.Committed) : offer.commitments;
+}
+
 export function composeOffer(state: GameState, command: ComposeOffer): CommandResult {
   if (command.expectedStateVersion !== state.metadata.stateVersion) {
     return rejected(state, RejectionCodes.StaleState);
@@ -306,6 +336,26 @@ export function composeOffer(state: GameState, command: ComposeOffer): CommandRe
   const keyHero = state.heroes.get(command.keyHero);
   if (keyHero === undefined) {
     return rejected(state, RejectionCodes.UnknownHero);
+  }
+
+  // The crew, checked here rather than in `createContractState`: hero *existence* needs
+  // the roster, and the constructor never receives it (`RESOLUTION_SPEC` §2.5's second
+  // column). Size first, from the distinct count — a repeated hero is two names for one
+  // person, so it is a crew of one however long the array was, and reporting it as a
+  // size mismatch names what the caller actually did.
+  const invited = SortedSet.from(compareHeroIds, command.invited);
+  if (invited.size !== contract.requiredCrew) {
+    return rejected(state, RejectionCodes.CrewSizeMismatch);
+  }
+
+  if (!invited.has(command.keyHero)) {
+    return rejected(state, RejectionCodes.KeyHeroNotInvited);
+  }
+
+  for (const heroId of invited.values()) {
+    if (!state.heroes.has(heroId)) {
+      return rejected(state, RejectionCodes.UnknownHero);
+    }
   }
 
   // §3.1's table: composeOffer is legal in `draft`, or in `locked` for as long as the
@@ -369,8 +419,13 @@ export function composeOffer(state: GameState, command: ComposeOffer): CommandRe
     methodTag: command.methodTag,
     promisedBonus: command.promisedBonus,
     phase: OfferPhase.Draft,
+    invited,
     respondedBy: SortedSet.empty<HeroId>(compareHeroIds),
-    acceptedBy: SortedSet.empty<HeroId>(compareHeroIds)
+    acceptedBy: SortedSet.empty<HeroId>(compareHeroIds),
+    // Emptied with the answers, and for the same reason: a commitment is computed
+    // against the package that was answered (`RESOLUTION_SPEC` §2.4), so it cannot
+    // outlive that package any more than the answer itself can.
+    commitments: SortedMap.empty<HeroId, CommitmentState>(compareHeroIds)
   };
 
   // Clearing every answer empties `acceptedBy` too, so the contract can never still
@@ -591,7 +646,12 @@ export function pollCrew(state: GameState, command: PollCrew): CommandResult {
   // `checkCounters` relies on every applied command producing at least one
   // (`appliedCommandIds.size <= history.length`), and a `pollCrew` that could apply
   // with nobody left to ask is what would have broken that.
-  if (state.heroes.keys().every((heroId) => contract.offer.respondedBy.has(heroId))) {
+  //
+  // **`invited`, not the whole roster** (`DEC-012` as amended 2026-08-25,
+  // `RESOLUTION_SPEC` §8). The crew is part of the package now: a poll asks the people
+  // this offer names and nobody else, so "nobody left" means every *invited* hero has
+  // answered — not every hero in the guild.
+  if (contract.offer.invited.values().every((heroId) => contract.offer.respondedBy.has(heroId))) {
     return rejected(state, RejectionCodes.NobodyLeftToPoll);
   }
 
@@ -600,7 +660,11 @@ export function pollCrew(state: GameState, command: PollCrew): CommandResult {
   const events: DomainEvent[] = [];
   const decisions: DecisionResult[] = [];
 
-  for (const heroId of state.heroes.keys()) {
+  // `invited` rather than the roster, and read off the *original* contract: the set is
+  // fixed for the life of a package, so iterating it cannot be disturbed by what an
+  // earlier hero in this same poll did. Its own order is `compareHeroIds`, the same
+  // order the roster gave, so who is asked first has not changed.
+  for (const heroId of contract.offer.invited.values()) {
     if (currentContract.offer.respondedBy.has(heroId)) {
       continue;
     }
@@ -631,6 +695,7 @@ export function pollCrew(state: GameState, command: PollCrew): CommandResult {
       offer: {
         ...currentContract.offer,
         acceptedBy,
+        commitments: withCommitmentFor(currentContract.offer, heroId, accepted && hasRoom),
         respondedBy: currentContract.offer.respondedBy.add(heroId)
       },
       moodOrdinals

@@ -225,8 +225,19 @@ export function contractOfferScreenModel(
     );
 
   return createContractOfferScreenModel({
+    // "Everyone who was going to answer has" — measured against the crew the package
+    // invited, not against the whole roster (`DEC-012` as amended 2026-08-25,
+    // `RESOLUTION_SPEC` §8). A roster-sized comparison stopped being the right question
+    // the moment the crew became part of the package: heroes nobody invited will never
+    // answer, so a screen waiting for them waits forever.
+    //
+    // An uncomposed offer invites nobody, and `0 >= 0` would call that Normal — the
+    // exact shape of the empty-roster defect the guard above records. So an offer with
+    // no crew yet is Incomplete: nobody has been asked, which is the opposite of
+    // everybody having answered.
     state:
-      contract.offer.respondedBy.size >= roster.length
+      contract.offer.invited.size > 0 &&
+      contract.offer.respondedBy.size >= contract.offer.invited.size
         ? ScreenState.Normal
         : ScreenState.Incomplete,
     titleKey: TITLE_KEY,

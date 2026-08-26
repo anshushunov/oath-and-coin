@@ -1,5 +1,4 @@
 import { join, resolve } from 'node:path';
-
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -23,6 +22,8 @@ import {
 import { contractOfferScreenModel, expectedSnapshot } from '@oath-and-coin/presentation';
 import {
   ReasonCodes,
+  SortedSet,
+  compareHeroIds,
   proposeContractToHero,
   type CausalTrace,
   type ContentId,
@@ -84,7 +85,16 @@ function aDecidedCampaign(): { readonly state: GameState; readonly focused: Cont
     ...base,
     contracts: base.contracts.set(contractKey!, {
       ...contract,
-      offer: { ...contract.offer, keyHero: heroKey! }
+      // One seat, so the key hero is the whole crew: this fixture is about reason codes
+      // reaching a save, not about staffing the shipped crypt.
+      requiredCrew: 1,
+      // `invited` moves with `keyHero` (`RESOLUTION_SPEC` §2.5); every contract in
+      // these fixtures has one seat, so the key hero is the whole crew.
+      offer: {
+        ...contract.offer,
+        keyHero: heroKey!,
+        invited: SortedSet.from(compareHeroIds, [heroKey!])
+      }
     })
   };
 

@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "scenario": "crew_cannot_overflow_the_seats",
+  "expected_outcome": "success",
+  "content_root": "scenarios/fixtures/decision_core",
+  "checkpoints": [
+    {
+      "name": "final",
+      "after_command_id": 4
+    }
+  ]
+}

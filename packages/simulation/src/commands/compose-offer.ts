@@ -16,8 +16,17 @@ export interface ComposeOffer {
   /** Identifies this command for the campaign's lifetime; see `ProposeContractToHero`. */
   readonly commandId: number;
   readonly contractId: ContentId;
-  /** Who the revised package is negotiated with. */
+  /** Who the revised package is negotiated with; must be one of {@link invited}. */
   readonly keyHero: HeroId;
+  /**
+   * Who the package asks — exactly `requiredCrew` distinct heroes, {@link keyHero}
+   * among them (`RESOLUTION_SPEC` §2.5).
+   *
+   * An array rather than a set, because the caller's own duplicate is a mistake this
+   * command has to be able to report: absorbed into a set, `[bram, bram]` would arrive
+   * as a crew of one and be refused for a size it never claimed.
+   */
+  readonly invited: readonly HeroId[];
   /** Money offered to every hero who accepts; must fall within `0..patronFee`. */
   readonly advance: number;
   /** The negotiated tag this version chooses, or `null` to choose none. */

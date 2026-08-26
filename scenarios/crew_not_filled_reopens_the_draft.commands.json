@@ -5,6 +5,12 @@
       "command_id": 1,
       "contract": "core:escort_the_caravan",
       "key_hero_index": 1,
+      "invited_indexes": [
+        0,
+        1,
+        2,
+        3
+      ],
       "advance": 40,
       "method_tag": "method:open",
       "promised_bonus": 10,
@@ -34,17 +40,23 @@
       "command_id": 5,
       "contract": "core:escort_the_caravan",
       "key_hero_index": 1,
+      "invited_indexes": [
+        0,
+        1,
+        2,
+        3
+      ],
       "advance": 40,
       "method_tag": "method:open",
       "promised_bonus": 20,
-      "expected_state_version": 8
+      "expected_state_version": 6
     },
     {
       "command": "propose_contract_to_hero",
       "command_id": 6,
       "contract": "core:escort_the_caravan",
       "hero_index": 1,
-      "expected_state_version": 9
+      "expected_state_version": 7
     }
   ]
 }

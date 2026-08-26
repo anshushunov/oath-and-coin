@@ -1,16 +1,51 @@
 import {
   compareContentIds,
+  compareHeroIds,
+  CoverageVerdict,
   heroId,
+  NeedId,
+  OutcomeGrade,
   parseContentId,
+  SortedMap,
   SortedSet,
+  type ContractResolution,
   type ContractState,
   type GameState,
+  type HeroContribution,
+  type HeroId,
   type HeroState
 } from '@oath-and-coin/simulation';
 import { aContract, aHero, aState } from '@oath-and-coin/simulation/testing/fixtures';
 import { describe, expect, it } from 'vitest';
 
 import { describeContract, describeHero, describeState } from './determinism-artifact.ts';
+
+/**
+ * A resolution whose one coverage row is the thing a shallow projection would drop.
+ * `aContract()`'s own offer has nobody accepted, so `contributions` stays empty and this
+ * fixture never has to satisfy the crew invariants — it is handed straight to the
+ * projection, never to `createContractState`.
+ */
+function aResolution(overrides: { readonly supplied?: number } = {}): ContractResolution {
+  return {
+    grade: OutcomeGrade.Costly,
+    coverage: [
+      {
+        need: NeedId.Frontline,
+        weight: 30,
+        required: 54,
+        supplied: overrides.supplied ?? 40,
+        effective: 40,
+        verdict: CoverageVerdict.Weak,
+        contributors: [{ hero: heroId(0), amount: 40 }]
+      }
+    ],
+    contributions: SortedMap.empty<HeroId, HeroContribution>(compareHeroIds),
+    deficits: [],
+    dominant: null,
+    consequences: []
+  };
+}
 
 /**
  * Minor 3 from Task 20's own review: a mechanical guard against the class of gap
@@ -40,8 +75,11 @@ function jsonOf(value: unknown): string {
 
 describe('describeHero reads every field of HeroState', () => {
   const base = aHero();
-  // No exceptions: the review that asked for this guard confirmed all eleven fields of
-  // `HeroState` are covered.
+  // No exceptions, and the count moved to thirteen with `capability` and `wounds`
+  // (`RESOLUTION_SPEC` §2.2, §2.6). `wounds` is projected although nothing writes it
+  // yet, which is the whole point of this guard existing before the command does:
+  // `grievance` is in this list because it was found *missing* long after the command
+  // that moves it shipped.
   const EXCEPTIONS: readonly (keyof HeroState)[] = [];
 
   const perturbations: { readonly [K in keyof HeroState]?: (value: HeroState) => HeroState } = {
@@ -58,11 +96,22 @@ describe('describeHero reads every field of HeroState', () => {
       relationships: h.relationships.set(parseContentId('core:an_extra_relationship'), 1)
     }),
     believesGuildPromises: (h) => ({ ...h, believesGuildPromises: !h.believesGuildPromises }),
-    grievance: (h) => ({ ...h, grievance: h.grievance + 1 })
+    grievance: (h) => ({ ...h, grievance: h.grievance + 1 }),
+    // Perturbs `expertise`, not `grade`: a projection that wrote the grade and dropped
+    // the map would still pass a `grade`-only perturbation, and the map is the half a
+    // resolution actually reads.
+    capability: (h) => ({
+      ...h,
+      capability: {
+        ...h.capability,
+        expertise: h.capability.expertise.set(NeedId.UndeadKnowledge, 7)
+      }
+    }),
+    wounds: (h) => ({ ...h, wounds: h.wounds + 1 })
   };
 
   const fields = Object.keys(base) as (keyof HeroState)[];
-  expect(fields).toHaveLength(11);
+  expect(fields).toHaveLength(13);
 
   it.each(fields.filter((f) => !EXCEPTIONS.includes(f)))('perturbing %s changes the projection', (field) => {
     const perturb = perturbations[field];
@@ -95,11 +144,24 @@ describe('describeContract reads every field of ContractState except the declare
     }),
     status: (c) => ({ ...c, status: c.status === 'offered' ? 'crewed' : 'offered' }),
     offer: (c) => ({ ...c, offer: { ...c.offer, version: c.offer.version + 1 } }),
-    moodOrdinals: (c) => ({ ...c, moodOrdinals: c.moodOrdinals.set(heroId(9), 1n) })
+    moodOrdinals: (c) => ({ ...c, moodOrdinals: c.moodOrdinals.set(heroId(9), 1n) }),
+    needs: (c) => ({ ...c, needs: c.needs.set(NeedId.UndeadKnowledge, 11) }),
+    // From `null` to a real result: the interesting perturbation, because a projection
+    // that wrote a bare `grade` and dropped everything under it would still differ from
+    // "not resolved" and pass. The two resolutions below differ only in a *coverage*
+    // number, so this case fails unless the whole structure is written.
+    resolution: (c) => ({ ...c, resolution: aResolution() })
   };
 
   const fields = (Object.keys(base) as (keyof ContractState)[]).filter((f) => !EXCEPTIONS.includes(f));
-  expect(fields).toHaveLength(8);
+  expect(fields).toHaveLength(10);
+
+  it('writes a resolution deeply, not only its grade', () => {
+    const shallow = { ...base, resolution: aResolution() };
+    const deep = { ...base, resolution: aResolution({ supplied: 41 }) };
+
+    expect(jsonOf(describeContract(deep))).not.toBe(jsonOf(describeContract(shallow)));
+  });
 
   it.each(fields)('perturbing %s changes the projection', (field) => {
     const perturb = perturbations[field];

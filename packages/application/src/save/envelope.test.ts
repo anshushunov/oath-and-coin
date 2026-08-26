@@ -9,11 +9,13 @@ import {
   memoryFileSource
 } from '@oath-and-coin/content';
 import {
+  compareHeroIds,
   composeOffer,
   deepEqual,
   lockOffer,
   proposeContractToHero,
   settleContract,
+  SortedSet,
   type ContentId,
   type GameState
 } from '@oath-and-coin/simulation';
@@ -128,7 +130,14 @@ function aDecidedState(): GameState {
     ...base,
     contracts: base.contracts.set(contractKey!, {
       ...contract,
-      offer: { ...contract.offer, keyHero: heroKey! }
+      // `invited` moves with `keyHero` (`RESOLUTION_SPEC` §2.5): this contract has one
+      // seat, so the key hero is the crew. Set by hand for the same reason `keyHero` is
+      // — this fixture is about the envelope, not about `composeOffer`.
+      offer: {
+        ...contract.offer,
+        keyHero: heroKey!,
+        invited: SortedSet.from(compareHeroIds, [heroKey!])
+      }
     })
   };
 
@@ -160,6 +169,7 @@ function aDecidedThenRevisedState(): GameState {
     commandId: 2,
     contractId: contractKey!,
     keyHero: heroKey!,
+    invited: [heroKey!],
     advance: 10,
     methodTag: null,
     promisedBonus: 0,
@@ -214,6 +224,7 @@ function aDecidedThenLockedThenSettledState(): GameState {
     commandId: 2,
     contractId: contractKey!,
     keyHero: heroKey!,
+    invited: [heroKey!],
     advance: 10,
     methodTag: null,
     promisedBonus: 20,
@@ -562,6 +573,16 @@ describe('referential integrity across the snapshot’s own maps', () => {
         // apply, so the mutation below still reaches the check this case is
         // about.
         offer.phase = 'locked';
+        // `RESOLUTION_SPEC` §2.5 added `respondedBy ⊆ invited` and tied `invited.size`
+        // to `requiredCrew`, so a dangling id dropped into `respondedBy` alone is now
+        // caught by the *structure* first, one check before the referential one this
+        // case is about. The tamper therefore builds a save that is structurally
+        // coherent and wrong about exactly one thing — hero 999 does not exist — which
+        // is the shape a referential-integrity test needs its input to have.
+        const contract = snapshot.contracts[0]!.value;
+        contract.requiredCrew = 2;
+        contract.status = 'offered';
+        offer.invited = [...offer.invited, 999];
         offer.respondedBy = [...offer.respondedBy, 999];
       },
       'in respondedBy, but the save carries no such hero'
@@ -668,8 +689,10 @@ interface RawSnapshot {
       offer: {
         phase: string;
         keyHero: number | null;
+        invited: number[];
         respondedBy: number[];
         acceptedBy: number[];
+        commitments: { key: number; value: string }[];
       };
     };
   }[];
@@ -715,6 +738,7 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
         const contract = snapshot.contracts[0]!.value;
         contract.offer.respondedBy = [];
         contract.offer.acceptedBy = [];
+        contract.offer.commitments = [];
         contract.status = 'offered';
       },
       'respondedBy does not carry that hero'
@@ -735,6 +759,9 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
       'история говорит «принял», контракт — «не в составе»',
       (snapshot) => {
         snapshot.contracts[0]!.value.offer.acceptedBy = [];
+        // `commitments.keys() === acceptedBy` (`RESOLUTION_SPEC` §2.4): emptied with the
+        // acceptances, so the defect this case is about is the one the decoder reports.
+        snapshot.contracts[0]!.value.offer.commitments = [];
         snapshot.contracts[0]!.value.status = 'offered';
       },
       'and the history disagree about'
@@ -899,6 +926,10 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
         // the same hero here so this fixture still reaches the clock check this
         // case is about, not that earlier, unrelated one.
         other.value.offer.keyHero = first!.heroId;
+        // `invited` moves with `keyHero` (`RESOLUTION_SPEC` §2.5), or the crew-size rule
+        // reports this offer before the defect the case is about ever gets read.
+        other.value.requiredCrew = 1;
+        other.value.offer.invited = [first!.heroId];
         other.value.offer.respondedBy = [first!.heroId];
         snapshot.appliedCommandIds = [1, 2];
         snapshot.metadata.nextEventId = 2;
@@ -937,6 +968,9 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
         // trace both closes the path and weighs terms along it.
         snapshot.history[0]!.kind = 'hero_declined_contract';
         snapshot.contracts[0]!.value.offer.acceptedBy = [];
+        // `commitments.keys() === acceptedBy` (`RESOLUTION_SPEC` §2.4): emptied with the
+        // acceptances, so the defect this case is about is the one the decoder reports.
+        snapshot.contracts[0]!.value.offer.commitments = [];
         snapshot.contracts[0]!.value.status = 'offered';
         snapshot.traces[0]!.value.blockedBy = [
           { reasonCode: 'hero.decision.principle_forbids', sourceEntity: 'core:greedy' }
@@ -949,6 +983,9 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
       (snapshot) => {
         snapshot.history[0]!.kind = 'hero_declined_contract';
         snapshot.contracts[0]!.value.offer.acceptedBy = [];
+        // `commitments.keys() === acceptedBy` (`RESOLUTION_SPEC` §2.4): emptied with the
+        // acceptances, so the defect this case is about is the one the decoder reports.
+        snapshot.contracts[0]!.value.offer.commitments = [];
         snapshot.contracts[0]!.value.status = 'offered';
         snapshot.traces[0]!.value.positiveFactors = [];
         snapshot.traces[0]!.value.negativeFactors = [];
@@ -1018,6 +1055,10 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
         // check this case is about.
         const other = snapshot.contracts.find((entry) => entry.key === OTHER_CONTRACT)!;
         other.value.offer.keyHero = first!.heroId;
+        // `invited` moves with `keyHero` (`RESOLUTION_SPEC` §2.5), or the crew-size rule
+        // reports this offer before the defect the case is about ever gets read.
+        other.value.requiredCrew = 1;
+        other.value.offer.invited = [first!.heroId];
         other.value.offer.respondedBy = [first!.heroId];
         snapshot.appliedCommandIds = [1, 2];
         snapshot.metadata.nextEventId = 2;

@@ -57,6 +57,17 @@ function aCampaign(
   });
 }
 
+/**
+ * An `OfferState` minus the two fields `anOffer` derives, so a spread of an existing
+ * package does not pin them to what an *uncomposed* offer happened to hold — an empty
+ * `invited` copied forward reads as "this test means nobody", which is the opposite of
+ * what a fixture naming a key hero means.
+ */
+function withoutDerivedCrew(offer: OfferState): Omit<OfferState, 'commitments' | 'invited'> {
+  const { commitments: _commitments, invited: _invited, ...rest } = offer;
+  return rest;
+}
+
 /** `state`'s one contract, with its key hero already accepted the current (draft) package. */
 function accepted(state: GameState): GameState {
   const contract = contractOf(state, ids.crypt);
@@ -68,12 +79,14 @@ function accepted(state: GameState): GameState {
       ...contract,
       status:
         acceptedBy.size >= contract.requiredCrew ? ContractStatus.Crewed : ContractStatus.Offered,
-      offer: {
-        ...contract.offer,
+      // `invited`/`commitments` dropped from the spread before `anOffer` sees them —
+      // see `withoutDerivedCrew`.
+      offer: anOffer({
+        ...withoutDerivedCrew(contract.offer),
         keyHero: KEY_HERO,
         respondedBy: acceptedBy,
         acceptedBy
-      }
+      })
     })
   };
 }
@@ -114,6 +127,9 @@ function lockedButUncrewed(): GameState {
       offer: anOffer({
         keyHero: KEY_HERO,
         phase: OfferPhase.Locked,
+        // Two seats, two invited — the second never answered, which is what leaves the
+        // crew unfilled and the package revisable (`RESOLUTION_SPEC` §2.5).
+        invited: SortedSet.from(compareHeroIds, [KEY_HERO, OTHER_HERO]),
         respondedBy: acceptedBy,
         acceptedBy
       })
@@ -145,6 +161,7 @@ function aCompose(overrides: Partial<ComposeOffer> = {}): ComposeOffer {
     commandId: 1,
     contractId: ids.crypt,
     keyHero: KEY_HERO,
+    invited: [KEY_HERO],
     advance: 0,
     methodTag: null,
     promisedBonus: 0,
@@ -157,11 +174,85 @@ function offerOf(state: GameState): OfferState {
   return contractOf(state, ids.crypt).offer;
 }
 
+describe('composeOffer — the crew the package invites (RESOLUTION_SPEC §2.5)', () => {
+  const THIRD_HERO: HeroId = heroId(2);
+
+  /**
+   * Two seats and a roster of three, so "one over" names a hero who really exists —
+   * otherwise that case would be answered by the unknown-hero check and prove nothing
+   * about the size rule.
+   */
+  const twoSeats = () =>
+    aCampaign(
+      {
+        heroes: SortedMap.from(compareHeroIds, [
+          [KEY_HERO, aHero({ id: KEY_HERO })],
+          [OTHER_HERO, aHero({ id: OTHER_HERO })],
+          [THIRD_HERO, aHero({ id: THIRD_HERO })]
+        ])
+      },
+      { requiredCrew: 2 }
+    );
+
+  it.each([
+    ['one short', [KEY_HERO]],
+    ['one over', [KEY_HERO, OTHER_HERO, THIRD_HERO]]
+  ])('refuses a crew %s of the seats the contract declared', (_name, invited) => {
+    expect(engineComposeOffer(twoSeats(), aCompose({ invited })).rejectionCode).toBe(
+      RejectionCodes.CrewSizeMismatch
+    );
+  });
+
+  it('accepts a crew of exactly the seats', () => {
+    const revised = engineComposeOffer(twoSeats(), aCompose({ invited: [KEY_HERO, OTHER_HERO] }));
+
+    expect(revised.rejectionCode).toBeNull();
+    expect(offerOf(revised.state).invited.values()).toEqual([KEY_HERO, OTHER_HERO]);
+  });
+
+  it('refuses a key hero the package did not invite', () => {
+    expect(
+      engineComposeOffer(twoSeats(), aCompose({ invited: [OTHER_HERO, THIRD_HERO] })).rejectionCode
+    ).toBe(RejectionCodes.KeyHeroNotInvited);
+  });
+
+  it('refuses an invitation to a hero the roster does not have', () => {
+    // The check the constructor physically cannot make: `createContractState` never
+    // receives `GameState.heroes`, so hero existence is verified where the roster is
+    // visible (`RESOLUTION_SPEC` §2.5's second column).
+    expect(
+      engineComposeOffer(twoSeats(), aCompose({ invited: [KEY_HERO, heroId(99)] })).rejectionCode
+    ).toBe(RejectionCodes.UnknownHero);
+  });
+
+  it('refuses the same hero invited twice, rather than absorbing the duplicate', () => {
+    // A set would silently make this a crew of one, which would then fail the size
+    // check for a reason that does not name what the caller actually did wrong.
+    expect(
+      engineComposeOffer(twoSeats(), aCompose({ invited: [KEY_HERO, KEY_HERO] })).rejectionCode
+    ).toBe(RejectionCodes.CrewSizeMismatch);
+  });
+
+  it('empties the commitments along with the answers on every revision', () => {
+    // `RESOLUTION_SPEC` §2.4: a commitment is computed against the package that was
+    // answered, so it cannot outlive that package any more than the answer itself can.
+    const first = engineComposeOffer(twoSeats(), aCompose({ invited: [KEY_HERO, OTHER_HERO] }));
+    const second = engineComposeOffer(
+      first.state,
+      aCompose({ commandId: 9, expectedStateVersion: 1, invited: [KEY_HERO, OTHER_HERO] })
+    );
+    const offer = offerOf(second.state);
+
+    expect(offer.respondedBy.values()).toEqual([]);
+    expect(offer.commitments.entries()).toEqual([]);
+  });
+});
+
 describe('composeOffer', () => {
   it('raises the version, leaves no answer behind, and carries the new terms', () => {
     const revised = composeOffer(
       accepted(aCampaign()),
-      aCompose({ advance: 50, keyHero: OTHER_HERO, promisedBonus: 5 })
+      aCompose({ advance: 50, keyHero: OTHER_HERO, invited: [OTHER_HERO], promisedBonus: 5 })
     ).state;
     const offer = offerOf(revised);
     expect(offer.version).toBe(2);
@@ -259,7 +350,9 @@ describe('composeOffer', () => {
 
   it('allows a revision while locked as long as the crew never filled', () => {
     const locked = lockedButUncrewed();
-    expect(offerOf(composeOffer(locked, aCompose()).state).phase).toBe(OfferPhase.Draft);
+    expect(
+      offerOf(composeOffer(locked, aCompose({ invited: [KEY_HERO, OTHER_HERO] })).state).phase
+    ).toBe(OfferPhase.Draft);
   });
 
   it('refuses a revision once the crew is filled', () => {
@@ -359,7 +452,10 @@ describe('proposeContractToHero — the key hero, and the mood pinned to the con
             // cannot pre-empt the checks these tests are actually about.
             requiredCrew: 2,
             negotiableTags: SortedSet.from(compareContentIds, [ids.deception, ids.open]),
-            offer: anOffer({ keyHero: KEY_HERO })
+            offer: anOffer({
+              keyHero: KEY_HERO,
+              invited: SortedSet.from(compareHeroIds, [KEY_HERO, OTHER_HERO])
+            })
           })
         ]
       ]),
@@ -382,6 +478,7 @@ describe('proposeContractToHero — the key hero, and the mood pinned to the con
       commandId: 2,
       contractId: ids.crypt,
       keyHero: KEY_HERO,
+      invited: [KEY_HERO, OTHER_HERO],
       advance: 0,
       methodTag: null,
       promisedBonus: 0,

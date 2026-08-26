@@ -1,9 +1,11 @@
 import { join, resolve } from 'node:path';
 
 import {
+  CommitmentState,
   ContractStatus,
   OfferPhase,
   ReasonCodes,
+  SortedMap,
   SortedSet,
   compareHeroIds,
   createContractState,
@@ -56,8 +58,14 @@ function lockedSingleHeroCampaign(): {
       advance: 10,
       promisedBonus: Math.min(20, contract.patronFee),
       phase: OfferPhase.Locked,
+      // One seat, one invited, one commitment recorded for the one acceptance
+      // (`RESOLUTION_SPEC` §2.5). Written out rather than composed through the engine
+      // for the reason this whole fixture is: it exists to hold a state where every
+      // round-tripped field has moved off its default, not to replay the protocol.
+      invited: keyOnly,
       respondedBy: keyOnly,
-      acceptedBy: keyOnly
+      acceptedBy: keyOnly,
+      commitments: SortedMap.from(compareHeroIds, [[heroKey!, CommitmentState.Committed]])
     }
   });
 
@@ -222,7 +230,15 @@ describe('snapshot codec', () => {
       ...base,
       contracts: base.contracts.set(contractKey!, {
         ...contract,
-        offer: { ...contract.offer, keyHero: heroKey! }
+        // One seat, so the key hero is the whole crew (`RESOLUTION_SPEC` §2.5) — the
+        // shipped crypt asks for four, and this case is about a decision surviving a
+        // round trip, not about filling a crew.
+        requiredCrew: 1,
+        offer: {
+          ...contract.offer,
+          keyHero: heroKey!,
+          invited: SortedSet.from(compareHeroIds, [heroKey!])
+        }
       })
     };
     const result = proposeContractToHero(keyed, {

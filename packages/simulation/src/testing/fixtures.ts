@@ -4,6 +4,9 @@ import { SortedSet } from '../collections/sorted-set.ts';
 import type { CausalTrace } from '../decisions/causal-trace.ts';
 import type { DecisionContext } from '../decisions/context.ts';
 import type { HeldTrait } from '../decisions/held-trait.ts';
+import { CommitmentState } from '../domain/commitment.ts';
+import { NeedId } from '../domain/need-id.ts';
+import { compareNeedIds } from '../domain/need-id.ts';
 import type { DomainEvent } from '../events/domain-event.ts';
 import { compareContentIds, parseContentId, type ContentId } from '../ids/content-id.ts';
 import { compareHeroIds, heroId, type HeroId } from '../ids/hero-id.ts';
@@ -83,9 +86,48 @@ export function sixTags(): SortedSet<ContentId> {
   );
 }
 
-/** An `OfferState`, for tests overriding just the terms or answers they need. */
+/**
+ * An `OfferState`, for tests overriding just the terms or answers they need.
+ *
+ * **Valid by default, and that is what the two derived fields below are for.** Once
+ * `RESOLUTION_SPEC` §2.5 tied `invited` to `keyHero` and `commitments` to `acceptedBy`,
+ * every existing fixture that named a key hero — dozens of them, none of which is about
+ * a crew — would have had to name a crew too, or fail a constructor for a reason its
+ * test is not asking about. So an offer that names a key hero and no `invited` invites
+ * exactly the heroes it has already asked, and one that names acceptances and no
+ * `commitments` records a plain `Committed` for each.
+ *
+ * A test *about* either field passes it explicitly, which is what every violation case
+ * in `offer-state.test.ts` does — the defaults cannot mask a broken invariant, because
+ * naming the field is how you ask about it.
+ */
 export function anOffer(overrides: Partial<OfferState> = {}): OfferState {
-  return { ...initialOffer(), ...overrides };
+  const offer = { ...initialOffer(), ...overrides };
+
+  if (offer.keyHero !== null && overrides.invited === undefined) {
+    const invited = [offer.keyHero, ...offer.respondedBy.values(), ...offer.acceptedBy.values()];
+    return { ...offer, ...defaultCommitments(overrides, SortedSet.from(compareHeroIds, invited)) };
+  }
+
+  return { ...offer, ...defaultCommitments(overrides, offer.invited) };
+}
+
+function defaultCommitments(
+  overrides: Partial<OfferState>,
+  invited: SortedSet<HeroId>
+): Pick<OfferState, 'invited'> | Pick<OfferState, 'invited' | 'commitments'> {
+  if (overrides.commitments !== undefined) {
+    return { invited };
+  }
+
+  const acceptedBy = overrides.acceptedBy ?? SortedSet.empty<HeroId>(compareHeroIds);
+  return {
+    invited,
+    commitments: SortedMap.from(
+      compareHeroIds,
+      acceptedBy.values().map((hero) => [hero, CommitmentState.Committed] as const)
+    )
+  };
 }
 
 export function aHero(overrides: Partial<HeroState> = {}): HeroState {
@@ -97,6 +139,14 @@ export function aHero(overrides: Partial<HeroState> = {}): HeroState {
     caution: 30,
     pride: 45,
     trustInGuild: 50,
+    capability: {
+      grade: 50,
+      expertise: SortedMap.from<NeedId, number>(compareNeedIds, [
+        [NeedId.Frontline, 50],
+        [NeedId.Wilderness, 50]
+      ])
+    },
+    wounds: 0,
     traits: [],
     relationships: SortedMap.empty<ContentId, number>(compareContentIds),
     believesGuildPromises: true,
@@ -111,11 +161,16 @@ export function aContract(overrides: Partial<ContractState> = {}): ContractState
     patronFee: 70,
     risk: 80,
     requiredCrew: 1,
+    needs: SortedMap.from<NeedId, number>(compareNeedIds, [
+      [NeedId.Frontline, 30],
+      [NeedId.UndeadKnowledge, 35]
+    ]),
     tags: SortedSet.from(compareContentIds, [ids.undead]),
     negotiableTags: SortedSet.empty<ContentId>(compareContentIds),
     status: ContractStatus.Offered,
     offer: anOffer(),
     moodOrdinals: SortedMap.empty<HeroId, bigint>(compareHeroIds),
+    resolution: null,
     ...overrides
   };
 }

@@ -4,7 +4,7 @@
   "display_name_key": "contract.fixture.warded_job.name",
   "patron_fee": 50,
   "risk": 0,
-  "required_crew": 2,
+  "required_crew": 4,
   "needs": {
     "frontline": 10,
     "wilderness": 10

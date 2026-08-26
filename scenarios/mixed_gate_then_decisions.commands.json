@@ -5,6 +5,9 @@
       "command_id": 1,
       "contract": "core:collect_the_debt",
       "key_hero_index": 1,
+      "invited_indexes": [
+        1
+      ],
       "advance": 30,
       "method_tag": null,
       "promised_bonus": 0,
@@ -22,6 +25,12 @@
       "command_id": 3,
       "contract": "core:escort_the_caravan",
       "key_hero_index": 0,
+      "invited_indexes": [
+        0,
+        1,
+        2,
+        3
+      ],
       "advance": 40,
       "method_tag": null,
       "promised_bonus": 0,
@@ -39,6 +48,12 @@
       "command_id": 5,
       "contract": "core:escort_the_caravan",
       "key_hero_index": 3,
+      "invited_indexes": [
+        0,
+        1,
+        2,
+        3
+      ],
       "advance": 40,
       "method_tag": null,
       "promised_bonus": 0,

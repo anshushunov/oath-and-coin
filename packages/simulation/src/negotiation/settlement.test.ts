@@ -93,6 +93,9 @@ function lockedButUncrewed(): GameState {
       offer: anOffer({
         keyHero: KEY,
         phase: OfferPhase.Locked,
+        // Two seats, two invited (`RESOLUTION_SPEC` §2.5) — the second never answered,
+        // which is what leaves the crew unfilled.
+        invited: SortedSet.from(compareHeroIds, [KEY, heroId(1)]),
         respondedBy: acceptedBy,
         acceptedBy
       })

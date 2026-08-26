@@ -76,7 +76,10 @@ const CONTRACT_FILE = {
   display_name_key: 'contract.core.cleanse_the_crypt.name',
   patron_fee: 70,
   risk: 0,
-  required_crew: 2,
+  // Three seats and three invited: the poll asks the invited crew minus whoever has
+  // already answered (`DEC-012` as amended, `RESOLUTION_SPEC` §8), so two events from one
+  // `pollCrew` needs two invited heroes besides the key one.
+  required_crew: 3,
   needs: { frontline: 10, wilderness: 10 },
   tags: []
 };
@@ -116,6 +119,7 @@ function pollCrewCampaign(): { readonly state: ReturnType<typeof createInitialSt
     commandId: 1,
     contractId: contractId!,
     keyHero: keyHero!,
+    invited: base.heroes.keys(),
     advance: 10,
     methodTag: null,
     promisedBonus: 0,

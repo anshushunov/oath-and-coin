@@ -119,3 +119,37 @@ export const MAX_NEEDS_PER_CONTRACT = 3;
  * field (`TDD` §18).
  */
 export const MAX_ARTIFACT_SAFE_TEXT_LENGTH = 256;
+
+/**
+ * Most wounds a save file may claim for one hero.
+ *
+ * **A read-path ceiling, not a domain rule.** `RESOLUTION_SPEC` §2.6 states plainly that
+ * M1 gives wounds no domain cap — they accumulate, they are visible, and nothing reads
+ * them — so this number must not be mistaken for one: it is the same kind of guard
+ * `MAX_ARTIFACT_SAFE_TEXT_LENGTH` is, and lives here for the same reason. A save is
+ * external data (`TDD` §18), and a hero claiming a wound count no sequence of contracts
+ * could have produced is a file to refuse, not a campaign to load.
+ *
+ * Generous by two orders of magnitude on purpose: a campaign of the length M1 plays
+ * cannot approach it, so a legitimate save never brushes this the way a real
+ * `content_version` never brushes the text ceiling. Raising the domain cap later, if one
+ * is ever introduced, is a separate decision from raising this.
+ */
+export const WOUNDS_CEILING = 10_000;
+
+/**
+ * Largest magnitude any number inside a stored `ContractResolution` may carry.
+ *
+ * The same argument as {@link WOUNDS_CEILING} and as the trace-factor ceiling in
+ * `save/snapshot-codec.ts`: these are *derived* quantities — coverage totals, margins,
+ * counterfactual deficit sizes — so no content bound constrains them directly, and
+ * `RESOLUTION_SPEC` §4.8 promises only that every one of them stays inside `int32`. What
+ * a save must not be able to do is claim a number outside that promise and hand the
+ * debrief screen arithmetic the engine could never have produced.
+ *
+ * Real values are small: a contribution is capped by `grade` (100), a requirement by a
+ * weight raised by risk (200), and a crew is at most six heroes over three needs. This
+ * ceiling sits far above all of them and far below `int32`, which is exactly where a
+ * guard against a tampered file belongs.
+ */
+export const MAX_RESOLUTION_MAGNITUDE = 1_000_000;

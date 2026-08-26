@@ -8,6 +8,7 @@ import {
   Actions,
   SortedMap,
   compareHeroIds,
+  SortedSet,
   composeOffer,
   parseContentId,
   proposeContractToHero,
@@ -125,7 +126,13 @@ function ran(files: Record<string, string>, contract: string): GameState {
     ...base,
     contracts: base.contracts.set(contractId, {
       ...target,
-      offer: { ...target.offer, keyHero: heroKey! }
+      // `invited` moves with `keyHero` (`RESOLUTION_SPEC` §2.5); every contract in
+      // these fixtures has one seat, so the key hero is the whole crew.
+      offer: {
+        ...target.offer,
+        keyHero: heroKey!,
+        invited: SortedSet.from(compareHeroIds, [heroKey!])
+      }
     })
   };
 
@@ -221,6 +228,7 @@ describe('rebuilding the answered steps from a state', () => {
       commandId: 2,
       contractId: contractKey!,
       keyHero: heroKey!,
+      invited: [heroKey!],
       advance: 10,
       methodTag: null,
       promisedBonus: 0,

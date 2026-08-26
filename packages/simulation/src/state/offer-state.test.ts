@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
+import { SortedMap } from '../collections/sorted-map.ts';
 import { SortedSet } from '../collections/sorted-set.ts';
+import { CommitmentState } from '../domain/commitment.ts';
 import { compareContentIds } from '../ids/content-id.ts';
 import { compareHeroIds, heroId, type HeroId } from '../ids/hero-id.ts';
 import { aContract, anOffer, heroes, ids, setOf, sixTags } from '../testing/fixtures.ts';
@@ -23,8 +25,10 @@ describe('initialOffer', () => {
       methodTag: null,
       promisedBonus: 0,
       phase: OfferPhase.Draft,
+      invited: SortedSet.empty<HeroId>(compareHeroIds),
       respondedBy: SortedSet.empty<HeroId>(compareHeroIds),
-      acceptedBy: SortedSet.empty<HeroId>(compareHeroIds)
+      acceptedBy: SortedSet.empty<HeroId>(compareHeroIds),
+      commitments: SortedMap.empty<HeroId, CommitmentState>(compareHeroIds)
     });
   });
 });
@@ -123,6 +127,115 @@ describe('createContractState invariants (NEGOTIATION_SPEC §2.1)', () => {
         aContract({ tags: sixTags(), offer: anOffer({ methodTag: ids.deception }) })
       )
     ).toThrow(/tags/);
+  });
+});
+
+describe('createContractState — the crew invariants RESOLUTION_SPEC §2.5 adds', () => {
+  it('lets an offer nobody has composed yet invite nobody', () => {
+    // The conditional half of the rule, and the reason it is conditional: the loader
+    // builds every contract's starting offer with `keyHero: null` before any command
+    // runs (`NEGOTIATION_SPEC` §6.1), so an unconditional `invited.size === requiredCrew`
+    // would mean a campaign assembled from content cannot pass its own constructor.
+    expect(() => createContractState(aContract({ offer: anOffer() }))).not.toThrow();
+  });
+
+  it('refuses an uncomposed offer that has invited somebody anyway', () => {
+    expect(() =>
+      createContractState(aContract({ offer: anOffer({ keyHero: null, invited: heroes(0) }) }))
+    ).toThrow(/has no key hero/);
+  });
+
+  it.each([1, 3])('refuses a crew of %i where the contract declared 2 seats', (size) => {
+    expect(() =>
+      createContractState(
+        aContract({
+          requiredCrew: 2,
+          offer: anOffer({ keyHero: heroId(0), invited: heroes(...[0, 1, 2].slice(0, size)) })
+        })
+      )
+    ).toThrow(/invites exactly as many heroes as the job has places/);
+  });
+
+  it('accepts a crew of exactly the seats declared', () => {
+    expect(() =>
+      createContractState(
+        aContract({
+          requiredCrew: 2,
+          offer: anOffer({ keyHero: heroId(0), invited: heroes(0, 1) })
+        })
+      )
+    ).not.toThrow();
+  });
+
+  it('refuses a key hero who is not among the invited', () => {
+    expect(() =>
+      createContractState(
+        aContract({ requiredCrew: 1, offer: anOffer({ keyHero: heroId(0), invited: heroes(1) }) })
+      )
+    ).toThrow(/key hero/);
+  });
+
+  it('refuses an answer from someone who was never invited', () => {
+    // `respondedBy ⊆ invited`. Distinct from the draft rule above it: that one bounds
+    // *when* a non-key hero may answer, this one bounds *who* may answer at all.
+    expect(() =>
+      createContractState(
+        aContract({
+          requiredCrew: 2,
+          status: 'offered',
+          offer: anOffer({
+            phase: OfferPhase.Locked,
+            keyHero: heroId(0),
+            invited: heroes(0, 1),
+            respondedBy: heroes(0, 2)
+          })
+        })
+      )
+    ).toThrow(/invited/);
+  });
+
+  it('refuses an acceptance with no commitment recorded for it', () => {
+    // `commitments.keys() === acceptedBy`, the same argument §2.5 makes for it: without
+    // the equality, `commitments.get(hero)` in the resolver returns `undefined` for a
+    // hero who is demonstrably on the crew.
+    expect(() =>
+      createContractState(
+        aContract({
+          requiredCrew: 1,
+          status: 'crewed',
+          offer: anOffer({
+            phase: OfferPhase.Locked,
+            keyHero: heroId(0),
+            invited: heroes(0),
+            respondedBy: heroes(0),
+            acceptedBy: heroes(0),
+            commitments: SortedMap.empty<HeroId, CommitmentState>(compareHeroIds)
+          })
+        })
+      )
+    ).toThrow(/commitment/);
+  });
+
+  it('refuses a commitment recorded for someone who did not accept', () => {
+    expect(() =>
+      createContractState(
+        aContract({
+          requiredCrew: 2,
+          status: 'offered',
+          offer: anOffer({
+            phase: OfferPhase.Locked,
+            keyHero: heroId(0),
+            invited: heroes(0, 1),
+            respondedBy: heroes(0),
+            acceptedBy: heroes(0),
+            commitments: SortedMap.from(compareHeroIds, [
+              [heroId(0), CommitmentState.Committed],
+              [heroId(1), CommitmentState.Committed]
+            ])
+          })
+        })
+      )
+    ).toThrow(/commitment/);
   });
 });
 

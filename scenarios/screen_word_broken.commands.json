@@ -5,6 +5,9 @@
       "command_id": 1,
       "contract": "core:collect_the_debt",
       "key_hero_index": 0,
+      "invited_indexes": [
+        0
+      ],
       "advance": 20,
       "method_tag": null,
       "promised_bonus": 5,

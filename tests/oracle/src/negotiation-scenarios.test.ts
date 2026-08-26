@@ -218,28 +218,32 @@ describe('witness_remembers', () => {
   });
 });
 
-describe('crew_overflows_the_seats', () => {
-  it('answers every hero, but seats only requiredCrew of the ones who accepted', () => {
-    const outcome = run('crew_overflows_the_seats');
+describe('crew_cannot_overflow_the_seats', () => {
+  it('cannot ask more heroes than the package invited, so no seat can be lost to a race', () => {
+    // **Renamed from `crew_overflows_the_seats`, and the rename is the finding.** The
+    // scenario used to demonstrate a real race: `pollCrew` asked the whole remaining
+    // roster, more heroes accepted than there were seats, and the engine had to seat
+    // the first `requiredCrew` of them and leave the rest answered-but-unseated. Under
+    // the amended `DEC-012` (`RESOLUTION_SPEC` §8) the crew is part of the package —
+    // `invited.size === requiredCrew`, and only an invited hero is ever asked — so that
+    // state is no longer reachable at all. The file stays because a full poll is still
+    // worth running end to end; the claim it makes is the opposite one.
+    const outcome = run('crew_cannot_overflow_the_seats');
     const poll = outcome.steps.at(-1);
     const contract = outcome.finalState.contracts.get('fixture:crew_job' as never);
 
     expect(contract?.requiredCrew).toBe(2);
-    expect(contract?.offer.acceptedBy.values()).toHaveLength(2);
+    expect(contract?.offer.invited.values()).toHaveLength(2);
 
-    const acceptedByPoll = (poll?.decisions ?? []).filter(
-      (d) => d.selectedAction === 'action:accept'
-    );
-    // More heroes said yes than the two seats could hold.
-    expect(acceptedByPoll.length).toBeGreaterThan(
-      contract!.requiredCrew - 1 /* the key already took one */
-    );
+    // Nobody outside the invited crew was asked, however many heroes the roster holds.
+    for (const heroId of contract?.offer.respondedBy.values() ?? []) {
+      expect(contract?.offer.invited.has(heroId)).toBe(true);
+    }
 
-    const seated = new Set(contract?.offer.acceptedBy.values());
-    const respondedButNotSeated = (contract?.offer.respondedBy.values() ?? []).filter(
-      (heroId) => !seated.has(heroId)
-    );
-    expect(respondedButNotSeated.length).toBeGreaterThan(0);
+    // And the seats cannot overflow: every acceptance is an invited hero, and there are
+    // exactly as many invited heroes as seats.
+    expect(contract!.offer.acceptedBy.size).toBeLessThanOrEqual(contract!.requiredCrew);
+    expect((poll?.decisions ?? []).length).toBeLessThanOrEqual(contract!.requiredCrew);
   });
 });
 
