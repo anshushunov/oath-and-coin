@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { SortedMap } from '../collections/sorted-map.ts';
 import { SortedSet } from '../collections/sorted-set.ts';
 import { CommitmentState } from '../domain/commitment.ts';
-import { proposeContractToHero } from '../engine.ts';
+import { pollCrew, proposeContractToHero } from '../engine.ts';
 import { compareContentIds, type ContentId } from '../ids/content-id.ts';
 import { compareHeroIds, heroId, type HeroId } from '../ids/hero-id.ts';
 import { ContractStatus } from '../state/contract-state.ts';
@@ -218,6 +218,114 @@ describe('where the commitment is computed (RESOLUTION_SPEC §2.4)', () => {
 
     expect(contractOf(crewed, ids.crypt).offer.commitments.get(KEY_HERO)).toBe(atAnswer);
     expect(atAnswer).toBe(CommitmentState.Fragile);
+  });
+
+  it('runs the counterfactual on the ordinal the mood was pinned to, not on the next one', () => {
+    // The one case in this file decided *inside* the mood band, and deliberately: every
+    // other fixture sits far outside it so no case turns on a particular draw — which is
+    // exactly why none of them can see which ordinal the counterfactual was handed. Here
+    // the counterfactual's whole answer is the mood.
+    //
+    // The hero's mood is already pinned to ordinal 4 (`NEGOTIATION_SPEC` §2.1.1: pinned on
+    // the first draw, not redrawn on every revised package), while the campaign's next
+    // ordinal is 2 — so the pinned one and the fresh one are different numbers that draw
+    // different moods (−5 and +4 at seed 7).
+    //
+    // Pay of 1 and a bonus of 40. With the bonus the hero accepts by a mile either way.
+    // Without it the counterfactual scores 1 + mood: −4 on the pinned ordinal (declines →
+    // fragile), +5 on the campaign's next one (accepts → committed). So a counterfactual
+    // handed `state.metadata.nextDecisionOrdinal`, or `context.decisionOrdinal + 1n`
+    // (ordinal 5 draws +3), answers `committed` and this case is red.
+    const hero = aHero({
+      id: KEY_HERO,
+      greed: 100,
+      caution: 0,
+      pride: 0,
+      trustInGuild: 0
+    });
+    const contract = aContract({
+      patronFee: 70,
+      risk: 0,
+      requiredCrew: 1,
+      moodOrdinals: SortedMap.from<HeroId, bigint>(compareHeroIds, [[KEY_HERO, 4n]]),
+      offer: anOffer({ keyHero: KEY_HERO, advance: 1, promisedBonus: 40 })
+    });
+    const state = aState({
+      metadata: { ...aState().metadata, nextDecisionOrdinal: 2n },
+      heroes: SortedMap.from(compareHeroIds, [[KEY_HERO, hero]]),
+      contracts: SortedMap.from(compareContentIds, [[contract.id, contract]])
+    });
+
+    const answered = proposeContractToHero(state, {
+      commandId: 1,
+      heroId: KEY_HERO,
+      contractId: ids.crypt,
+      expectedStateVersion: 0
+    });
+
+    expect(contractOf(answered.state, ids.crypt).offer.acceptedBy.has(KEY_HERO)).toBe(true);
+    expect(contractOf(answered.state, ids.crypt).offer.commitments.get(KEY_HERO)).toBe(
+      CommitmentState.Fragile
+    );
+    // A pinned mood is a mood already drawn, so neither run spends anything.
+    expect(answered.state.metadata.nextDecisionOrdinal).toBe(2n);
+  });
+
+  it('records an aggrieved crew member polled into the crew as resentful', () => {
+    // `pollCrew` is the second caller of the rule and had no test of the *value* it
+    // writes: the mutant that puts `CommitmentState.Committed` back in that one line
+    // keeps `commitments.keys() === acceptedBy` intact and stays green on every shipped
+    // scenario, because nobody polled in them carries a grievance. This crew member does.
+    //
+    // Not the key hero, so no bonus reaches him and the counterfactual is the same
+    // decision he just made — without §2.4 step 1 he would read `committed`.
+    const key = aHero({ id: KEY_HERO, greed: 100, caution: 0, pride: 0, trustInGuild: 0 });
+    const aggrieved = aHero({
+      id: COMRADE,
+      definition: ids.doran,
+      greed: 100,
+      caution: 0,
+      pride: 0,
+      trustInGuild: 0,
+      grievance: 20
+    });
+    const accepted = SortedSet.from(compareHeroIds, [KEY_HERO]);
+
+    const contract = aContract({
+      patronFee: 70,
+      risk: 0,
+      requiredCrew: 2,
+      status: ContractStatus.Offered,
+      offer: anOffer({
+        keyHero: KEY_HERO,
+        advance: 60,
+        promisedBonus: 0,
+        phase: OfferPhase.Locked,
+        invited: SortedSet.from(compareHeroIds, [KEY_HERO, COMRADE]),
+        respondedBy: accepted,
+        acceptedBy: accepted
+      })
+    });
+    const state = aState({
+      heroes: SortedMap.from(compareHeroIds, [
+        [KEY_HERO, key],
+        [COMRADE, aggrieved]
+      ]),
+      contracts: SortedMap.from(compareContentIds, [[contract.id, contract]])
+    });
+
+    const polled = pollCrew(state, {
+      commandId: 1,
+      contractId: ids.crypt,
+      expectedStateVersion: 0
+    });
+
+    const offer = contractOf(polled.state, ids.crypt).offer;
+
+    expect(offer.acceptedBy.has(COMRADE)).toBe(true);
+    expect(offer.commitments.get(COMRADE)).toBe(CommitmentState.Resentful);
+    // §2.5's invariant, restated where a second writer could break it.
+    expect(offer.commitments.keys()).toEqual(offer.acceptedBy.values());
   });
 
   it('spends no randomness on the counterfactual', () => {

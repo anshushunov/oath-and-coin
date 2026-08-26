@@ -39,6 +39,23 @@ import { CommitmentState } from '../domain/commitment.ts';
  * `withEvent`, not by the rule — so drawing the same mood from the same ordinal a second
  * time costs nothing. What this returns is discarded except for the answer, including the
  * trace and the `ordinalsConsumed` the second run reports (`ADR-003`).
+ *
+ * **Two of §2.4's clauses cannot be tested, and saying so is the honest thing to do.**
+ * External review named mutants for both; both were measured and both survive the whole
+ * suite, for the same reason: the second run's result is discarded except for one boolean.
+ *
+ * - *"the same `traceId`"* — the counterfactual's trace never leaves this function, and
+ *   `traceId` is not an input to the score. Handing the second run a different one cannot
+ *   change any observable. It is passed anyway because the context is the answer's own,
+ *   not a lookalike assembled here.
+ * - *"without recomputing"* on the grievance path — running `decide` and throwing the
+ *   result away is invisible from outside. What *is* observable is the **order**: an
+ *   aggrieved hero whose counterfactual accepts must still read `Resentful`, and
+ *   `commitment.test.ts` holds exactly that case.
+ *
+ * Closing either would take a call-count spy on `decide` — a test of how this function is
+ * written rather than of what it answers. Left untested on purpose; do not add one and do
+ * not assume the omission was an oversight.
  */
 export function commitmentFor(context: DecisionContext): CommitmentState {
   if (context.hero.grievance > 0) {
