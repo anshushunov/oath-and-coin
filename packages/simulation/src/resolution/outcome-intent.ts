@@ -5,6 +5,7 @@ import { compareNeedIds, type NeedId } from '../domain/need-id.ts';
 import {
   CoverageVerdict,
   DeficitKind,
+  OutcomeGrade,
   OutcomeIntentKind,
   type NeedCoverage,
   type OutcomeIntent
@@ -14,6 +15,7 @@ import { compareHeroIds } from '../ids/hero-id.ts';
 import { multiplyInt32, toInt32 } from '../integer-division.ts';
 
 import { coverNeeds, type CoverageContext, type CoverageParticipant } from './needs-coverage.ts';
+import { termsOf } from './outcome-grade.ts';
 
 /**
  * What the resolver says happened, in the order it happened (`RESOLUTION_SPEC` §4.4),
@@ -122,16 +124,25 @@ export function falteredEarlyIntentsFor(input: IntentInput): readonly OutcomeInt
 }
 
 /**
- * Whether the objective was taken, by the sign of the margin (`RESOLUTION_SPEC` §4.4).
+ * Whether the objective was taken (`RESOLUTION_SPEC` §4.4, §5.3).
+ *
+ * **Read off the grade, not off the sign of the margin.** The two disagree on a whole band
+ * of outcomes and the spec used to say both. "Costly" reaches below zero on purpose (§4.6)
+ * — a crew one point short of a hundred still did the job — and §5.3 pays that crew the
+ * full fee. Taking the sign instead would put "the objective was lost" in the feed at
+ * exactly the outcomes the patron pays for as taken. Owner's decision, 2026-08-27: costly
+ * means *done, and it cost you*.
+ *
+ * This is also why `gradeFromIntents` cannot read this intent: the grade decides it, so
+ * asking it to read the answer would close a circle. The order is coverage → margin →
+ * grade → objective (§4.6).
  *
  * A list of one rather than a bare intent, so a caller concatenating §4.4's kinds does not
  * have to special-case this one — and so a later rule that answers with none or two does
  * not change the shape at every call site.
- *
- * Zero counts as taken: the crew met what was asked exactly, which is not a failure.
  */
-export function objectiveIntentsFor(margin: number): readonly OutcomeIntent[] {
-  const taken = margin >= 0;
+export function objectiveIntentsFor(grade: OutcomeGrade): readonly OutcomeIntent[] {
+  const taken = termsOf(grade).objectiveTaken;
 
   return [
     {

@@ -100,6 +100,26 @@ describe('the step an outcome lands on (§4.6)', () => {
     expect(gradeAt(at - 1)).toBe(below);
   });
 
+  it.each([
+    // `totalRequired = 99`, so neither boundary lands on a whole margin and the
+    // cross-multiplication is the only thing that puts it in the right place.
+    // Costly holds while `margin × 100 >= −(10 × 99) = −990`, i.e. down to −9.
+    [-8, OutcomeGrade.Costly],
+    [-9, OutcomeGrade.Costly],
+    [-10, OutcomeGrade.Failed],
+    // Failed holds while `margin × 100 >= −(35 × 99) = −3465`, i.e. down to −34.
+    [-33, OutcomeGrade.Failed],
+    [-34, OutcomeGrade.Failed],
+    [-35, OutcomeGrade.Disaster]
+  ])('a margin of %i against a requirement of 99 is %s', (margin, expected) => {
+    // A requirement that is not a round hundred is what tells the spec's rule apart from
+    // the tempting rearrangement `divideTowardZero(margin × 100, totalRequired) >= −10`.
+    // At `totalRequired = 100` the two agree everywhere; at 99 and a margin of −10 the
+    // rearrangement truncates −10.10 to −10 and answers `costly` where the rule answers
+    // `failed`. Every other table in this file runs at 100 and cannot see it.
+    expect(gradeFromIntents({ intents: allClosed, margin, totalRequired: 99 })).toBe(expected);
+  });
+
   it('scales the thresholds with what was asked, rather than fixing them in points', () => {
     // A margin of −20 is a disaster against a requirement of 50 and merely costly against
     // one of 200. Fixed thresholds would make a small contract impossible to fail gently

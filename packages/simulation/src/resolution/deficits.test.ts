@@ -105,6 +105,27 @@ describe('what a deficit is worth (§4.7)', () => {
     expect(ranked[0]!.heroes).toEqual([heroId(1)]);
   });
 
+  it('answers in a canonical order, whatever order the crew and the intents arrived in', () => {
+    // Two needs and three answerable heroes, all handed over backwards. The result reaches
+    // the determinism artifact, so "whatever order the caller assembled its list in" is
+    // not an acceptable answer — and every other case here passes data already sorted,
+    // where dropping the sorts is invisible.
+    const { ranked } = rankDeficits({
+      intents: [
+        short(NeedId.Wilderness, -20, DeficitKind.Coverage),
+        short(NeedId.Frontline, -20, DeficitKind.Coverage)
+      ],
+      crew: [
+        member(5, CommitmentState.Committed, [NeedId.Wilderness]),
+        member(3, CommitmentState.Committed, [NeedId.Frontline]),
+        member(1, CommitmentState.Committed, [NeedId.Wilderness])
+      ]
+    });
+
+    expect(ranked[0]!.needs).toEqual([NeedId.Frontline, NeedId.Wilderness]);
+    expect(ranked[0]!.heroes).toEqual([heroId(1), heroId(3), heroId(5)]);
+  });
+
   it('leaves a deficit with nothing to answer for out of the list entirely', () => {
     expect(
       kindsOf({
@@ -184,6 +205,22 @@ describe('what unwillingness costs (§4.7, §4.5)', () => {
     expect(drag?.heroes).toEqual([heroId(0), heroId(2), heroId(3)]);
     // Not about any one need — it is about the people.
     expect(drag?.needs).toEqual([]);
+  });
+
+  it('names them in hero-id order even when the crew arrived backwards', () => {
+    // Same reason as the coverage case: the list reaches the artifact. Handed in
+    // descending order, so "keep the order given" answers 5, 3, 1.
+    const { ranked } = rankDeficits({
+      intents: [short(NeedId.Frontline, -40, DeficitKind.Capability)],
+      crew: [
+        member(5, CommitmentState.Resentful, [NeedId.Frontline]),
+        member(3, CommitmentState.Fragile, [NeedId.Frontline]),
+        member(1, CommitmentState.Resentful, [NeedId.Frontline])
+      ]
+    });
+    const drag = ranked.find((deficit) => deficit.kind === DeficitKind.Commitment);
+
+    expect(drag?.heroes).toEqual([heroId(1), heroId(3), heroId(5)]);
   });
 });
 
