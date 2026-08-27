@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { SortedMap } from '../collections/sorted-map.ts';
 import { Actions } from '../decisions/actions.ts';
 import { proposeContractToHero } from '../engine.ts';
+import type { DomainEvent } from '../events/domain-event.ts';
 import { heroId } from '../ids/hero-id.ts';
 import {
   aContract,
@@ -14,7 +15,7 @@ import {
 } from '../testing/fixtures.ts';
 
 import type { ProposeContractToHero } from './propose-contract-to-hero.ts';
-import { fromDecisions } from './command-result.ts';
+import { fromDecisions, fromEvents } from './command-result.ts';
 
 /**
  * `CommandResult.decisions` carries every decision a command produced, not one — the
@@ -61,5 +62,46 @@ describe('a command result carries every decision it produced', () => {
 
   it('refuses a result whose decisions and events disagree in number', () => {
     expect(() => fromDecisions(aState(), [anAcceptance()], [])).toThrow(/one decision per event/);
+  });
+});
+
+describe('a command whose several events explain themselves (`RESOLUTION_SPEC` §3.3)', () => {
+  const anOutcomeEvent = (eventId: number, causalTraceId: number | null = null): DomainEvent => ({
+    kind: 'objective_taken',
+    eventId,
+    logicalTime: 0,
+    causalTraceId,
+    contractId: ids.crypt
+  });
+
+  it('carries all of them, with no decisions to pair', () => {
+    // The shape neither other constructor can build: `fromEvent` takes exactly one, and
+    // `fromDecisions` demands a `DecisionResult` per event. A resolution has as many
+    // events as the outcome had things to say and nobody chose any of them.
+    const state = aState();
+    const events = [anOutcomeEvent(0), anOutcomeEvent(1), anOutcomeEvent(2)];
+    const result = fromEvents(state, events);
+
+    expect(result.applied).toBe(true);
+    expect(result.rejectionCode).toBeNull();
+    expect(result.events).toEqual(events);
+    expect(result.decisions).toEqual([]);
+    expect(Object.is(result.state, state)).toBe(true);
+  });
+
+  it('refuses an event that carries an explanation', () => {
+    // A traced event is a decision, and a decision belongs in `fromDecisions` paired with
+    // what explains it. Checked on every event, not only the first — a list where the
+    // third one carries a trace is exactly what a loop testing `events[0]` would admit.
+    expect(() =>
+      fromEvents(aState(), [anOutcomeEvent(0), anOutcomeEvent(1), anOutcomeEvent(2, 7)])
+    ).toThrow(/causalTraceId/u);
+  });
+
+  it('refuses an empty list', () => {
+    // A command that applied and produced nothing would grow `appliedCommandIds` without
+    // growing `history` — the counter invariant `validate-game-state.ts` holds, and the
+    // failure `pollCrew`'s own `NobodyLeftToPoll` exists to prevent one command earlier.
+    expect(() => fromEvents(aState(), [])).toThrow(/no events/u);
   });
 });

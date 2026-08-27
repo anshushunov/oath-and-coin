@@ -17,6 +17,7 @@ import {
   createContractState,
   deepEqual,
   proposeContractToHero,
+  resolveContract,
   settleContract,
   type ContentId,
   type ContractResolution,
@@ -85,6 +86,31 @@ function lockedSingleHeroCampaign(): {
 }
 
 /**
+ * The same campaign, with its crew already sent out and back (`RESOLUTION_SPEC` §3).
+ *
+ * Every fixture below that settles goes through here first, because since Task 8 there is
+ * no such thing as a settleable contract that has not been resolved — `settleContract`
+ * refuses one with `NotResolved` (§2.5). Driven through the real command rather than by
+ * writing a `ContractResolution` in by hand: what these tests round-trip has to be a
+ * history and a result this build actually produces, events and all.
+ */
+function resolvedFrom(state: GameState, contractId: ContentId): GameState {
+  const resolved = resolveContract(state, {
+    commandId: 100,
+    contractId,
+    expectedStateVersion: state.metadata.stateVersion
+  });
+
+  if (!resolved.applied) {
+    throw new Error(
+      `resolvedFrom: resolveContract was refused (${String(resolved.rejectionCode)}).`
+    );
+  }
+
+  return resolved.state;
+}
+
+/**
  * A campaign carrying every field `DEC-008` added, all away from their defaults at
  * once: an aggrieved hero (`grievance > 0`), a hero who stopped believing the
  * guild's word (`believesGuildPromises = false`), and a treasury that has actually
@@ -97,7 +123,8 @@ function lockedSingleHeroCampaign(): {
  * round-trips whatever that produced.
  */
 function campaignWithABrokenPromise(): GameState {
-  const { state: locked, contractId } = lockedSingleHeroCampaign();
+  const { state: unresolved, contractId } = lockedSingleHeroCampaign();
+  const locked = resolvedFrom(unresolved, contractId);
 
   const settled = settleContract(locked, {
     commandId: 1,
@@ -124,7 +151,8 @@ function campaignWithABrokenPromise(): GameState {
  * engine's own ternary and the four exhaustive consumers, never in an `expect`).
  */
 function campaignWithAKeptPromise(): GameState {
-  const { state: locked, contractId } = lockedSingleHeroCampaign();
+  const { state: unresolved, contractId } = lockedSingleHeroCampaign();
+  const locked = resolvedFrom(unresolved, contractId);
 
   const settled = settleContract(locked, {
     commandId: 1,

@@ -157,6 +157,7 @@ export {
   lockOffer,
   pollCrew,
   proposeContractToHero,
+  resolveContract,
   settleContract
 } from './engine.ts';
 export { divideTowardZero, multiplyInt32, toInt32 } from './integer-division.ts';
@@ -174,15 +175,24 @@ export {
   reservedCommitments
 } from './negotiation/commitments.ts';
 
-export type {
-  ContractSettled,
-  ContractSettledPromiseBroken,
-  ContractSettledPromiseKept,
-  DomainEvent,
-  HeroAcceptedContract,
-  HeroDeclinedContract,
-  OfferLocked,
-  OfferRevised
+export {
+  heroNamedBy,
+  isAnswerToAnOffer,
+  type ContractResolved,
+  type ContractSettled,
+  type ContractSettledPromiseBroken,
+  type ContractSettledPromiseKept,
+  type DomainEvent,
+  type HeroAcceptedContract,
+  type HeroDeclinedContract,
+  type HeroFalteredEarly,
+  type HeroSufferedConsequence,
+  type NeedCovered,
+  type NeedShort,
+  type ObjectiveLost,
+  type ObjectiveTaken,
+  type OfferLocked,
+  type OfferRevised
 } from './events/domain-event.ts';
 
 export { ContractStatus, type ContractState } from './state/contract-state.ts';
@@ -207,6 +217,7 @@ export {
   RejectionCodes,
   fromDecisions,
   fromEvent,
+  fromEvents,
   rejected,
   type CommandResult,
   type RejectionCode
@@ -215,6 +226,7 @@ export type { ComposeOffer } from './commands/compose-offer.ts';
 export type { LockOffer } from './commands/lock-offer.ts';
 export type { PollCrew } from './commands/poll-crew.ts';
 export type { ProposeContractToHero } from './commands/propose-contract-to-hero.ts';
+export type { ResolveContract } from './commands/resolve-contract.ts';
 export type { SettleContract } from './commands/settle-contract.ts';
 
 export {

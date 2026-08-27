@@ -14,18 +14,30 @@ import { ContractStatus, OfferPhase, type ContractState } from './contract-state
  * what invariants are for: a state assembled by hand, or read back off a save file
  * somebody edited.
  *
- * **One row of §2.5 is deliberately not here yet: `phase === Settled ⇒ resolution !==
- * null`.** `settleContract` settles a locked, crewed contract today without any
- * resolution existing to require, and fourteen shipped scenarios do exactly that. The
- * rule lands with `resolveContract` — the command that can satisfy it — together with
- * the scenario rewrites that give every settlement a resolution to be settled against.
- * Enforcing it now would make a green tree impossible until then, which is a worse
- * trade than a rule arriving one task late with its absence written down.
+ * **§2.5's last row arrived here with `resolveContract`, exactly as its absence said it
+ * would.** `settleContract` used to settle a locked, crewed contract with no resolution
+ * to require, and the seven shipped scenarios that settle did precisely that; the rule
+ * lands with the command that can satisfy it, together with the scenario rewrites that
+ * give every settlement a resolution to be settled against, and together with
+ * `settleContract`'s own `NotResolved` refusal — so the state this rule forbids is
+ * refused as a value before it can be built and thrown about.
  */
 export function requireStoredResolutionConsistency(contract: ContractState): void {
   const { resolution, offer } = contract;
 
   if (resolution === null) {
+    // "Settled" means the money has moved for an outcome, and there is no outcome to have
+    // moved it for. The refusal a player meets is `settleContract`'s `NotResolved`; this
+    // is the same rule stated where a hand-built state or an edited save would otherwise
+    // slip past it (`RESOLUTION_SPEC` §2.5).
+    if (offer.phase === OfferPhase.Settled) {
+      throw new Error(
+        `Contract '${contract.id}' offer is in phase '${OfferPhase.Settled}' but carries no ` +
+          'resolution; a contract is settled against an outcome, and there is nothing to settle ' +
+          'against until the crew has come back.'
+      );
+    }
+
     return;
   }
 

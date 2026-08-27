@@ -36,15 +36,21 @@
       "expected_state_version": 3
     },
     {
-      "command": "settle_contract",
+      "command": "resolve_contract",
       "command_id": 5,
       "contract": "core:escort_the_caravan",
-      "pay": false,
       "expected_state_version": 6
     },
     {
-      "command": "compose_offer",
+      "command": "settle_contract",
       "command_id": 6,
+      "contract": "core:escort_the_caravan",
+      "pay": false,
+      "expected_state_version": 11
+    },
+    {
+      "command": "compose_offer",
+      "command_id": 7,
       "contract": "core:cleanse_the_crypt",
       "key_hero_index": 2,
       "invited_indexes": [
@@ -56,14 +62,14 @@
       "advance": 40,
       "method_tag": null,
       "promised_bonus": 20,
-      "expected_state_version": 7
+      "expected_state_version": 12
     },
     {
       "command": "propose_contract_to_hero",
-      "command_id": 7,
+      "command_id": 8,
       "contract": "core:cleanse_the_crypt",
       "hero_index": 2,
-      "expected_state_version": 8
+      "expected_state_version": 13
     }
   ]
 }

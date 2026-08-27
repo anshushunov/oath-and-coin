@@ -4,6 +4,7 @@ import {
   rejected,
   fromDecisions,
   fromEvent,
+  fromEvents,
   RejectionCodes,
   type CommandResult
 } from './commands/command-result.ts';
@@ -11,22 +12,32 @@ import type { ComposeOffer } from './commands/compose-offer.ts';
 import type { LockOffer } from './commands/lock-offer.ts';
 import type { PollCrew } from './commands/poll-crew.ts';
 import type { ProposeContractToHero } from './commands/propose-contract-to-hero.ts';
+import type { ResolveContract } from './commands/resolve-contract.ts';
 import type { SettleContract } from './commands/settle-contract.ts';
 import { Actions } from './decisions/actions.ts';
 import type { DecisionResult } from './decisions/causal-trace.ts';
 import { decide, type HeroDecision } from './decisions/contract-decision-rule.ts';
 import type { DecisionContext } from './decisions/context.ts';
 import type { HeldTrait } from './decisions/held-trait.ts';
+import { freezeDeep } from './freeze.ts';
 import type { CommitmentState } from './domain/commitment.ts';
+import {
+  ConsequenceKind,
+  OutcomeIntentKind,
+  type CoverageVerdict,
+  type OutcomeIntent,
+  type ResolutionDraft
+} from './domain/outcome.ts';
 import type { DomainEvent } from './events/domain-event.ts';
 import { compareContentIds, type ContentId } from './ids/content-id.ts';
 import { compareHeroIds, type HeroId } from './ids/hero-id.ts';
 import { canCover } from './negotiation/commitments.ts';
 import { GRIEVANCE_MAX, grievanceForBrokenPromise } from './negotiation/grievance.ts';
 import { commitmentFor } from './resolution/commitment.ts';
+import { draftResolution } from './resolution/contract-resolver.ts';
 import type { ContractState } from './state/contract-state.ts';
 import { ContractStatus } from './state/contract-state.ts';
-import { heroOf, withEvent, type GameState } from './state/game-state.ts';
+import { contractOf, heroOf, withEvent, type GameState } from './state/game-state.ts';
 import type { HeroState } from './state/hero-state.ts';
 import {
   createContractState,
@@ -764,12 +775,303 @@ export function pollCrew(state: GameState, command: PollCrew): CommandResult {
     decisions.push(decision.result);
   }
 
-  currentState = {
+  // Frozen again after the command id goes in, for the reason `resolveContract` records
+  // beside its own copy of this line: a spread of the frozen state `withEvent` answered
+  // with is a fresh, unfrozen root, and so is the `SortedSet` built here
+  // (`RESOLUTION_SPEC` §10.3). Found by external review of the sixth command; this one had
+  // the same shape since it was written.
+  currentState = freezeDeep({
     ...currentState,
     appliedCommandIds: currentState.appliedCommandIds.add(command.commandId)
-  };
+  });
 
   return fromDecisions(currentState, events, decisions);
+}
+
+/**
+ * Sends the crew out and records what came back (`RESOLUTION_SPEC` §3, the sixth command).
+ *
+ * Checks run in §3.2's order, and the order is part of the answer: two broken
+ * preconditions at once must produce the *same* refusal every time, not whichever this
+ * function happened to test first.
+ *
+ * **Phase and status are checked separately** (§3.2), because a locked but under-crewed
+ * package is reachable — an invited hero can decline — and the way out of that is a new
+ * package (`composeOffer`, §6.2), not a resolution. The phase check also exists at
+ * `requiredCrew === 1`, where the key hero fills the crew while the package is still a
+ * draft: without it a contract would be resolvable on terms the player can still edit.
+ *
+ * **The fold is `ADR-007`'s, one intent at a time** (§3.3): apply *this* intent's effect
+ * with a spread, then carry *this* intent's event through `withEvent`. Not every event
+ * first and every effect after — that would put the whole outcome outside the transitions
+ * that are supposed to contain it, and the stored resolution outside the deep freeze.
+ * `contract_resolved` is always the last intent, so the result lands inside the final
+ * transition rather than after it.
+ *
+ * Nothing here consumes randomness and nothing produces a decision: a resolution is not a
+ * choice anybody made (`ADR-003`, `ADR-007`).
+ */
+export function resolveContract(state: GameState, command: ResolveContract): CommandResult {
+  if (command.expectedStateVersion !== state.metadata.stateVersion) {
+    return rejected(state, RejectionCodes.StaleState);
+  }
+
+  if (state.appliedCommandIds.has(command.commandId)) {
+    return rejected(state, RejectionCodes.DuplicateCommand);
+  }
+
+  const contract = state.contracts.get(command.contractId);
+  if (contract === undefined) {
+    return rejected(state, RejectionCodes.UnknownContract);
+  }
+
+  if (contract.offer.phase !== OfferPhase.Locked) {
+    return rejected(state, RejectionCodes.OfferNotLocked);
+  }
+
+  if (contract.status !== ContractStatus.Crewed) {
+    return rejected(state, RejectionCodes.CrewNotFilled);
+  }
+
+  // `invited` and `acceptedBy` equal **as sets** (§3.2) — both directions, and the second
+  // one is not redundant. The first edition of this check tested only "every invited hero
+  // accepted", on the reasoning that the sizes are equal by the checks above; they are
+  // not. The status check immediately before compares a *string* against `Crewed`, and on
+  // a state assembled by hand — or read off an edited save — a contract can say `crewed`
+  // while its two sets are any size at all. `invited = {A}` with `acceptedBy = {A, B}`
+  // then passed, and B, whom this package never asked, went out with the crew. Found by
+  // external review.
+  //
+  // A guard against exactly that: through `createContractState` the two are equal by
+  // construction (`acceptedBy ⊆ respondedBy ⊆ invited`, both of size `requiredCrew`), the
+  // same standing as `pollCrew`'s `hasRoom`.
+  const { invited, acceptedBy } = contract.offer;
+  if (
+    invited.size !== acceptedBy.size ||
+    !invited.values().every((heroId) => acceptedBy.has(heroId))
+  ) {
+    return rejected(state, RejectionCodes.CrewNotFilled);
+  }
+
+  if (contract.resolution !== null) {
+    return rejected(state, RejectionCodes.AlreadyResolved);
+  }
+
+  const draft = draftResolution({
+    contract,
+    // In `acceptedBy`'s own hero-id order. `commitments.keys() === acceptedBy` is an
+    // invariant of every `ContractState` this package can build, so the lookup cannot
+    // miss — and if it ever did, the resolver would have to invent a state for a man who
+    // demonstrably answered, which is the guess §2.4 exists to prevent.
+    crew: contract.offer.acceptedBy.values().map((heroId) => ({
+      hero: heroOf(state, heroId),
+      commitment: commitmentOf(contract, heroId)
+    }))
+  });
+
+  const frames = foldOutcome(state, draft, command.contractId);
+  const settledState = frames.at(-1)?.state ?? state;
+
+  return fromEvents(
+    // Frozen again after the command id goes in: `withEvent` deep-freezes the state it
+    // answers with, and a spread of a frozen object is a fresh, *unfrozen* one — so the
+    // root a caller received was mutable, along with the `SortedSet` this line creates,
+    // however deeply frozen everything below it was (`RESOLUTION_SPEC` §10.3). Found by
+    // external review; `pollCrew` had the same shape and is fixed with it.
+    freezeDeep({
+      ...settledState,
+      appliedCommandIds: settledState.appliedCommandIds.add(command.commandId)
+    }),
+    frames.map((frame) => frame.event)
+  );
+}
+
+/** One event of a resolution, and the campaign as it stood the moment that event landed. */
+export interface OutcomeFrame {
+  readonly event: DomainEvent;
+  readonly state: GameState;
+}
+
+/**
+ * `RESOLUTION_SPEC` §3.3's fold, as the sequence of states it passes through.
+ *
+ * **Named and answered as frames rather than run inline, and that is a testability
+ * decision made on purpose.** §10.3 requires checking the state *after each event*, and
+ * the rule this fold exists to obey — each intent's effect goes in before that intent's
+ * own event — has no observable consequence in the final state at all: applying every
+ * effect first and then raising every event answers with the identical campaign, the
+ * identical events, and an identically frozen result. External review found exactly that
+ * hole in the check that was here. The frames are the smallest seam that closes it.
+ *
+ * Deliberately **not** exported from the package index. Nothing outside this package
+ * applies a command by hand, and an exported fold would be an invitation to do so — the
+ * same reason `commitmentFor` stays unexported next door.
+ *
+ * `contractId` rather than a contract: the closing intent writes onto the campaign as it
+ * stands at that moment, not onto the copy this fold started from.
+ */
+export function foldOutcome(
+  state: GameState,
+  draft: ResolutionDraft,
+  contractId: ContentId
+): readonly OutcomeFrame[] {
+  const frames: OutcomeFrame[] = [];
+  let currentState = state;
+
+  for (const intent of draft.intents) {
+    const event = eventOf(intent, draft, contractId, currentState);
+
+    // The effect first, then the transition — both, in that order, never one instead of
+    // the other (`ADR-007`, `RESOLUTION_SPEC` §3.3).
+    currentState = withEvent(applyIntent(currentState, intent, draft, contractId), event, null, 0n);
+    frames.push({ event, state: currentState });
+  }
+
+  return frames;
+}
+
+/** The commitment recorded for a hero who accepted (`RESOLUTION_SPEC` §2.4, §2.5). */
+function commitmentOf(contract: ContractState, heroId: HeroId): CommitmentState {
+  const commitment = contract.offer.commitments.get(heroId);
+  if (commitment === undefined) {
+    throw new Error(
+      `Contract '${contract.id}' lists hero hero#${String(heroId)} in acceptedBy but records no ` +
+        'commitment for him. `commitments.keys() === acceptedBy` holds on every ContractState ' +
+        'createContractState builds (RESOLUTION_SPEC §2.5), so this state should have been ' +
+        'unreachable.'
+    );
+  }
+
+  return commitment;
+}
+
+/**
+ * What one intent does to the campaign (`RESOLUTION_SPEC` §2.6, §3.3).
+ *
+ * Most of them do nothing: a need coming out short is something that *happened*, and the
+ * feed is where it is recorded. Only two move state — a consequence, which costs one
+ * person something, and the closing intent, which stores the result.
+ */
+function applyIntent(
+  state: GameState,
+  intent: OutcomeIntent,
+  draft: ResolutionDraft,
+  contractId: ContentId
+): GameState {
+  if (intent.kind === OutcomeIntentKind.ConsequenceSuffered) {
+    const hero = heroOf(state, intent.hero!);
+    return { ...state, heroes: state.heroes.set(hero.id, suffered(hero, intent)) };
+  }
+
+  if (intent.kind === OutcomeIntentKind.ContractResolved) {
+    // Routed through `createContractState`, the one door a `ContractState` is rebuilt
+    // through: this is the write §2.5's stored-resolution invariants exist for, so it is
+    // the one write that must not bypass them.
+    const resolved = createContractState({
+      ...contractOf(state, contractId),
+      resolution: draft.resolution
+    });
+
+    return { ...state, contracts: state.contracts.set(resolved.id, resolved) };
+  }
+
+  return state;
+}
+
+/**
+ * §2.6's three transitions. Each is bounded on the side it can run past: a grievance stops
+ * at `GRIEVANCE_MAX` and a trust at nothing.
+ *
+ * `wounds` is bounded on neither side, and that is `R-08`'s declared boundary of M1 rather
+ * than a ceiling somebody forgot: wounds accumulate and are visible, and healing, a cap
+ * and any effect on a decision are M2's. A ceiling invented here would be a balance
+ * decision taken inside an implementation.
+ */
+function suffered(hero: HeroState, intent: OutcomeIntent): HeroState {
+  switch (intent.consequence) {
+    case ConsequenceKind.Wound:
+      return { ...hero, wounds: hero.wounds + intent.magnitude };
+    case ConsequenceKind.Grudge:
+      return { ...hero, grievance: Math.min(hero.grievance + intent.magnitude, GRIEVANCE_MAX) };
+    case ConsequenceKind.TrustLost:
+      return { ...hero, trustInGuild: Math.max(hero.trustInGuild - intent.magnitude, 0) };
+    case null:
+      throw new Error(
+        `A consequence_suffered intent for hero#${String(hero.id)} names no consequence; the ` +
+          'resolver writes one on every intent of that kind (RESOLUTION_SPEC §2.1).'
+      );
+  }
+}
+
+/**
+ * `RESOLUTION_SPEC` §3.4's table, as a function. The `switch` is exhaustive, so a new
+ * intent kind cannot reach a campaign without a decision about what event it becomes.
+ *
+ * **The verdict is read off the coverage, not derived from the reason code.** The two say
+ * the same thing today and are two different facts: `reason` is what the feed calls the
+ * line, `verdict` is what §4.3 decided about the need. Deriving one from the other would
+ * be a second statement of that mapping, in the layer least able to notice it drifting.
+ */
+function eventOf(
+  intent: OutcomeIntent,
+  draft: ResolutionDraft,
+  contractId: ContentId,
+  state: GameState
+): DomainEvent {
+  const base = {
+    eventId: state.metadata.nextEventId,
+    logicalTime: state.metadata.logicalTime,
+    // A resolution is not a decision, so there is nothing for a trace to explain
+    // (`ADR-007`). `fromEvents` refuses an event that carries one.
+    causalTraceId: null,
+    contractId
+  } as const;
+
+  switch (intent.kind) {
+    case OutcomeIntentKind.NeedCovered:
+      return {
+        ...base,
+        kind: 'need_covered',
+        need: intent.need!,
+        verdict: verdictOf(draft, intent)
+      };
+    case OutcomeIntentKind.NeedShort:
+      return {
+        ...base,
+        kind: 'need_short',
+        need: intent.need!,
+        verdict: verdictOf(draft, intent),
+        gap: intent.gap!
+      };
+    case OutcomeIntentKind.FalteredEarly:
+      return { ...base, kind: 'hero_faltered_early', heroId: intent.hero!, need: intent.need! };
+    case OutcomeIntentKind.ObjectiveTaken:
+      return { ...base, kind: 'objective_taken' };
+    case OutcomeIntentKind.ObjectiveLost:
+      return { ...base, kind: 'objective_lost' };
+    case OutcomeIntentKind.ConsequenceSuffered:
+      return {
+        ...base,
+        kind: 'hero_suffered_consequence',
+        heroId: intent.hero!,
+        consequence: intent.consequence!,
+        magnitude: intent.magnitude
+      };
+    case OutcomeIntentKind.ContractResolved:
+      return { ...base, kind: 'contract_resolved', grade: draft.resolution.grade };
+  }
+}
+
+function verdictOf(draft: ResolutionDraft, intent: OutcomeIntent): CoverageVerdict {
+  const row = draft.resolution.coverage.find((candidate) => candidate.need === intent.need);
+  if (row === undefined) {
+    throw new Error(
+      `A coverage intent names need '${String(intent.need)}', which the resolution's own ` +
+        'coverage does not describe; both come from the same call to the resolver.'
+    );
+  }
+
+  return row.verdict;
 }
 
 /**
@@ -905,6 +1207,16 @@ export function settleContract(state: GameState, command: SettleContract): Comma
   // owns no third code to tell them apart.
   if (contract.offer.phase !== OfferPhase.Locked || contract.status !== ContractStatus.Crewed) {
     return rejected(state, RejectionCodes.CrewNotFilled);
+  }
+
+  // §2.5's last invariant, met as a refusal rather than as an exception. A crew that filled
+  // and went out has an outcome; a crew that filled and has not been asked what happened
+  // has none, and `settleContract` would otherwise build a settled contract carrying no
+  // resolution — a state `createContractState` throws on. Checked *after* the crew rules,
+  // because a package that never filled has no resolution either and "the crew is not
+  // filled" is the accurate thing to say about it.
+  if (contract.resolution === null) {
+    return rejected(state, RejectionCodes.NotResolved);
   }
 
   const { offer } = contract;

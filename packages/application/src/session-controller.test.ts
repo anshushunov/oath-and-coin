@@ -1382,7 +1382,7 @@ describe('the screen a save and a load put back', () => {
   });
 });
 
-describe('dispatching the five negotiation commands', () => {
+describe('dispatching the six negotiation commands', () => {
   const escort = parseContentId('core:escort');
   const bram = heroId(0);
 
@@ -1449,7 +1449,7 @@ describe('dispatching the five negotiation commands', () => {
     expect(controller.store.snapshot()).toBe(before);
   });
 
-  it('never reuses a command id across the five negotiation commands', async () => {
+  it('never reuses a command id across the six negotiation commands', async () => {
     // On `gappedIdScenario`'s campaign, whose two scripted commands leave
     // `appliedCommandIds` at `{1, 3}` rather than the dense `{1, 2}` `answeredScenario`
     // would — deliberately, so "the next id" computed as `size + 1` (2 spent, so 3) and
@@ -1459,7 +1459,7 @@ describe('dispatching the five negotiation commands', () => {
     // `rejected.duplicate_command` on the spot — this is what `composed.applied` below
     // actually catches, not a hypothetical.
     //
-    // Four of the five commands here apply for real; the fifth, `pollCrew` against a
+    // Five of the six commands here apply for real; the other, `pollCrew` against a
     // single-hero, single-seat contract, is refused for being late rather than for
     // colliding — but which refusal it gets is the whole instrument for the *later*
     // ids too. `pollCrew`'s own checks run `rejected.stale_state`, then
@@ -1491,14 +1491,21 @@ describe('dispatching the five negotiation commands', () => {
     expect(polled.applied).toBe(false);
     expect(polled.rejectionCode).toBe(RejectionCodes.CrewAlreadyFilled);
 
+    // The sixth command, and not optional: a settlement pays against an outcome, so a
+    // contract that has not been resolved is refused (`RESOLUTION_SPEC` §2.5). It also
+    // spends an id of its own, which is what makes it part of what this test measures.
+    const resolved = controller.resolveContract({ contractId: escort });
+    expect(resolved.applied).toBe(true);
+
     const settled = controller.settleContract({ contractId: escort, pay: true });
     expect(settled.applied).toBe(true);
-    // `gappedIdScenario`'s own two scripted commands (ids 1 and 3) plus the four live
-    // ones dispatched above: six commands applied, so six distinct ids spent —
+    // `gappedIdScenario`'s own two scripted commands (ids 1 and 3) plus the five live
+    // ones dispatched above that applied: seven commands applied, so seven distinct ids
+    // spent —
     // `appliedCommandIds` absorbs a repeat silently (`SortedSet.add`), so a controller
     // that had reused one anywhere in the chain would leave fewer entries than commands
     // actually applied.
-    expect(settled.state.appliedCommandIds.size).toBe(6);
+    expect(settled.state.appliedCommandIds.size).toBe(7);
   });
 
   it('returns every decision a crew poll produced', async () => {

@@ -6,7 +6,7 @@
   "checkpoints": [
     {
       "name": "screen_word_broken",
-      "after_command_id": 4
+      "after_command_id": 5
     }
   ]
 }

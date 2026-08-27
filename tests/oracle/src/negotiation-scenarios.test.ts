@@ -273,7 +273,7 @@ describe('crew_not_filled_reopens_the_draft', () => {
 describe('single_seat_contract_settles_without_a_poll', () => {
   it('fills the crew from the key hero alone, refuses the poll, and still settles', () => {
     const outcome = run('single_seat_contract_settles_without_a_poll');
-    const [, keyAnswer, lock, poll, settle] = outcome.steps;
+    const [, keyAnswer, lock, poll, resolve, settle] = outcome.steps;
 
     expect(keyAnswer?.decisions[0]?.selectedAction).toBe('action:accept');
     expect(lock?.applied).toBe(true);
@@ -283,6 +283,17 @@ describe('single_seat_contract_settles_without_a_poll', () => {
     // scenario file disagreeing with the protocol.
     expect(poll?.applied).toBe(false);
     expect(poll?.rejectionCode).toBe('rejected.crew_already_filled');
+
+    // The crew goes out before the money moves (`RESOLUTION_SPEC` §3.1): every need of
+    // this contract closes, so the resolution answers with two coverage events, the
+    // objective and the closing intent, and costs nobody anything.
+    expect(resolve?.applied).toBe(true);
+    expect(resolve?.events.map((e) => e.kind)).toEqual([
+      'need_covered',
+      'need_covered',
+      'objective_taken',
+      'contract_resolved'
+    ]);
 
     expect(settle?.applied).toBe(true);
     expect(settle?.events.map((e) => e.kind)).toEqual(['contract_settled_promise_kept']);

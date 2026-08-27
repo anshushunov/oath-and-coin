@@ -82,12 +82,13 @@ import type { ScenarioOutcome, StepDecision, StepOutcome } from './scenario-runn
  * describes the artifact's *shape*, not which runs happen to fill every branch of it. See
  * `SAVE_SCHEMA_VERSION`'s own note for the same mistake stated in full.
  *
- * Like `SAVE_SCHEMA_VERSION`, this number moves **again** when the resolution events and
- * the sixth command arrive: they are a further change to this shape, and one number
- * covering both would make an artifact written between them indistinguishable from one
- * written before.
+ * **7, moved by Task 8: the sixth command and the seven events it raises.**
+ * `describeCommand` gained a `resolve_contract` branch and `describeEvent` gained five new
+ * shapes (`need_covered`, `need_short`, `hero_faltered_early`, `hero_suffered_consequence`,
+ * `contract_resolved`, plus the two objective kinds sharing the bare contract shape). Both
+ * are shape changes, and both arrive in the same task as the command that produces them.
  */
-export const ARTIFACT_VERSION = 6;
+export const ARTIFACT_VERSION = 7;
 
 /** The canonical text of a whole run. */
 export function toCanonicalJson(outcome: ScenarioOutcome): string {
@@ -183,6 +184,8 @@ function describeCommand(command: ScenarioCommand): CanonicalValue {
       return { ...base, hero_index: command.heroIndex };
     case ScenarioCommandKind.LockOffer:
     case ScenarioCommandKind.PollCrew:
+    case ScenarioCommandKind.ResolveContract:
+      // No fields of its own: everything a resolution reads already lives on the package.
       return base;
     case ScenarioCommandKind.SettleContract:
       return { ...base, pay: command.pay };
@@ -450,9 +453,48 @@ function describeEvent(domainEvent: DomainEvent): CanonicalValue {
       return { ...base, hero_id: domainEvent.heroId, contract_id: domainEvent.contractId };
     case 'offer_revised':
     case 'offer_locked':
+    case 'objective_taken':
+    case 'objective_lost':
     case 'contract_settled':
     case 'contract_settled_promise_kept':
     case 'contract_settled_promise_broken':
       return { ...base, contract_id: domainEvent.contractId };
+
+    // The seven outcome events (`RESOLUTION_SPEC` §3.4). Each writes the fields it
+    // actually carries and no others: a `need_covered` has no hero, and an artifact
+    // writing `null` into a field the event never had would state a fact the resolution
+    // never produced.
+    case 'need_covered':
+      return {
+        ...base,
+        contract_id: domainEvent.contractId,
+        need: domainEvent.need,
+        verdict: domainEvent.verdict
+      };
+    case 'need_short':
+      return {
+        ...base,
+        contract_id: domainEvent.contractId,
+        need: domainEvent.need,
+        verdict: domainEvent.verdict,
+        gap: domainEvent.gap
+      };
+    case 'hero_faltered_early':
+      return {
+        ...base,
+        contract_id: domainEvent.contractId,
+        hero_id: domainEvent.heroId,
+        need: domainEvent.need
+      };
+    case 'hero_suffered_consequence':
+      return {
+        ...base,
+        contract_id: domainEvent.contractId,
+        hero_id: domainEvent.heroId,
+        consequence: domainEvent.consequence,
+        magnitude: domainEvent.magnitude
+      };
+    case 'contract_resolved':
+      return { ...base, contract_id: domainEvent.contractId, grade: domainEvent.grade };
   }
 }
