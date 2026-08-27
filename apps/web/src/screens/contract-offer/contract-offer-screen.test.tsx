@@ -4,6 +4,7 @@ import {
   OfferFieldKeys,
   PromiseTermsKeys,
   QualitativeGrade,
+  ScreenKind,
   ScreenState,
   SettlementFieldKeys,
   TITLE_KEY,
@@ -130,8 +131,20 @@ beforeAll(() => {
   catalogue = new Map([...browserLocaleCatalogue('ru'), ...browserUiTextCatalogue('ru')]);
 });
 
-function sessionFor(scenario: string, checkpoint: string, seed: bigint): SessionState {
-  return startSession({
+/**
+ * One run's session, with its screen narrowed to the one this file is about.
+ *
+ * `SessionState.screen` is a union of three since the contract loop grew a debrief and a
+ * board; every scenario here is a negotiation, so a run that landed anywhere else has
+ * stopped being the thing under test and says so rather than reading `undefined` off a
+ * screen of the wrong shape.
+ */
+function sessionFor(
+  scenario: string,
+  checkpoint: string,
+  seed: bigint
+): Omit<SessionState, 'screen'> & { readonly screen: ContractOfferScreenModel } {
+  const session = startSession({
     content: browserContentSource(),
     scenario,
     // Stated rather than left to the manifest's default, because a checkpoint is an
@@ -140,6 +153,14 @@ function sessionFor(scenario: string, checkpoint: string, seed: bigint): Session
     checkpoint,
     seed
   });
+
+  if (session.screen.screen !== ScreenKind.ContractOffer) {
+    throw new Error(
+      `'${scenario}' landed on '${session.screen.screen}', not on the contract-offer screen.`
+    );
+  }
+
+  return { ...session, screen: session.screen };
 }
 
 function renderScreen(model: ContractOfferScreenModel): HTMLElement {

@@ -3,7 +3,13 @@ import {
   memoryFileSource,
   type ContentFileSource
 } from '@oath-and-coin/content';
-import { ScreenState, readModelHash } from '@oath-and-coin/presentation';
+import {
+  ScreenKind,
+  ScreenState,
+  readModelHash,
+  type ContractOfferScreenModel,
+  type ScreenModel
+} from '@oath-and-coin/presentation';
 import { describe, expect, it } from 'vitest';
 
 import type { ContentSourcePort } from './ports.ts';
@@ -205,7 +211,7 @@ describe('the screen a session lands on', () => {
     const state = session(ranScenario);
 
     expect(state.screen.state).toBe(ScreenState.Normal);
-    expect(state.screen.responses).toHaveLength(1);
+    expect(offerScreen(state.screen).responses).toHaveLength(1);
   });
 
   it('is the screen of the checkpoint asked for, not of the whole scenario', () => {
@@ -215,7 +221,7 @@ describe('the screen a session lands on', () => {
     const state = session(ranScenario, contentTree(), 'start');
 
     expect(state.screen.state).toBe(ScreenState.Incomplete);
-    expect(state.screen.responses).toEqual([]);
+    expect(offerScreen(state.screen).responses).toEqual([]);
   });
 });
 
@@ -316,3 +322,19 @@ describe('what a fresh run says about saving', () => {
     expect(state.saveFailure).toBeNull();
   });
 });
+
+/**
+ * The screen this session is on, as the offer screen it must be.
+ *
+ * `SessionState.screen` is a union of three since the contract loop grew a debrief and a
+ * board, and a test asserting about a package has to say which screen it means. A throw
+ * rather than a cast: a case that ended up on another screen has stopped measuring what it
+ * was written to measure, and should say so rather than read `undefined`.
+ */
+function offerScreen(model: ScreenModel): ContractOfferScreenModel {
+  if (model.screen !== ScreenKind.ContractOffer) {
+    throw new Error(`Expected the contract-offer screen, got '${model.screen}'.`);
+  }
+
+  return model;
+}

@@ -130,6 +130,24 @@
 
     "commitment.committed": "шёл охотно",
     "commitment.fragile": "согласие куплено",
-    "commitment.resentful": "шёл с обидой"
+    "commitment.resentful": "шёл с обидой",
+
+    "field.after_action.grade": "Ступень:",
+    "field.after_action.events": "Как это было:",
+    "field.after_action.contributions": "Кто что принёс:",
+    "field.after_action.brought": "умеет:",
+    "field.after_action.counted": "засчитано:",
+    "field.after_action.commitment": "шёл:",
+    "field.after_action.provenance": "почему так:",
+    "field.after_action.coverage": "Участки:",
+    "field.after_action.deficits": "Чего не хватило:",
+    "field.after_action.deficit_magnitude": "весом:",
+    "field.after_action.dominant": "Главная причина:",
+    "field.after_action.consequences": "Чего это стоило людям:",
+    "field.after_action.consequence_magnitude": "величиной:",
+    "field.after_action.patron_pays": "Заказчик платит:",
+
+    "field.board.needs": "Требуется:",
+    "field.board.availability": "Состояние:"
   }
 }

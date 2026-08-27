@@ -8,7 +8,13 @@ import {
   memoryFileSource,
   type ContentFileSource
 } from '@oath-and-coin/content';
-import { ScreenState, readModelHash } from '@oath-and-coin/presentation';
+import {
+  ScreenKind,
+  ScreenState,
+  readModelHash,
+  type ContractOfferScreenModel,
+  type ScreenModel
+} from '@oath-and-coin/presentation';
 import {
   ReasonCodes,
   RejectionCodes,
@@ -239,6 +245,61 @@ const gappedIdScenario: ScenarioFixture = {
         contract: 'core:escort',
         hero_index: 0,
         expected_state_version: 1
+      }
+    ]
+  }
+};
+
+/**
+ * A campaign nobody has touched: two contracts, no commands, so the run applies no step.
+ *
+ * The one shape where "the contract the first step named" has no answer and the screen still
+ * shows one — the campaign's lexicographically first, `core:archive_run`. External review of
+ * the union task found the session disagreeing with the screen exactly here.
+ */
+const untouchedScenario: ScenarioFixture = {
+  manifest: {
+    ...MANIFEST,
+    expected_screen_state: 'incomplete',
+    checkpoints: [{ name: 'start', after_command_id: 0 }]
+  }
+};
+
+/**
+ * `core:escort` composed, accepted, locked and resolved — a campaign whose contract has an
+ * outcome to debrief and a promise still to answer.
+ *
+ * One seat, so the key hero's own acceptance fills the crew and no `poll_crew` is needed
+ * (`NEGOTIATION_SPEC` §3.1). The state versions are stated rather than inferred: an
+ * acceptance raises one event and a resolution raises several, so a command that declared
+ * the version its predecessor *began* on would be refused as stale — the shape
+ * `restored-read-model.test.ts` itemises refusals to catch.
+ */
+const resolvedScenario: ScenarioFixture = {
+  manifest: {
+    ...MANIFEST,
+    expected_screen_state: 'normal',
+    checkpoints: [
+      { name: 'start', after_command_id: 0 },
+      { name: 'final', after_command_id: 4 }
+    ]
+  },
+  commands: {
+    commands: [
+      composeEscort,
+      {
+        command: 'propose_contract_to_hero',
+        command_id: 2,
+        contract: 'core:escort',
+        hero_index: 0,
+        expected_state_version: 1
+      },
+      { command: 'lock_offer', command_id: 3, contract: 'core:escort', expected_state_version: 2 },
+      {
+        command: 'resolve_contract',
+        command_id: 4,
+        contract: 'core:escort',
+        expected_state_version: 3
       }
     ]
   }
@@ -878,7 +939,7 @@ describe('the versions this build reads saves under', () => {
       expected: { rulesetVersion: RULESET_VERSION, contentVersion: 'ffffffffffffffff' }
     });
     await controller.start();
-    expect(controller.store.snapshot().screen.contract).not.toBeNull();
+    expect(offerScreen(controller.store.snapshot().screen).contract).not.toBeNull();
 
     await expect(controller.save('slot-a')).resolves.toBeUndefined();
 
@@ -1371,14 +1432,139 @@ describe('the screen a save and a load put back', () => {
     const { controller } = harness({ scenario: rejectedScenario });
     await controller.start();
     const before = controller.store.snapshot();
-    expect(before.screen.contract?.definition).toBe('core:escort');
+    expect(offerScreen(before.screen).contract?.definition).toBe('core:escort');
 
     await controller.save('slot-a');
     await controller.load('slot-a');
 
     const after = controller.store.snapshot();
-    expect(after.screen.contract?.definition).toBe('core:escort');
+    expect(offerScreen(after.screen).contract?.definition).toBe('core:escort');
     expect(readModelHash(after.screen)).toBe(readModelHash(before.screen));
+  });
+});
+
+describe('moving the session between screens and contracts', () => {
+  const escort = parseContentId('core:escort');
+  const archive = parseContentId('core:archive_run');
+
+  it('redraws the offer on another contract when the focus moves', async () => {
+    // `answeredScenario` opens on `core:escort` — the contract its first step named, not
+    // the lexicographically first, which is `core:archive_run`. So a focus that did
+    // nothing and a focus that worked would show two different contracts here.
+    const { controller } = harness();
+    await controller.start();
+    expect(offerScreen(controller.store.snapshot().screen).contract?.definition).toBe(
+      'core:escort'
+    );
+
+    controller.focus(archive);
+
+    expect(offerScreen(controller.store.snapshot().screen).contract?.definition).toBe(
+      'core:archive_run'
+    );
+    expect(controller.store.snapshot().focusedContract).toBe(archive);
+  });
+
+  it('keeps the screen it is on while the focus moves', async () => {
+    const { controller } = harness();
+    await controller.start();
+    controller.show(ScreenKind.ContractBoard);
+
+    controller.focus(archive);
+
+    expect(controller.store.snapshot().screen.screen).toBe(ScreenKind.ContractBoard);
+    expect(controller.store.snapshot().focusedContract).toBe(archive);
+  });
+
+  it('keeps the focus while the screen moves', async () => {
+    const { controller } = harness();
+    await controller.start();
+
+    controller.show(ScreenKind.ContractBoard);
+
+    expect(controller.store.snapshot().screen.screen).toBe(ScreenKind.ContractBoard);
+    expect(controller.store.snapshot().focusedContract).toBe(escort);
+
+    controller.show(ScreenKind.ContractOffer);
+
+    expect(offerScreen(controller.store.snapshot().screen).contract?.definition).toBe(
+      'core:escort'
+    );
+  });
+
+  it('shows the debrief of the contract it is focused on', async () => {
+    // The one screen `show` cannot build without a focus, and the one that proves `show`
+    // reads the session's own field rather than whatever the previous screen carried.
+    const { controller } = harness({ scenario: resolvedScenario });
+    await controller.start();
+
+    controller.show(ScreenKind.AfterAction);
+
+    const { screen } = controller.store.snapshot();
+    expect(screen.screen).toBe(ScreenKind.AfterAction);
+    expect(screen.screen === ScreenKind.AfterAction && screen.contractDefinition).toBe(escort);
+  });
+
+  it('redraws the screen the session is on when a command applies, not always the offer', async () => {
+    // Which screen a command *should* move a player to is `RESOLUTION_SPEC` §6.4 and
+    // arrives with the routing task. What this holds is the half that is this task's: a
+    // dispatch rebuilds where the player already is, so a command pressed from the board
+    // does not silently drop them back onto a negotiation.
+    const { controller } = harness({ scenario: resolvedScenario });
+    await controller.start();
+    controller.show(ScreenKind.ContractBoard);
+
+    const settled = controller.settleContract({ contractId: escort, pay: true });
+
+    expect(settled.applied).toBe(true);
+    expect(controller.store.snapshot().screen.screen).toBe(ScreenKind.ContractBoard);
+  });
+
+  it('reopens a loaded campaign on the contract the file named, from any screen', async () => {
+    // `focusedContract` is what a save writes and what a load has to put back (design spec
+    // §2.7). The board is the case that makes it load-bearing: it names no contract, so a
+    // session that read the focus off the screen would write `null` from here and reopen on
+    // whatever the fallback picked. `rejectedScenario` is the fixture where the fallback and
+    // the truth differ — its only step was refused, so a reloaded campaign has no step to
+    // read a contract off at all.
+    const { controller } = harness({ scenario: rejectedScenario });
+    await controller.start();
+    controller.show(ScreenKind.ContractBoard);
+    expect(controller.store.snapshot().focusedContract).toBe(escort);
+
+    await controller.save('slot-a');
+    await controller.load('slot-a');
+
+    expect(controller.store.snapshot().focusedContract).toBe(escort);
+  });
+
+  it('agrees with the screen about which contract a stepless run is on', async () => {
+    // A run that applied no command still shows a contract — the campaign's first, since
+    // there is no step to name one — and a session claiming no focus there would write
+    // nothing into the file `ADR-006` asks to carry it. The screen and the session answer
+    // the same question, so they answer it with one function.
+    const { controller, saves } = harness({ scenario: untouchedScenario });
+    await controller.start();
+
+    const shown = offerScreen(controller.store.snapshot().screen).contract?.definition;
+    expect(shown).toBe('core:archive_run');
+    expect(controller.store.snapshot().focusedContract).toBe(archive);
+
+    await controller.slots();
+    await controller.save('slot-a');
+
+    // The save happened at all, which is the half a `null` focus silently skipped.
+    expect(saves.slots.has('slot-a')).toBe(true);
+    expect(controller.store.snapshot().saveFailure).toBeNull();
+  });
+
+  it('refuses a contract the campaign does not carry', async () => {
+    const { controller } = harness();
+    await controller.start();
+
+    expect(() => {
+      controller.focus(parseContentId('core:nobody_authored_this'));
+    }).toThrow();
   });
 });
 
@@ -1416,7 +1602,7 @@ describe('dispatching the six negotiation commands', () => {
     // The screen on the store moved with it — a controller that computed the right
     // `CommandResult` but forgot to publish it would leave a player looking at the
     // package they revised away from.
-    expect(controller.store.snapshot().screen.offer?.advance).toBe(40);
+    expect(offerScreen(controller.store.snapshot().screen).offer?.advance).toBe(40);
     // `canonicalHash` is over the whole scripted `ScenarioOutcome`, and a live command
     // was never one of its steps — carrying the old hash forward would claim a
     // campaign this call just changed is still the one the run produced.
@@ -1537,3 +1723,19 @@ describe('dispatching the six negotiation commands', () => {
     ]);
   });
 });
+
+/**
+ * The screen this session is on, as the offer screen it must be.
+ *
+ * `SessionState.screen` is a union of three since the contract loop grew a debrief and a
+ * board, and a test asserting about a package has to say which screen it means. A throw
+ * rather than a cast: a case that ended up on another screen has stopped measuring what it
+ * was written to measure, and should say so rather than read `undefined`.
+ */
+function offerScreen(model: ScreenModel): ContractOfferScreenModel {
+  if (model.screen !== ScreenKind.ContractOffer) {
+    throw new Error(`Expected the contract-offer screen, got '${model.screen}'.`);
+  }
+
+  return model;
+}

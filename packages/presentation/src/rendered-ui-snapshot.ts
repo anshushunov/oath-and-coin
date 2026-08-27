@@ -1,17 +1,24 @@
 import { Sha256, utf8Bytes } from '@oath-and-coin/simulation';
 
 import {
+  AfterActionFieldKeys,
+  ContractBoardFieldKeys,
   FieldKeys,
   OfferFieldKeys,
   SettlementFieldKeys,
   TreasuryFieldKeys,
   actionKey,
+  afterActionStateKey,
+  contractAvailabilityKey,
+  contractBoardStateKey,
   errorKey,
   offerPhaseKey,
   reasonDirectionKey,
   screenStateKey,
   waveredKey
 } from './keys.ts';
+import { createAfterActionScreenModel } from './after-action-screen-model.ts';
+import { createContractBoardScreenModel } from './contract-board-screen-model.ts';
 import {
   createContractOfferScreenModel,
   type ContractOfferScreenModel,
@@ -20,6 +27,10 @@ import {
   type PromiseTermsLine,
   type SettlementLine
 } from './contract-offer-screen-model.ts';
+import type { AfterActionScreenModel } from './after-action-screen-model.ts';
+import type { ContractBoardScreenModel } from './contract-board-screen-model.ts';
+import { ScreenKind } from './screen-kind.ts';
+import type { ScreenModel } from './screen-model.ts';
 import { ScreenState } from './screen-state.ts';
 import { qualitativeKey } from './qualitative-scale.ts';
 
@@ -69,6 +80,23 @@ const SEPARATOR = 0x1f;
  * translation must fail loudly rather than let a raw key reach the screen silently.
  */
 export function expectedSnapshot(
+  model: ScreenModel,
+  catalogue: ReadonlyMap<string, string>
+): readonly string[] {
+  // One walk per screen, chosen by the discriminant and by nothing else. No `default`: a
+  // fourth screen does not build until somebody has said what a correctly bound version of
+  // it should put on the page, which is the whole reason this union carries one.
+  switch (model.screen) {
+    case ScreenKind.ContractOffer:
+      return contractOfferSnapshot(model, catalogue);
+    case ScreenKind.AfterAction:
+      return afterActionSnapshot(model, catalogue);
+    case ScreenKind.ContractBoard:
+      return contractBoardSnapshot(model, catalogue);
+  }
+}
+
+function contractOfferSnapshot(
   model: ContractOfferScreenModel,
   catalogue: ReadonlyMap<string, string>
 ): readonly string[] {
@@ -187,6 +215,202 @@ export function expectedSnapshot(
 
   if (model.settlement !== null) {
     resolveSettlement(model.settlement, resolve, texts, heroDisplayNameKeyOf);
+  }
+
+  return texts;
+}
+
+/**
+ * The texts a correctly bound debrief should produce (`RESOLUTION_SPEC` §6.1), in the order
+ * a depth-first walk visits: the contract and the step it landed on, the feed, what each man
+ * brought, the coverage, the diagnoses, what it cost people, and last the promise still to
+ * be answered.
+ *
+ * Every content id stays out, exactly as it does on the offer screen: the read-model hash
+ * covers each of them and none is a name a player reads (`TDD` §11.1). A caption is emitted
+ * only when the list under it is non-empty — a heading over an absence is not a fact.
+ */
+function afterActionSnapshot(
+  model: AfterActionScreenModel,
+  catalogue: ReadonlyMap<string, string>
+): readonly string[] {
+  createAfterActionScreenModel(model);
+
+  const texts: string[] = [];
+  const resolve = (key: string): void => {
+    texts.push(resolveText(catalogue, key));
+  };
+
+  resolve(model.titleKey);
+  resolve(afterActionStateKey(model.state));
+
+  if (model.errorCode !== null) {
+    resolve(errorKey(model.errorCode));
+  }
+
+  if (model.contractDisplayNameKey !== null) {
+    resolve(model.contractDisplayNameKey);
+  }
+
+  if (model.gradeKey !== null) {
+    resolve(AfterActionFieldKeys.Grade);
+    resolve(model.gradeKey);
+  }
+
+  if (model.events.length > 0) {
+    resolve(AfterActionFieldKeys.Events);
+
+    for (const line of model.events) {
+      resolve(line.key);
+
+      if (line.heroDisplayNameKey !== null) {
+        resolve(line.heroDisplayNameKey);
+      }
+
+      if (line.needKey !== null) {
+        resolve(line.needKey);
+      }
+
+      resolve(line.reasonKey);
+    }
+  }
+
+  if (model.contributions.length > 0) {
+    resolve(AfterActionFieldKeys.Contributions);
+
+    for (const line of model.contributions) {
+      resolve(line.heroDisplayNameKey);
+      // `DEC-014`'s two numbers, each under its own caption: "100 → 50" with nothing
+      // naming either side is the column a player cannot read.
+      resolve(AfterActionFieldKeys.Brought);
+      texts.push(String(line.amount));
+      resolve(AfterActionFieldKeys.Counted);
+      texts.push(String(line.counted));
+      resolve(AfterActionFieldKeys.Commitment);
+      resolve(line.commitmentKey);
+
+      if (line.provenanceKeys.length > 0) {
+        resolve(AfterActionFieldKeys.Provenance);
+        line.provenanceKeys.forEach(resolve);
+      }
+    }
+  }
+
+  if (model.coverage.length > 0) {
+    resolve(AfterActionFieldKeys.Coverage);
+
+    for (const line of model.coverage) {
+      resolve(line.needKey);
+      resolve(line.verdictKey);
+    }
+  }
+
+  if (model.deficits.length > 0) {
+    resolve(AfterActionFieldKeys.Deficits);
+
+    for (const line of model.deficits) {
+      resolve(line.key);
+      resolve(AfterActionFieldKeys.DeficitMagnitude);
+      texts.push(String(line.magnitude));
+      line.needKeys.forEach(resolve);
+      line.heroes.forEach((hero) => {
+        resolve(hero.displayNameKey);
+      });
+    }
+  }
+
+  if (model.dominantKey !== null) {
+    resolve(AfterActionFieldKeys.Dominant);
+    resolve(model.dominantKey);
+  }
+
+  if (model.consequences.length > 0) {
+    resolve(AfterActionFieldKeys.Consequences);
+
+    for (const line of model.consequences) {
+      resolve(line.heroDisplayNameKey);
+      resolve(line.kindKey);
+      resolve(line.reasonKey);
+      resolve(AfterActionFieldKeys.ConsequenceMagnitude);
+      texts.push(String(line.magnitude));
+    }
+  }
+
+  const { settlement } = model;
+
+  if (settlement !== null) {
+    resolve(AfterActionFieldKeys.PatronPays);
+    texts.push(String(settlement.patronPays));
+    resolve(OfferFieldKeys.PromisedBonus);
+    texts.push(String(settlement.promisedBonus));
+
+    if (settlement.keyHero !== null) {
+      resolve(OfferFieldKeys.KeyHero);
+      resolve(settlement.keyHero.displayNameKey);
+    }
+
+    if (settlement.crew.length > 0) {
+      resolve(SettlementFieldKeys.Crew);
+      settlement.crew.forEach((hero) => {
+        resolve(hero.displayNameKey);
+      });
+    }
+
+    resolve(SettlementFieldKeys.TreasuryIfKept);
+    texts.push(String(settlement.treasuryIfKept));
+    resolve(SettlementFieldKeys.TreasuryIfBroken);
+    texts.push(String(settlement.treasuryIfBroken));
+  }
+
+  return texts;
+}
+
+/**
+ * The texts a correctly bound board should produce: the title, which of the five shapes it
+ * is, the guild's money, and one block per contract — its name, its fee, its seats, what it
+ * asks for and how far it has got.
+ */
+function contractBoardSnapshot(
+  model: ContractBoardScreenModel,
+  catalogue: ReadonlyMap<string, string>
+): readonly string[] {
+  createContractBoardScreenModel(model);
+
+  const texts: string[] = [];
+  const resolve = (key: string): void => {
+    texts.push(resolveText(catalogue, key));
+  };
+
+  resolve(model.titleKey);
+  resolve(contractBoardStateKey(model.state));
+
+  if (model.errorCode !== null) {
+    resolve(errorKey(model.errorCode));
+  }
+
+  // The treasury on every state that has a campaign behind it, and on neither of the two
+  // that do not — the same gate the offer screen keeps, for the same reason: a manufactured
+  // `0` beside a title that has not finished loading claims a fact this screen does not
+  // have.
+  if (model.state !== ScreenState.Loading && model.state !== ScreenState.Error) {
+    resolve(TreasuryFieldKeys.Treasury);
+    texts.push(String(model.treasury));
+  }
+
+  for (const row of model.rows) {
+    resolve(row.displayNameKey);
+    resolve(FieldKeys.ContractPatronFee);
+    texts.push(String(row.patronFee));
+    resolve(FieldKeys.ContractRequiredCrew);
+    texts.push(String(row.requiredCrew));
+
+    if (row.needKeys.length > 0) {
+      resolve(ContractBoardFieldKeys.Needs);
+      row.needKeys.forEach(resolve);
+    }
+
+    resolve(ContractBoardFieldKeys.Availability);
+    resolve(contractAvailabilityKey(row.availability));
   }
 
   return texts;

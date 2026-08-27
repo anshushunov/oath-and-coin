@@ -1,7 +1,6 @@
 import {
   Actions,
   ReasonCodes,
-  canonicalSha256,
   commitmentOf,
   compareContentIds,
   compareStrings,
@@ -17,7 +16,6 @@ import {
   type TraceFactor
 } from '@oath-and-coin/simulation';
 
-import { requireCorpusComparableText } from './corpus-comparable-text.ts';
 import {
   PromiseTermsKeys,
   TITLE_KEY,
@@ -262,19 +260,36 @@ export function contractOfferScreenModel(
   });
 }
 
+/**
+ * Which contract a screen built from `state` and `steps` is about.
+ *
+ * Named outright when the caller knows; otherwise the contract the first step answered;
+ * otherwise — nothing has been offered yet — the lexicographically first, since the map is
+ * already sorted and the fallback is deterministic rather than "whichever came out first".
+ * `null` only for a campaign with no contracts at all, which is the `Empty` screen.
+ *
+ * **Exported because the session has to agree with it.** `SessionState.focusedContract` is
+ * what a save writes and what `focus` moves, and it used to be worked out separately — which
+ * left a real gap on a run that applied no step: the screen fell back to the campaign's first
+ * contract while the session said there was no focus at all, so a save from that screen wrote
+ * nothing (`ADR-006` requires the file to carry the contract the player was looking at).
+ * External review of this task found it. One statement, two readers.
+ */
+export function focusedContractOf(
+  state: GameState,
+  steps: readonly DecidedStep[],
+  focusedContract?: ContentId
+): ContentId | null {
+  return focusedContract ?? steps[0]?.command.contract ?? state.contracts.keys()[0] ?? null;
+}
+
 function resolveContract(
   state: GameState,
   steps: readonly DecidedStep[],
   focusedContract: ContentId | undefined
 ): ContractState {
-  const first = steps[0];
-  // Named outright when the caller knows; otherwise the contract the first step
-  // answered; otherwise — nothing has been offered yet — the lexicographically first,
-  // since the map is already sorted and the fallback is deterministic rather than
-  // "whichever came out first".
-  const contractId =
-    focusedContract ?? (first === undefined ? state.contracts.keys()[0] : first.command.contract);
-  const contract = contractId === undefined ? undefined : state.contracts.get(contractId);
+  const contractId = focusedContractOf(state, steps, focusedContract);
+  const contract = contractId === null ? undefined : state.contracts.get(contractId);
 
   if (contract === undefined) {
     throw new Error(
@@ -633,38 +648,6 @@ function computeWavered(decision: DecidedOutcome): boolean {
 }
 
 /**
- * Walks a finished projection and refuses any string the frozen corpus and this
- * repository would canonicalize into different bytes.
- *
- * Over the whole tree rather than over the one field that is loose today. External
- * review found `errorCode` — the only string in the projection a caller supplies
- * freely — but a field added to a later projection would reopen the same hole without
- * anyone noticing, and the walk costs one traversal of an object that is about to be
- * serialized anyway.
- */
-function requireComparableStrings(value: CanonicalValue, path: string): void {
-  if (typeof value === 'string') {
-    requireCorpusComparableText(path, value);
-    return;
-  }
-
-  if (Array.isArray(value)) {
-    value.forEach((element, index) => {
-      requireComparableStrings(element, `${path}[${String(index)}]`);
-    });
-    return;
-  }
-
-  if (typeof value === 'object' && value !== null) {
-    for (const [key, element] of Object.entries(value)) {
-      if (element !== undefined) {
-        requireComparableStrings(element, `${path}.${key}`);
-      }
-    }
-  }
-}
-
-/**
  * The canonical projection the read-model hash is taken over: every field a player can
  * see except `errorDetail`, and including the state itself.
  *
@@ -678,7 +661,7 @@ function requireComparableStrings(value: CanonicalValue, path: string): void {
  * recorded `read_model` minus its `sha256`, and a comparison that could only see the
  * hash could not say *where* two screens disagreed.
  */
-export function describeReadModel(model: ContractOfferScreenModel): CanonicalValue {
+export function describeContractOfferReadModel(model: ContractOfferScreenModel): CanonicalValue {
   // Re-validated here, not trusted. In C# the cross-field rules lived in `init`
   // accessors and survived a `with` expression, so a copy could not weaken them; a
   // TypeScript spread has no such property, and external review reproduced it:
@@ -689,7 +672,8 @@ export function describeReadModel(model: ContractOfferScreenModel): CanonicalVal
   // again at the point the claim is made.
   const validated = createContractOfferScreenModel(model);
 
-  const projection: CanonicalValue = {
+  return {
+    screen: validated.screen,
     state: validated.state,
     title_key: validated.titleKey,
     error_code: validated.errorCode,
@@ -703,15 +687,6 @@ export function describeReadModel(model: ContractOfferScreenModel): CanonicalVal
       validated.promiseTerms === null ? null : describePromiseTerms(validated.promiseTerms),
     settlement: validated.settlement === null ? null : describeSettlement(validated.settlement)
   };
-
-  requireComparableStrings(projection, '$');
-
-  return projection;
-}
-
-/** SHA-256 of the canonical bytes of {@link describeReadModel}, lowercase hex. */
-export function readModelHash(model: ContractOfferScreenModel): string {
-  return canonicalSha256(describeReadModel(model));
 }
 
 function describeContract(contract: ContractLine): CanonicalValue {

@@ -6,7 +6,7 @@ import {
   type Store
 } from '@oath-and-coin/application';
 import { RULESET_VERSION, SaveErrorCodes, SaveReadError } from '@oath-and-coin/content';
-import { ScreenState } from '@oath-and-coin/presentation';
+import { ScreenKind, ScreenState } from '@oath-and-coin/presentation';
 import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -47,6 +47,7 @@ vi.mock('./world/world-canvas.tsx', () => ({
 
 interface PageReport {
   readonly screen: string;
+  readonly campaign_screen: string | null;
   readonly screen_state: string;
   readonly saves_screen_state: string | null;
   readonly content_version: string | null;
@@ -130,6 +131,12 @@ function gatedController(run: RunRequest): {
       save: (slot) => inner.save(slot),
       load: (slot) => inner.load(slot),
       slots: () => inner.slots(),
+      focus: (contractId) => {
+        inner.focus(contractId);
+      },
+      show: (screen) => {
+        inner.show(screen);
+      },
       composeOffer: (input) => inner.composeOffer(input),
       proposeContractToHero: (input) => inner.proposeContractToHero(input),
       lockOffer: (input) => inner.lockOffer(input),
@@ -178,6 +185,10 @@ describe('the page while its session is still arriving', () => {
     });
 
     expect(reportIn(container).screen_state).toBe(ScreenState.Normal);
+    // Which of the campaign's three screens the frame beside this report shows. A run
+    // that opened the campaign is on the negotiation until `RESOLUTION_SPEC` §6.4 moves
+    // it, and the report says so as its own fact rather than by echoing the URL.
+    expect(reportIn(container).campaign_screen).toBe(ScreenKind.ContractOffer);
     expect(reportIn(container).canonical_hash).toMatch(/^[0-9a-f]{64}$/u);
   });
 });
@@ -346,6 +357,12 @@ describe('the page on its slots screen', () => {
     const container = await openSaves(controllerOver(new Map()));
 
     expect(reportIn(container).screen).toBe('saves');
+    // And no campaign screen under it: `screen` names the surface a run opened, which is
+    // an input a URL declares, while `campaign_screen` is where the campaign's own
+    // navigation has since put the player. On the slots screen none of the three is
+    // showing, and a report that echoed the URL's `contract-offer` there would label the
+    // frame with a screen the page is not drawing.
+    expect(reportIn(container).campaign_screen).toBeNull();
     expect(savesStateIn(container)).toBe(ScreenState.Empty);
     expect(container.querySelector('[data-testid="saves-screen"]')).not.toBeNull();
     // And the contract screen is not also on the page: two screens at once would make

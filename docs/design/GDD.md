@@ -1083,6 +1083,8 @@
 | [DEC-011](../decisions/DEC-011-combat-space-and-time.md) | Пространство и время боя: поле 3×3, отряд 4–6, дискретные такты | accepted |
 | [DEC-012](../decisions/DEC-012-negotiation-offer-protocol.md) | Протокол оффера, обещание доплаты и казна гильдии | accepted, поправка 2026-08-25 |
 | [DEC-013](../decisions/DEC-013-hero-capability-layer.md) | Слой способности героя: общая величина и экспертиза | accepted |
+| [DEC-014](../decisions/DEC-014-two-numbers-and-who-is-wounded.md) | Экран разбора: два числа у героя и кого ранит | accepted |
+| [DEC-015](../decisions/DEC-015-no-scene-behind-the-debrief-and-the-board.md) | За разбором и доской схематичного мира нет | accepted |
 
 ---
 

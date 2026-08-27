@@ -9,10 +9,14 @@ import {
 import { RULESET_VERSION } from '@oath-and-coin/content';
 import {
   SAVE_SLOTS_LOADING_SCREEN,
+  ScreenKind,
   ScreenLinkKeys,
+  afterActionStateKey,
+  contractBoardStateKey,
   readModelHash,
   saveSlotsScreenModel,
-  type SaveSlotsScreenModel
+  type SaveSlotsScreenModel,
+  type ScreenModel
 } from '@oath-and-coin/presentation';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 
@@ -116,7 +120,7 @@ export function App({ createController = browserSessionController }: AppProps = 
             }}
           />
         ) : (
-          <ContractOfferScreen model={session.screen} />
+          <CampaignScreen model={session.screen} />
         )}
       </TextSource>
 
@@ -146,6 +150,43 @@ export function App({ createController = browserSessionController }: AppProps = 
       <RunReport run={run} session={session} screen={screen} slots={slots.model} />
     </main>
   );
+}
+
+/**
+ * Whichever of the campaign's three screens the session is on.
+ *
+ * The `switch` is exhaustive and has no `default`, which is the whole point of the union's
+ * discriminant: a fourth screen does not build until the page has been told what to draw
+ * for it.
+ *
+ * **The debrief and the board are placeholders, and deliberately named as such.** Their read
+ * models exist and their components do not — those are the contract-loop UI plan's own tasks
+ * 7 and 8 — and until then the honest thing for the page to draw is the screen's title
+ * beside which of the five shapes it is in, under the `data-testid` the end-to-end run will
+ * look for. A page that rendered nothing at all would be indistinguishable from a page whose
+ * routing sent the player nowhere.
+ */
+function CampaignScreen({ model }: { readonly model: ScreenModel }) {
+  const text = useText();
+
+  switch (model.screen) {
+    case ScreenKind.ContractOffer:
+      return <ContractOfferScreen model={model} />;
+    case ScreenKind.AfterAction:
+      return (
+        <section data-testid="after-action-screen">
+          <h1>{text(model.titleKey)}</h1>
+          <p>{text(afterActionStateKey(model.state))}</p>
+        </section>
+      );
+    case ScreenKind.ContractBoard:
+      return (
+        <section data-testid="contract-board-screen">
+          <h1>{text(model.titleKey)}</h1>
+          <p>{text(contractBoardStateKey(model.state))}</p>
+        </section>
+      );
+  }
 }
 
 export interface AppProps {
@@ -362,6 +403,13 @@ function RunReport({
     // that echoed the URL would describe the run that was asked for rather than the one
     // the frame beside it shows.
     screen,
+    // Which of the campaign's three screens is under that surface, and `null` on the slots
+    // screen, where none of them is. Its own field rather than folded into `screen` above:
+    // that one names the *surface* a run opened — the campaign or the saves — and it is an
+    // input a URL declares, while this one is a fact about where the campaign's own
+    // navigation (`RESOLUTION_SPEC` §6.4) has put the player since. A report that published
+    // only the first would label a frame of the debrief as `contract-offer`.
+    campaign_screen: screen === 'saves' ? null : session.screen.screen,
     // Reported exactly as the presentation layer spells it. The corpus writes the same
     // states lower-cased, and the verdict lower-cases when it compares — which is where
     // the parity tool does it too. Translating here would put the same convention in two

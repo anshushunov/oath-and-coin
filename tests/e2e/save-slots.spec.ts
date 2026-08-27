@@ -9,6 +9,7 @@ import {
   loadLocaleCatalogue,
   loadUiTextCatalogue
 } from '@oath-and-coin/content/node';
+import { ScreenKind } from '@oath-and-coin/presentation';
 import { parseContentId } from '@oath-and-coin/simulation';
 import { expect, test, type ConsoleMessage, type Page, type Request } from '@playwright/test';
 
@@ -108,7 +109,13 @@ function shippedSave(): { readonly bytes: Uint8Array; readonly logicalTime: numb
     throw new Error(`'${SCENARIO}' must reach a campaign for there to be anything to save.`);
   }
 
-  const contract = screenFor(result).contract;
+  const screen = screenFor(result);
+
+  if (screen.screen !== ScreenKind.ContractOffer) {
+    throw new Error(`'${SCENARIO}' must land on the contract offer, not on '${screen.screen}'.`);
+  }
+
+  const contract = screen.contract;
 
   if (contract === null) {
     throw new Error(`'${SCENARIO}' must land on a contract, which is what a save's focus is.`);

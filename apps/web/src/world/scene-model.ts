@@ -1,4 +1,8 @@
-import type { ContractOfferScreenModel } from '@oath-and-coin/presentation';
+import {
+  ScreenKind,
+  type ContractOfferScreenModel,
+  type ScreenModel
+} from '@oath-and-coin/presentation';
 
 /**
  * The schematic world behind the contract-offer screen, described as data.
@@ -119,7 +123,39 @@ export interface SceneDescription {
  * Total and deterministic: the same model gives the same description, down to the
  * numbers, which is what lets the description be compared rather than looked at.
  */
-export function describeScene(model: ContractOfferScreenModel): SceneDescription {
+export function describeScene(model: ScreenModel): SceneDescription {
+  // **What the debrief and the board draw is `DEC-015`, the owner's decision of
+  // 2026-08-28, not a choice made here.** The scene is a line-up — a marker for the
+  // contract on offer and a token per hero in the crew — and neither of those two models
+  // carries a crew at all: the debrief names only the men an outcome named, the board
+  // names no hero. Both therefore get the empty scene. The box keeps its shape and holds
+  // nothing, which is the cost that record states in the open: the canvas goes blank on
+  // those two screens, and a blank canvas there is the expected frame rather than a
+  // failure to draw.
+  //
+  // Written as an exhaustive `switch` and not as "everything that is not the offer": the
+  // negative form compiles happily the day a fourth screen is added and answers for it
+  // silently, which is the exact shape this repository has already paid for three times
+  // (`heroNamedBy`'s own comment records the last one — seven new event kinds walked
+  // through three `kind !== 'a'` readers). Written out, a fourth screen does not build
+  // until somebody has decided what it draws.
+  switch (model.screen) {
+    case ScreenKind.ContractOffer:
+      return describeContractOfferScene(model);
+    case ScreenKind.AfterAction:
+    case ScreenKind.ContractBoard:
+      return EMPTY_SCENE;
+  }
+}
+
+/** The box with nothing in it — see {@link describeScene}. */
+const EMPTY_SCENE: SceneDescription = Object.freeze({
+  width: SCENE_WIDTH,
+  height: MIN_SCENE_HEIGHT,
+  shapes: Object.freeze([])
+});
+
+function describeContractOfferScene(model: ContractOfferScreenModel): SceneDescription {
   const shapes: SceneShape[] = [];
 
   if (model.contract !== null) {

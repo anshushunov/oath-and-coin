@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   createContractOfferScreenModel,
+  type ContractOfferScreenContent,
   type ContractLine,
-  type ContractOfferScreenModel,
   type HeroCard,
   type OfferLine,
   type PromiseTermsLine,
@@ -48,7 +48,7 @@ function anOfferLine(): OfferLine {
   };
 }
 
-function aModel(overrides: Partial<ContractOfferScreenModel> = {}): ContractOfferScreenModel {
+function aModel(overrides: Partial<ContractOfferScreenContent> = {}): ContractOfferScreenContent {
   return {
     state: ScreenState.Normal,
     titleKey: TITLE_KEY,
@@ -67,7 +67,7 @@ function aModel(overrides: Partial<ContractOfferScreenModel> = {}): ContractOffe
 }
 
 /** A model with nothing to offer — the shape {@link anOfferLine} must never ride along on. */
-function anEmptyModel(): ContractOfferScreenModel {
+function anEmptyModel(): ContractOfferScreenContent {
   return createContractOfferScreenModel(
     aModel({ state: ScreenState.Empty, contract: null, roster: [], offer: null })
   );
