@@ -1,0 +1,82 @@
+{
+  "commands": [
+    {
+      "command": "compose_offer",
+      "command_id": 1,
+      "contract": "fixture:the_long_road",
+      "key_hero_index": 1,
+      "invited_indexes": [
+        1,
+        2
+      ],
+      "advance": 100,
+      "method_tag": null,
+      "promised_bonus": 60,
+      "expected_state_version": 0
+    },
+    {
+      "command": "propose_contract_to_hero",
+      "command_id": 2,
+      "contract": "fixture:the_long_road",
+      "hero_index": 1,
+      "expected_state_version": 1
+    },
+    {
+      "command": "lock_offer",
+      "command_id": 3,
+      "contract": "fixture:the_long_road",
+      "expected_state_version": 2
+    },
+    {
+      "command": "poll_crew",
+      "command_id": 4,
+      "contract": "fixture:the_long_road",
+      "expected_state_version": 3
+    },
+    {
+      "command": "resolve_contract",
+      "command_id": 5,
+      "contract": "fixture:the_long_road",
+      "expected_state_version": 4
+    },
+    {
+      "command": "settle_contract",
+      "command_id": 6,
+      "contract": "fixture:the_long_road",
+      "pay": true,
+      "expected_state_version": 8
+    },
+    {
+      "command": "compose_offer",
+      "command_id": 7,
+      "contract": "fixture:the_short_haul",
+      "key_hero_index": 1,
+      "invited_indexes": [
+        1
+      ],
+      "advance": 30,
+      "method_tag": null,
+      "promised_bonus": 0,
+      "expected_state_version": 9
+    },
+    {
+      "command": "propose_contract_to_hero",
+      "command_id": 8,
+      "contract": "fixture:the_short_haul",
+      "hero_index": 1,
+      "expected_state_version": 10
+    },
+    {
+      "command": "lock_offer",
+      "command_id": 9,
+      "contract": "fixture:the_short_haul",
+      "expected_state_version": 11
+    },
+    {
+      "command": "resolve_contract",
+      "command_id": 10,
+      "contract": "fixture:the_short_haul",
+      "expected_state_version": 12
+    }
+  ]
+}

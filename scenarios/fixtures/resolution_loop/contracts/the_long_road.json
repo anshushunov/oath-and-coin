@@ -1,0 +1,13 @@
+{
+  "schema_version": 4,
+  "id": "fixture:the_long_road",
+  "display_name_key": "contract.fixture.the_long_road.name",
+  "patron_fee": 100,
+  "risk": 0,
+  "required_crew": 2,
+  "needs": {
+    "frontline": 50,
+    "wilderness": 50
+  },
+  "tags": []
+}

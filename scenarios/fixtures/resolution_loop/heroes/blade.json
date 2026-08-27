@@ -1,0 +1,15 @@
+{
+  "schema_version": 4,
+  "id": "fixture:blade",
+  "display_name_key": "hero.fixture.blade.name",
+  "greed": 100,
+  "caution": 0,
+  "pride": 0,
+  "trust_in_guild": 100,
+  "capability": {
+    "grade": 90,
+    "expertise": { "frontline": 90 }
+  },
+  "traits": [],
+  "relationships": []
+}

@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "scenario": "resolution-keep-promise",
+  "expected_outcome": "success",
+  "content_root": "scenarios/fixtures/resolution_loop",
+  "checkpoints": [{ "name": "final", "after_command_id": 10 }]
+}

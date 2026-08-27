@@ -44,10 +44,30 @@ import { ScenarioCommandKind, type ScenarioCommand } from './scenario-commands.t
  * format half of the same change, and they moved `SAVE_SCHEMA_VERSION` and
  * `ARTIFACT_VERSION` alongside.
  *
+ * **`m1-resolution/2` → `m1-resolution/3` (`RESOLUTION_SPEC` §5.3).** A third change to
+ * the answer: the patron's share is now a function of the outcome's grade, where it used
+ * to be the whole fee whatever came back. A campaign that failed a contract and settled it
+ * under `/2` was paid in full; under `/3` it is paid `PARTIAL_FEE_PERCENT`, and a
+ * catastrophe nothing at all.
+ *
+ * **No format moved with it. Every snapshot was re-recorded anyway, and the diff says
+ * why.** All 42 files that existed before this task changed in exactly two fields —
+ * `ruleset_version` at the top and inside `metadata` — and in nothing else: none of the
+ * seven scenarios that settle exercises the table at all, because every one of them comes
+ * back `clean` or `costly` and §5.3 pays both in full. That is not evidence the answer did
+ * not change; it is evidence those scenarios do not reach the rows where it did.
+ *
+ * The rows below 100 % are reached in exactly two places, and it is worth naming both
+ * rather than gesturing at the corpus: `settlement.test.ts`'s case per grade, and
+ * `resolution-strongest-loses`, whose crew comes back `failed` and is settled for it.
+ * `resolution-keep-promise` and `resolution-break-promise` are about the fork and the
+ * price of a word — both of their outcomes are paid in full, so neither says anything
+ * about this table.
+ *
  * One number per set of rules anyone could have saved a campaign under: if a later task
- * changes an answer again, it takes `m1-resolution/3`.
+ * changes an answer again, it takes `m1-resolution/4`.
  */
-export const RULESET_VERSION = 'm1-resolution/2';
+export const RULESET_VERSION = 'm1-resolution/3';
 
 /**
  * One decision a step produced, with the hero it belongs to when the step's decisions do

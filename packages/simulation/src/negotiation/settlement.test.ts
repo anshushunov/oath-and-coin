@@ -5,10 +5,13 @@ import { SortedSet } from '../collections/sorted-set.ts';
 import { RejectionCodes } from '../commands/command-result.ts';
 import type { SettleContract } from '../commands/settle-contract.ts';
 import { settleContract } from '../engine.ts';
+import { OutcomeGrade } from '../domain/outcome.ts';
 import { compareContentIds, type ContentId } from '../ids/content-id.ts';
+import { divideTowardZero, multiplyInt32 } from '../integer-division.ts';
+import { termsOf } from '../resolution/outcome-grade.ts';
 import { compareHeroIds, heroId, type HeroId } from '../ids/hero-id.ts';
 import { STARTING_TREASURY } from './commitments.ts';
-import { ContractStatus } from '../state/contract-state.ts';
+import { ContractStatus, type ContractState } from '../state/contract-state.ts';
 import { heroOf, type GameState } from '../state/game-state.ts';
 import type { HeroState } from '../state/hero-state.ts';
 import { createContractState, OfferPhase } from '../state/offer-state.ts';
@@ -34,6 +37,13 @@ interface CrewedOverrides {
    * `requiredCrew` and `offer.acceptedBy.size` both equal this. */
   readonly crew?: number;
   readonly promisedBonus?: number;
+  /**
+   * Ступень, на которой контракт вернулся (`RESOLUTION_SPEC` §5.3). По умолчанию
+   * «Чисто»: почти каждый случай здесь — про аванс и про обещание, то есть про деньги,
+   * которые от ступени **не** зависят, и полная доля заказчика оставляет их читаемыми.
+   * Случай про саму долю называет ступень явно.
+   */
+  readonly grade?: OutcomeGrade;
 }
 
 /**
@@ -82,9 +92,23 @@ function crewedCampaign(overrides: CrewedOverrides = {}): GameState {
     // contract without one. `resolved` runs the real resolver on this crew rather than
     // stating an outcome by hand — what these tests are about is the money, and the money
     // must move against a result some crew could actually have brought back.
-    contracts: SortedMap.from(compareContentIds, [[contract.id, resolved(contract, heroes)]]),
+    contracts: SortedMap.from(compareContentIds, [
+      [contract.id, atGrade(resolved(contract, heroes), overrides.grade ?? OutcomeGrade.Clean)]
+    ]),
     treasury: overrides.treasury ?? STARTING_TREASURY
   });
+}
+
+/**
+ * Тот же контракт, чей исход назван ступенью, а не выведен из отряда.
+ *
+ * Ступень пишется поверх настоящего разрешения, а не подбирается составом: §5.3 — таблица
+ * про деньги, и постановка четырёх исходов через резолвер сделала бы каждый случай ещё и
+ * проверкой §4.6, так что сдвиг порога краснил бы таблицу выплат по причине, к оплате
+ * отношения не имеющей.
+ */
+function atGrade(contract: ContractState, grade: OutcomeGrade): ContractState {
+  return createContractState({ ...contract, resolution: { ...contract.resolution!, grade } });
 }
 
 /** A locked package whose crew never filled — `settleContract`'s `CrewNotFilled`. */
@@ -398,7 +422,12 @@ function forEachGeneratedSettlement(fn: (args: { committed: number; paid: number
         ),
         // Resolved first, like every settleable contract since `resolveContract`
         // (`RESOLUTION_SPEC` §2.5) — a settlement pays against an outcome.
-        contracts: SortedMap.from(compareContentIds, [[contract.id, resolved(contract, heroes)]]),
+        // Разрешён и на «Чисто» (§5.3): свойство здесь — про то, сколько уходит **людям**,
+        // а доля заказчика от ступени зависит, и полная доля оставляет обе стороны
+        // равенства читаемыми.
+        contracts: SortedMap.from(compareContentIds, [
+          [contract.id, atGrade(resolved(contract, heroes), OutcomeGrade.Clean)]
+        ]),
         treasury: 1_000_000
       });
 
@@ -540,5 +569,83 @@ describe('a settlement pays against an outcome (`RESOLUTION_SPEC` §2.5, §5.3)'
         offer: { ...contract.offer, phase: OfferPhase.Settled }
       })
     ).toThrow(/carries no resolution/u);
+  });
+});
+
+describe('what the patron pays, by the step the outcome landed on (`RESOLUTION_SPEC` §5.3)', () => {
+  /**
+   * The same locked, crewed contract, resolved into a named grade rather than into
+   * whatever this crew would have earned.
+   *
+   * Written onto the contract rather than reached by arranging a crew that lands there:
+   * these cases are about §5.3's table, and staging four different outcomes through the
+   * resolver would make each of them a test of §4.6 as well — so a change to a threshold
+   * would redden the payout table for a reason that has nothing to do with payment.
+   */
+  const settledAs = (grade: OutcomeGrade, overrides: CrewedOverrides = {}): GameState =>
+    crewedCampaign({ ...overrides, grade });
+
+  const paidBy = (before: GameState, after: GameState, patronFee: number) =>
+    after.treasury - before.treasury + patronFee;
+
+  it.each([
+    [OutcomeGrade.Clean, 100],
+    [OutcomeGrade.Costly, 100],
+    // A literal, not `PARTIAL_FEE_PERCENT`: with the constant on both sides the table
+    // agreed with whatever it happened to say, and a mutant moving it to 41 survived —
+    // the fee of 100 below is what makes 40 and 41 different money (external review).
+    [OutcomeGrade.Failed, 40],
+    [OutcomeGrade.Disaster, 0]
+  ])('%s brings in %i%% of the patron fee', (grade, percent) => {
+    // The share is `termsOf`'s to state, so this reads it there rather than restating the
+    // table a second time — and asserts the *money*, not the percentage, so a command
+    // that read the right share and spent it wrongly is still caught.
+    const before = settledAs(grade, { treasury: 400, patronFee: 100, advance: 0 });
+    const after = settleContract(before, aSettle({ pay: true })).state;
+
+    expect(after.treasury).toBe(400 + divideTowardZero(multiplyInt32(100, percent), 100));
+    expect(percent).toBe(termsOf(grade).patronFeePercent);
+  });
+
+  it('pays a disaster nothing at all, and still takes the advance out', () => {
+    // The one grade where the patron's share is zero: the guild has already paid its
+    // people, and nothing comes back to cover it. §5.3's "clean means no *unplanned*
+    // loss" read from the other end — the planned cost is paid whatever happened.
+    const before = settledAs(OutcomeGrade.Disaster, { treasury: 400, patronFee: 60, advance: 10 });
+    const after = settleContract(before, aSettle({ pay: true })).state;
+
+    expect(after.treasury).toBe(400 - 10 * 2);
+  });
+
+  it('truncates a share that does not divide into a whole coin', () => {
+    // 7 at 40 % is 2.8. `TDD` §7.4: every division in this system truncates toward zero,
+    // so the guild is paid 2 — an ordinary `/` would settle a fractional treasury, and a
+    // rounding one would answer 3.
+    const before = settledAs(OutcomeGrade.Failed, { treasury: 400, patronFee: 7, advance: 0 });
+    const after = settleContract(before, aSettle({ pay: true })).state;
+
+    expect(paidBy(before, after, 0)).toBe(2);
+    expect(after.treasury).toBe(402);
+  });
+
+  it('still owes the promised bonus on an outcome that paid nothing', () => {
+    // §5.3, and the whole reason the promise mechanic exists: the temptation to break a
+    // word is largest exactly when the contract failed and there is no money. A grade
+    // that discharged the obligation would remove the choice at its only interesting
+    // moment.
+    const before = settledAs(OutcomeGrade.Disaster, {
+      treasury: 400,
+      patronFee: 60,
+      advance: 0,
+      promisedBonus: 30
+    });
+
+    const kept = settleContract(before, aSettle({ pay: true }));
+    const broken = settleContract(before, aSettle({ pay: false }));
+
+    expect(kept.state.treasury).toBe(400 - 30);
+    expect(broken.state.treasury).toBe(400);
+    expect(broken.events[0]!.kind).toBe('contract_settled_promise_broken');
+    expect(termsOf(OutcomeGrade.Disaster).promiseStands).toBe(true);
   });
 });
