@@ -114,7 +114,22 @@ export interface NeedCoverage {
 
   readonly verdict: CoverageVerdict;
 
-  readonly contributors: readonly { readonly hero: HeroId; readonly amount: number }[];
+  /**
+   * Everyone **answerable** for this need (`RESOLUTION_SPEC` §2.2) — including at an
+   * expertise of nought — with both numbers the debrief screen shows: what the man
+   * brought (§4.1) and how much of it counted once §4.3's halving had been applied.
+   *
+   * Two numbers rather than one, by the owner's decision of 2026-08-27. `amount` alone
+   * makes a crew's names add up to more than the need received; `counted` alone makes two
+   * identical heroes read as unequal for a reason that is only their sort order. Kept per
+   * `(hero, need)` — where the halving happens — so every rollup is addition rather than
+   * a second statement of §4.3.
+   */
+  readonly contributors: readonly {
+    readonly hero: HeroId;
+    readonly amount: number;
+    readonly counted: number;
+  }[];
 }
 
 /**
@@ -145,6 +160,15 @@ export interface OutcomeIntent {
 
 /** What one hero brought, and why the screen may say so (`RESOLUTION_SPEC` §2.1). */
 export interface HeroContribution {
+  /**
+   * The sum of this hero's own {@link NeedCoverage.contributors} `amount`s across every
+   * need he is answerable for — what he brought, before §4.3's halving.
+   *
+   * The matching "how much counted" rollup is deliberately **not** a second field here:
+   * it is the sum of his `counted` shares, which `coverage` already carries, and one
+   * number living in two places is one number that can disagree with itself
+   * (`RESOLUTION_SPEC` §4.3).
+   */
   readonly amount: number;
   readonly commitment: CommitmentState;
   readonly provenance: readonly OutcomeReasonCode[];

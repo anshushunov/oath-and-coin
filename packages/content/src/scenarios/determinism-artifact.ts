@@ -336,7 +336,12 @@ function describeResolution(resolution: ContractResolution | null): CanonicalVal
       verdict: entry.verdict,
       contributors: entry.contributors.map((contributor) => ({
         hero: contributor.hero,
-        amount: contributor.amount
+        amount: contributor.amount,
+        // `RESOLUTION_SPEC` §4.3's second number: how much of what he brought counted
+        // after the halving. Written here for the reason `wounds` above already gives —
+        // a field this projection does not read is a state change a determinism check
+        // cannot see.
+        counted: contributor.counted
       }))
     })),
     contributions: Object.fromEntries(

@@ -285,8 +285,15 @@ const needCoverageSchema = z.strictObject({
   supplied: magnitude,
   effective: magnitude,
   verdict: z.enum([CoverageVerdict.Closed, CoverageVerdict.Weak, CoverageVerdict.Uncovered]),
+  // Both numbers `RESOLUTION_SPEC` §4.3 records per `(hero, need)`: what the man brought
+  // and how much of it counted after the halving. Adding `counted` changed this
+  // `strictObject`'s shape without moving `SAVE_SCHEMA_VERSION`, and §2.8 states the
+  // argument and the check: `resolution` is `null` in every state this build can produce
+  // — `resolveContract` is what writes one, and it arrives with the bump — so no pair of
+  // saves exists that this change distinguishes. The canonical snapshots are the
+  // measurement, not the reasoning: all 42 stayed byte-identical.
   contributors: z
-    .array(z.strictObject({ hero: heroIdSchema, amount: magnitude }))
+    .array(z.strictObject({ hero: heroIdSchema, amount: magnitude, counted: magnitude }))
     .max(MAX_HEROES_PER_CONTRACT)
 });
 
@@ -1009,7 +1016,8 @@ function toResolution(raw: z.infer<typeof resolutionValueSchema>): ContractResol
       verdict: entry.verdict,
       contributors: entry.contributors.map((contributor) => ({
         hero: heroId(contributor.hero),
-        amount: contributor.amount
+        amount: contributor.amount,
+        counted: contributor.counted
       }))
     })),
     contributions: fromEntriesOrInconsistent<HeroId, HeroContribution>(

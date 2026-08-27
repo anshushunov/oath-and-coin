@@ -106,6 +106,11 @@ const costlyWithAnUnheldNeed = () =>
  * Frontline closed at 100 against 60 (`+12` after the ceiling); wilderness asks 200 and
  * two heroes supply 90 between them after halving (`−110`). Base `−98`, margin `−79`
  * against a total requirement of 260 — below the costly band, inside the failed one.
+ *
+ * **The stronger of the two on the failing need is the higher id**, so §5.2's "whoever
+ * was on the point" cannot be satisfied by a rule that reads the amounts not at all and
+ * answers the lowest id. External review of this task found every fixture here with the
+ * two agreeing.
  */
 const failedOnThePoint = () =>
   anInput(
@@ -115,8 +120,54 @@ const failedOnThePoint = () =>
     ],
     [
       member(0, 100, [[NeedId.Frontline, 100]]),
-      member(1, 100, [[NeedId.Wilderness, 80]]),
-      member(2, 100, [[NeedId.Wilderness, 20]])
+      member(1, 100, [[NeedId.Wilderness, 20]]),
+      member(2, 100, [[NeedId.Wilderness, 80]])
+    ]
+  );
+
+/**
+ * One need held by a man who is answerable for it at an expertise of nought, and one
+ * closed by somebody else — with a third hero who is answerable for nothing at all.
+ *
+ * §2.2's distinction, reached through the whole resolver: an explicit zero means the need
+ * was his business and he brought nothing to it; an absent key means it never was. The
+ * wilderness need is therefore *held*, is the worse covered of the two, and its point is
+ * the man who brought nothing. Base `−140`, margin `−112` against a requirement of 200 —
+ * a catastrophe, so the lost trust lands on the third man as key hero.
+ */
+const heldAtNought = () =>
+  anInput(
+    [
+      [NeedId.Frontline, 100],
+      [NeedId.Wilderness, 100]
+    ],
+    [
+      member(0, 100, [[NeedId.Frontline, 60]]),
+      member(1, 100, [[NeedId.Wilderness, 0]]),
+      member(2, 100, [])
+    ],
+    { keyHero: heroId(2) }
+  );
+
+/**
+ * Two heroes answerable for the same unclosed need, only one of whom came unwillingly.
+ *
+ * The fixture provenance needs: `faltered_early` is the one intent kind carrying *both* a
+ * hero and a need, so it is the only place "an intent about this man" and "an intent about
+ * a need this man holds" can disagree. Frontline closes at 100; wilderness is weak at 90
+ * against 100 (`−10`), and a motive of `+10` from two committed against one fragile lifts
+ * the base to `−9` — inside the costly band of a tenth of 200.
+ */
+const oneOfTwoGaveWay = () =>
+  anInput(
+    [
+      [NeedId.Frontline, 100],
+      [NeedId.Wilderness, 100]
+    ],
+    [
+      member(0, 100, [[NeedId.Wilderness, 60]]),
+      member(1, 100, [[NeedId.Wilderness, 60]], CommitmentState.Fragile),
+      member(2, 100, [[NeedId.Frontline, 100]])
     ]
   );
 
@@ -257,13 +308,31 @@ describe('what the resolver says happened, in order (§3.3, §4.6)', () => {
 
 describe('what the outcome cost the people (§5.1, §5.2)', () => {
   it('wounds whoever was on the point of the worst need somebody held', () => {
+    // Hero 2 carried 80 of the wilderness need against hero 1's 20 — and is the higher of
+    // the two ids, so "always the lowest id" answers the other man.
     expect(draftResolution(failedOnThePoint()).resolution.consequences).toEqual([
       {
-        hero: heroId(1),
+        hero: heroId(2),
         kind: ConsequenceKind.Wound,
         reason: OutcomeReasonCodes.WoundOnThePoint,
         magnitude: 1
       }
+    ]);
+  });
+
+  it('wounds the man who was answerable at nought, not the one whose need closed', () => {
+    // §2.2 through the whole resolver: a key present at an expertise of nought means the
+    // need was his business. A rule reading "somebody supplied something" would pass the
+    // wilderness need over as unheld and wound hero 0, whose own need was the better
+    // covered of the two.
+    expect(
+      draftResolution(heldAtNought()).resolution.consequences.map((consequence) => [
+        consequence.hero,
+        consequence.kind
+      ])
+    ).toEqual([
+      [heroId(1), ConsequenceKind.Wound],
+      [heroId(2), ConsequenceKind.TrustLost]
     ]);
   });
 
@@ -345,11 +414,53 @@ describe('what each hero is recorded as having brought (§2.5, §6.1)', () => {
   });
 
   it('records what each one personally brought, across every need he answered for', () => {
-    const { contributions } = draftResolution(failedOnThePoint()).resolution;
+    // Before the halving (§4.3) — what the man is worth rather than what his position in
+    // the queue made of it. The counted shares live on the need's own row, and hero 2's
+    // 80 counts in full while hero 1's 20 counts as 10, so this list and that one cannot
+    // be the same numbers by accident.
+    const { coverage, contributions } = draftResolution(failedOnThePoint()).resolution;
 
     expect(contributions.values().map((contribution) => contribution.amount)).toEqual([
-      100, 80, 20
+      100, 20, 80
     ]);
+    expect(coverage[1]?.contributors).toEqual([
+      { hero: heroId(2), amount: 80, counted: 80 },
+      { hero: heroId(1), amount: 20, counted: 10 }
+    ]);
+  });
+
+  it('counts a man answerable at nought as a contributor who brought nothing', () => {
+    // The two ways of bringing nothing, told apart at the level the screen reads (§2.2):
+    // hero 1 holds the wilderness need at nought and appears on it; hero 2 holds nothing
+    // and appears nowhere. Both are recorded in `contributions` — the crew went out — and
+    // only the first one's need is part of his story.
+    const { coverage, contributions } = draftResolution(heldAtNought()).resolution;
+
+    expect(coverage[1]?.contributors).toEqual([{ hero: heroId(1), amount: 0, counted: 0 }]);
+    expect(contributions.keys()).toEqual([heroId(0), heroId(1), heroId(2)]);
+    expect(contributions.get(heroId(1))?.provenance).toEqual([
+      OutcomeReasonCodes.NeedUncovered,
+      OutcomeReasonCodes.WoundOnThePoint
+    ]);
+    expect(contributions.get(heroId(2))?.provenance).toEqual([
+      OutcomeReasonCodes.TrustLostInDisaster
+    ]);
+  });
+
+  it('gives the reason for giving way to the man who gave way, and to nobody beside him', () => {
+    // `faltered_early` is the one intent naming a hero *and* a need, so it is the only
+    // place "about this man" and "about a need this man holds" can disagree. Two heroes
+    // answer for the wilderness need and only one of them came unwillingly: drop the
+    // "names nobody" half of the rule and the steady man is told he gave way too.
+    const { contributions } = draftResolution(oneOfTwoGaveWay()).resolution;
+
+    expect(contributions.get(heroId(0))?.provenance).toEqual([OutcomeReasonCodes.NeedWeak]);
+    expect(contributions.get(heroId(1))?.provenance).toEqual([
+      OutcomeReasonCodes.NeedWeak,
+      OutcomeReasonCodes.FalteredEarly,
+      OutcomeReasonCodes.GrudgeAfterFaltering
+    ]);
+    expect(contributions.get(heroId(2))?.provenance).toEqual([OutcomeReasonCodes.NeedClosed]);
   });
 
   it('records how willingly each one came', () => {
@@ -371,11 +482,11 @@ describe('what each hero is recorded as having brought (§2.5, §6.1)', () => {
     const { contributions } = draftResolution(failedOnThePoint()).resolution;
 
     expect(contributions.get(heroId(0))?.provenance).toEqual([OutcomeReasonCodes.NeedClosed]);
-    expect(contributions.get(heroId(1))?.provenance).toEqual([
+    expect(contributions.get(heroId(1))?.provenance).toEqual([OutcomeReasonCodes.NeedUncovered]);
+    expect(contributions.get(heroId(2))?.provenance).toEqual([
       OutcomeReasonCodes.NeedUncovered,
       OutcomeReasonCodes.WoundOnThePoint
     ]);
-    expect(contributions.get(heroId(2))?.provenance).toEqual([OutcomeReasonCodes.NeedUncovered]);
   });
 });
 
@@ -515,6 +626,14 @@ describe('the properties the outcome has to have (§10.1)', () => {
     }
 
     // The sweep is a real one, not an empty loop that passed by saying nothing.
+    //
+    // **Two assertions, and the first version of this had only the second one** — which
+    // proved nothing at all: `checked` was compared against a product of the same tables
+    // the loops walked, so emptying any axis made both sides zero and the property test
+    // passed over no cases whatever (external review of this task). The literal is what
+    // catches that; the product is what catches an axis quietly shrinking while the
+    // literal is dutifully updated to match.
+    expect(checked).toBe(216);
     expect(checked).toBe(NEED_WEIGHTS.length * RISKS.length * BOOSTS.length * CREW_SIZE_TOTAL);
   });
 });
