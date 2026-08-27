@@ -8,9 +8,10 @@ import {
   LOADING_SCREEN,
   contractOfferScreenModel,
   failedScreen,
-  type ContractOfferScreenModel
+  focusedContractOf,
+  type ScreenModel
 } from '@oath-and-coin/presentation';
-import type { GameState } from '@oath-and-coin/simulation';
+import type { ContentId, GameState } from '@oath-and-coin/simulation';
 
 import type { ContentSourcePort } from './ports.ts';
 import type { SaveSlot } from './save/slots.ts';
@@ -65,7 +66,19 @@ export interface SaveFailure {
  * only one of them is ever true.
  */
 export interface SessionState {
-  readonly screen: ContractOfferScreenModel;
+  readonly screen: ScreenModel;
+  /**
+   * The contract every screen of this session is about, or `null` when no run has reached
+   * one.
+   *
+   * Its own field since the session grew a second and a third screen. It used to be read
+   * back off `screen.contract`, which worked while there was one screen and stops working
+   * the moment there are three: a board is about the whole campaign and names no contract at
+   * all, so a session that only knew what was on screen would forget which contract the
+   * player had been working on the instant they looked at the board — and `save` would have
+   * nothing to write into `focused_contract` (design spec §2.7).
+   */
+  readonly focusedContract: ContentId | null;
   readonly contentVersion: string | null;
   /**
    * The artifact hash of the run behind this screen, or `null` when there was no run.
@@ -125,8 +138,11 @@ export function startSession(request: SessionRequest): SessionState {
     seed: request.seed
   });
 
+  const focusedContract = result.kind === 'ran' ? focusOfRun(result) : null;
+
   return {
     screen: screenFor(result),
+    focusedContract,
     contentVersion:
       result.kind === 'ran' ? result.outcome.finalState.metadata.contentVersion : null,
     canonicalHash: result.kind === 'ran' ? artifactHash(result.outcome) : null,
@@ -154,7 +170,7 @@ export function startSession(request: SessionRequest): SessionState {
  * corpus tells the two apart: `screen_loading` and `screen_empty` carry the same
  * content and different `read_model.sha256`.
  */
-export function screenFor(result: ScenarioRunResult): ContractOfferScreenModel {
+export function screenFor(result: ScenarioRunResult): ScreenModel {
   switch (result.kind) {
     case 'loading':
       return LOADING_SCREEN;
@@ -165,4 +181,17 @@ export function screenFor(result: ScenarioRunResult): ContractOfferScreenModel {
     default:
       return result satisfies never;
   }
+}
+
+/**
+ * The contract a finished run leaves the player on — the screen factory's own rule, called
+ * rather than restated.
+ *
+ * This used to answer "the contract the first step named, or nothing", which disagreed with
+ * the screen on a real path: a run that applied no step still shows the campaign's first
+ * contract, and a session claiming no focus there made `save` write nothing at all. Found by
+ * external review of this task; the fix is to ask the one function that decides it.
+ */
+function focusOfRun(result: Extract<ScenarioRunResult, { kind: 'ran' }>): ContentId | null {
+  return focusedContractOf(result.outcome.finalState, result.outcome.steps);
 }

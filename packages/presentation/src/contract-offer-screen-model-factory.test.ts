@@ -20,10 +20,9 @@ import {
 import {
   LOADING_SCREEN,
   contractOfferScreenModel,
-  describeReadModel,
-  failedScreen,
-  readModelHash
+  failedScreen
 } from './contract-offer-screen-model-factory.ts';
+import { describeReadModel, readModelHash } from './screen-model.ts';
 import { QualitativeGrade } from './qualitative-scale.ts';
 import { ReasonDirection, ScreenState } from './screen-state.ts';
 import {
@@ -815,6 +814,10 @@ describe('the read-model hash', () => {
     // The projection is a stable, named contract with snake_case keys the frozen
     // corpus records; the model's own field names are this package's business.
     expect(describeReadModel(LOADING_SCREEN)).toEqual({
+      // Which screen this is, first: two screens can carry identical content — an `Empty`
+      // board and an `Empty` debrief carry none at all — and a hash that could not tell
+      // them apart would call two different runs the same one.
+      screen: 'contract_offer',
       state: 'Loading',
       title_key: 'screen.contract_offer.title',
       error_code: null,

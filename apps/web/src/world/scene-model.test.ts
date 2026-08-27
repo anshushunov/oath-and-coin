@@ -1,5 +1,9 @@
 import { startSession } from '@oath-and-coin/application';
 import {
+  AFTER_ACTION_LOADING_SCREEN,
+  CONTRACT_BOARD_LOADING_SCREEN,
+  SCREEN_KINDS,
+  ScreenKind,
   ScreenState,
   createContractOfferScreenModel,
   type ContractLine,
@@ -50,12 +54,21 @@ const SCREEN_SCENARIOS = [
 const SEED = 424242n;
 
 function modelFor(scenario: string): ContractOfferScreenModel {
-  return startSession({
+  const { screen } = startSession({
     content: browserContentSource(),
     scenario,
     checkpoint: null,
     seed: SEED
-  }).screen;
+  });
+
+  // Every scenario here is a negotiation, and `SessionState.screen` is a union of three
+  // since the contract loop grew a debrief and a board. A throw rather than a cast: a run
+  // that landed elsewhere has stopped being what this file measures.
+  if (screen.screen !== ScreenKind.ContractOffer) {
+    throw new Error(`'${scenario}' landed on '${screen.screen}', not on the contract offer.`);
+  }
+
+  return screen;
 }
 
 /** A roster entry with only the fields the scene reads stated. */
@@ -314,5 +327,45 @@ describe('the scene behind the contract-offer screen', () => {
     // The adapter keys its display objects by id. Two heroes sharing one would leave a
     // roster of two drawn as one, with nothing anywhere reporting it.
     expect(() => describeScene(aModel(['core:bram', 'core:bram'], []))).toThrow(/appears twice/u);
+  });
+});
+
+describe('the scene behind the other two screens', () => {
+  it('answers for every kind the union declares, rather than throwing on two of them', () => {
+    // `describeScene` took one model until the contract loop grew three. A `switch` that
+    // threw on the two new ones would take the canvas down with the first settlement.
+    //
+    // The matrix is checked against `SCREEN_KINDS` rather than being three entries somebody
+    // remembered to write: a fourth screen added to the union without a model here would
+    // otherwise leave this file measuring three quarters of it and still green.
+    const models = [
+      modelFor('screen_normal'),
+      AFTER_ACTION_LOADING_SCREEN,
+      CONTRACT_BOARD_LOADING_SCREEN
+    ];
+
+    expect(new Set(models.map((model) => model.screen))).toEqual(new Set(SCREEN_KINDS));
+
+    for (const model of models) {
+      expect(() => describeScene(model), model.screen).not.toThrow();
+    }
+  });
+
+  it('draws nothing for a debrief or a board, and keeps the box', () => {
+    // `DEC-015`, the owner's decision of 2026-08-28: neither model carries a crew, so
+    // there is no line-up to draw. The box keeps its shape so the canvas does not collapse
+    // to the 300×150 a `<canvas>` defaults to.
+    for (const model of [AFTER_ACTION_LOADING_SCREEN, CONTRACT_BOARD_LOADING_SCREEN]) {
+      const scene = describeScene(model);
+
+      expect(scene.shapes, model.screen).toEqual([]);
+      expect(scene.width, model.screen).toBe(SCENE_WIDTH);
+      expect(scene.height, model.screen).toBe(MIN_SCENE_HEIGHT);
+    }
+  });
+
+  it('still draws the offer screen it always drew', () => {
+    // The counterpart, so "draws nothing" cannot quietly become the answer for all three.
+    expect(describeScene(modelFor('screen_normal')).shapes.length).toBeGreaterThan(0);
   });
 });

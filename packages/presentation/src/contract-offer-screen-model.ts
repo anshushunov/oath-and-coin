@@ -1,6 +1,7 @@
 import type { CausalTrace, ContentId, OfferPhase } from '@oath-and-coin/simulation';
 
 import type { QualitativeGrade } from './qualitative-scale.ts';
+import { ScreenKind } from './screen-kind.ts';
 import { ScreenState, type ReasonDirection } from './screen-state.ts';
 
 /**
@@ -185,6 +186,12 @@ export interface SettlementLine {
  * have to guess at or compute itself.
  */
 export interface ContractOfferScreenModel {
+  /**
+   * Which screen this is (`ScreenKind.ContractOffer`) — the union's discriminant, and the
+   * one field on this model no caller supplies: {@link createContractOfferScreenModel}
+   * stamps it, so it cannot be spelled wrong and cannot be spread away.
+   */
+  readonly screen: typeof ScreenKind.ContractOffer;
   readonly state: ScreenState;
   readonly titleKey: string;
   readonly contract: ContractLine | null;
@@ -235,8 +242,10 @@ export interface ContractOfferScreenModel {
  * Each state owns its own set of populated fields, and that ownership is enforced here
  * rather than left to callers to respect by convention.
  */
+export type ContractOfferScreenContent = Omit<ContractOfferScreenModel, 'screen'>;
+
 export function createContractOfferScreenModel(
-  model: ContractOfferScreenModel
+  model: ContractOfferScreenContent
 ): ContractOfferScreenModel {
   if (model.errorDetail !== null && model.errorCode === null) {
     throw new Error(
@@ -284,16 +293,16 @@ export function createContractOfferScreenModel(
       throw new Error(`Unknown screen state '${String(model.state)}'.`);
   }
 
-  return model;
+  return { ...model, screen: ScreenKind.ContractOffer };
 }
 
-function requireNoErrorCode(model: ContractOfferScreenModel): void {
+function requireNoErrorCode(model: ContractOfferScreenContent): void {
   if (model.errorCode !== null) {
     throw new Error(`errorCode must be null when state is ${model.state}.`);
   }
 }
 
-function requireNoContractContent(model: ContractOfferScreenModel): void {
+function requireNoContractContent(model: ContractOfferScreenContent): void {
   if (
     model.contract !== null ||
     model.roster.length > 0 ||

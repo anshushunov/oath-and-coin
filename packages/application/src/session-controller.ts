@@ -1,9 +1,15 @@
 import { SaveErrorCodes, SaveReadError, type SaveErrorCode } from '@oath-and-coin/content';
-import { LOADING_SCREEN, contractOfferScreenModel } from '@oath-and-coin/presentation';
+import {
+  LOADING_SCREEN,
+  ScreenKind,
+  afterActionScreenModel,
+  contractBoardScreenModel,
+  contractOfferScreenModel,
+  type ScreenModel
+} from '@oath-and-coin/presentation';
 import {
   composeOffer as applyComposeOffer,
   lockOffer as applyLockOffer,
-  parseContentId,
   pollCrew as applyPollCrew,
   proposeContractToHero as applyProposeContractToHero,
   resolveContract as applyResolveContract,
@@ -183,6 +189,30 @@ export interface SessionController {
    */
   resolveContract(input: NegotiationCommandInput<ResolveContract>): CommandResult;
   settleContract(input: NegotiationCommandInput<SettleContract>): CommandResult;
+  /**
+   * Points the session at another contract and redraws whatever screen it is on.
+   *
+   * The focused contract is a fact about the session rather than about the screen — a board
+   * names no contract at all — so moving it and moving the screen are two operations, and
+   * this is the first. A caller that wants both calls {@link show} as well; the board's own
+   * rows are what a player presses, and pressing one is exactly "focus that contract, then
+   * show me its offer".
+   *
+   * @throws when the campaign carries no such contract, or when there is no campaign at all
+   * — both are defects in the caller, which must only offer contracts the screen it drew
+   * actually listed.
+   */
+  focus(contractId: ContentId): void;
+  /**
+   * Shows another of the three screens, about the contract the session is already focused
+   * on.
+   *
+   * Deliberately *not* where the loop's own navigation lives: which screen a campaign
+   * belongs on after a command or a load is `RESOLUTION_SPEC` §6.4's table, and answering
+   * that question in two places is how the two answers start to differ. This is the manual
+   * move — a player pressing "back to the board" — and nothing else.
+   */
+  show(screen: ScreenKind): void;
   /** Writes the campaign on screen into `slot`, or records why it could not. */
   save(slot: SaveSlot): Promise<void>;
   /**
@@ -215,6 +245,7 @@ export interface SessionController {
  */
 const PENDING_SESSION: SessionState = {
   screen: LOADING_SCREEN,
+  focusedContract: null,
   contentVersion: null,
   canonicalHash: null,
   state: null,
@@ -289,6 +320,13 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
     start: () => {
       store.replace(startSession(deps.request));
       return Promise.resolve();
+    },
+
+    focus: (contractId) => {
+      redraw(store, contractId, currentKind(store));
+    },
+    show: (screen) => {
+      redraw(store, store.snapshot().focusedContract, screen);
     },
 
     save: (slot) => save(deps, store, observed, slot),
@@ -386,16 +424,84 @@ function dispatchNegotiationCommand(
 
   store.replace({
     ...session,
-    screen: contractOfferScreenModel(
-      result.state,
-      restoreDecidedSteps(result.state),
-      focusedContract
-    ),
+    // The screen the session is on, rebuilt against the campaign the command produced —
+    // not "always the offer", which is what this line said while there was one screen to
+    // be on. Which screen a *command* should move the player to is `RESOLUTION_SPEC` §6.4,
+    // and it arrives with the routing task; until then a dispatch redraws where the player
+    // already is.
+    screen: buildScreen(currentKind(store), result.state, focusedContract),
+    focusedContract,
     state: result.state,
     canonicalHash: null
   });
 
   return result;
+}
+
+/** Which of the three screens the session is showing right now. */
+function currentKind(store: Store<SessionState>): ScreenKind {
+  return store.snapshot().screen.screen;
+}
+
+/**
+ * Points the session at `contractId` and rebuilds `screen` against the campaign it is
+ * already holding.
+ *
+ * One place, so `focus` and `show` cannot answer "what does the session look like now"
+ * differently — they differ in one argument each and in nothing else.
+ */
+function redraw(
+  store: Store<SessionState>,
+  focusedContract: ContentId | null,
+  screen: ScreenKind
+): void {
+  const session = store.snapshot();
+  const state = activeState(session);
+
+  store.replace({
+    ...session,
+    screen: buildScreen(screen, state, focusedContract),
+    focusedContract
+  });
+}
+
+/**
+ * One screen out of a campaign and the contract it is focused on.
+ *
+ * The one place a `ScreenModel` is built from a live campaign, so `start`, a load, a
+ * dispatch and a manual move cannot each answer with a differently-shaped screen. The
+ * `switch` is exhaustive and has no `default`: a fourth screen does not build until this
+ * function has been told how to make one.
+ *
+ * `restoreDecidedSteps` reads the answered history back out of the campaign rather than
+ * this layer accumulating a parallel step list — the second source of truth its own doc
+ * comment already rejects for a reloaded save.
+ */
+function buildScreen(
+  screen: ScreenKind,
+  state: GameState,
+  focusedContract: ContentId | null
+): ScreenModel {
+  switch (screen) {
+    case ScreenKind.ContractOffer:
+      return contractOfferScreenModel(
+        state,
+        restoreDecidedSteps(state),
+        focusedContract ?? undefined
+      );
+    case ScreenKind.AfterAction:
+      if (focusedContract === null) {
+        throw new Error(
+          'A debrief was asked for with no contract focused. The debrief is about one ' +
+            "contract's outcome, so a session with none to name has nothing to debrief — a " +
+            'defect in the caller, not a campaign without an outcome.'
+        );
+      }
+
+      return afterActionScreenModel(state, focusedContract);
+    case ScreenKind.ContractBoard:
+      return contractBoardScreenModel(state);
+  }
 }
 
 /**
@@ -708,6 +814,7 @@ function restore(bytes: Uint8Array, expected: SessionControllerDeps['expected'])
 
   return {
     screen: contractOfferScreenModel(state, steps, descriptor.focusedContract),
+    focusedContract: descriptor.focusedContract,
     // The save's own, checked against `expected` by `readSave` before this line runs —
     // so this is the version the file was written under and the version this build
     // reads under, which are the same number or the file was refused.
@@ -755,11 +862,16 @@ function failureNotAbout(session: SessionState, slot: SaveSlot): SaveFailure | n
   return failure === null || failure.slot === slot ? null : failure;
 }
 
-/** The contract the screen is showing, or `null` when it is showing none. */
+/**
+ * The contract this session is working on, or `null` when no run has reached one.
+ *
+ * Read off the session rather than off `screen.contract`, which is where it lived while
+ * there was one screen: a board names no contract, so a save taken from the board would
+ * have written `focused_contract: null` and reopened on whatever the fallback picked
+ * (design spec §2.7).
+ */
 function focusOf(session: SessionState): ContentId | null {
-  const contract = session.screen.contract;
-
-  return contract === null ? null : parseContentId(contract.definition);
+  return session.focusedContract;
 }
 
 /**

@@ -442,6 +442,44 @@ export const SAVE_OVERWRITE_KEYS: readonly string[] = Object.freeze(
 );
 
 /**
+ * The captions the debrief shows, for the reason {@link FieldKeys} exists: a column of bare
+ * numbers — what a man brought, how much counted, how big a deficit was, what the patron
+ * pays — says nothing about which is which. Its own object rather than more members on
+ * {@link FieldKeys}, because that object's values are frozen inside `content/locale/ru.json`
+ * and every text this screen invents belongs in `ui-text/` (`ADR-012`).
+ */
+export const AfterActionFieldKeys = Object.freeze({
+  Grade: 'field.after_action.grade',
+  Events: 'field.after_action.events',
+  Contributions: 'field.after_action.contributions',
+  Brought: 'field.after_action.brought',
+  Counted: 'field.after_action.counted',
+  Commitment: 'field.after_action.commitment',
+  Provenance: 'field.after_action.provenance',
+  Coverage: 'field.after_action.coverage',
+  Deficits: 'field.after_action.deficits',
+  DeficitMagnitude: 'field.after_action.deficit_magnitude',
+  Dominant: 'field.after_action.dominant',
+  Consequences: 'field.after_action.consequences',
+  ConsequenceMagnitude: 'field.after_action.consequence_magnitude',
+  PatronPays: 'field.after_action.patron_pays'
+});
+
+export const AFTER_ACTION_FIELD_KEYS: readonly string[] = Object.freeze(
+  Object.values(AfterActionFieldKeys)
+);
+
+/** The two captions a board row needs beyond the ones the offer screen already names. */
+export const ContractBoardFieldKeys = Object.freeze({
+  Needs: 'field.board.needs',
+  Availability: 'field.board.availability'
+});
+
+export const CONTRACT_BOARD_FIELD_KEYS: readonly string[] = Object.freeze(
+  Object.values(ContractBoardFieldKeys)
+);
+
+/**
  * The step an outcome landed on (`RESOLUTION_SPEC` §4.6) — one key per grade, built from
  * the engine's own closed vocabulary rather than the four words typed again.
  */

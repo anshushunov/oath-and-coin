@@ -9,7 +9,12 @@ import {
   loadLocaleCatalogue,
   loadUiTextCatalogue
 } from '@oath-and-coin/content/node';
-import { expectedSnapshot, readModelHash, snapshotHash } from '@oath-and-coin/presentation';
+import {
+  ScreenKind,
+  expectedSnapshot,
+  readModelHash,
+  snapshotHash
+} from '@oath-and-coin/presentation';
 import { canonicalSha256, type CanonicalValue } from '@oath-and-coin/simulation';
 import { expect, test, type ConsoleMessage, type Page, type Request } from '@playwright/test';
 
@@ -271,6 +276,14 @@ test.describe('contract-offer screen, in a browser', () => {
       // contract, a token per hero. The projection's own rule, restated in one line
       // because this process may not import `apps/web`; if the two ever disagree the
       // disagreement surfaces as a red run rather than as agreement by construction.
+      // Narrowed rather than assumed: `SessionState.screen` is a union of three since the
+      // contract loop grew a debrief and a board, and every scenario in this matrix is a
+      // negotiation. A run that landed elsewhere would be measured against the wrong
+      // expectation entirely, so it says so.
+      if (expectedModel.screen !== ScreenKind.ContractOffer) {
+        throw new Error(`'${scenario}' landed on '${expectedModel.screen}'.`);
+      }
+
       const expectedShapes =
         (expectedModel.contract === null ? 0 : 1) + expectedModel.roster.length;
 

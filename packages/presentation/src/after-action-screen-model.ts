@@ -6,6 +6,7 @@ import {
   multiplyInt32,
   needReasonFor,
   termsOf,
+  type CanonicalValue,
   type ContentId,
   type ContractResolution,
   type ContractState,
@@ -27,6 +28,7 @@ import {
   needKey,
   outcomeGradeKey
 } from './keys.ts';
+import { ScreenKind } from './screen-kind.ts';
 import { ScreenState } from './screen-state.ts';
 import { definitionOfHero, treasuryAfterSettling } from './settlement-line.ts';
 
@@ -140,6 +142,8 @@ export interface AfterActionConsequenceLine {
 
 /** Everything the debrief needs, and nothing it would have to work out for itself. */
 export interface AfterActionScreenModel {
+  /** The union's discriminant, stamped by {@link createAfterActionScreenModel}. */
+  readonly screen: typeof ScreenKind.AfterAction;
   readonly state: ScreenState;
   readonly titleKey: string;
   /**
@@ -174,8 +178,10 @@ export interface AfterActionScreenModel {
  * TypeScript spread walks around a factory function, so `{ ...LOADING, state: 'Normal' }`
  * typechecks and would otherwise hash, render and be published as a debrief of nothing.
  */
+export type AfterActionScreenContent = Omit<AfterActionScreenModel, 'screen'>;
+
 export function createAfterActionScreenModel(
-  model: AfterActionScreenModel
+  model: AfterActionScreenContent
 ): AfterActionScreenModel {
   if (model.errorDetail !== null && model.errorCode === null) {
     throw new Error(
@@ -236,10 +242,10 @@ export function createAfterActionScreenModel(
     }
   }
 
-  return model;
+  return { ...model, screen: ScreenKind.AfterAction };
 }
 
-function requireNoOutcome(model: AfterActionScreenModel): void {
+function requireNoOutcome(model: AfterActionScreenContent): void {
   if (
     model.contractDefinition !== null ||
     model.contractDisplayNameKey !== null ||
@@ -631,4 +637,79 @@ function countedBy(resolution: ContractResolution, heroId: HeroId): number {
       sum + (row.contributors.find((contributor) => contributor.hero === heroId)?.counted ?? 0),
     0
   );
+}
+
+/**
+ * The canonical projection of a debrief, for the read-model hash (`screen-model.ts`).
+ *
+ * Every field a player can see except `errorDetail`, and including the screen's own name
+ * and the state — the same two exclusions and the same two inclusions the offer screen's
+ * projection makes, for the reasons its own comment records.
+ *
+ * Re-validated here, not trusted: a TypeScript spread walks around the factory, and this is
+ * one of the two places a model becomes evidence about a screen.
+ */
+export function describeAfterActionReadModel(model: AfterActionScreenModel): CanonicalValue {
+  const validated = createAfterActionScreenModel(model);
+
+  return {
+    screen: validated.screen,
+    state: validated.state,
+    title_key: validated.titleKey,
+    error_code: validated.errorCode,
+    contract_definition: validated.contractDefinition,
+    contract_display_name_key: validated.contractDisplayNameKey,
+    grade_key: validated.gradeKey,
+    events: validated.events.map((line) => ({
+      key: line.key,
+      hero_definition: line.heroDefinition,
+      hero_display_name_key: line.heroDisplayNameKey,
+      need_key: line.needKey,
+      reason_key: line.reasonKey
+    })),
+    contributions: validated.contributions.map((line) => ({
+      hero_definition: line.heroDefinition,
+      hero_display_name_key: line.heroDisplayNameKey,
+      amount: line.amount,
+      counted: line.counted,
+      commitment_key: line.commitmentKey,
+      provenance_keys: [...line.provenanceKeys]
+    })),
+    coverage: validated.coverage.map((line) => ({
+      need_key: line.needKey,
+      verdict_key: line.verdictKey
+    })),
+    deficits: validated.deficits.map((line) => ({
+      key: line.key,
+      magnitude: line.magnitude,
+      need_keys: [...line.needKeys],
+      heroes: line.heroes.map(describeHeroLine)
+    })),
+    dominant_key: validated.dominantKey,
+    consequences: validated.consequences.map((line) => ({
+      hero_definition: line.heroDefinition,
+      hero_display_name_key: line.heroDisplayNameKey,
+      kind_key: line.kindKey,
+      reason_key: line.reasonKey,
+      magnitude: line.magnitude
+    })),
+    settlement:
+      validated.settlement === null
+        ? null
+        : {
+            promised_bonus: validated.settlement.promisedBonus,
+            key_hero:
+              validated.settlement.keyHero === null
+                ? null
+                : describeHeroLine(validated.settlement.keyHero),
+            crew: validated.settlement.crew.map(describeHeroLine),
+            patron_pays: validated.settlement.patronPays,
+            treasury_if_kept: validated.settlement.treasuryIfKept,
+            treasury_if_broken: validated.settlement.treasuryIfBroken
+          }
+  };
+}
+
+function describeHeroLine(hero: AfterActionHeroLine): CanonicalValue {
+  return { definition: hero.definition, display_name_key: hero.displayNameKey };
 }

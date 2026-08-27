@@ -1,5 +1,6 @@
 import {
   OfferPhase,
+  type CanonicalValue,
   type ContentId,
   type ContractState,
   type GameState
@@ -7,6 +8,7 @@ import {
 
 import { ContractAvailability } from './contract-availability.ts';
 import { CONTRACT_BOARD_TITLE_KEY, contractDisplayNameKey, needKey } from './keys.ts';
+import { ScreenKind } from './screen-kind.ts';
 import { ScreenState } from './screen-state.ts';
 
 /**
@@ -38,6 +40,8 @@ export interface ContractBoardRow {
 }
 
 export interface ContractBoardScreenModel {
+  /** The union's discriminant, stamped by {@link createContractBoardScreenModel}. */
+  readonly screen: typeof ScreenKind.ContractBoard;
   readonly state: ScreenState;
   readonly titleKey: string;
   readonly rows: readonly ContractBoardRow[];
@@ -53,8 +57,10 @@ export interface ContractBoardScreenModel {
  * spread walks around a factory, and this one would otherwise publish a board of rows
  * under a state that says there are none.
  */
+export type ContractBoardScreenContent = Omit<ContractBoardScreenModel, 'screen'>;
+
 export function createContractBoardScreenModel(
-  model: ContractBoardScreenModel
+  model: ContractBoardScreenContent
 ): ContractBoardScreenModel {
   if (model.errorDetail !== null && model.errorCode === null) {
     throw new Error(
@@ -113,10 +119,10 @@ export function createContractBoardScreenModel(
       throw new Error(`Unknown screen state '${String(model.state)}'.`);
   }
 
-  return model;
+  return { ...model, screen: ScreenKind.ContractBoard };
 }
 
-function requireNoBoard(model: ContractBoardScreenModel): void {
+function requireNoBoard(model: ContractBoardScreenContent): void {
   if (model.rows.length > 0) {
     throw new Error(
       `A ${model.state} board must carry no rows: there is no campaign behind it to have read ` +
@@ -251,4 +257,30 @@ function availabilityOf(contract: ContractState): ContractAvailability {
   }
 
   return ContractAvailability.Open;
+}
+
+/**
+ * The canonical projection of a board, for the read-model hash (`screen-model.ts`).
+ *
+ * Re-validated here for the reason the other two projections are: a spread walks around the
+ * factory, and this is one of the two places a model becomes evidence about a screen.
+ */
+export function describeContractBoardReadModel(model: ContractBoardScreenModel): CanonicalValue {
+  const validated = createContractBoardScreenModel(model);
+
+  return {
+    screen: validated.screen,
+    state: validated.state,
+    title_key: validated.titleKey,
+    error_code: validated.errorCode,
+    rows: validated.rows.map((row) => ({
+      definition: row.definition,
+      display_name_key: row.displayNameKey,
+      patron_fee: row.patronFee,
+      required_crew: row.requiredCrew,
+      need_keys: [...row.needKeys],
+      availability: row.availability
+    })),
+    treasury: validated.treasury
+  };
 }

@@ -1,4 +1,4 @@
-import type { ContractOfferScreenModel } from '@oath-and-coin/presentation';
+import type { ScreenModel } from '@oath-and-coin/presentation';
 import { useEffect, useMemo, useRef } from 'react';
 
 import { mountPixiScene, type PixiScene } from './pixi-scene.ts';
@@ -29,7 +29,7 @@ import { describeScene } from './scene-model.ts';
  * because the roster is" and "the scene is empty because WebGL is unavailable" the same
  * observation, and the second is the one worth knowing about.
  */
-export function WorldCanvas({ model }: { readonly model: ContractOfferScreenModel }) {
+export function WorldCanvas({ model }: { readonly model: ScreenModel }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chainRef = useRef<Promise<void>>(Promise.resolve());
   const description = useMemo(() => describeScene(model), [model]);
