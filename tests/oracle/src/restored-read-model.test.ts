@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { restoreDecidedSteps } from '@oath-and-coin/application';
 import { decodeSnapshot, encodeSnapshot, type ScenarioOutcome } from '@oath-and-coin/content';
 import { loadAndRunScenario } from '@oath-and-coin/content/node';
-import { contractOfferScreenModel } from '@oath-and-coin/presentation';
+import { afterActionScreenModel, contractOfferScreenModel } from '@oath-and-coin/presentation';
 import type { ContentId } from '@oath-and-coin/simulation';
 import { describe, expect, it } from 'vitest';
 
@@ -253,5 +253,61 @@ describe('the screen a reloaded campaign draws', () => {
     // the per-step decision counts are [0,1,0,1,0], [0,1,0,1,0], [0,1,0,1,0,0,0,1,0,0]
     // and [0,1,0,1,0,0,0,1,0,2,0].
     expect(polledStepsSeen).toBe(22);
+  });
+
+  it('builds a debrief for every contract that came back, on both sides of a reload', () => {
+    // **What this does and does not prove**, stated because external review of the
+    // contract-loop UI's Task 1 found the first wording claiming more than the check can
+    // deliver. It does *not* independently guard the save codec: the test above already
+    // requires `reloaded` to equal `outcome.finalState` whole — history, traces and stored
+    // resolutions included — and a pure function of equal inputs answers equally, so a
+    // dropped `need_short` reddens there first and this loop could not fail alone.
+    //
+    // What it is, and why it is worth its seconds: the debrief factory run over every
+    // resolved contract the shipped corpus produces, at both seeds, against real content
+    // rather than the hand-built two-hero campaigns of its own unit suite. `RESOLUTION_SPEC`
+    // §7's last row ("кампания перезагружена после разрешения → разбор восстанавливается
+    // целиком") is the claim; the factory throws on a hero it cannot name, on a consequence
+    // the stored result does not carry and on a contract that is not there, so this is where
+    // any of those would surface on shipped data. It cannot live in
+    // `packages/presentation` — that package may not import the save codec — which is the
+    // same reason the offer-screen round trip is here.
+    let debriefsSeen = 0;
+
+    for (const seed of SEEDS) {
+      for (const scenario of SCENARIOS) {
+        const outcome = ran(scenario, seed);
+        if (outcome === null) {
+          continue;
+        }
+
+        const reloaded = decodeSnapshot(
+          JSON.parse(JSON.stringify(encodeSnapshot(outcome.finalState)))
+        );
+
+        for (const contract of outcome.finalState.contracts.values()) {
+          if (contract.resolution === null) {
+            continue;
+          }
+
+          debriefsSeen += 1;
+
+          expect(
+            afterActionScreenModel(reloaded, contract.id),
+            `${scenario}/seed-${String(seed)}/${contract.id}`
+          ).toEqual(afterActionScreenModel(outcome.finalState, contract.id));
+        }
+      }
+    }
+
+    // Named as a number for the reason every other counter in this file is: a corpus with
+    // no resolved contract left would pass the loop above without comparing anything.
+    //
+    // Fourteen resolved contracts at two seeds. Measured, not reasoned: eleven shipped
+    // scenarios carry a `resolve_contract` command — every one that settles, since a
+    // settlement without an outcome is refused (`RESOLUTION_SPEC` §2.5) — and three of
+    // them (`resolution-keep-promise`, `resolution-break-promise` and
+    // `promise_size_changes_the_price_of_breaking_it`) resolve two contracts apiece.
+    expect(debriefsSeen).toBe(28);
   });
 });

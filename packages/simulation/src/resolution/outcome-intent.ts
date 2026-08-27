@@ -58,7 +58,7 @@ export function coverageIntentsFor(input: IntentInput): readonly OutcomeIntent[]
       hero: null,
       need: row.need,
       marginDelta: toInt32(row.effective - row.required),
-      reason: reasonFor(row.verdict),
+      reason: needReasonFor(row.verdict),
       // §4.7: classified at creation and written down, never derived later by a reader
       // who no longer has the crew to run the counterfactual against.
       gap: closed ? null : gapFor(row, input),
@@ -194,7 +194,16 @@ function isWorseCovered(candidate: NeedCoverage, incumbent: NeedCoverage): boole
   return compareNeedIds(candidate.need, incumbent.need) < 0;
 }
 
-function reasonFor(verdict: CoverageVerdict) {
+/**
+ * What the feed calls a need that came out this way (`RESOLUTION_SPEC` §4.4).
+ *
+ * Exported because the debrief screen has to name the same three lines and cannot get the
+ * code any other way: §3.4 projects the *verdict* onto the event and not the reason, and
+ * `ContractResolution` stores a verdict per need and no code beside it. A screen deriving
+ * its own would be a second statement of this mapping in the layer least able to notice it
+ * drifting — the shape `ADR-015` refused for `counted`. One statement, two readers.
+ */
+export function needReasonFor(verdict: CoverageVerdict) {
   switch (verdict) {
     case CoverageVerdict.Closed:
       return OutcomeReasonCodes.NeedClosed;

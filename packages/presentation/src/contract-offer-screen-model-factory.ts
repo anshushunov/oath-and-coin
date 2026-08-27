@@ -1,7 +1,5 @@
 import {
   Actions,
-  ContractStatus,
-  OfferPhase,
   ReasonCodes,
   canonicalSha256,
   commitmentOf,
@@ -42,6 +40,7 @@ import {
 } from './contract-offer-screen-model.ts';
 import { gradeForMagnitude, gradeForValue } from './qualitative-scale.ts';
 import { ReasonDirection, ScreenState } from './screen-state.ts';
+import { definitionOfHero, settlementLineFor, treasuryAfterSettling } from './settlement-line.ts';
 
 /**
  * How many reasons a response line shows at most: an explanation a player can hold in
@@ -248,9 +247,18 @@ export function contractOfferScreenModel(
     errorDetail: null,
     treasury: state.treasury,
     offer: toOfferLine(contract, heroDefinitionByHeroId),
-    treasuryForecast: computeTreasuryForecast(state.treasury, contract),
+    // The whole fee, deliberately: this screen forecasts a settlement whose grade does not
+    // exist yet (`RESOLUTION_SPEC` §5.3 sets the share from the outcome), and the price a
+    // player is weighing while composing a package is what the job pays when it is done.
+    // The debrief, which knows the grade, passes the share instead.
+    treasuryForecast: treasuryAfterSettling(state.treasury, contract, contract.patronFee),
     promiseTerms: toPromiseTerms(contract.offer),
-    settlement: toSettlement(contract, state.treasury, heroDefinitionByHeroId)
+    settlement: settlementLineFor(
+      contract,
+      state.treasury,
+      contract.patronFee,
+      heroDefinitionByHeroId
+    )
   });
 }
 
@@ -288,30 +296,6 @@ function toContractLine(contract: ContractState): ContractLine {
     requiredCrew: contract.requiredCrew,
     acceptedCount: contract.offer.acceptedBy.size
   };
-}
-
-/**
- * The hero `heroId` names, resolved to the definition the rest of the screen already
- * shows. A bare lookup here would surface a missing id with no clue which one or where
- * it came from — an offer naming a hero the roster does not carry is a content-loading
- * or roster-building bug, not a hero with no name, the same class of failure
- * {@link resolveTrait} and the response-line lookups elsewhere in this file already
- * refuse the same way.
- */
-function definitionOfHero(
-  heroId: HeroId,
-  heroDefinitionByHeroId: ReadonlyMap<HeroId, ContentId>
-): ContentId {
-  const definition = heroDefinitionByHeroId.get(heroId);
-
-  if (definition === undefined) {
-    throw new Error(
-      `An offer names hero#${String(heroId)}, but the roster this factory built has no ` +
-        'definition for it — a content-loading or roster-building bug, not a hero with no name.'
-    );
-  }
-
-  return definition;
 }
 
 /**
@@ -380,59 +364,6 @@ function toPromiseTerms(offer: OfferState): PromiseTermsLine | null {
     fulfilKey: PromiseTermsKeys.Fulfil,
     breachKey: PromiseTermsKeys.Breach,
     bonus: offer.promisedBonus
-  };
-}
-
-/**
- * What `treasury` would read after settling `contract`'s current package with
- * `pay: true` — `settleContract`'s own formula (`NEGOTIATION_SPEC` §3.3), term for
- * term: the patron fee arrives, the advance leaves for every hero who actually has a
- * seat, and the promised bonus leaves because this is the branch where the guild pays
- * it.
- */
-function computeTreasuryForecast(treasury: number, contract: ContractState): number {
-  const { offer } = contract;
-
-  return (
-    treasury + contract.patronFee - offer.advance * offer.acceptedBy.size - offer.promisedBonus
-  );
-}
-
-/**
- * What the promise costs and who is bound by it (`NEGOTIATION_SPEC` §5.1) — `null`
- * before there is a crew to bind: the phase is `settled`, or it is `locked` with every
- * seat filled (`ContractStatus.Crewed`). A package that might still change, or one still
- * short a seat, has no settlement to show.
- *
- * `treasuryIfBroken` is {@link computeTreasuryForecast}'s figure plus the promised
- * bonus back — the same formula with `pay: false`, which simply skips that term rather
- * than computing it a second, independent way.
- */
-function toSettlement(
-  contract: ContractState,
-  treasury: number,
-  heroDefinitionByHeroId: ReadonlyMap<HeroId, ContentId>
-): SettlementLine | null {
-  const { offer } = contract;
-  const eligible =
-    offer.phase === OfferPhase.Settled ||
-    (offer.phase === OfferPhase.Locked && contract.status === ContractStatus.Crewed);
-
-  if (!eligible) {
-    return null;
-  }
-
-  const treasuryIfKept = computeTreasuryForecast(treasury, contract);
-
-  return {
-    promisedBonus: offer.promisedBonus,
-    keyHeroDefinition:
-      offer.keyHero === null ? null : definitionOfHero(offer.keyHero, heroDefinitionByHeroId),
-    crew: [...offer.acceptedBy.values()].map((heroId) =>
-      definitionOfHero(heroId, heroDefinitionByHeroId)
-    ),
-    treasuryIfKept,
-    treasuryIfBroken: treasuryIfKept + offer.promisedBonus
   };
 }
 

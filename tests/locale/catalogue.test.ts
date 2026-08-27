@@ -12,7 +12,19 @@ import {
 } from '@oath-and-coin/content/node';
 import {
   ACTION_KEYS,
+  AFTER_ACTION_STATE_KEYS,
+  AFTER_ACTION_TITLE_KEY,
+  COMMITMENT_STATE_KEYS,
+  CONSEQUENCE_KIND_KEYS,
+  CONTRACT_AVAILABILITY_KEYS,
+  CONTRACT_BOARD_STATE_KEYS,
+  CONTRACT_BOARD_TITLE_KEY,
+  COVERAGE_VERDICT_KEYS,
+  DEFICIT_KIND_KEYS,
   FIELD_KEYS,
+  NEED_KEYS,
+  OUTCOME_EVENT_KEYS,
+  OUTCOME_GRADE_KEYS,
   OFFER_FIELD_KEYS,
   OFFER_PHASE_KEYS,
   PROMISE_TERMS_KEYS,
@@ -39,7 +51,7 @@ import {
   tagKey,
   traitDisplayNameKey
 } from '@oath-and-coin/presentation';
-import { REASON_CODES } from '@oath-and-coin/simulation';
+import { OUTCOME_REASON_CODES, REASON_CODES } from '@oath-and-coin/simulation';
 
 /**
  * The completeness check that has nowhere else to live, now holding two catalogues
@@ -220,7 +232,32 @@ function everyKeyTheInterfaceCanShow(): readonly string[] {
     ...SETTLEMENT_ACTION_KEYS,
     ...SAVE_SLOTS.map(saveSlotDisplayNameKey),
     ...SAVE_SLOTS.map(saveSlotSaveKey),
-    ...SAVE_SLOTS.map(saveSlotLoadKey)
+    ...SAVE_SLOTS.map(saveSlotLoadKey),
+    // The debrief and the board (contract-loop UI plan, Task 1). Every one of these is a
+    // text the *interface* invents about the engine's own closed vocabularies — a grade, a
+    // verdict, a need, a commitment, a deficit, a consequence, the line a feed entry is
+    // called — and `ADR-012` sends all of them here: `content/locale/ru.json` is frozen,
+    // and none of these is authored under `content/` in the first place. A need in
+    // particular is not an authored name at all: an author writes a *weight*, `NeedId` is
+    // the engine's.
+    AFTER_ACTION_TITLE_KEY,
+    ...AFTER_ACTION_STATE_KEYS,
+    CONTRACT_BOARD_TITLE_KEY,
+    ...CONTRACT_BOARD_STATE_KEYS,
+    ...CONTRACT_AVAILABILITY_KEYS,
+    ...OUTCOME_GRADE_KEYS,
+    ...OUTCOME_EVENT_KEYS,
+    ...COVERAGE_VERDICT_KEYS,
+    ...DEFICIT_KIND_KEYS,
+    ...CONSEQUENCE_KIND_KEYS,
+    ...NEED_KEYS,
+    ...COMMITMENT_STATE_KEYS,
+    // An outcome reason code is itself a localization key, and the engine's outcome
+    // vocabulary is closed — so this is the engine's own list rather than a copy of it,
+    // exactly as `REASON_CODES` is on the content side above. The two vocabularies are
+    // held disjoint by `outcome-reason-codes.test.ts`, so no code can land on both sides
+    // of the catalogue boundary through this pair of lists.
+    ...OUTCOME_REASON_CODES
   ];
 }
 
