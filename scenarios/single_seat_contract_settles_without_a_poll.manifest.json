@@ -2,5 +2,10 @@
   "schema_version": 1,
   "scenario": "single_seat_contract_settles_without_a_poll",
   "expected_outcome": "success",
-  "checkpoints": [{ "name": "final", "after_command_id": 5 }]
+  "checkpoints": [
+    {
+      "name": "final",
+      "after_command_id": 6
+    }
+  ]
 }

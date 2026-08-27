@@ -77,11 +77,11 @@ export const SUPPORTED_LOCALE_SCHEMA_VERSION = 2;
  * review; recorded because the shape of the mistake — checking the callers instead of the
  * boundary — is the one that will be available again.
  *
- * **This number moves a third time, in the task after this one.** The event variants
- * `resolveContract` raises — and the closed discriminated union plus hand-written
- * `toDomainEvent` that carry them — are a separate change to this format, arriving in a
- * separate task. One number covering both would leave a stretch where the format had
- * changed and the version had not: a save written after the fields landed would claim
- * the same number as one written before them.
+ * **5, moved by Task 8: the seven events a resolution raises** (`RESOLUTION_SPEC` §3.4).
+ * `domainEventSchema` is a closed discriminated union and `toDomainEvent` is written by
+ * hand, so a save whose history holds a `contract_resolved` is unreadable by any earlier
+ * build — and this is also the change that first *produces* such a history, because
+ * `resolveContract` arrives with it. §2.8: the fields and the events of one change are
+ * versioned together, and this is that change.
  */
-export const SAVE_SCHEMA_VERSION = 4;
+export const SAVE_SCHEMA_VERSION = 5;

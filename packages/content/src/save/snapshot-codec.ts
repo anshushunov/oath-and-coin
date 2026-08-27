@@ -278,13 +278,32 @@ const magnitude = z.int().min(-MAX_RESOLUTION_MAGNITUDE).max(MAX_RESOLUTION_MAGN
 
 const outcomeReasonCodeSchema = z.enum(OUTCOME_REASON_CODES);
 
+const coverageVerdictSchema = z.enum([
+  CoverageVerdict.Closed,
+  CoverageVerdict.Weak,
+  CoverageVerdict.Uncovered
+]);
+
+const outcomeGradeSchema = z.enum([
+  OutcomeGrade.Clean,
+  OutcomeGrade.Costly,
+  OutcomeGrade.Failed,
+  OutcomeGrade.Disaster
+]);
+
+const consequenceKindSchema = z.enum([
+  ConsequenceKind.Wound,
+  ConsequenceKind.Grudge,
+  ConsequenceKind.TrustLost
+]);
+
 const needCoverageSchema = z.strictObject({
   need: z.enum(NEED_IDS),
   weight: z.int().min(NEED_WEIGHT_MIN).max(NEED_WEIGHT_MAX),
   required: magnitude,
   supplied: magnitude,
   effective: magnitude,
-  verdict: z.enum([CoverageVerdict.Closed, CoverageVerdict.Weak, CoverageVerdict.Uncovered]),
+  verdict: coverageVerdictSchema,
   // Both numbers `RESOLUTION_SPEC` §4.3 records per `(hero, need)`: what the man brought
   // and how much of it counted after the halving (`DEC-014`). A required key of a
   // `strictObject`, so a version 3 save carrying a resolution is unreadable under this
@@ -313,12 +332,7 @@ const deficitKindSchema = z.enum([
 ]);
 
 const resolutionValueSchema = z.strictObject({
-  grade: z.enum([
-    OutcomeGrade.Clean,
-    OutcomeGrade.Costly,
-    OutcomeGrade.Failed,
-    OutcomeGrade.Disaster
-  ]),
+  grade: outcomeGradeSchema,
   coverage: z.array(needCoverageSchema).max(MAX_NEEDS_PER_CONTRACT),
   contributions: entries(heroIdSchema, heroContributionSchema).max(MAX_HEROES_PER_CONTRACT),
   deficits: z
@@ -337,7 +351,7 @@ const resolutionValueSchema = z.strictObject({
     .array(
       z.strictObject({
         hero: heroIdSchema,
-        kind: z.enum([ConsequenceKind.Wound, ConsequenceKind.Grudge, ConsequenceKind.TrustLost]),
+        kind: consequenceKindSchema,
         reason: outcomeReasonCodeSchema,
         magnitude
       })
@@ -578,6 +592,76 @@ const domainEventSchema = z.discriminatedUnion('kind', [
     logicalTime: z.int().min(0),
     causalTraceId: z.int().min(0).nullable(),
     contractId: contentId
+  }),
+
+  // The seven events one resolution raises (`RESOLUTION_SPEC` §3.4). Unlike every
+  // addition to this union so far, these arrive with a `SAVE_SCHEMA_VERSION` bump — not
+  // because a new member is itself breaking (it is not), but because the same change
+  // carries `resolveContract`, and a save written after it can hold a history no earlier
+  // build can read. §2.8: the fields and the events of *one* change are versioned
+  // together.
+  z.strictObject({
+    kind: z.literal('need_covered'),
+    eventId: z.int().min(0),
+    logicalTime: z.int().min(0),
+    causalTraceId: z.int().min(0).nullable(),
+    contractId: contentId,
+    need: z.enum(NEED_IDS),
+    verdict: coverageVerdictSchema
+  }),
+  z.strictObject({
+    kind: z.literal('need_short'),
+    eventId: z.int().min(0),
+    logicalTime: z.int().min(0),
+    causalTraceId: z.int().min(0).nullable(),
+    contractId: contentId,
+    need: z.enum(NEED_IDS),
+    verdict: coverageVerdictSchema,
+    gap: deficitKindSchema
+  }),
+  z.strictObject({
+    kind: z.literal('hero_faltered_early'),
+    eventId: z.int().min(0),
+    logicalTime: z.int().min(0),
+    causalTraceId: z.int().min(0).nullable(),
+    contractId: contentId,
+    heroId: heroIdSchema,
+    need: z.enum(NEED_IDS)
+  }),
+  z.strictObject({
+    kind: z.literal('objective_taken'),
+    eventId: z.int().min(0),
+    logicalTime: z.int().min(0),
+    causalTraceId: z.int().min(0).nullable(),
+    contractId: contentId
+  }),
+  z.strictObject({
+    kind: z.literal('objective_lost'),
+    eventId: z.int().min(0),
+    logicalTime: z.int().min(0),
+    causalTraceId: z.int().min(0).nullable(),
+    contractId: contentId
+  }),
+  z.strictObject({
+    kind: z.literal('hero_suffered_consequence'),
+    eventId: z.int().min(0),
+    logicalTime: z.int().min(0),
+    causalTraceId: z.int().min(0).nullable(),
+    contractId: contentId,
+    heroId: heroIdSchema,
+    consequence: consequenceKindSchema,
+    // The same read-path bound every other resolution number carries. A domain magnitude
+    // is 1 today (`RESOLUTION_SPEC` §5.1); this is what stops an edited save from
+    // wounding a hero two billion times, not a restatement of that rule.
+    magnitude: z.int().min(0).max(MAX_RESOLUTION_MAGNITUDE)
+  }),
+  z.strictObject({
+    kind: z.literal('contract_resolved'),
+    eventId: z.int().min(0),
+    logicalTime: z.int().min(0),
+    causalTraceId: z.int().min(0).nullable(),
+    contractId: contentId,
+    grade: outcomeGradeSchema
   })
 ]);
 
@@ -1137,50 +1221,66 @@ function toTraceBlock(block: RawBlock): TraceBlock {
   };
 }
 
+/**
+ * The read half of the event union, written as an exhaustive `switch` rather than as a
+ * chain of `if`s ending in "everything else names a hero".
+ *
+ * That ending is what this function used to have, and it was a trapdoor: a new event kind
+ * without a `heroId` would have fallen into it and been decoded as a hero response with
+ * `heroId: undefined`. Seven such kinds arrived one task later (`RESOLUTION_SPEC` §3.4).
+ * A `switch` with no `default` fails to build instead, at the one place that has to
+ * decide.
+ */
 function toDomainEvent(domainEvent: RawDomainEvent): DomainEvent {
-  if (domainEvent.kind === 'offer_revised') {
-    return {
-      kind: 'offer_revised',
-      eventId: domainEvent.eventId,
-      logicalTime: domainEvent.logicalTime,
-      causalTraceId: domainEvent.causalTraceId,
-      contractId: parseContentId(domainEvent.contractId)
-    };
-  }
-
-  if (domainEvent.kind === 'offer_locked') {
-    return {
-      kind: 'offer_locked',
-      eventId: domainEvent.eventId,
-      logicalTime: domainEvent.logicalTime,
-      causalTraceId: domainEvent.causalTraceId,
-      contractId: parseContentId(domainEvent.contractId)
-    };
-  }
-
-  // The three `settleContract` events (`DEC-008` Task 14) share `offer_revised`/
-  // `offer_locked`'s shape and the same reason: settling is the player's own act,
-  // not a hero's decision, so none of the three name a hero.
-  if (
-    domainEvent.kind === 'contract_settled' ||
-    domainEvent.kind === 'contract_settled_promise_kept' ||
-    domainEvent.kind === 'contract_settled_promise_broken'
-  ) {
-    return {
-      kind: domainEvent.kind,
-      eventId: domainEvent.eventId,
-      logicalTime: domainEvent.logicalTime,
-      causalTraceId: domainEvent.causalTraceId,
-      contractId: parseContentId(domainEvent.contractId)
-    };
-  }
-
-  return {
-    kind: domainEvent.kind,
+  const base = {
     eventId: domainEvent.eventId,
     logicalTime: domainEvent.logicalTime,
     causalTraceId: domainEvent.causalTraceId,
-    heroId: heroId(domainEvent.heroId),
     contractId: parseContentId(domainEvent.contractId)
   };
+
+  switch (domainEvent.kind) {
+    case 'hero_accepted_contract':
+    case 'hero_declined_contract':
+      return { ...base, kind: domainEvent.kind, heroId: heroId(domainEvent.heroId) };
+
+    // Composing, locking and settling are the player's own acts, not a hero's decision,
+    // so none of these name anybody.
+    case 'offer_revised':
+    case 'offer_locked':
+    case 'objective_taken':
+    case 'objective_lost':
+    case 'contract_settled':
+    case 'contract_settled_promise_kept':
+    case 'contract_settled_promise_broken':
+      return { ...base, kind: domainEvent.kind };
+
+    case 'need_covered':
+      return { ...base, kind: 'need_covered', need: domainEvent.need, verdict: domainEvent.verdict };
+    case 'need_short':
+      return {
+        ...base,
+        kind: 'need_short',
+        need: domainEvent.need,
+        verdict: domainEvent.verdict,
+        gap: domainEvent.gap
+      };
+    case 'hero_faltered_early':
+      return {
+        ...base,
+        kind: 'hero_faltered_early',
+        heroId: heroId(domainEvent.heroId),
+        need: domainEvent.need
+      };
+    case 'hero_suffered_consequence':
+      return {
+        ...base,
+        kind: 'hero_suffered_consequence',
+        heroId: heroId(domainEvent.heroId),
+        consequence: domainEvent.consequence,
+        magnitude: domainEvent.magnitude
+      };
+    case 'contract_resolved':
+      return { ...base, kind: 'contract_resolved', grade: domainEvent.grade };
+  }
 }

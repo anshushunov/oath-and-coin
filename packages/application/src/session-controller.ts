@@ -6,6 +6,7 @@ import {
   parseContentId,
   pollCrew as applyPollCrew,
   proposeContractToHero as applyProposeContractToHero,
+  resolveContract as applyResolveContract,
   settleContract as applySettleContract,
   type CommandResult,
   type ComposeOffer,
@@ -14,6 +15,7 @@ import {
   type LockOffer,
   type PollCrew,
   type ProposeContractToHero,
+  type ResolveContract,
   type SettleContract
 } from '@oath-and-coin/simulation';
 
@@ -138,10 +140,8 @@ export interface SessionController {
   /** Runs the scenario the request names and publishes the screen it lands on. */
   start(): Promise<void>;
   /**
-   * Dispatches one of the five negotiation commands this build implements
-   * (`m1-resolution/1`; `NEGOTIATION_SPEC` §3.1 has named a sixth, `resolveContract`,
-   * since the amendment of 2026-08-25, and it arrives with the resolver that
-   * gives it something to resolve) against
+   * Dispatches one of the six negotiation commands this build implements
+   * (`m1-resolution/2`; `NEGOTIATION_SPEC` §3.1 and `RESOLUTION_SPEC` §3.1) against
    * the campaign currently on screen, the same way `packages/content`'s scenario runner
    * already applies a scripted one: `commandId` and `expectedStateVersion` are supplied
    * here rather than by the caller, read off the campaign this session is holding right
@@ -171,6 +171,17 @@ export interface SessionController {
    * answer and silently drop the rest. Neither reading changes what this method returns.
    */
   pollCrew(input: NegotiationCommandInput<PollCrew>): CommandResult;
+  /**
+   * Sends the crew out and asks what came back (`RESOLUTION_SPEC` §3.1) — the command
+   * between the poll and the settlement, and not an optional one: since
+   * `phase === Settled ⇒ resolution !== null` (§2.5), a settlement without a resolution
+   * before it is refused (`NotResolved`).
+   *
+   * Answers with several events and no decisions, which no other command in this protocol
+   * does: an outcome is not anybody's choice, so there is nothing for a trace to explain
+   * (`ADR-007`). A caller reading `decisions` will correctly find it empty.
+   */
+  resolveContract(input: NegotiationCommandInput<ResolveContract>): CommandResult;
   settleContract(input: NegotiationCommandInput<SettleContract>): CommandResult;
   /** Writes the campaign on screen into `slot`, or records why it could not. */
   save(slot: SaveSlot): Promise<void>;
@@ -311,6 +322,13 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
         input.contractId,
         (state, commandId, expectedStateVersion) =>
           applyPollCrew(state, { ...input, commandId, expectedStateVersion })
+      ),
+    resolveContract: (input) =>
+      dispatchNegotiationCommand(
+        store,
+        input.contractId,
+        (state, commandId, expectedStateVersion) =>
+          applyResolveContract(state, { ...input, commandId, expectedStateVersion })
       ),
     settleContract: (input) =>
       dispatchNegotiationCommand(

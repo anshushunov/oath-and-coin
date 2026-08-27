@@ -11,10 +11,11 @@ import type { DomainEvent } from '../events/domain-event.ts';
 import { compareContentIds, parseContentId, type ContentId } from '../ids/content-id.ts';
 import { compareHeroIds, heroId, type HeroId } from '../ids/hero-id.ts';
 import { STARTING_TREASURY } from '../negotiation/commitments.ts';
+import { draftResolution } from '../resolution/contract-resolver.ts';
 import { ContractStatus, type ContractState } from '../state/contract-state.ts';
 import type { GameState } from '../state/game-state.ts';
 import type { HeroState } from '../state/hero-state.ts';
-import { initialOffer, type OfferState } from '../state/offer-state.ts';
+import { createContractState, initialOffer, type OfferState } from '../state/offer-state.ts';
 
 /**
  * Fixtures for the tests in this package, in `src` rather than beside one test file
@@ -263,6 +264,40 @@ export function aState(overrides: Partial<GameState> = {}): GameState {
     treasury: STARTING_TREASURY,
     ...overrides
   };
+}
+
+/**
+ * The same contract, carrying the resolution its own crew would actually have produced
+ * (`RESOLUTION_SPEC` §2.5).
+ *
+ * Exists because `phase === Settled ⇒ resolution !== null` arrived with `resolveContract`:
+ * every fixture that settles a contract now needs one to settle against, and a hand-built
+ * `ContractResolution` in each of them would be several stated outcomes that no crew ever
+ * reached — and that `contributions.keys() === acceptedBy` would reject one by one.
+ *
+ * Runs the real resolver on the real crew, so what a settlement fixture is handed is an
+ * outcome this build can produce. `commitments` supplies each member's own state, which
+ * the §2.5 invariant guarantees is there for everyone who accepted.
+ */
+export function resolved(contract: ContractState, heroes: readonly HeroState[]): ContractState {
+  const byId = new Map(heroes.map((hero) => [hero.id, hero] as const));
+  const draft = draftResolution({
+    contract,
+    crew: contract.offer.acceptedBy.values().map((id) => {
+      const hero = byId.get(id);
+      const commitment = contract.offer.commitments.get(id);
+      if (hero === undefined || commitment === undefined) {
+        throw new Error(
+          `resolved() was given a contract whose acceptedBy names hero#${String(id)}, but ` +
+            `${hero === undefined ? 'no such hero was passed' : 'no commitment is recorded'}.`
+        );
+      }
+
+      return { hero, commitment };
+    })
+  });
+
+  return createContractState({ ...contract, resolution: draft.resolution });
 }
 
 /** A hero and a contract keyed the way a campaign keys them, for multi-hero fixtures. */

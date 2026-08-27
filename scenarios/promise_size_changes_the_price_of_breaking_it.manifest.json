@@ -3,5 +3,10 @@
   "scenario": "promise_size_changes_the_price_of_breaking_it",
   "expected_outcome": "success",
   "content_root": "scenarios/fixtures/promise_size",
-  "checkpoints": [{ "name": "final", "after_command_id": 10 }]
+  "checkpoints": [
+    {
+      "name": "final",
+      "after_command_id": 12
+    }
+  ]
 }

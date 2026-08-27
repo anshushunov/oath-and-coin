@@ -1,3 +1,10 @@
+import type { NeedId } from '../domain/need-id.ts';
+import type {
+  ConsequenceKind,
+  CoverageVerdict,
+  DeficitKind,
+  OutcomeGrade
+} from '../domain/outcome.ts';
 import type { ContentId } from '../ids/content-id.ts';
 import type { HeroId } from '../ids/hero-id.ts';
 
@@ -90,6 +97,90 @@ export interface ContractSettledPromiseBroken extends DomainEventBase {
 }
 
 /**
+ * The seven events one resolution raises (`RESOLUTION_SPEC` §3.4), one per intent the
+ * resolver produced and in that order.
+ *
+ * **`causalTraceId` is always `null` on every one of them.** A resolution is not a hero's
+ * decision, so there is no choice for a trace to explain (`ADR-007`); the explanation
+ * lives in the stored `ContractResolution` and in each contribution's provenance. That is
+ * enforced rather than intended — `fromEvents` refuses an event carrying one.
+ *
+ * **Each carries what its own line on the debrief screen needs, and nothing flattened
+ * across the others.** A `need_covered` has no hero and an `objective_taken` has no need;
+ * an event writing `null` into a field it never had would be the log stating a fact the
+ * resolution never produced.
+ */
+
+/** One of the contract's needs came out closed (`RESOLUTION_SPEC` §4.4). */
+export interface NeedCovered extends DomainEventBase {
+  readonly kind: 'need_covered';
+  readonly contractId: ContentId;
+  readonly need: NeedId;
+  readonly verdict: CoverageVerdict;
+}
+
+/**
+ * One of the contract's needs did not close, and which of the two coverage diagnoses it
+ * earned (`RESOLUTION_SPEC` §4.7). `gap` is classified when the shortfall is created and
+ * travels with it: a reader who wanted to work it out later would need the crew, which
+ * an event log does not carry.
+ */
+export interface NeedShort extends DomainEventBase {
+  readonly kind: 'need_short';
+  readonly contractId: ContentId;
+  readonly need: NeedId;
+  readonly verdict: CoverageVerdict;
+  readonly gap: DeficitKind;
+}
+
+/**
+ * A hero whose agreement was less than freely given gave way early, on a need he was
+ * answerable for (`RESOLUTION_SPEC` §4.4). At most one per hero.
+ */
+export interface HeroFalteredEarly extends DomainEventBase {
+  readonly kind: 'hero_faltered_early';
+  readonly contractId: ContentId;
+  readonly heroId: HeroId;
+  readonly need: NeedId;
+}
+
+/**
+ * The job was done, or it was not (`RESOLUTION_SPEC` §4.4, §5.3). Read off the grade
+ * rather than off the sign of the margin: "costly" reaches below zero on purpose and the
+ * patron pays it in full, so the sign would put "the objective was lost" in the feed at
+ * exactly the outcomes that were paid for as taken.
+ */
+export interface ObjectiveTaken extends DomainEventBase {
+  readonly kind: 'objective_taken';
+  readonly contractId: ContentId;
+}
+
+export interface ObjectiveLost extends DomainEventBase {
+  readonly kind: 'objective_lost';
+  readonly contractId: ContentId;
+}
+
+/** What the outcome cost one person, and how much (`RESOLUTION_SPEC` §5.1, §5.2). */
+export interface HeroSufferedConsequence extends DomainEventBase {
+  readonly kind: 'hero_suffered_consequence';
+  readonly contractId: ContentId;
+  readonly heroId: HeroId;
+  readonly consequence: ConsequenceKind;
+  readonly magnitude: number;
+}
+
+/**
+ * The contract came back, and on which step (`RESOLUTION_SPEC` §3.3). Always the last
+ * event of a resolution, and its effect is what writes the result onto the contract —
+ * inside the transition rather than after the last one.
+ */
+export interface ContractResolved extends DomainEventBase {
+  readonly kind: 'contract_resolved';
+  readonly contractId: ContentId;
+  readonly grade: OutcomeGrade;
+}
+
+/**
  * A discriminated union rather than an abstract base class with subtypes, and the
  * discriminant is the exact string the canonical artifact writes.
  *
@@ -101,11 +192,68 @@ export interface ContractSettledPromiseBroken extends DomainEventBase {
  * `noImplicitReturns` see to it — and the projection cannot even reach the payload
  * fields without narrowing on `kind` first.
  */
+/**
+ * Which hero an event is about, or `null` for the ones that are about nobody.
+ *
+ * **An exhaustive `switch` in one place, and that is the whole point of it existing.**
+ * Every reader that needs this used to write out the kinds that name no hero as a list of
+ * `!==` comparisons, which is the shape that misses whatever is added next: the seven
+ * resolution events landed in this union and the compiler caught the reader only because
+ * three of the new kinds happen to lack a `heroId`. A `switch` with no `default` fails to
+ * build the day a kind is added, at the one site that has to decide.
+ *
+ * Beside the union rather than beside a reader: it is a fact about the events, and two
+ * readers each deciding it separately is two answers that can disagree.
+ */
+export function heroNamedBy(domainEvent: DomainEvent): HeroId | null {
+  switch (domainEvent.kind) {
+    case 'hero_accepted_contract':
+    case 'hero_declined_contract':
+    case 'hero_faltered_early':
+    case 'hero_suffered_consequence':
+      return domainEvent.heroId;
+    case 'offer_revised':
+    case 'offer_locked':
+    case 'need_covered':
+    case 'need_short':
+    case 'objective_taken':
+    case 'objective_lost':
+    case 'contract_resolved':
+    case 'contract_settled':
+    case 'contract_settled_promise_kept':
+    case 'contract_settled_promise_broken':
+      return null;
+  }
+}
+
+/**
+ * Whether this event is a hero answering an offer — the two kinds that move
+ * `respondedBy` and `acceptedBy`.
+ *
+ * Stated positively, for the reason {@link heroNamedBy} is stated at all: a reader
+ * enumerating everything that is *not* an answer is a reader that silently admits the next
+ * kind into a window it has no business in.
+ */
+export function isAnswerToAnOffer(
+  domainEvent: DomainEvent
+): domainEvent is HeroAcceptedContract | HeroDeclinedContract {
+  return (
+    domainEvent.kind === 'hero_accepted_contract' || domainEvent.kind === 'hero_declined_contract'
+  );
+}
+
 export type DomainEvent =
   | HeroAcceptedContract
   | HeroDeclinedContract
   | OfferRevised
   | OfferLocked
+  | NeedCovered
+  | NeedShort
+  | HeroFalteredEarly
+  | ObjectiveTaken
+  | ObjectiveLost
+  | HeroSufferedConsequence
+  | ContractResolved
   | ContractSettled
   | ContractSettledPromiseKept
   | ContractSettledPromiseBroken;

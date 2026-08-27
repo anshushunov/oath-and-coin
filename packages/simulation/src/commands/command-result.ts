@@ -124,7 +124,31 @@ export const RejectionCodes = Object.freeze({
    * second `settleContract` against the same contract is refused here rather than
    * paying the patron fee, and any promised bonus, a second time.
    */
-  AlreadySettled: 'rejected.already_settled'
+  AlreadySettled: 'rejected.already_settled',
+  /**
+   * `resolveContract` resolves a contract exactly once (`RESOLUTION_SPEC` §3.2): the
+   * stored `ContractResolution` is written by one event's effect and never written twice,
+   * so a second `resolveContract` against the same contract is refused here rather than
+   * raising a second set of outcome events and wounding the same crew again.
+   *
+   * **Not {@link ContractAlreadyResolved}, and the two are about different things.** That
+   * one is `proposeContractToHero`'s, and it means "the contract is no longer on offer —
+   * somebody took it"; this one means "the crew already went out and came back". They
+   * would read as synonyms in a list of codes and are not, which is why the strings differ
+   * as sharply as the names allow.
+   */
+  AlreadyResolved: 'rejected.already_resolved',
+  /**
+   * `settleContract` refuses a contract nobody has resolved (`RESOLUTION_SPEC` §2.5, §5.3):
+   * the patron's share is a function of the grade, and there is no grade until the crew
+   * has come back.
+   *
+   * Its own code rather than {@link CrewNotFilled}: a crew that never filled and a crew
+   * that filled, went out and has not been asked what happened are two different states of
+   * the same contract, and telling a player "the crew is not filled" about the second
+   * would name the wrong one.
+   */
+  NotResolved: 'rejected.not_resolved'
 });
 
 export type RejectionCode = (typeof RejectionCodes)[keyof typeof RejectionCodes];
@@ -213,4 +237,47 @@ export function fromEvent(state: GameState, event: DomainEvent): CommandResult {
   }
 
   return { applied: true, rejectionCode: null, state, events: [event], decisions: [] };
+}
+
+/**
+ * Builds the result of a command whose *several* events all explain themselves — the
+ * shape `resolveContract` produces and the one neither constructor above could build
+ * (`RESOLUTION_SPEC` §3.3).
+ *
+ * `fromEvent` takes exactly one; `fromDecisions` requires a `DecisionResult` per event and
+ * would refuse a list of seven paired with none. A resolution is not a hero's decision —
+ * nobody chose anything, the crew went and this is what happened — so there is no trace to
+ * pair, and yet there are as many events as the outcome had things to say.
+ *
+ * The same contract as `fromEvent`, applied to each: every event must carry
+ * `causalTraceId === null`. Checked rather than assumed, because a decision-bearing event
+ * arriving here would be an explanation stored under no owner.
+ *
+ * **An empty list is refused.** A command that applied and produced nothing would grow
+ * `appliedCommandIds` without growing `history`, which is exactly the counter invariant
+ * `validate-game-state.ts` holds (`appliedCommandIds.size <= history.length`) — and it is
+ * the failure `pollCrew`'s `NobodyLeftToPoll` exists to prevent one command earlier.
+ *
+ * @throws if `events` is empty, or if any of them carries a `causalTraceId`.
+ */
+export function fromEvents(state: GameState, events: readonly DomainEvent[]): CommandResult {
+  if (events.length === 0) {
+    throw new Error(
+      'fromEvents was given no events; a command that applied and produced nothing would grow ' +
+        'appliedCommandIds without growing history. A command with nothing to do refuses ' +
+        'instead, with a rejection code of its own.'
+    );
+  }
+
+  for (const event of events) {
+    if (event.causalTraceId !== null) {
+      throw new Error(
+        `fromEvents was given an event ('${event.kind}') whose causalTraceId is ` +
+          `${String(event.causalTraceId)}, not null; an event with an explanation is a decision ` +
+          'and belongs in fromDecisions, paired with the DecisionResult that produced it.'
+      );
+    }
+  }
+
+  return { applied: true, rejectionCode: null, state, events, decisions: [] };
 }

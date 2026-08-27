@@ -16,17 +16,19 @@ import { readFile } from '../strict-json.ts';
  *
  * Spelled the way the file spells it (`"compose_offer"`, not `"ComposeOffer"`), so the
  * discriminant a reader sees in the JSON and the one the compiler switches on are the
- * same string. `settle_contract` (Task 20) is the fifth: the engine has all five
- * commands of the negotiation slice, so a scenario file can drive a negotiation start to
- * finish. `NEGOTIATION_SPEC` §3.1 names a sixth since 2026-08-25 — `resolve_contract`,
- * between the poll and the settlement — and it arrives with the resolution engine that
- * gives it something to do.
+ * same string.
+ *
+ * All six the protocol has (`RESOLUTION_SPEC` §3.1): `resolve_contract` sits between the
+ * poll and the settlement, and it is not optional there — since `phase === Settled ⇒
+ * resolution !== null` (§2.5), a scenario that settles without resolving first is a
+ * scenario the engine refuses.
  */
 export const ScenarioCommandKind = Object.freeze({
   ComposeOffer: 'compose_offer',
   ProposeContractToHero: 'propose_contract_to_hero',
   LockOffer: 'lock_offer',
   PollCrew: 'poll_crew',
+  ResolveContract: 'resolve_contract',
   SettleContract: 'settle_contract'
 });
 
@@ -81,6 +83,17 @@ export interface LockOfferScenarioCommand extends ScenarioCommandBase {
   readonly kind: typeof ScenarioCommandKind.LockOffer;
 }
 
+/**
+ * Sends the crew out and asks what came back (`RESOLUTION_SPEC` §3.1).
+ *
+ * Nothing of its own beyond the shared base: everything the outcome is computed from is
+ * already on the package this resolves. A scenario author who wants a different outcome
+ * changes the crew or the terms, which is exactly the choice the loop is about.
+ */
+export interface ResolveContractScenarioCommand extends ScenarioCommandBase {
+  readonly kind: typeof ScenarioCommandKind.ResolveContract;
+}
+
 /** The rest of the roster answers the locked package, once each (`NEGOTIATION_SPEC` §3.1). */
 export interface PollCrewScenarioCommand extends ScenarioCommandBase {
   readonly kind: typeof ScenarioCommandKind.PollCrew;
@@ -130,6 +143,7 @@ export type ScenarioCommand =
   | ProposeContractScenarioCommand
   | LockOfferScenarioCommand
   | PollCrewScenarioCommand
+  | ResolveContractScenarioCommand
   | SettleContractScenarioCommand;
 
 // Stated from the parser's own pattern rather than as `z.string()` plus a hopeful
@@ -197,6 +211,11 @@ const pollCrewFileSchema = z.strictObject({
   ...commandBaseFields
 });
 
+const resolveContractFileSchema = z.strictObject({
+  command: z.literal(ScenarioCommandKind.ResolveContract),
+  ...commandBaseFields
+});
+
 const settleContractFileSchema = z.strictObject({
   command: z.literal(ScenarioCommandKind.SettleContract),
   ...commandBaseFields,
@@ -212,6 +231,7 @@ const commandFileSchema = z.discriminatedUnion('command', [
   proposeFileSchema,
   lockOfferFileSchema,
   pollCrewFileSchema,
+  resolveContractFileSchema,
   settleContractFileSchema
 ]);
 
@@ -249,6 +269,8 @@ function toCommand(command: CommandFile): ScenarioCommand {
       return { kind: ScenarioCommandKind.LockOffer, ...base };
     case ScenarioCommandKind.PollCrew:
       return { kind: ScenarioCommandKind.PollCrew, ...base };
+    case ScenarioCommandKind.ResolveContract:
+      return { kind: ScenarioCommandKind.ResolveContract, ...base };
     case ScenarioCommandKind.SettleContract:
       return { kind: ScenarioCommandKind.SettleContract, ...base, pay: command.pay };
   }

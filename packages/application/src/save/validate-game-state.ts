@@ -1,5 +1,7 @@
 import {
   ContractStatus,
+  heroNamedBy,
+  isAnswerToAnOffer,
   type CausalTrace,
   type ContractState,
   type ContentId,
@@ -60,20 +62,14 @@ export function validateGameState(state: GameState): void {
  */
 function checkReferentialIntegrity(state: GameState): void {
   for (const event of state.history) {
-    // `offer_revised`, `offer_locked` and the three `settleContract` events name no
-    // hero — composing, locking or settling an offer is the player's own choice,
-    // not a decision a hero made (`domain-event.ts`). Only the two hero-response
-    // kinds do.
-    if (
-      event.kind !== 'offer_revised' &&
-      event.kind !== 'offer_locked' &&
-      event.kind !== 'contract_settled' &&
-      event.kind !== 'contract_settled_promise_kept' &&
-      event.kind !== 'contract_settled_promise_broken' &&
-      !state.heroes.has(event.heroId)
-    ) {
+    // Which events name a hero is the union's own fact, answered once by `heroNamedBy`
+    // (`domain-event.ts`). This site used to enumerate the kinds that name none, which is
+    // the shape that admits whatever is added next — and seven event kinds were added
+    // one task later.
+    const namedHero = heroNamedBy(event);
+    if (namedHero !== null && !state.heroes.has(namedHero)) {
       throw inconsistent(
-        `history event ${String(event.eventId)} names hero#${String(event.heroId)}, but the ` +
+        `history event ${String(event.eventId)} names hero#${String(namedHero)}, but the ` +
           'save carries no such hero.'
       );
     }
@@ -211,18 +207,20 @@ function checkDecisionTraces(state: GameState): void {
     // non-decision event arrived — refusing the first tick or player-choice event
     // that carries an explanation it should not, rather than silently admitting an
     // unexplained decision.
-    if (
-      event.kind === 'offer_revised' ||
-      event.kind === 'offer_locked' ||
-      event.kind === 'contract_settled' ||
-      event.kind === 'contract_settled_promise_kept' ||
-      event.kind === 'contract_settled_promise_broken'
-    ) {
+    // Everything that is not a hero answering an offer explains itself: composing,
+    // locking and settling are the player's own acts, and the seven outcome events
+    // (`RESOLUTION_SPEC` §3.4) are what happened to a crew that had already been sent —
+    // nobody chose any of them, so there is no explanation to store (`ADR-007`).
+    //
+    // Asked as "is this an answer" rather than by listing the kinds that are not: the list
+    // form is what let seven new event kinds fall through to the decision branch below and
+    // be refused for carrying no trace they were never supposed to have.
+    if (!isAnswerToAnOffer(event)) {
       if (event.causalTraceId !== null) {
         throw inconsistent(
           `history event ${String(event.eventId)} ('${event.kind}') carries causalTraceId ` +
-            `${String(event.causalTraceId)}; composing, locking or settling an offer is the ` +
-            "player's own choice, not a decision, and explains itself."
+            `${String(event.causalTraceId)}; only a hero answering an offer is a decision, and ` +
+            'everything else in the log explains itself.'
         );
       }
       continue;
@@ -374,22 +372,13 @@ function checkResponseBookkeeping(state: GameState): void {
       continue;
     }
 
-    if (event.kind === 'offer_locked') {
-      // Locking names no hero and changes neither `respondedBy` nor `acceptedBy`
-      // (`engine.ts`'s `lockOffer`) — unlike a revision, there is no window to reset
-      // here, only nothing to add.
-      continue;
-    }
-
-    if (
-      event.kind === 'contract_settled' ||
-      event.kind === 'contract_settled_promise_kept' ||
-      event.kind === 'contract_settled_promise_broken'
-    ) {
-      // Settling names no hero either and changes neither `respondedBy` nor
-      // `acceptedBy` (`engine.ts`'s `settleContract` only moves `offer.phase` to
-      // `settled`) — the same reason `offer_locked` above needs no window reset,
-      // only nothing to add.
+    // Everything else in the log either leaves the window alone or is not an answer at
+    // all: locking moves only `offer.phase`, settling only moves it again, and the seven
+    // outcome events (`RESOLUTION_SPEC` §3.4) record what happened after the crew had
+    // already been fixed. Asked positively — "is this an answer" — rather than by listing
+    // the kinds that are not, because the list is what a new event kind slips past
+    // (`domain-event.ts`'s `isAnswerToAnOffer`).
+    if (!isAnswerToAnOffer(event)) {
       continue;
     }
 

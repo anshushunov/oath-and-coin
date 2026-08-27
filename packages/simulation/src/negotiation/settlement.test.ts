@@ -12,7 +12,7 @@ import { ContractStatus } from '../state/contract-state.ts';
 import { heroOf, type GameState } from '../state/game-state.ts';
 import type { HeroState } from '../state/hero-state.ts';
 import { createContractState, OfferPhase } from '../state/offer-state.ts';
-import { aContract, aHero, anOffer, aState, ids } from '../testing/fixtures.ts';
+import { aContract, aHero, anOffer, aState, ids, resolved } from '../testing/fixtures.ts';
 
 /**
  * `settleContract` (`NEGOTIATION_SPEC` §3.1, §3.3, §6.1) — the command every
@@ -77,7 +77,12 @@ function crewedCampaign(overrides: CrewedOverrides = {}): GameState {
       compareHeroIds,
       heroes.map((hero) => [hero.id, hero] as const)
     ),
-    contracts: SortedMap.from(compareContentIds, [[contract.id, contract]]),
+    // Already resolved (`RESOLUTION_SPEC` §2.5): a settlement is settled *against* an
+    // outcome, and since `resolveContract` arrived there is no such thing as a settleable
+    // contract without one. `resolved` runs the real resolver on this crew rather than
+    // stating an outcome by hand — what these tests are about is the money, and the money
+    // must move against a result some crew could actually have brought back.
+    contracts: SortedMap.from(compareContentIds, [[contract.id, resolved(contract, heroes)]]),
     treasury: overrides.treasury ?? STARTING_TREASURY
   });
 }
@@ -274,24 +279,28 @@ const LOCK_AND_SETTLE_SPECS: readonly SettleSpec[] = [
 ];
 
 function lockedCampaignWith(specs: readonly SettleSpec[]): GameState {
+  const roster = heroesOfSize(3);
   const contracts = specs.map((spec) => {
     const acceptedBy = crewOfSize(spec.requiredCrew);
 
-    return createContractState(
-      aContract({
-        id: spec.id,
-        patronFee: spec.patronFee,
-        requiredCrew: spec.requiredCrew,
-        status: ContractStatus.Crewed,
-        offer: anOffer({
-          keyHero: KEY,
-          advance: spec.advance,
-          promisedBonus: spec.promisedBonus,
-          phase: OfferPhase.Locked,
-          respondedBy: acceptedBy,
-          acceptedBy
+    return resolved(
+      createContractState(
+        aContract({
+          id: spec.id,
+          patronFee: spec.patronFee,
+          requiredCrew: spec.requiredCrew,
+          status: ContractStatus.Crewed,
+          offer: anOffer({
+            keyHero: KEY,
+            advance: spec.advance,
+            promisedBonus: spec.promisedBonus,
+            phase: OfferPhase.Locked,
+            respondedBy: acceptedBy,
+            acceptedBy
+          })
         })
-      })
+      ),
+      roster
     );
   });
 
@@ -300,12 +309,10 @@ function lockedCampaignWith(specs: readonly SettleSpec[]): GameState {
     0
   );
 
-  const heroes = heroesOfSize(3);
-
   return aState({
     heroes: SortedMap.from(
       compareHeroIds,
-      heroes.map((hero) => [hero.id, hero] as const)
+      roster.map((hero) => [hero.id, hero] as const)
     ),
     contracts: SortedMap.from(
       compareContentIds,
@@ -389,7 +396,9 @@ function forEachGeneratedSettlement(fn: (args: { committed: number; paid: number
           compareHeroIds,
           heroes.map((hero) => [hero.id, hero] as const)
         ),
-        contracts: SortedMap.from(compareContentIds, [[contract.id, contract]]),
+        // Resolved first, like every settleable contract since `resolveContract`
+        // (`RESOLUTION_SPEC` §2.5) — a settlement pays against an outcome.
+        contracts: SortedMap.from(compareContentIds, [[contract.id, resolved(contract, heroes)]]),
         treasury: 1_000_000
       });
 
@@ -445,7 +454,11 @@ function forEachGeneratedPromise(fn: (args: { broken: HeroState; none: HeroState
           compareHeroIds,
           heroes.map((hero) => [hero.id, hero] as const)
         ),
-        contracts: SortedMap.from(compareContentIds, [[contract.id, contract]]),
+        // Resolved first (`RESOLUTION_SPEC` §2.5). The two campaigns this builds differ in
+        // `promisedBonus` alone, and the promise reaches neither the coverage nor the
+        // crew's willingness — so both sides come back on the same outcome, and it cannot
+        // be what makes the two grievances differ.
+        contracts: SortedMap.from(compareContentIds, [[contract.id, resolved(contract, heroes)]]),
         treasury: 1_000_000
       });
     }
@@ -480,5 +493,52 @@ describe('settleContract — treasury properties (NEGOTIATION_SPEC §10.1)', () 
     forEachGeneratedPromise(({ broken, none }) => {
       expect(broken.grievance).toBeGreaterThan(none.grievance);
     });
+  });
+});
+
+describe('a settlement pays against an outcome (`RESOLUTION_SPEC` §2.5, §5.3)', () => {
+  it('refuses a locked, crewed contract nobody has resolved', () => {
+    // §2.5's last invariant, met as a refusal rather than as an exception. Before
+    // `resolveContract` this state settled; it is the one change that makes the same seed,
+    // content and command log reach a different answer, which is what moved the ruleset
+    // version to `m1-resolution/2`.
+    const unresolved = crewedCampaign();
+    const contract = unresolved.contracts.get(ids.crypt)!;
+    const withoutOutcome = {
+      ...unresolved,
+      contracts: unresolved.contracts.set(
+        ids.crypt,
+        createContractState({ ...contract, resolution: null })
+      )
+    };
+
+    const refused = settleContract(withoutOutcome, aSettle());
+
+    expect(refused.rejectionCode).toBe(RejectionCodes.NotResolved);
+    expect(Object.is(refused.state, withoutOutcome)).toBe(true);
+  });
+
+  it('says "the crew never filled" about a crew that never filled, not "not resolved"', () => {
+    // Two different states of the same contract, and telling a player about the wrong one
+    // is what a single shared code would do. Checked in the order §3.2 fixes: a package
+    // that never filled has no resolution either.
+    expect(settleContract(lockedButUncrewed(), aSettle()).rejectionCode).toBe(
+      RejectionCodes.CrewNotFilled
+    );
+  });
+
+  it('refuses to build a settled contract carrying no outcome at all', () => {
+    // The same rule where a hand-assembled state or an edited save would otherwise slip
+    // past the command: `createContractState` is the one door, and this is the row of §2.5
+    // that arrived with `resolveContract`.
+    const contract = crewedCampaign().contracts.get(ids.crypt)!;
+
+    expect(() =>
+      createContractState({
+        ...contract,
+        resolution: null,
+        offer: { ...contract.offer, phase: OfferPhase.Settled }
+      })
+    ).toThrow(/carries no resolution/u);
   });
 });

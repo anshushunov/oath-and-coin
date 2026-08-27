@@ -27,11 +27,17 @@
       "expected_state_version": 2
     },
     {
-      "command": "settle_contract",
+      "command": "resolve_contract",
       "command_id": 4,
       "contract": "core:collect_the_debt",
-      "pay": false,
       "expected_state_version": 3
+    },
+    {
+      "command": "settle_contract",
+      "command_id": 5,
+      "contract": "core:collect_the_debt",
+      "pay": false,
+      "expected_state_version": 7
     }
   ]
 }

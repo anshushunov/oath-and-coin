@@ -4,6 +4,7 @@ import {
   lockOffer,
   pollCrew,
   proposeContractToHero,
+  resolveContract,
   settleContract,
   type CommandResult,
   type ContentId,
@@ -32,11 +33,21 @@ import { ScenarioCommandKind, type ScenarioCommand } from './scenario-commands.t
  * `session-controller.ts`'s ruleset check ever noticing.
  *
  * Adding fields did not require this and did not get it (`SAVE_SCHEMA_VERSION` and
- * `ARTIFACT_VERSION` say a *format* changed); changing what the rules answer does. If a
- * later task changes an answer again, it takes `m1-resolution/2` — one number per set of
- * rules anyone could have saved a campaign under.
+ * `ARTIFACT_VERSION` say a *format* changed); changing what the rules answer does.
+ *
+ * **`m1-resolution/1` → `m1-resolution/2` (`RESOLUTION_SPEC` §2.5, §3).** The answer
+ * changed a second time, and this is what changed it: a locked, crewed contract used to
+ * settle, and now refuses with `NotResolved` until the crew has been asked what happened.
+ * The same seed, content and command log therefore reaches a different state — not a
+ * different *format* of the same state, a different state — which is precisely what this
+ * number exists to keep apart. The sixth command and the seven events it raises are the
+ * format half of the same change, and they moved `SAVE_SCHEMA_VERSION` and
+ * `ARTIFACT_VERSION` alongside.
+ *
+ * One number per set of rules anyone could have saved a campaign under: if a later task
+ * changes an answer again, it takes `m1-resolution/3`.
  */
-export const RULESET_VERSION = 'm1-resolution/1';
+export const RULESET_VERSION = 'm1-resolution/2';
 
 /**
  * One decision a step produced, with the hero it belongs to when the step's decisions do
@@ -169,6 +180,12 @@ function apply(state: GameState, command: ScenarioCommand): CommandResult {
       });
     case ScenarioCommandKind.PollCrew:
       return pollCrew(state, {
+        commandId: command.commandId,
+        contractId: command.contract,
+        expectedStateVersion: command.expectedStateVersion
+      });
+    case ScenarioCommandKind.ResolveContract:
+      return resolveContract(state, {
         commandId: command.commandId,
         contractId: command.contract,
         expectedStateVersion: command.expectedStateVersion

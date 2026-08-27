@@ -14,6 +14,7 @@ import {
   deepEqual,
   lockOffer,
   proposeContractToHero,
+  resolveContract,
   settleContract,
   SortedSet,
   type ContentId,
@@ -215,7 +216,33 @@ function aDecidedThenLockedState(): GameState {
  * composed onto it first — the one command in this chain `aDecidedState()`'s own
  * callers do not otherwise issue.
  */
-function aDecidedThenLockedThenSettledState(): GameState {
+/**
+ * The same chain, on a crew too thin for the job — so the outcome costs somebody
+ * something and the log gains an event that names a hero from the resolution half of
+ * §3.4. Every hero's capability is cut before the crew goes out, because the outcome is
+ * computed from what the crew was, not from what it becomes.
+ */
+function aSettledStateThatCostSomebody(): GameState {
+  const settled = aDecidedThenLockedThenSettledState(weakenEveryHero);
+  return settled;
+}
+
+function weakenEveryHero(state: GameState): GameState {
+  return {
+    ...state,
+    heroes: state.heroes
+      .entries()
+      .reduce(
+        (heroes, [id, hero]) =>
+          heroes.set(id, { ...hero, capability: { ...hero.capability, grade: 1 } }),
+        state.heroes
+      )
+  };
+}
+
+function aDecidedThenLockedThenSettledState(
+  weaken: (state: GameState) => GameState = (state) => state
+): GameState {
   const decided = aDecidedState();
   const [heroKey] = decided.heroes.keys();
   const [contractKey] = decided.contracts.keys();
@@ -244,11 +271,29 @@ function aDecidedThenLockedThenSettledState(): GameState {
     expectedStateVersion: proposed.metadata.stateVersion
   }).state;
 
-  const settled = settleContract(locked, {
+  // Sent out and back first: since Task 8 a contract is settled *against* an outcome, and
+  // `settleContract` refuses one that has none (`RESOLUTION_SPEC` §2.5). Driven through the
+  // real command, so what this fixture saves is a history this build produces.
+  const resolvedRun = resolveContract(weaken(locked), {
     commandId: 5,
     contractId: contractKey!,
-    pay: false,
     expectedStateVersion: locked.metadata.stateVersion
+  });
+
+  if (!resolvedRun.applied) {
+    throw new Error(
+      `aDecidedThenLockedThenSettledState: resolveContract was refused ` +
+        `(${String(resolvedRun.rejectionCode)}).`
+    );
+  }
+
+  const resolvedState = resolvedRun.state;
+
+  const settled = settleContract(resolvedState, {
+    commandId: 6,
+    contractId: contractKey!,
+    pay: false,
+    expectedStateVersion: resolvedState.metadata.stateVersion
   });
 
   if (!settled.applied) {
@@ -1252,6 +1297,41 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
     });
 
     expect(deepEqual(readSave(bytes, versions).state, settled)).toBe(true);
+  });
+
+  it('отказывает, когда событие исхода называет героя, которого нет в составе', () => {
+    // Второй вид события, называющего героя, и он из другой половины лога
+    // (`RESOLUTION_SPEC` §3.4). Живёт здесь, а не в общей таблице ссылочной целостности
+    // выше: та строится на кампании, которая дальше решения героя не заходит, и события
+    // исхода в её истории нет вовсе.
+    //
+    // Мутант, ради которого случай заведён: `heroNamedBy` отвечает `null` на событиях
+    // исхода. Пока список видов был перечислением исключений, а не исчерпывающим
+    // разбором, именно так проверка и вела себя — и ни один тест этого не видел.
+    // Отряд, у которого исход не может быть чистым: один герой, умеющий одну
+    // потребность на четверть. Ослабление — до отправки, потому что исход считается из
+    // того, что было; иначе история осталась бы чистой, и случай проверял бы пустоту.
+    const settled = aSettledStateThatCostSomebody();
+    const naming = settled.history.filter(
+      (event) => event.kind === 'hero_faltered_early' || event.kind === 'hero_suffered_consequence'
+    );
+
+    // Фикстура обязана содержать такое событие, иначе случай проверяет пустоту.
+    expect(naming.length).toBeGreaterThan(0);
+
+    const snapshot = JSON.parse(JSON.stringify(encodeSnapshot(settled))) as RawSnapshot;
+    const target = snapshot.history.find(
+      (event) => event.kind === 'hero_faltered_early' || event.kind === 'hero_suffered_consequence'
+    )!;
+    target.heroId = 998;
+
+    // Через `buildSave`, а не через `decodeSnapshot`: ссылочную целостность держит
+    // `validateGameState`, и кодек её не вызывает — снимок с таким событием он разберёт.
+    const state = decodeSnapshot(snapshot);
+
+    expect(() =>
+      buildSave({ state, focusedContract: FOCUSED_CONTRACT, createdAt: CREATED_AT })
+    ).toThrow('names hero#998');
   });
 });
 

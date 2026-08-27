@@ -2,5 +2,10 @@
   "schema_version": 1,
   "scenario": "broken_word_changes_the_next_answer",
   "expected_outcome": "success",
-  "checkpoints": [{ "name": "final", "after_command_id": 7 }]
+  "checkpoints": [
+    {
+      "name": "final",
+      "after_command_id": 8
+    }
+  ]
 }

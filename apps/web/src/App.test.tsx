@@ -134,6 +134,7 @@ function gatedController(run: RunRequest): {
       proposeContractToHero: (input) => inner.proposeContractToHero(input),
       lockOffer: (input) => inner.lockOffer(input),
       pollCrew: (input) => inner.pollCrew(input),
+      resolveContract: (input) => inner.resolveContract(input),
       settleContract: (input) => inner.settleContract(input)
     },
     subscribers: () => held.size,
