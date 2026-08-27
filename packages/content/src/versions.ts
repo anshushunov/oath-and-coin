@@ -60,11 +60,28 @@ export const SUPPORTED_LOCALE_SCHEMA_VERSION = 2;
  * — all required keys of `strictObject` schemas, so a version 2 save is unreadable
  * under this one and the reverse.
  *
- * **This number moves a second time, and deliberately not now.** The event variants
+ * **4, moved by Task 7: `NeedCoverage.contributors` gained `counted`**
+ * (`RESOLUTION_SPEC` §4.3, owner's decision 2026-08-27 — see
+ * [`DEC-014`](../../../docs/decisions/DEC-014-two-numbers-and-who-is-wounded.md)). A
+ * required key of a `strictObject`, so a version 3 save carrying a resolution is
+ * unreadable under this one.
+ *
+ * **The first edition of that change did not move this number, and the argument was
+ * wrong.** It reasoned that `resolution` is `null` in every state this build produces —
+ * true of the *commands*, and irrelevant, because `buildSave` encodes whatever
+ * `GameState` it is handed and `createContractState` will build a resolved contract for
+ * anyone who asks (`snapshot-codec.test.ts` does exactly that). The format's reachability
+ * is a property of the codec's own surface, not of which paths happen to exercise it
+ * today. The evidence offered was the 42 canonical snapshots staying byte-identical,
+ * which only established that none of *them* carries a resolution. Found by external
+ * review; recorded because the shape of the mistake — checking the callers instead of the
+ * boundary — is the one that will be available again.
+ *
+ * **This number moves a third time, in the task after this one.** The event variants
  * `resolveContract` raises — and the closed discriminated union plus hand-written
  * `toDomainEvent` that carry them — are a separate change to this format, arriving in a
  * separate task. One number covering both would leave a stretch where the format had
  * changed and the version had not: a save written after the fields landed would claim
  * the same number as one written before them.
  */
-export const SAVE_SCHEMA_VERSION = 3;
+export const SAVE_SCHEMA_VERSION = 4;

@@ -82,7 +82,7 @@ describe('what a hero brings to one need (§4.1)', () => {
 
     expect(withKey.supplied).toBe(0);
     expect(withoutKey.supplied).toBe(0);
-    expect(withKey.contributors).toEqual([{ hero: heroId(0), amount: 0 }]);
+    expect(withKey.contributors).toEqual([{ hero: heroId(0), amount: 0, counted: 0 }]);
     expect(withoutKey.contributors).toEqual([]);
   });
 });
@@ -175,9 +175,48 @@ describe('what a crew supplies together (§4.3)', () => {
     expect(
       frontlineOf(coverNeeds(needs({ frontline: 60 }), crew, { risk: 0 })).contributors
     ).toEqual([
-      { hero: heroId(1), amount: 40 },
-      { hero: heroId(3), amount: 40 }
+      { hero: heroId(1), amount: 40, counted: 40 },
+      { hero: heroId(3), amount: 40, counted: 20 }
     ]);
+  });
+
+  it('records what each man brought beside how much of it counted', () => {
+    // §4.3, owner's decision 2026-08-27. Both numbers, per `(hero, need)`, because that
+    // is where the halving happens: the screen shows "what he can do → what counted", and
+    // a reader deriving the second would have to re-apply `2^k` and know this sort order.
+    //
+    // Three unequal contributions, so every share is a different number and no two of
+    // them can be swapped without the table noticing: 80, then 40 halved once to 20, then
+    // 10 halved twice to 2 (2.5 truncated toward zero).
+    const crew = [
+      { hero: heroId(0), capability: capability(100, { frontline: 40 }) },
+      { hero: heroId(1), capability: capability(100, { frontline: 10 }) },
+      { hero: heroId(2), capability: capability(100, { frontline: 80 }) }
+    ];
+    const covered = frontlineOf(coverNeeds(needs({ frontline: 200 }), crew, { risk: 0 }));
+
+    expect(covered.contributors).toEqual([
+      { hero: heroId(2), amount: 80, counted: 80 },
+      { hero: heroId(0), amount: 40, counted: 20 },
+      { hero: heroId(1), amount: 10, counted: 2 }
+    ]);
+  });
+
+  it('supplies exactly the sum of the counted shares, so no rollup restates the halving', () => {
+    // The property every screen rollup rests on: adding up what counted gives what the
+    // need received. Stated over the same uneven crew, where the truncation of the third
+    // share is what a naive `supplied` computed some other way would get wrong.
+    const crew = [
+      { hero: heroId(0), capability: capability(100, { frontline: 40 }) },
+      { hero: heroId(1), capability: capability(100, { frontline: 10 }) },
+      { hero: heroId(2), capability: capability(100, { frontline: 80 }) }
+    ];
+    const covered = frontlineOf(coverNeeds(needs({ frontline: 200 }), crew, { risk: 0 }));
+
+    expect(covered.contributors.reduce((total, one) => total + one.counted, 0)).toBe(
+      covered.supplied
+    );
+    expect(covered.supplied).toBe(102);
   });
 });
 

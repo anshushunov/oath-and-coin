@@ -50,7 +50,7 @@ function aResolution(): ContractResolution {
         supplied: 40,
         effective: 40,
         verdict: CoverageVerdict.Weak,
-        contributors: [{ hero: heroId(0), amount: 40 }]
+        contributors: [{ hero: heroId(0), amount: 40, counted: 40 }]
       }
     ],
     contributions: SortedMap.from<HeroId, HeroContribution>(compareHeroIds, [
@@ -107,10 +107,28 @@ const NESTED_RESOLUTION_PERTURBATIONS: readonly [
     (r) => ({ ...r, coverage: [{ ...r.coverage[0]!, verdict: CoverageVerdict.Uncovered }] })
   ],
   [
-    'coverage[].contributors',
+    'coverage[].contributors[].hero',
     (r) => ({
       ...r,
-      coverage: [{ ...r.coverage[0]!, contributors: [{ hero: heroId(0), amount: 39 }] }]
+      coverage: [{ ...r.coverage[0]!, contributors: [{ hero: heroId(1), amount: 40, counted: 40 }] }]
+    })
+  ],
+  [
+    'coverage[].contributors[].amount',
+    (r) => ({
+      ...r,
+      coverage: [{ ...r.coverage[0]!, contributors: [{ hero: heroId(0), amount: 39, counted: 40 }] }]
+    })
+  ],
+  [
+    // Its own row, and not folded into `amount` above: the two numbers differ exactly
+    // when a hero was not first on his need (`RESOLUTION_SPEC` §4.3), so a projection
+    // writing one and dropping the other is the failure this perturbation names. Moved
+    // alone, with `amount` held still, so nothing else can account for the difference.
+    'coverage[].contributors[].counted',
+    (r) => ({
+      ...r,
+      coverage: [{ ...r.coverage[0]!, contributors: [{ hero: heroId(0), amount: 40, counted: 20 }] }]
     })
   ],
   [

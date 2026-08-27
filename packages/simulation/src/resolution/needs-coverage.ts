@@ -103,10 +103,21 @@ function coverOneNeed(
   // §4.3. Diminishing returns: the k-th best is halved k times. This is the answer to
   // "take four of the same hero" — the fourth copy of a specialist is worth an eighth of
   // the first, so a crew of duplicates loses to a crew that covers what was asked.
-  const supplied = contributors.reduce(
-    (total, contributor, index) => total + divideTowardZero(contributor.amount, 2 ** index),
-    0
-  );
+  //
+  // **Each share is written down beside what the man brought, not only summed** (§4.3,
+  // owner's decision 2026-08-27). The debrief screen shows both numbers per hero: what he
+  // can do, and how much of it counted. Only the first, and a crew's names add up to more
+  // than the need received — a fourth swordsman reads as useful. Only the second, and two
+  // identical heroes show different numbers with the sort order deciding which is which.
+  // Written here rather than derived by a reader, because deriving it means re-applying
+  // `2^k` and knowing this sort — a second statement of the rule. Every rollup a screen
+  // wants is then addition, and addition is not a second statement of anything.
+  const counted = contributors.map((contributor, index) => ({
+    ...contributor,
+    counted: divideTowardZero(contributor.amount, 2 ** index)
+  }));
+
+  const supplied = counted.reduce((total, contributor) => total + contributor.counted, 0);
 
   const effective = Math.min(
     supplied,
@@ -124,7 +135,7 @@ function coverOneNeed(
     // and never beyond — and a crew that brought twice what was asked would read as
     // having barely managed.
     verdict: verdictFor(supplied, required),
-    contributors
+    contributors: counted
   };
 }
 

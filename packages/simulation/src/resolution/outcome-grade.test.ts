@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { NeedId } from '../domain/need-id.ts';
 import { OutcomeGrade, OutcomeIntentKind, type OutcomeIntent } from '../domain/outcome.ts';
-import { OutcomeReasonCodes } from '../domain/outcome-reason-codes.ts';
+import { OutcomeReasonCodes, type OutcomeReasonCode } from '../domain/outcome-reason-codes.ts';
 
 import {
   COSTLY_PERCENT,
@@ -35,12 +35,24 @@ const needCovered = (need: NeedId, delta: number): OutcomeIntent => ({
   magnitude: 0
 });
 
-const needShort = (need: NeedId, delta: number): OutcomeIntent => ({
+/**
+ * The reason is a parameter and not a constant, and that is the whole of a defect this
+ * file carried: the lopsided case below says in words that the second need "was not
+ * covered at all", and handed `outcome.need_weak` — so the *one* fixture distinguishing
+ * "no need is weak" from "every need closed" did not, in fact, distinguish them. A grade
+ * rule that let an uncovered need through and stopped only at a weak one passed here.
+ * Measured with a mutant, not reasoned about.
+ */
+const needShort = (
+  need: NeedId,
+  delta: number,
+  reason: OutcomeReasonCode = OutcomeReasonCodes.NeedWeak
+): OutcomeIntent => ({
   kind: OutcomeIntentKind.NeedShort,
   hero: null,
   need,
   marginDelta: delta,
-  reason: OutcomeReasonCodes.NeedWeak,
+  reason,
   gap: null,
   consequence: null,
   magnitude: 0
@@ -63,7 +75,10 @@ describe('the step an outcome lands on (§4.6)', () => {
     // outweighs −10 on the second, so the margin is positive — and the second need was
     // not covered at all. "No `weak`" would have called this clean; "every need closed"
     // does not.
-    const lopsided = [needCovered(NeedId.Frontline, 40), needShort(NeedId.Wilderness, -10)];
+    const lopsided = [
+      needCovered(NeedId.Frontline, 40),
+      needShort(NeedId.Wilderness, -10, OutcomeReasonCodes.NeedUncovered)
+    ];
 
     expect(gradeFromIntents({ intents: lopsided, margin: 30, totalRequired: TOTAL })).toBe(
       OutcomeGrade.Costly

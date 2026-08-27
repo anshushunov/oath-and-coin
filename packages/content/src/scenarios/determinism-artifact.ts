@@ -69,13 +69,25 @@ import type { ScenarioOutcome, StepDecision, StepOutcome } from './scenario-runn
  * `describeHero` gained `capability` and `wounds`, `describeContract` gained `needs` and
  * `resolution`, `describeOffer` gained `invited` and `commitments`, and
  * `describeCommand`'s `compose_offer` branch gained `invited` — every one of them a
- * shape change, and every one describing a field a later task will move. Like
- * `SAVE_SCHEMA_VERSION`, this number moves **again** when the resolution events and the
- * sixth command arrive: they are a second change to this shape, and one number covering
- * both would make an artifact written between them indistinguishable from one written
- * before.
+ * shape change, and every one describing a field a later task will move.
+ *
+ * **6, moved by Task 7: `describeResolution`'s contributors gained `counted`**
+ * (`RESOLUTION_SPEC` §4.3, owner's decision 2026-08-27 — `DEC-014`). The debrief screen
+ * shows what a hero brought beside how much of it counted, so the artifact carries both;
+ * a projection describing only one of them could not tell two runs apart that differed in
+ * how a crew's shares fell out.
+ *
+ * The first edition of that change left this number at 5, on the argument that no shipped
+ * scenario carries a resolution. That is true and beside the point — this constant
+ * describes the artifact's *shape*, not which runs happen to fill every branch of it. See
+ * `SAVE_SCHEMA_VERSION`'s own note for the same mistake stated in full.
+ *
+ * Like `SAVE_SCHEMA_VERSION`, this number moves **again** when the resolution events and
+ * the sixth command arrive: they are a further change to this shape, and one number
+ * covering both would make an artifact written between them indistinguishable from one
+ * written before.
  */
-export const ARTIFACT_VERSION = 5;
+export const ARTIFACT_VERSION = 6;
 
 /** The canonical text of a whole run. */
 export function toCanonicalJson(outcome: ScenarioOutcome): string {
@@ -336,7 +348,12 @@ function describeResolution(resolution: ContractResolution | null): CanonicalVal
       verdict: entry.verdict,
       contributors: entry.contributors.map((contributor) => ({
         hero: contributor.hero,
-        amount: contributor.amount
+        amount: contributor.amount,
+        // `RESOLUTION_SPEC` §4.3's second number: how much of what he brought counted
+        // after the halving. Written here for the reason `wounds` above already gives —
+        // a field this projection does not read is a state change a determinism check
+        // cannot see.
+        counted: contributor.counted
       }))
     })),
     contributions: Object.fromEntries(

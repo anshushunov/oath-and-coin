@@ -166,7 +166,10 @@ function aFullResolution(hero: HeroId): ContractResolution {
         supplied: 41,
         effective: 41,
         verdict: CoverageVerdict.Weak,
-        contributors: [{ hero, amount: 41 }]
+        // Two numbers that differ, not one repeated: `counted` equals `amount` only for
+        // whoever was first on the need (`RESOLUTION_SPEC` §4.3), so a codec dropping one
+        // of them and copying the other would round-trip a fixture where they agree.
+        contributors: [{ hero, amount: 41, counted: 20 }]
       }
     ],
     contributions: SortedMap.from<HeroId, HeroContribution>(compareHeroIds, [

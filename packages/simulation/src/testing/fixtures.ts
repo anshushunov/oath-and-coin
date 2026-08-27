@@ -236,7 +236,14 @@ export function aState(overrides: Partial<GameState> = {}): GameState {
       // Literal, not imported: `packages/simulation` cannot depend on
       // `packages/content` (`simulation-depends-on-nothing`), so this cannot read
       // `SAVE_SCHEMA_VERSION` symbolically the way `initial-state.test.ts` does.
-      // Kept in step with it by hand — currently 2 (`DEC-008` Task 6 fix round).
+      //
+      // **Deliberately not kept in step with it, and this is the note that says so.**
+      // The previous comment promised it was, and it had already drifted two bumps
+      // behind by the time anyone looked (`SAVE_SCHEMA_VERSION` is 4). Nothing in this
+      // package reads the number — it is state, carried and compared, never interpreted
+      // — so a hand-updated copy of it buys nothing and lies as soon as it is forgotten.
+      // The place the two are genuinely checked against each other is
+      // `initial-state.test.ts`, on the side of the boundary that can import the real one.
       saveSchemaVersion: 2,
       rulesetVersion: 'm1-resolution/1',
       contentVersion: '5d03734fd9c7abaa',
