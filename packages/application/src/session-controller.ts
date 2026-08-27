@@ -1,12 +1,5 @@
 import { SaveErrorCodes, SaveReadError, type SaveErrorCode } from '@oath-and-coin/content';
-import {
-  LOADING_SCREEN,
-  ScreenKind,
-  afterActionScreenModel,
-  contractBoardScreenModel,
-  contractOfferScreenModel,
-  type ScreenModel
-} from '@oath-and-coin/presentation';
+import { LOADING_SCREEN, ScreenKind } from '@oath-and-coin/presentation';
 import {
   composeOffer as applyComposeOffer,
   lockOffer as applyLockOffer,
@@ -36,6 +29,7 @@ import {
 import { UNCHECKED_SLOT, asSeen } from './save/slot-guard.ts';
 import type { SaveSlot } from './save/slots.ts';
 import {
+  campaignScreen,
   startSession,
   type SaveFailure,
   type SessionRequest,
@@ -424,12 +418,12 @@ function dispatchNegotiationCommand(
 
   store.replace({
     ...session,
-    // The screen the session is on, rebuilt against the campaign the command produced —
-    // not "always the offer", which is what this line said while there was one screen to
-    // be on. Which screen a *command* should move the player to is `RESOLUTION_SPEC` §6.4,
-    // and it arrives with the routing task; until then a dispatch redraws where the player
-    // already is.
-    screen: buildScreen(currentKind(store), result.state, focusedContract),
+    // Where `RESOLUTION_SPEC` §6.4 puts the player, read off the campaign the command just
+    // produced — never off the screen they were on. A resolved contract moves them to the
+    // debrief and a settled one to the board, and the two rows the table gives to refused
+    // commands are already satisfied by a rejection returning above without touching the
+    // store at all.
+    screen: campaignScreen(result.state, focusedContract, restoreDecidedSteps(result.state)),
     focusedContract,
     state: result.state,
     canonicalHash: null
@@ -460,48 +454,9 @@ function redraw(
 
   store.replace({
     ...session,
-    screen: buildScreen(screen, state, focusedContract),
+    screen: campaignScreen(state, focusedContract, restoreDecidedSteps(state), screen),
     focusedContract
   });
-}
-
-/**
- * One screen out of a campaign and the contract it is focused on.
- *
- * The one place a `ScreenModel` is built from a live campaign, so `start`, a load, a
- * dispatch and a manual move cannot each answer with a differently-shaped screen. The
- * `switch` is exhaustive and has no `default`: a fourth screen does not build until this
- * function has been told how to make one.
- *
- * `restoreDecidedSteps` reads the answered history back out of the campaign rather than
- * this layer accumulating a parallel step list — the second source of truth its own doc
- * comment already rejects for a reloaded save.
- */
-function buildScreen(
-  screen: ScreenKind,
-  state: GameState,
-  focusedContract: ContentId | null
-): ScreenModel {
-  switch (screen) {
-    case ScreenKind.ContractOffer:
-      return contractOfferScreenModel(
-        state,
-        restoreDecidedSteps(state),
-        focusedContract ?? undefined
-      );
-    case ScreenKind.AfterAction:
-      if (focusedContract === null) {
-        throw new Error(
-          'A debrief was asked for with no contract focused. The debrief is about one ' +
-            "contract's outcome, so a session with none to name has nothing to debrief — a " +
-            'defect in the caller, not a campaign without an outcome.'
-        );
-      }
-
-      return afterActionScreenModel(state, focusedContract);
-    case ScreenKind.ContractBoard:
-      return contractBoardScreenModel(state);
-  }
 }
 
 /**
@@ -813,7 +768,11 @@ function restore(bytes: Uint8Array, expected: SessionControllerDeps['expected'])
   const steps = restoreDecidedSteps(state);
 
   return {
-    screen: contractOfferScreenModel(state, steps, descriptor.focusedContract),
+    // §6.4's last three rows: a save of a resolved campaign opens on its debrief and a
+    // settled one on the board. Without them the file would always reopen on the
+    // negotiation, and the debrief of a campaign a player had already sent out would be
+    // unreachable for the rest of that campaign's life.
+    screen: campaignScreen(state, descriptor.focusedContract, steps),
     focusedContract: descriptor.focusedContract,
     // The save's own, checked against `expected` by `readSave` before this line runs —
     // so this is the version the file was written under and the version this build

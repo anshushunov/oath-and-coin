@@ -143,9 +143,25 @@ const SCENARIOS = [
   { scenario: 'screen_normal', overflows: true },
   { scenario: 'screen_draft', overflows: true },
   { scenario: 'screen_locked', overflows: true },
-  { scenario: 'screen_settlement_due', overflows: true },
-  { scenario: 'screen_word_broken', overflows: true }
+  { scenario: 'screen_settlement_due', overflows: true }
 ] as const;
+
+/**
+ * **`screen_word_broken` is not in that list any more, and that is a named debt.**
+ *
+ * The scenario settles its contract with the word broken, and since `RESOLUTION_SPEC`
+ * §6.4 routes a settled campaign to the board, the offer screen is not what that run
+ * puts on the page — the game no longer shows it, so a matrix about the offer screen
+ * cannot be evidence for it. The run itself is untouched and still measured everywhere
+ * else it was: the canonical snapshot, the restored read model and the scenario
+ * runner's own suite all cover it.
+ *
+ * It comes back with the board's own component (contract-loop UI plan, tasks 8 and 10),
+ * against `contract-board-screen` and the board's snapshot. Until then the broken
+ * promise is exercised in the browser by nothing, and `screen_settlement_due` — which
+ * stops at `lock_offer` and stays on the offer — is what still covers the settlement
+ * block a player reads before deciding.
+ */
 
 /** What the page reports about the run it performed. */
 interface PageReport {
@@ -276,12 +292,16 @@ test.describe('contract-offer screen, in a browser', () => {
       // contract, a token per hero. The projection's own rule, restated in one line
       // because this process may not import `apps/web`; if the two ever disagree the
       // disagreement surfaces as a red run rather than as agreement by construction.
-      // Narrowed rather than assumed: `SessionState.screen` is a union of three since the
-      // contract loop grew a debrief and a board, and every scenario in this matrix is a
-      // negotiation. A run that landed elsewhere would be measured against the wrong
-      // expectation entirely, so it says so.
+      // The matrix's own invariant, enforced rather than assumed: every scenario in it is a
+      // negotiation. Since §6.4 routes a resolved or settled campaign elsewhere, a scenario
+      // that has moved past the offer belongs in another matrix — against another
+      // `data-testid` and another snapshot — and measuring it here would compare the page
+      // against a model of a screen it is not showing.
       if (expectedModel.screen !== ScreenKind.ContractOffer) {
-        throw new Error(`'${scenario}' landed on '${expectedModel.screen}'.`);
+        throw new Error(
+          `'${scenario}' landed on '${expectedModel.screen}', so it is no longer a scenario ` +
+            'about the contract-offer screen; it belongs in the matrix for that screen.'
+        );
       }
 
       const expectedShapes =
