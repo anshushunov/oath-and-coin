@@ -9,6 +9,7 @@ import {
   memoryFileSource
 } from '@oath-and-coin/content';
 import {
+  CommitmentState,
   compareHeroIds,
   composeOffer,
   deepEqual,
@@ -228,16 +229,26 @@ function aSettledStateThatCostSomebody(): GameState {
 }
 
 function weakenEveryHero(state: GameState): GameState {
-  return {
-    ...state,
-    heroes: state.heroes
-      .entries()
-      .reduce(
-        (heroes, [id, hero]) =>
-          heroes.set(id, { ...hero, capability: { ...hero.capability, grade: 1 } }),
-        state.heroes
-      )
-  };
+  const heroes = state.heroes
+    .entries()
+    .reduce(
+      (all, [id, hero]) => all.set(id, { ...hero, capability: { ...hero.capability, grade: 1 } }),
+      state.heroes
+    );
+
+  // И согласие, данное неохотно (`RESOLUTION_SPEC` §2.4) — это то, что заставляет исход
+  // выпустить `hero_faltered_early`. Без него история несёт только последствия, и вторая
+  // половина правила «событие исхода — не ответ на оффер» остаётся непроверенной: мутант,
+  // относящий отступление к ответам, оставался зелёным.
+  const contracts = state.contracts.entries().reduce((all, [id, contract]) => {
+    const commitments = contract.offer.commitments
+      .keys()
+      .reduce((map, hero) => map.set(hero, CommitmentState.Resentful), contract.offer.commitments);
+
+    return all.set(id, { ...contract, offer: { ...contract.offer, commitments } });
+  }, state.contracts);
+
+  return { ...state, heroes, contracts };
 }
 
 function aDecidedThenLockedThenSettledState(
@@ -1299,6 +1310,37 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
     expect(deepEqual(readSave(bytes, versions).state, settled)).toBe(true);
   });
 
+  it('сохраняет и читает обратно кампанию, чья история несёт события исхода', () => {
+    // Прямой круг, без порчи: кампания, в истории которой есть и `hero_faltered_early`,
+    // и `hero_suffered_consequence`.
+    //
+    // Ради чего заведён: оба вида называют героя и **не являются** ответом на оффер, а
+    // значит трассы решения нести не обязаны (`ADR-007`). Пока `isAnswerToAnOffer`
+    // отвечал про них правильно, ни один тест этого не видел — мутант, относящий любой из
+    // них к ответам, оставался зелёным: единственная кампания с такой историей
+    // существовала только в случае с испорченным `heroId`, где раньше отказывает
+    // ссылочная целостность.
+    const settled = aSettledStateThatCostSomebody();
+    const kinds = new Set(settled.history.map((event) => event.kind));
+
+    expect(kinds.has('hero_faltered_early')).toBe(true);
+    expect(kinds.has('hero_suffered_consequence')).toBe(true);
+
+    const versions = {
+      rulesetVersion: settled.metadata.rulesetVersion,
+      contentVersion: settled.metadata.contentVersion
+    };
+    const [focusedContract] = settled.contracts.keys();
+
+    const bytes = buildSave({
+      state: settled,
+      focusedContract: focusedContract!,
+      createdAt: CREATED_AT
+    });
+
+    expect(deepEqual(readSave(bytes, versions).state, settled)).toBe(true);
+  });
+
   it('отказывает, когда событие исхода называет героя, которого нет в составе', () => {
     // Второй вид события, называющего героя, и он из другой половины лога
     // (`RESOLUTION_SPEC` §3.4). Живёт здесь, а не в общей таблице ссылочной целостности
@@ -1316,8 +1358,12 @@ describe('the campaign’s own invariants, checked on the way in and on the way 
       (event) => event.kind === 'hero_faltered_early' || event.kind === 'hero_suffered_consequence'
     );
 
-    // Фикстура обязана содержать такое событие, иначе случай проверяет пустоту.
-    expect(naming.length).toBeGreaterThan(0);
+    // Фикстура обязана содержать оба вида, иначе случай проверяет пустоту — и второй
+    // вид ловит вторую половину правила: событие исхода не является ответом на оффер, и
+    // требовать у него трассы решения нельзя (`isAnswerToAnOffer`).
+    expect(new Set(naming.map((event) => event.kind))).toEqual(
+      new Set(['hero_faltered_early', 'hero_suffered_consequence'])
+    );
 
     const snapshot = JSON.parse(JSON.stringify(encodeSnapshot(settled))) as RawSnapshot;
     const target = snapshot.history.find(

@@ -19,6 +19,7 @@ import type { DecisionResult } from './decisions/causal-trace.ts';
 import { decide, type HeroDecision } from './decisions/contract-decision-rule.ts';
 import type { DecisionContext } from './decisions/context.ts';
 import type { HeldTrait } from './decisions/held-trait.ts';
+import { freezeDeep } from './freeze.ts';
 import type { CommitmentState } from './domain/commitment.ts';
 import {
   ConsequenceKind,
@@ -774,10 +775,15 @@ export function pollCrew(state: GameState, command: PollCrew): CommandResult {
     decisions.push(decision.result);
   }
 
-  currentState = {
+  // Frozen again after the command id goes in, for the reason `resolveContract` records
+  // beside its own copy of this line: a spread of the frozen state `withEvent` answered
+  // with is a fresh, unfrozen root, and so is the `SortedSet` built here
+  // (`RESOLUTION_SPEC` §10.3). Found by external review of the sixth command; this one had
+  // the same shape since it was written.
+  currentState = freezeDeep({
     ...currentState,
     appliedCommandIds: currentState.appliedCommandIds.add(command.commandId)
-  };
+  });
 
   return fromDecisions(currentState, events, decisions);
 }
@@ -827,13 +833,23 @@ export function resolveContract(state: GameState, command: ResolveContract): Com
     return rejected(state, RejectionCodes.CrewNotFilled);
   }
 
-  // `invited` and `acceptedBy` equal as sets (§3.2). Unreachable through
-  // `createContractState` — `acceptedBy ⊆ respondedBy ⊆ invited`, and a crewed contract
-  // has `requiredCrew` in each, so equality follows — which makes this a guard against
-  // hand-assembled state and against a save somebody edited, the same standing as
-  // `pollCrew`'s `hasRoom`. Written as "every invited hero accepted", the sizes being
-  // equal by the checks above.
-  if (!contract.offer.invited.values().every((heroId) => contract.offer.acceptedBy.has(heroId))) {
+  // `invited` and `acceptedBy` equal **as sets** (§3.2) — both directions, and the second
+  // one is not redundant. The first edition of this check tested only "every invited hero
+  // accepted", on the reasoning that the sizes are equal by the checks above; they are
+  // not. The status check immediately before compares a *string* against `Crewed`, and on
+  // a state assembled by hand — or read off an edited save — a contract can say `crewed`
+  // while its two sets are any size at all. `invited = {A}` with `acceptedBy = {A, B}`
+  // then passed, and B, whom this package never asked, went out with the crew. Found by
+  // external review.
+  //
+  // A guard against exactly that: through `createContractState` the two are equal by
+  // construction (`acceptedBy ⊆ respondedBy ⊆ invited`, both of size `requiredCrew`), the
+  // same standing as `pollCrew`'s `hasRoom`.
+  const { invited, acceptedBy } = contract.offer;
+  if (
+    invited.size !== acceptedBy.size ||
+    !invited.values().every((heroId) => acceptedBy.has(heroId))
+  ) {
     return rejected(state, RejectionCodes.CrewNotFilled);
   }
 
@@ -853,30 +869,65 @@ export function resolveContract(state: GameState, command: ResolveContract): Com
     }))
   });
 
+  const frames = foldOutcome(state, draft, command.contractId);
+  const settledState = frames.at(-1)?.state ?? state;
+
+  return fromEvents(
+    // Frozen again after the command id goes in: `withEvent` deep-freezes the state it
+    // answers with, and a spread of a frozen object is a fresh, *unfrozen* one — so the
+    // root a caller received was mutable, along with the `SortedSet` this line creates,
+    // however deeply frozen everything below it was (`RESOLUTION_SPEC` §10.3). Found by
+    // external review; `pollCrew` had the same shape and is fixed with it.
+    freezeDeep({
+      ...settledState,
+      appliedCommandIds: settledState.appliedCommandIds.add(command.commandId)
+    }),
+    frames.map((frame) => frame.event)
+  );
+}
+
+/** One event of a resolution, and the campaign as it stood the moment that event landed. */
+export interface OutcomeFrame {
+  readonly event: DomainEvent;
+  readonly state: GameState;
+}
+
+/**
+ * `RESOLUTION_SPEC` §3.3's fold, as the sequence of states it passes through.
+ *
+ * **Named and answered as frames rather than run inline, and that is a testability
+ * decision made on purpose.** §10.3 requires checking the state *after each event*, and
+ * the rule this fold exists to obey — each intent's effect goes in before that intent's
+ * own event — has no observable consequence in the final state at all: applying every
+ * effect first and then raising every event answers with the identical campaign, the
+ * identical events, and an identically frozen result. External review found exactly that
+ * hole in the check that was here. The frames are the smallest seam that closes it.
+ *
+ * Deliberately **not** exported from the package index. Nothing outside this package
+ * applies a command by hand, and an exported fold would be an invitation to do so — the
+ * same reason `commitmentFor` stays unexported next door.
+ *
+ * `contractId` rather than a contract: the closing intent writes onto the campaign as it
+ * stands at that moment, not onto the copy this fold started from.
+ */
+export function foldOutcome(
+  state: GameState,
+  draft: ResolutionDraft,
+  contractId: ContentId
+): readonly OutcomeFrame[] {
+  const frames: OutcomeFrame[] = [];
   let currentState = state;
-  const events: DomainEvent[] = [];
 
   for (const intent of draft.intents) {
-    const domainEvent = eventOf(intent, draft, command.contractId, currentState);
+    const event = eventOf(intent, draft, contractId, currentState);
 
     // The effect first, then the transition — both, in that order, never one instead of
     // the other (`ADR-007`, `RESOLUTION_SPEC` §3.3).
-    currentState = withEvent(
-      applyIntent(currentState, intent, draft, command.contractId),
-      domainEvent,
-      null,
-      0n
-    );
-    events.push(domainEvent);
+    currentState = withEvent(applyIntent(currentState, intent, draft, contractId), event, null, 0n);
+    frames.push({ event, state: currentState });
   }
 
-  return fromEvents(
-    {
-      ...currentState,
-      appliedCommandIds: currentState.appliedCommandIds.add(command.commandId)
-    },
-    events
-  );
+  return frames;
 }
 
 /** The commitment recorded for a hero who accepted (`RESOLUTION_SPEC` §2.4, §2.5). */

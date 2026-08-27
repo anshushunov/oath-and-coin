@@ -237,9 +237,27 @@ export function heroNamedBy(domainEvent: DomainEvent): HeroId | null {
 export function isAnswerToAnOffer(
   domainEvent: DomainEvent
 ): domainEvent is HeroAcceptedContract | HeroDeclinedContract {
-  return (
-    domainEvent.kind === 'hero_accepted_contract' || domainEvent.kind === 'hero_declined_contract'
-  );
+  // An exhaustive `switch` and not `kind === a || kind === b`, for the same reason
+  // {@link heroNamedBy} is one: the boolean form compiles happily the day a kind is added
+  // and quietly calls it "not an answer". Written out, it does not.
+  switch (domainEvent.kind) {
+    case 'hero_accepted_contract':
+    case 'hero_declined_contract':
+      return true;
+    case 'offer_revised':
+    case 'offer_locked':
+    case 'need_covered':
+    case 'need_short':
+    case 'hero_faltered_early':
+    case 'objective_taken':
+    case 'objective_lost':
+    case 'hero_suffered_consequence':
+    case 'contract_resolved':
+    case 'contract_settled':
+    case 'contract_settled_promise_kept':
+    case 'contract_settled_promise_broken':
+      return false;
+  }
 }
 
 export type DomainEvent =

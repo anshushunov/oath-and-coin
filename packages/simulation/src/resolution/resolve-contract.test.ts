@@ -7,7 +7,7 @@ import type { ResolveContract } from '../commands/resolve-contract.ts';
 import { CommitmentState } from '../domain/commitment.ts';
 import { NeedId, compareNeedIds } from '../domain/need-id.ts';
 import { ConsequenceKind, CoverageVerdict, DeficitKind, OutcomeGrade } from '../domain/outcome.ts';
-import { resolveContract } from '../engine.ts';
+import { foldOutcome, resolveContract } from '../engine.ts';
 import { compareContentIds } from '../ids/content-id.ts';
 import { compareHeroIds, heroId, type HeroId } from '../ids/hero-id.ts';
 import { GRIEVANCE_MAX } from '../negotiation/grievance.ts';
@@ -15,6 +15,8 @@ import { ContractStatus } from '../state/contract-state.ts';
 import { contractOf, heroOf, type GameState } from '../state/game-state.ts';
 import { OfferPhase, createContractState } from '../state/offer-state.ts';
 import { aContract, aHero, anOffer, aState, ids } from '../testing/fixtures.ts';
+
+import { draftResolution } from './contract-resolver.ts';
 
 /**
  * `RESOLUTION_SPEC` §3 — the sixth command: what it refuses, and what one application of
@@ -605,5 +607,204 @@ describe('the effect of each event, inside its own transition (§3.3)', () => {
     expect(contract.offer.phase).toBe(OfferPhase.Locked);
     expect(contract.status).toBe(ContractStatus.Crewed);
     expect(applied.state.treasury).toBe(before.treasury);
+  });
+});
+
+describe('the order the preconditions are checked in (§3.2, `NEGOTIATION_SPEC` §6.1)', () => {
+  // Two broken preconditions at once must answer with the *same* one every time — the
+  // order is part of a command's canonical result, not an implementation detail. Every
+  // case above breaks exactly one thing, so any permutation of the checks kept the whole
+  // file green; found by external review, closed by pairs.
+
+  it('answers a stale version before a repeated command id', () => {
+    const once = resolveContract(failing(), aResolve()).state;
+
+    expect(resolveContract(once, aResolve({ expectedStateVersion: 99 })).rejectionCode).toBe(
+      RejectionCodes.StaleState
+    );
+  });
+
+  it('answers a repeated command id before an unknown contract', () => {
+    const once = resolveContract(failing(), aResolve()).state;
+
+    expect(
+      resolveContract(
+        once,
+        aResolve({ contractId: ids.temple, expectedStateVersion: once.metadata.stateVersion })
+      ).rejectionCode
+    ).toBe(RejectionCodes.DuplicateCommand);
+  });
+
+  it('answers an unknown contract before anything about its package', () => {
+    // There is no package to be wrong about, which is exactly why this comes first: every
+    // check after it dereferences the contract.
+    expect(resolveContract(failing(), aResolve({ contractId: ids.temple })).rejectionCode).toBe(
+      RejectionCodes.UnknownContract
+    );
+  });
+
+  it('answers a draft package before an unfilled crew', () => {
+    const draftAndUnfilled = aState({
+      heroes: SortedMap.from(compareHeroIds, [[KEY, aHero({ id: KEY })]]),
+      contracts: SortedMap.from(compareContentIds, [
+        [
+          ids.crypt,
+          createContractState(
+            aContract({
+              requiredCrew: 2,
+              status: ContractStatus.Offered,
+              offer: anOffer({
+                keyHero: KEY,
+                phase: OfferPhase.Draft,
+                invited: SortedSet.from(compareHeroIds, [KEY, SECOND]),
+                respondedBy: SortedSet.from(compareHeroIds, [KEY]),
+                acceptedBy: SortedSet.from(compareHeroIds, [KEY])
+              })
+            })
+          )
+        ]
+      ])
+    });
+
+    expect(resolveContract(draftAndUnfilled, aResolve()).rejectionCode).toBe(
+      RejectionCodes.OfferNotLocked
+    );
+  });
+
+  it('answers a crew that is not the one invited before a contract already resolved', () => {
+    // Both true at once, on a state assembled by hand. The crew check comes first: a
+    // resolution recorded against the wrong people is the more serious of the two things
+    // there are to say about this contract.
+    const resolvedOnce = resolveContract(failing(), aResolve()).state;
+    const contract = contractOf(resolvedOnce, ids.crypt);
+    const alsoMismatched = {
+      ...resolvedOnce,
+      contracts: resolvedOnce.contracts.set(ids.crypt, {
+        ...contract,
+        offer: { ...contract.offer, invited: SortedSet.from(compareHeroIds, [KEY]) }
+      })
+    };
+
+    expect(
+      resolveContract(
+        alsoMismatched,
+        aResolve({ commandId: 2, expectedStateVersion: alsoMismatched.metadata.stateVersion })
+      ).rejectionCode
+    ).toBe(RejectionCodes.CrewNotFilled);
+  });
+
+  it('refuses a crew larger than the one this package asked for', () => {
+    // The direction the first edition of the set check missed entirely: it tested only
+    // "every invited hero accepted", so a hero nobody invited could join the crew and go
+    // out with it. Found by external review.
+    const uninvited = aState({
+      heroes: SortedMap.from(compareHeroIds, [
+        [KEY, aHero({ id: KEY })],
+        [SECOND, aHero({ id: SECOND })]
+      ]),
+      contracts: SortedMap.from(compareContentIds, [
+        [
+          ids.crypt,
+          aContract({
+            requiredCrew: 1,
+            status: ContractStatus.Crewed,
+            offer: anOffer({
+              keyHero: KEY,
+              phase: OfferPhase.Locked,
+              invited: SortedSet.from(compareHeroIds, [KEY]),
+              respondedBy: SortedSet.from(compareHeroIds, [KEY, SECOND]),
+              acceptedBy: SortedSet.from(compareHeroIds, [KEY, SECOND]),
+              commitments: SortedMap.from(compareHeroIds, [
+                [KEY, CommitmentState.Committed],
+                [SECOND, CommitmentState.Committed]
+              ])
+            })
+          })
+        ]
+      ])
+    });
+
+    expect(resolveContract(uninvited, aResolve()).rejectionCode).toBe(RejectionCodes.CrewNotFilled);
+  });
+});
+
+describe('the state after each event, one frame at a time (§3.3, §10.3)', () => {
+  // What the freeze check cannot see. Applying every effect first and then raising every
+  // event answers with the identical campaign, the identical events and an identically
+  // frozen result — so the rule this fold exists to obey has no consequence in the final
+  // state at all, and the freeze check was green against it. `foldOutcome` answers the
+  // frames it passed through, which is the smallest seam that makes the rule checkable.
+  // Found by external review.
+  const framesOf = () => {
+    const state = catastrophicallyAndUnwillingly();
+    const contract = contractOf(state, ids.crypt);
+    const draft = draftResolution({
+      contract,
+      crew: contract.offer.acceptedBy.values().map((hero) => ({
+        hero: heroOf(state, hero),
+        commitment: contract.offer.commitments.get(hero)!
+      }))
+    });
+
+    return { state, draft, frames: foldOutcome(state, draft, ids.crypt) };
+  };
+
+  it('answers one frame per intent, each carrying that intent’s own event', () => {
+    const { draft, frames } = framesOf();
+
+    expect(frames).toHaveLength(draft.intents.length);
+    expect(frames.map((frame) => frame.event.eventId)).toEqual(
+      frames.map((_unused, index) => index)
+    );
+  });
+
+  it('hands every frame back frozen, which is what puts each effect inside its transition', () => {
+    // The observable the whole ordering rule reduces to. `withEvent` freezes what it
+    // answers with, so a frame that came *out* of it is frozen; an effect applied after
+    // its own event spreads that frozen state into a fresh, unfrozen one and the frame
+    // says so. Nothing in the final campaign can tell the two apart — it is frozen again
+    // on the way out either way — which is exactly why the check belongs here.
+    const { frames } = framesOf();
+
+    expect(frames.map((frame) => Object.isFrozen(frame.state))).toEqual(frames.map(() => true));
+  });
+
+  it('stores the resolution at the closing event and not one frame earlier', () => {
+    // The ordering claim at the one intent whose effect is observable frame by frame:
+    // every frame before the last finds the contract unresolved.
+    const { frames } = framesOf();
+
+    expect(frames.map((frame) => contractOf(frame.state, ids.crypt).resolution === null)).toEqual(
+      frames.map((_unused, index) => index !== frames.length - 1)
+    );
+  });
+
+  it('applies each consequence at its own event and at no earlier one', () => {
+    // The same claim for §2.6's effects: a hero's wound appears in the frame of the event
+    // that says he was wounded, and in none before it.
+    const { state, frames } = framesOf();
+    const woundedAt = frames.findIndex((frame) => frame.event.kind === 'hero_suffered_consequence');
+
+    expect(woundedAt).toBeGreaterThan(0);
+
+    const suffered = frames[woundedAt]!.event;
+    const hero = suffered.kind === 'hero_suffered_consequence' ? suffered.heroId : KEY;
+
+    expect(heroOf(frames[woundedAt - 1]!.state, hero).wounds).toBe(heroOf(state, hero).wounds);
+    expect(heroOf(frames[woundedAt]!.state, hero).wounds).toBe(heroOf(state, hero).wounds + 1);
+  });
+});
+
+describe('what a caller may do to the result (§10.3)', () => {
+  it('hands back a campaign that is frozen all the way to its root', () => {
+    // `withEvent` deep-freezes what it answers with, and the command then spreads that to
+    // add its own id — which produces a fresh, *unfrozen* root and a fresh, unfrozen
+    // `SortedSet`. Everything below was frozen and the two objects a caller touches first
+    // were not. Found by external review.
+    const applied = resolveContract(failing(), aResolve());
+
+    expect(Object.isFrozen(applied.state)).toBe(true);
+    expect(Object.isFrozen(applied.state.appliedCommandIds)).toBe(true);
+    expect(Object.isFrozen(applied.state.metadata)).toBe(true);
   });
 });
