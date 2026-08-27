@@ -3,6 +3,7 @@ import {
   CommitmentState,
   ContractStatus,
   NeedId,
+  OfferPhase,
   ReasonCodes,
   STARTING_TREASURY,
   SortedMap,
@@ -15,6 +16,7 @@ import {
   heroId,
   initialOffer,
   parseContentId,
+  resolveContract,
   type CausalTrace,
   type ContentId,
   type ContractState,
@@ -232,6 +234,124 @@ export function aDecision(overrides: Partial<DecisionResult> = {}): DecisionResu
     },
     ...overrides
   });
+}
+
+/**
+ * A hero who can do exactly what a case says he can, and nothing else.
+ *
+ * `expertise` is stated as a whole map rather than merged into the default, because the
+ * distinction between "answerable at nought" and "not his business" is mechanical
+ * (`RESOLUTION_SPEC` §2.2) and a default that quietly added `frontline` to every crew
+ * member would make the second case unwritable.
+ */
+export function aCapableHero(options: {
+  readonly id: number;
+  readonly definition: ContentId;
+  readonly grade: number;
+  readonly expertise: readonly (readonly [NeedId, number])[];
+}): HeroState {
+  return aHero({
+    id: heroId(options.id),
+    definition: options.definition,
+    displayNameKey: `hero.${String(options.definition).replace(':', '.')}.name`,
+    capability: {
+      grade: options.grade,
+      expertise: SortedMap.from<NeedId, number>(compareNeedIds, options.expertise)
+    }
+  });
+}
+
+/** One member of a crew that has already gone out, with the answer he gave. */
+export interface CrewMemberFixture {
+  readonly hero: HeroState;
+  readonly commitment: CommitmentState;
+}
+
+/**
+ * A contract whose package is locked and whose seats are all filled — the one shape
+ * `resolveContract` accepts (`RESOLUTION_SPEC` §3.2).
+ *
+ * The key hero is the first of the crew. `requiredCrew` follows the crew's own size, since
+ * §3.2 refuses any other combination and a fixture that could state them apart would only
+ * ever state them wrong.
+ */
+export function aCrewedContract(options: {
+  readonly id: ContentId;
+  readonly needs: readonly (readonly [NeedId, number])[];
+  readonly risk: number;
+  readonly crew: readonly CrewMemberFixture[];
+  readonly patronFee?: number;
+  readonly advance?: number;
+  readonly promisedBonus?: number;
+}): ContractState {
+  const crewIds = options.crew.map((member) => member.hero.id);
+  const keyHero = crewIds[0];
+
+  if (keyHero === undefined) {
+    throw new Error('A crewed contract needs at least one hero: nobody went out otherwise.');
+  }
+
+  return aContract({
+    id: options.id,
+    patronFee: options.patronFee ?? 40,
+    risk: options.risk,
+    requiredCrew: crewIds.length,
+    needs: SortedMap.from<NeedId, number>(compareNeedIds, options.needs),
+    status: ContractStatus.Crewed,
+    offer: anOffer({
+      version: 1,
+      keyHero,
+      advance: options.advance ?? 0,
+      promisedBonus: options.promisedBonus ?? 0,
+      phase: OfferPhase.Locked,
+      invited: SortedSet.from(compareHeroIds, crewIds),
+      respondedBy: SortedSet.from(compareHeroIds, crewIds),
+      acceptedBy: SortedSet.from(compareHeroIds, crewIds),
+      commitments: SortedMap.from(
+        compareHeroIds,
+        options.crew.map((member) => [member.hero.id, member.commitment] as const)
+      )
+    })
+  });
+}
+
+/**
+ * A campaign in which every contract given has already been resolved, in the order given.
+ *
+ * Resolved by the engine's own command rather than by a hand-written `ContractResolution`:
+ * the debrief joins the stored result to the events in `history`, and a fixture that wrote
+ * the result by hand would leave the history empty — the half of the screen this model
+ * exists to build.
+ */
+export function aResolvedCampaign(options: {
+  readonly heroes: readonly HeroState[];
+  readonly contracts: readonly ContractState[];
+  readonly treasury?: number;
+}): GameState {
+  let state = withContracts(
+    withHeroes(aState({ treasury: options.treasury ?? STARTING_TREASURY }), options.heroes),
+    options.contracts
+  );
+
+  options.contracts.forEach((contract, index) => {
+    const result = resolveContract(state, {
+      commandId: index + 1,
+      contractId: contract.id,
+      expectedStateVersion: state.metadata.stateVersion
+    });
+
+    if (!result.applied) {
+      throw new Error(
+        `The fixture's own resolveContract on '${contract.id}' was refused as ` +
+          `'${String(result.rejectionCode)}'; a fixture that cannot resolve its own contract ` +
+          'is measuring the refusal, not the screen.'
+      );
+    }
+
+    state = result.state;
+  });
+
+  return state;
 }
 
 /** One step of a run, in the minimal shape the read model declares. */

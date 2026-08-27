@@ -93,6 +93,7 @@ export {
 export {
   coverageIntentsFor,
   falteredEarlyIntentsFor,
+  needReasonFor,
   objectiveIntentsFor,
   worstCoveredNeed,
   type CrewMember,

@@ -22,16 +22,34 @@
 
 import {
   ACTIONS,
+  CommitmentState,
+  ConsequenceKind,
+  CoverageVerdict,
+  DeficitKind,
+  NEED_IDS,
   OfferPhase,
+  OutcomeGrade,
   contentIdName,
   contentIdNamespace,
-  type ContentId
+  type ContentId,
+  type NeedId
 } from '@oath-and-coin/simulation';
 
+import { CONTRACT_AVAILABILITIES, type ContractAvailability } from './contract-availability.ts';
 import { ReasonDirection, ScreenState, REASON_DIRECTIONS, SCREEN_STATES } from './screen-state.ts';
 
 /** This screen's title. A key, not text — nothing in this package resolves one. */
 export const TITLE_KEY = 'screen.contract_offer.title';
+
+/**
+ * The debrief screen's title, and the board's (`RESOLUTION_SPEC` §6.1, §6.4).
+ *
+ * Each its own key rather than one shared "title", for the reason
+ * {@link SAVES_TITLE_KEY} is separate from {@link TITLE_KEY}: a text that had to name
+ * three screens at once would name none of them.
+ */
+export const AFTER_ACTION_TITLE_KEY = 'screen.after_action.title';
+export const CONTRACT_BOARD_TITLE_KEY = 'screen.contract_board.title';
 
 /**
  * A content tag's key (`target:cult` → `tag.target.cult`).
@@ -421,4 +439,126 @@ export const SaveOverwriteKeys = Object.freeze({
 
 export const SAVE_OVERWRITE_KEYS: readonly string[] = Object.freeze(
   Object.values(SaveOverwriteKeys)
+);
+
+/**
+ * The step an outcome landed on (`RESOLUTION_SPEC` §4.6) — one key per grade, built from
+ * the engine's own closed vocabulary rather than the four words typed again.
+ */
+export function outcomeGradeKey(grade: OutcomeGrade): string {
+  return `outcome.grade.${grade}`;
+}
+
+export const OUTCOME_GRADE_KEYS: readonly string[] = Object.freeze(
+  Object.values(OutcomeGrade).map((grade) => outcomeGradeKey(grade))
+);
+
+/**
+ * What a contract asks for, by name (`RESOLUTION_SPEC` §2.3).
+ *
+ * `NeedId` is a closed *engine* vocabulary — an author writes a weight, never a need — so
+ * unlike a contract or a trait there is no authored display name to carry along, and the
+ * key is built from the id by a fixed convention the way {@link tagKey} is. The texts
+ * therefore belong to `ui-text/` and not to `content/locale/` (`ADR-012`): nothing under
+ * `content/` invents them.
+ */
+export function needKey(need: NeedId): string {
+  return `need.${need}`;
+}
+
+export const NEED_KEYS: readonly string[] = Object.freeze(NEED_IDS.map(needKey));
+
+/** How one need came out, as one of three words (`RESOLUTION_SPEC` §4.3). */
+export function coverageVerdictKey(verdict: CoverageVerdict): string {
+  return `outcome.verdict.${verdict}`;
+}
+
+export const COVERAGE_VERDICT_KEYS: readonly string[] = Object.freeze(
+  Object.values(CoverageVerdict).map((verdict) => coverageVerdictKey(verdict))
+);
+
+/**
+ * How willingly one hero came (`RESOLUTION_SPEC` §2.4) — the sentence beside his two
+ * numbers on the debrief (`DEC-014`).
+ */
+export function commitmentStateKey(commitment: CommitmentState): string {
+  return `commitment.${commitment}`;
+}
+
+export const COMMITMENT_STATE_KEYS: readonly string[] = Object.freeze(
+  Object.values(CommitmentState).map((commitment) => commitmentStateKey(commitment))
+);
+
+/** Which of the three ways the crew came up short this diagnosis is (`RESOLUTION_SPEC` §4.7). */
+export function deficitKindKey(kind: DeficitKind): string {
+  return `outcome.deficit.${kind}`;
+}
+
+export const DEFICIT_KIND_KEYS: readonly string[] = Object.freeze(
+  Object.values(DeficitKind).map((kind) => deficitKindKey(kind))
+);
+
+/** What the outcome cost one person (`RESOLUTION_SPEC` §5.1). */
+export function consequenceKindKey(kind: ConsequenceKind): string {
+  return `outcome.consequence.${kind}`;
+}
+
+export const CONSEQUENCE_KIND_KEYS: readonly string[] = Object.freeze(
+  Object.values(ConsequenceKind).map((kind) => consequenceKindKey(kind))
+);
+
+/**
+ * What each line of the outcome feed is called (`RESOLUTION_SPEC` §3.4, §6.1) — one key
+ * per event a resolution raises, and none for the events that are not part of one.
+ *
+ * A frozen object rather than a function over `DomainEvent['kind']`, because the seven are
+ * a *subset* of that union and a builder taking the whole of it would silently name
+ * `offer_locked` as a line of a debrief. Which seven belong here is decided in exactly one
+ * place — `after-action-screen-model.ts`'s own exhaustive `switch`, which the compiler
+ * forces to answer for every kind the union grows.
+ */
+export const OutcomeEventKeys = Object.freeze({
+  NeedCovered: 'outcome.event.need_covered',
+  NeedShort: 'outcome.event.need_short',
+  HeroFalteredEarly: 'outcome.event.hero_faltered_early',
+  ObjectiveTaken: 'outcome.event.objective_taken',
+  ObjectiveLost: 'outcome.event.objective_lost',
+  HeroSufferedConsequence: 'outcome.event.hero_suffered_consequence',
+  ContractResolved: 'outcome.event.contract_resolved'
+});
+
+export const OUTCOME_EVENT_KEYS: readonly string[] = Object.freeze(Object.values(OutcomeEventKeys));
+
+/** How far a contract on the board has got — see `ContractAvailability`. */
+export function contractAvailabilityKey(availability: ContractAvailability): string {
+  return `board.availability.${availability}`;
+}
+
+export const CONTRACT_AVAILABILITY_KEYS: readonly string[] = Object.freeze(
+  CONTRACT_AVAILABILITIES.map(contractAvailabilityKey)
+);
+
+/**
+ * Which of the five shapes the debrief screen is in, and which the board is in — each its
+ * own key per state, never {@link screenStateKey}'s.
+ *
+ * The same argument {@link saveSlotsStateKey} makes: `Incomplete` on the offer screen is a
+ * hero who has not answered, on the debrief it is a promise nobody has answered for, and
+ * on the board it is a campaign with nothing left to take. One key for all three would
+ * force one text to describe all three, and that text says nothing.
+ */
+export function afterActionStateKey(state: ScreenState): string {
+  return `screen.after_action.state.${state.toLowerCase()}`;
+}
+
+export const AFTER_ACTION_STATE_KEYS: readonly string[] = Object.freeze(
+  SCREEN_STATES.map(afterActionStateKey)
+);
+
+export function contractBoardStateKey(state: ScreenState): string {
+  return `screen.contract_board.state.${state.toLowerCase()}`;
+}
+
+export const CONTRACT_BOARD_STATE_KEYS: readonly string[] = Object.freeze(
+  SCREEN_STATES.map(contractBoardStateKey)
 );

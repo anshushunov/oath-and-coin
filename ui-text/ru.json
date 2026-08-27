@@ -68,6 +68,68 @@
 
     "save.overwrite.question": "Заменить сохранение в этом слоте?",
     "save.overwrite.confirm": "Заменить",
-    "save.overwrite.cancel": "Отмена"
+    "save.overwrite.cancel": "Отмена",
+
+    "screen.after_action.title": "Разбор",
+    "screen.after_action.state.loading": "Отряд ещё в пути",
+    "screen.after_action.state.empty": "Разбирать нечего: отряд не отправляли",
+    "screen.after_action.state.error": "Разбор не удалось собрать",
+    "screen.after_action.state.incomplete": "Ответ по обещанию ещё не дан",
+    "screen.after_action.state.normal": "Контракт закрыт",
+
+    "screen.contract_board.title": "Доска контрактов",
+    "screen.contract_board.state.loading": "Доска ещё читается",
+    "screen.contract_board.state.empty": "На доске пусто",
+    "screen.contract_board.state.error": "Доску не удалось собрать",
+    "screen.contract_board.state.incomplete": "Взять сейчас нечего",
+    "screen.contract_board.state.normal": "Есть что взять",
+
+    "board.availability.open": "Открыт",
+    "board.availability.in_progress": "В работе",
+    "board.availability.resolved": "Отряд вернулся",
+    "board.availability.settled": "Рассчитан",
+
+    "outcome.grade.clean": "Чисто",
+    "outcome.grade.costly": "С ценой",
+    "outcome.grade.failed": "Сорвано",
+    "outcome.grade.disaster": "Катастрофа",
+
+    "outcome.event.need_covered": "Участок закрыт",
+    "outcome.event.need_short": "Участок не удержали",
+    "outcome.event.hero_faltered_early": "Отступил раньше времени",
+    "outcome.event.objective_taken": "Цель взята",
+    "outcome.event.objective_lost": "Цель потеряна",
+    "outcome.event.hero_suffered_consequence": "Заплатил собой",
+    "outcome.event.contract_resolved": "Отряд вернулся",
+
+    "outcome.verdict.closed": "Закрыто",
+    "outcome.verdict.weak": "Едва",
+    "outcome.verdict.uncovered": "Не закрыто",
+
+    "outcome.deficit.capability_gap": "Люди были те, умения не хватило",
+    "outcome.deficit.coverage_gap": "За участок в отряде не отвечал никто",
+    "outcome.deficit.commitment_drag": "Отряд шёл неохотно",
+
+    "outcome.consequence.wound": "Рана",
+    "outcome.consequence.grudge": "Обида",
+    "outcome.consequence.trust_lost": "Потеряно доверие к гильдии",
+
+    "outcome.need_closed": "участок закрыли",
+    "outcome.need_weak": "участок держали едва",
+    "outcome.need_uncovered": "участок остался без ответа",
+    "outcome.faltered_early": "отступил раньше времени",
+    "outcome.objective_taken": "дело сделано",
+    "outcome.objective_lost": "дело не сделано",
+    "outcome.wound_on_the_point": "был на острие",
+    "outcome.grudge_after_faltering": "затаил обиду после того, как отступил",
+    "outcome.trust_lost_in_disaster": "после катастрофы перестал верить слову гильдии",
+
+    "need.frontline": "Строй",
+    "need.undead_knowledge": "Знание нежити",
+    "need.wilderness": "Дикие земли",
+
+    "commitment.committed": "шёл охотно",
+    "commitment.fragile": "согласие куплено",
+    "commitment.resentful": "шёл с обидой"
   }
 }
