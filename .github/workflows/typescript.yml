@@ -148,7 +148,13 @@ jobs:
         shell: bash
         run: |
           root=artifacts/browser-evidence
-          expected="screen_loading screen_empty screen_error screen_incomplete screen_normal screen_draft screen_locked screen_settlement_due screen_word_broken"
+          # A second, deliberate declaration of the matrix in `tests/e2e/contract-offer.spec.ts`:
+          # naming the states here is what catches a scenario quietly dropped from that file,
+          # and it just did. `screen_word_broken` left the list with the contract loop's
+          # routing task — that run settles its contract, so `RESOLUTION_SPEC` §6.4 puts it on
+          # the board and a matrix about the offer screen cannot be evidence for it. It comes
+          # back with the board's own component (contract-loop UI plan, tasks 8 and 10).
+          expected="screen_loading screen_empty screen_error screen_incomplete screen_normal screen_draft screen_locked screen_settlement_due"
 
           missing=""
           for state in $expected; do

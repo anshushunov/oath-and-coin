@@ -251,6 +251,52 @@ const gappedIdScenario: ScenarioFixture = {
 };
 
 /**
+ * `core:escort` carried all the way through: resolved, then settled with the word kept.
+ *
+ * The last row of §6.4's table, and the one a save has to reopen on the board.
+ */
+const settledScenario: ScenarioFixture = {
+  manifest: {
+    ...MANIFEST,
+    expected_screen_state: 'normal',
+    checkpoints: [
+      { name: 'start', after_command_id: 0 },
+      { name: 'final', after_command_id: 5 }
+    ]
+  },
+  commands: {
+    commands: [
+      composeEscort,
+      {
+        command: 'propose_contract_to_hero',
+        command_id: 2,
+        contract: 'core:escort',
+        hero_index: 0,
+        expected_state_version: 1
+      },
+      { command: 'lock_offer', command_id: 3, contract: 'core:escort', expected_state_version: 2 },
+      {
+        command: 'resolve_contract',
+        command_id: 4,
+        contract: 'core:escort',
+        expected_state_version: 3
+      },
+      {
+        command: 'settle_contract',
+        command_id: 5,
+        contract: 'core:escort',
+        pay: true,
+        // Four events land between `resolve_contract` and here: two needs closed, the
+        // objective taken and the contract resolved (`RESOLUTION_SPEC` §3.4). Measured, not
+        // assumed — a version one out is a silently refused command and a scenario that
+        // still says `success`.
+        expected_state_version: 7
+      }
+    ]
+  }
+};
+
+/**
  * A campaign nobody has touched: two contracts, no commands, so the run applies no step.
  *
  * The one shape where "the contract the first step named" has no answer and the screen still
@@ -262,6 +308,35 @@ const untouchedScenario: ScenarioFixture = {
     ...MANIFEST,
     expected_screen_state: 'incomplete',
     checkpoints: [{ name: 'start', after_command_id: 0 }]
+  }
+};
+
+/**
+ * `core:escort` composed, accepted and locked — crewed, and not yet sent out.
+ *
+ * The state a live `resolveContract` is legal from, and the one §6.4's first row is about.
+ */
+const lockedScenario: ScenarioFixture = {
+  manifest: {
+    ...MANIFEST,
+    expected_screen_state: 'normal',
+    checkpoints: [
+      { name: 'start', after_command_id: 0 },
+      { name: 'final', after_command_id: 3 }
+    ]
+  },
+  commands: {
+    commands: [
+      composeEscort,
+      {
+        command: 'propose_contract_to_hero',
+        command_id: 2,
+        contract: 'core:escort',
+        hero_index: 0,
+        expected_state_version: 1
+      },
+      { command: 'lock_offer', command_id: 3, contract: 'core:escort', expected_state_version: 2 }
+    ]
   }
 };
 
@@ -1505,18 +1580,19 @@ describe('moving the session between screens and contracts', () => {
     expect(screen.screen === ScreenKind.AfterAction && screen.contractDefinition).toBe(escort);
   });
 
-  it('redraws the screen the session is on when a command applies, not always the offer', async () => {
-    // Which screen a command *should* move a player to is `RESOLUTION_SPEC` §6.4 and
-    // arrives with the routing task. What this holds is the half that is this task's: a
-    // dispatch rebuilds where the player already is, so a command pressed from the board
-    // does not silently drop them back onto a negotiation.
-    const { controller } = harness({ scenario: resolvedScenario });
+  it('sends an applied command where §6.4 puts it, not where the player was standing', async () => {
+    // From the board, and the command is a settlement — so "stayed where it was" and "went
+    // where the table says" would agree if they were read off the same row. The first
+    // assertion is the one that tells them apart: a resolution moves the player to the
+    // debrief from wherever they pressed it.
+    const { controller } = harness({ scenario: lockedScenario });
     await controller.start();
     controller.show(ScreenKind.ContractBoard);
 
-    const settled = controller.settleContract({ contractId: escort, pay: true });
+    expect(controller.resolveContract({ contractId: escort }).applied).toBe(true);
+    expect(controller.store.snapshot().screen.screen).toBe(ScreenKind.AfterAction);
 
-    expect(settled.applied).toBe(true);
+    expect(controller.settleContract({ contractId: escort, pay: true }).applied).toBe(true);
     expect(controller.store.snapshot().screen.screen).toBe(ScreenKind.ContractBoard);
   });
 
@@ -1567,6 +1643,157 @@ describe('moving the session between screens and contracts', () => {
     }).toThrow();
   });
 });
+
+/**
+ * `RESOLUTION_SPEC` §6.4's table, row by row, through the real controller.
+ *
+ * A direct test of the screen factories cannot answer any of this: those check what a model
+ * looks like, and the table is about *which* model the application chooses. The three load
+ * rows in particular are the ones the plan calls out — without them a save of a resolved
+ * campaign reopens on the negotiation and its debrief is unreachable for good.
+ */
+describe('where the campaign puts the player', () => {
+  const escort = parseContentId('core:escort');
+  const archive = parseContentId('core:archive_run');
+
+  it('sends an applied resolveContract to the debrief', async () => {
+    const { controller } = harness({ scenario: lockedScenario });
+    await controller.start();
+    expect(controller.store.snapshot().screen.screen).toBe(ScreenKind.ContractOffer);
+
+    expect(controller.resolveContract({ contractId: escort }).applied).toBe(true);
+
+    expect(controller.store.snapshot().screen.screen).toBe(ScreenKind.AfterAction);
+  });
+
+  it('leaves a refused resolveContract where it was', async () => {
+    // `core:archive_run` was never composed, so the command is refused for an offer that is
+    // not locked. §6.4 gives this row to "stays on the offer", and what makes it true is
+    // that a rejection touches nothing at all — the session is the same object afterwards.
+    const { controller } = harness({ scenario: lockedScenario });
+    await controller.start();
+    const before = controller.store.snapshot();
+
+    const refused = controller.resolveContract({ contractId: archive });
+
+    expect(refused.applied).toBe(false);
+    expect(refused.rejectionCode).toBe(RejectionCodes.OfferNotLocked);
+    expect(controller.store.snapshot()).toBe(before);
+    expect(controller.store.snapshot().screen.screen).toBe(ScreenKind.ContractOffer);
+  });
+
+  it('sends an applied settleContract to the board', async () => {
+    const { controller } = harness({ scenario: resolvedScenario });
+    await controller.start();
+    expect(controller.store.snapshot().screen.screen).toBe(ScreenKind.AfterAction);
+
+    expect(controller.settleContract({ contractId: escort, pay: true }).applied).toBe(true);
+
+    expect(controller.store.snapshot().screen.screen).toBe(ScreenKind.ContractBoard);
+  });
+
+  it('leaves a refused settleContract on the debrief', async () => {
+    const { controller } = harness({ scenario: resolvedScenario });
+    await controller.start();
+    const before = controller.store.snapshot();
+
+    const refused = controller.settleContract({ contractId: archive, pay: true });
+
+    expect(refused.applied).toBe(false);
+    expect(controller.store.snapshot()).toBe(before);
+    expect(controller.store.snapshot().screen.screen).toBe(ScreenKind.AfterAction);
+  });
+
+  it('starts a session on the screen the campaign is already at', async () => {
+    // The row a direct test of the factories cannot reach: the scenario resolves its
+    // contract before the player ever touches it, so the very first screen of the session
+    // is a debrief. A start that always built the negotiation would pass every factory test
+    // and fail this one.
+    const { controller } = harness({ scenario: resolvedScenario });
+
+    await controller.start();
+
+    expect(controller.store.snapshot().screen.screen).toBe(ScreenKind.AfterAction);
+  });
+
+  it('starts on the negotiation while nothing has come back', async () => {
+    // The counterpart, so "always the debrief" is not the rule this file agrees with.
+    const { controller } = harness({ scenario: lockedScenario });
+
+    await controller.start();
+
+    expect(controller.store.snapshot().screen.screen).toBe(ScreenKind.ContractOffer);
+  });
+
+  it.each([
+    ['unresolved', lockedScenario, ScreenKind.ContractOffer],
+    ['resolved but unsettled', resolvedScenario, ScreenKind.AfterAction],
+    ['settled', settledScenario, ScreenKind.ContractBoard]
+  ])('reopens a %s save on the screen its campaign is at', async (_name, scenario, expected) => {
+    // Three saves written by three campaigns and read back by a fresh session, so nothing
+    // of the writing session survives into the reading one but the file. The screen a load
+    // lands on is decided from the campaign in that file and from nothing else.
+    const writing = harness({ scenario });
+    await writing.controller.start();
+    await writing.controller.slots();
+    await writing.controller.save('slot-a');
+
+    const bytes = writing.saves.slots.get('slot-a');
+    expect(bytes).toBeDefined();
+
+    const reading = harness({ saves: storeHolding(bytes!) });
+    await reading.controller.start();
+    // Pointed somewhere else first, so "read the file" and "keep what this session was
+    // already on" are two different answers. Without it a load that ignored the
+    // descriptor entirely would agree with every row of this table.
+    reading.controller.focus(archive);
+    expect(reading.controller.store.snapshot().screen.screen).toBe(ScreenKind.ContractOffer);
+
+    const result = await reading.controller.load('slot-a');
+
+    expect(result.outcome).toBe('loaded');
+    expect(reading.controller.store.snapshot().focusedContract).toBe(escort);
+    expect(reading.controller.store.snapshot().screen.screen).toBe(expected);
+  });
+
+  it('reopens on the contract the file named, not on the one that has an outcome', async () => {
+    // The case the table above cannot reach: a campaign where the settled contract and the
+    // focused one are *different*. `core:escort` is settled and `core:archive_run` was never
+    // composed, and the file names the second — so a load that read the screen off "whichever
+    // contract of this campaign has been resolved" would land on the board, and one that kept
+    // the reading session's own focus would land there too, since that session is on
+    // `core:escort`. Only reading `focused_contract` out of the file gives the negotiation.
+    const writing = harness({ scenario: settledScenario });
+    await writing.controller.start();
+    expect(writing.controller.store.snapshot().screen.screen).toBe(ScreenKind.ContractBoard);
+
+    writing.controller.focus(archive);
+    writing.controller.show(ScreenKind.ContractOffer);
+    await writing.controller.slots();
+    await writing.controller.save('slot-a');
+
+    const bytes = writing.saves.slots.get('slot-a');
+    expect(bytes).toBeDefined();
+
+    const reading = harness({ scenario: settledScenario, saves: storeHolding(bytes!) });
+    await reading.controller.start();
+    expect(reading.controller.store.snapshot().focusedContract).toBe(escort);
+
+    expect((await reading.controller.load('slot-a')).outcome).toBe('loaded');
+
+    expect(reading.controller.store.snapshot().focusedContract).toBe(archive);
+    expect(reading.controller.store.snapshot().screen.screen).toBe(ScreenKind.ContractOffer);
+  });
+});
+
+/** A slot store holding exactly these bytes in `slot-a`, for a session that only reads. */
+function storeHolding(bytes: Uint8Array): SaveStorePort {
+  return {
+    read: (slot) => Promise.resolve(slot === 'slot-a' ? bytes : null),
+    write: () => Promise.resolve(),
+    list: () => Promise.resolve(['slot-a'])
+  };
+}
 
 describe('dispatching the six negotiation commands', () => {
   const escort = parseContentId('core:escort');

@@ -6,12 +6,16 @@ import {
 } from '@oath-and-coin/content';
 import {
   LOADING_SCREEN,
+  ScreenKind,
+  afterActionScreenModel,
+  contractBoardScreenModel,
   contractOfferScreenModel,
   failedScreen,
   focusedContractOf,
+  type DecidedStep,
   type ScreenModel
 } from '@oath-and-coin/presentation';
-import type { ContentId, GameState } from '@oath-and-coin/simulation';
+import { OfferPhase, type ContentId, type GameState } from '@oath-and-coin/simulation';
 
 import type { ContentSourcePort } from './ports.ts';
 import type { SaveSlot } from './save/slots.ts';
@@ -177,9 +181,91 @@ export function screenFor(result: ScenarioRunResult): ScreenModel {
     case 'failed':
       return failedScreen(result.errorCode, result.errorDetail);
     case 'ran':
-      return contractOfferScreenModel(result.outcome.finalState, result.outcome.steps);
+      return campaignScreen(result.outcome.finalState, focusOfRun(result), result.outcome.steps);
     default:
       return result satisfies never;
+  }
+}
+
+/**
+ * Which of the three screens a campaign belongs on — `RESOLUTION_SPEC` §6.4's table, as one
+ * pure function of the campaign and the contract the player is working on.
+ *
+ * **One place, and the whole table.** §6.4 answers for a started session, for a loaded save
+ * and for every applied command at once, and the three used to be different code paths: a
+ * run always opened the negotiation, a load always rebuilt it, and a dispatch redrew
+ * whatever was already there. Three answers to one question is how a save of a resolved
+ * campaign came back on the offer screen with its debrief unreachable — the failure the
+ * table's last three rows exist to prevent.
+ *
+ * The rows are read in lifecycle order, because a settled contract also carries a
+ * resolution and would answer to the row below it:
+ *
+ * - `phase === Settled` → the board. The money has moved and this contract is closed.
+ * - `resolution !== null` → the debrief. The crew came back; the promise has not been
+ *   answered.
+ * - otherwise → the negotiation.
+ *
+ * A campaign with no contract focused is on the negotiation too: there is nothing resolved
+ * to show and nothing settled to have moved on from.
+ *
+ * **The two "rejected" rows are not here, and that is not an omission.** §6.4 says a refused
+ * `resolveContract` leaves the offer and a refused `settleContract` leaves the debrief —
+ * both are "nothing happens", and nothing happening is what a rejection already does: the
+ * store is untouched, so the screen a player is looking at stays the screen they are looking
+ * at. A rule that re-derived the screen on a rejection would be a second chance to get it
+ * wrong.
+ */
+export function screenKindFor(state: GameState, focusedContract: ContentId | null): ScreenKind {
+  const contract = focusedContract === null ? undefined : state.contracts.get(focusedContract);
+
+  if (contract === undefined) {
+    return ScreenKind.ContractOffer;
+  }
+
+  if (contract.offer.phase === OfferPhase.Settled) {
+    return ScreenKind.ContractBoard;
+  }
+
+  return contract.resolution === null ? ScreenKind.ContractOffer : ScreenKind.AfterAction;
+}
+
+/**
+ * The screen `state` belongs on, built.
+ *
+ * The one place a `ScreenModel` is made from a live campaign, so a run, a load, a dispatch
+ * and a manual move cannot answer with differently-shaped screens. The `switch` is
+ * exhaustive and has no `default`: a fourth screen does not build until this function has
+ * been told how to make one.
+ *
+ * `steps` is passed rather than recovered here because the two callers hold different
+ * things: a finished run has its own step list, including the commands that were refused,
+ * while a loaded or command-advanced campaign has only history to rebuild one from. Both
+ * draw the same screen — `tests/oracle/src/restored-read-model.test.ts` measures exactly
+ * that over every shipped scenario at both seeds — and the difference is which of the two
+ * the caller already has in hand.
+ */
+export function campaignScreen(
+  state: GameState,
+  focusedContract: ContentId | null,
+  steps: readonly DecidedStep[],
+  screen: ScreenKind = screenKindFor(state, focusedContract)
+): ScreenModel {
+  switch (screen) {
+    case ScreenKind.ContractOffer:
+      return contractOfferScreenModel(state, steps, focusedContract ?? undefined);
+    case ScreenKind.AfterAction:
+      if (focusedContract === null) {
+        throw new Error(
+          'A debrief was asked for with no contract focused. The debrief is about one ' +
+            "contract's outcome, so a session with none to name has nothing to debrief — a " +
+            'defect in the caller, not a campaign without an outcome.'
+        );
+      }
+
+      return afterActionScreenModel(state, focusedContract);
+    case ScreenKind.ContractBoard:
+      return contractBoardScreenModel(state);
   }
 }
 
