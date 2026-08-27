@@ -275,6 +275,25 @@ describe('what the resolver says happened, in order (§3.3, §4.6)', () => {
     expect(draftResolution(cleanly()).intents.length).toBeGreaterThanOrEqual(2);
   });
 
+  it.each([
+    [cleanly, OutcomeGrade.Clean, OutcomeReasonCodes.ObjectiveTaken],
+    [costlyWithAnUnheldNeed, OutcomeGrade.Costly, OutcomeReasonCodes.ObjectiveTaken],
+    [failedOnThePoint, OutcomeGrade.Failed, OutcomeReasonCodes.ObjectiveLost],
+    [catastrophically, OutcomeGrade.Disaster, OutcomeReasonCodes.ObjectiveLost]
+  ])('closes %#: on %s the reason is the objective’s own', (fixture, grade, reason) => {
+    // `ADR-015`: §2.1 declares no code for the closing intent, so it carries the code of
+    // the objective at its own grade. The choice reaches no event and no provenance —
+    // which is exactly why it needs stating here: without this table a constant in either
+    // branch of `resolvedIntentFor` passes the whole suite, and the rule would be one
+    // that is written down and never checked.
+    const { intents, resolution } = draftResolution(fixture());
+    const closing = intents.at(-1);
+
+    expect(resolution.grade).toBe(grade);
+    expect(closing?.kind).toBe(OutcomeIntentKind.ContractResolved);
+    expect(closing?.reason).toBe(reason);
+  });
+
   it('reads the objective off the step, not off the sign of the margin', () => {
     // A crew four points short of a hundred still did the job, and §5.3 pays it in full.
     // Reading the sign would put "the objective was lost" in the feed at exactly the

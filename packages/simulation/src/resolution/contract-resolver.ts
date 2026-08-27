@@ -167,12 +167,17 @@ function sufferedIntentFor(consequence: HeroConsequence): OutcomeIntent {
 /**
  * The closing intent (`RESOLUTION_SPEC` §3.3), always last.
  *
- * **Its reason is the objective's own, and §2.1 is why.** `OUTCOME_REASON_CODES` names no
- * code for "the contract was resolved" — the nine it declares are about needs, about
- * giving way, about the objective and about what people suffered — and inventing a tenth
- * here would grow the outcome vocabulary from inside an implementation. What this intent
- * says is exactly what the objective one said: whether the job was done. The event it
- * becomes carries the grade (§3.4), which is the fact that is not a repetition.
+ * **Its reason is the objective's own** (`ADR-015`). `OUTCOME_REASON_CODES` names no code
+ * for "the contract was resolved" — the nine it declares are about needs, about giving
+ * way, about the objective and about what people suffered — and the two alternatives (a
+ * tenth code, a nullable `reason`) are weighed in that record. What this intent says is
+ * exactly what the objective one said: whether the job was done. The event it becomes
+ * carries the grade (§3.4), which is the fact that is not a repetition.
+ *
+ * Unobservable is not untested: no event and no provenance carries this code, but
+ * `draftResolution` is exported and answers with the intents, so the rule is held by a
+ * table over the four grades in `contract-resolver.test.ts` and by a mutant that replaces
+ * the code with a constant.
  */
 function resolvedIntentFor(grade: OutcomeGrade): OutcomeIntent {
   return {

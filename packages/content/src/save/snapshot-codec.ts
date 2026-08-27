@@ -286,12 +286,15 @@ const needCoverageSchema = z.strictObject({
   effective: magnitude,
   verdict: z.enum([CoverageVerdict.Closed, CoverageVerdict.Weak, CoverageVerdict.Uncovered]),
   // Both numbers `RESOLUTION_SPEC` §4.3 records per `(hero, need)`: what the man brought
-  // and how much of it counted after the halving. Adding `counted` changed this
-  // `strictObject`'s shape without moving `SAVE_SCHEMA_VERSION`, and §2.8 states the
-  // argument and the check: `resolution` is `null` in every state this build can produce
-  // — `resolveContract` is what writes one, and it arrives with the bump — so no pair of
-  // saves exists that this change distinguishes. The canonical snapshots are the
-  // measurement, not the reasoning: all 42 stayed byte-identical.
+  // and how much of it counted after the halving (`DEC-014`). A required key of a
+  // `strictObject`, so a version 3 save carrying a resolution is unreadable under this
+  // one — which is why `SAVE_SCHEMA_VERSION` moved to 4 with it.
+  //
+  // The first edition of this change left the number alone, arguing that no command in
+  // this build writes a resolution. `campaignWithAResolvedContract` in this file's own
+  // test is the counterexample: `createContractState` builds one for anyone who asks and
+  // `buildSave` encodes whatever `GameState` it is handed. What a format version answers
+  // for is this schema, not the subset of it today's commands happen to reach.
   contributors: z
     .array(z.strictObject({ hero: heroIdSchema, amount: magnitude, counted: magnitude }))
     .max(MAX_HEROES_PER_CONTRACT)

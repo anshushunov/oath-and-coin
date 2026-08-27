@@ -87,16 +87,17 @@ function ran(scenario: string, seed = 7n): RanResult {
 }
 
 describe('the artifact says which shape it is', () => {
-  it('declares version 5 — bumped again for the state fields RESOLUTION_SPEC §2.8 adds', () => {
+  it('declares version 6 — bumped again for the second number a contributor carries', () => {
     // The frozen corpus was recorded under 3; `ADR-013` retired byte parity with it as a
     // property this port owes, so a shape version disagreeing with a frozen recording is
-    // not, on its own, a determinism failure. See `ARTIFACT_VERSION`'s own comment for
-    // why this moved now rather than at Task 14, where the plan originally placed it.
-    // Five since the resolution engine's Task 3: `capability`, `wounds`, `needs`,
-    // `resolution`, `invited`, `commitments` and the command's own `invited_indexes`.
-    expect(ARTIFACT_VERSION).toBe(5);
+    // not, on its own, a determinism failure. Five came with the resolution engine's Task
+    // 3 (`capability`, `wounds`, `needs`, `resolution`, `invited`, `commitments` and the
+    // command's own `invited_indexes`); six with Task 7's `counted` on every contributor
+    // (`RESOLUTION_SPEC` §4.3, `DEC-014`). See `ARTIFACT_VERSION`'s own comment for why
+    // the second of those moved the number although no shipped scenario fills the branch.
+    expect(ARTIFACT_VERSION).toBe(6);
     expect(JSON.parse(toCanonicalJson(ran('gate0').outcome))).toMatchObject({
-      artifact_version: 5,
+      artifact_version: 6,
       rng_algorithm: 'splitmix64-composed/1',
       ruleset_version: 'm1-resolution/1'
     });
