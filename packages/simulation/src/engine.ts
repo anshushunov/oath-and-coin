@@ -33,8 +33,10 @@ import { compareContentIds, type ContentId } from './ids/content-id.ts';
 import { compareHeroIds, type HeroId } from './ids/hero-id.ts';
 import { canCover } from './negotiation/commitments.ts';
 import { GRIEVANCE_MAX, grievanceForBrokenPromise } from './negotiation/grievance.ts';
+import { divideTowardZero, multiplyInt32 } from './integer-division.ts';
 import { commitmentFor } from './resolution/commitment.ts';
 import { draftResolution } from './resolution/contract-resolver.ts';
+import { termsOf } from './resolution/outcome-grade.ts';
 import type { ContractState } from './state/contract-state.ts';
 import { ContractStatus } from './state/contract-state.ts';
 import { contractOf, heroOf, withEvent, type GameState } from './state/game-state.ts';
@@ -1223,9 +1225,23 @@ export function settleContract(state: GameState, command: SettleContract): Comma
   const promised = offer.promisedBonus > 0;
   const paysBonus = promised && command.pay;
 
+  // §5.3: the patron pays a share of the fee set by the step the outcome landed on — in
+  // full for a job done, `PARTIAL_FEE_PERCENT` for one survived, nothing for a
+  // catastrophe. Truncated toward zero like every division in this system (`TDD` §7.4);
+  // `contract.resolution` is non-null by the `NotResolved` check above, and §2.5 keeps it
+  // that way for every state this package can build.
+  const patronPays = divideTowardZero(
+    multiplyInt32(contract.patronFee, termsOf(contract.resolution.grade).patronFeePercent),
+    100
+  );
+
+  // The advance and the promise are unchanged by the grade, and that is the point of
+  // stating them on the same line as the share: what the guild owes its people is not a
+  // function of how the job went. A failure that paid the crew less would make the player
+  // spend the outcome twice.
   const nextTreasury =
     state.treasury +
-    contract.patronFee -
+    patronPays -
     offer.advance * offer.acceptedBy.size -
     (paysBonus ? offer.promisedBonus : 0);
 

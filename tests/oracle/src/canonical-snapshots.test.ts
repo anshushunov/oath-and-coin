@@ -56,7 +56,12 @@ describe('a canonical snapshot against a fresh run at the CLI default', () => {
     // only a rewrite, `DEC-008` Task 8's parked obligation, closed by Task 20), and the
     // four negotiation-phase scenarios Task 21 adds for the browser evidence run
     // (`screen_draft`, `screen_locked`, `screen_settlement_due`, `screen_word_broken`).
-    expect(SNAPSHOT_SCENARIOS).toHaveLength(42);
+    //
+    // 46 since the resolution engine's Task 9 (`RESOLUTION_SPEC` §10.4): the two crews
+    // that answer the same job differently (`resolution-strongest-loses`,
+    // `resolution-fitting-crew-wins`) and the two branches of the liquidity fork
+    // (`resolution-keep-promise`, `resolution-break-promise`).
+    expect(SNAPSHOT_SCENARIOS).toHaveLength(46);
   });
 
   it.each(SNAPSHOT_SCENARIOS)('%s reproduces the file this build already ships', (scenario) => {

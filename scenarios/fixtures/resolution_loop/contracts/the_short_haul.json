@@ -1,0 +1,13 @@
+{
+  "schema_version": 4,
+  "id": "fixture:the_short_haul",
+  "display_name_key": "contract.fixture.the_short_haul.name",
+  "patron_fee": 30,
+  "risk": 0,
+  "required_crew": 1,
+  "needs": {
+    "frontline": 20,
+    "wilderness": 3
+  },
+  "tags": []
+}

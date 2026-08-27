@@ -153,9 +153,15 @@ describe('the step an outcome lands on (§4.6)', () => {
     expect(termsOf(gradeAt(-11)).objectiveTaken).toBe(false);
   });
 
-  it('states the two percentages the thresholds are built from', () => {
+  it('states the percentages this system is built from', () => {
     expect(COSTLY_PERCENT).toBe(10);
     expect(FAILED_PERCENT).toBe(35);
+    // §5.3's own share, pinned to a literal here because every table that uses it —
+    // this file's terms table and `settlement.test.ts`'s payout table — reads it through
+    // the constant. Both sides following the same symbol is a table that agrees with
+    // whatever the constant happens to say; external review measured a mutant setting it
+    // to 41 surviving the whole suite.
+    expect(PARTIAL_FEE_PERCENT).toBe(40);
   });
 });
 

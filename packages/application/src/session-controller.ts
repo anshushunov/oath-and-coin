@@ -141,7 +141,7 @@ export interface SessionController {
   start(): Promise<void>;
   /**
    * Dispatches one of the six negotiation commands this build implements
-   * (`m1-resolution/2`; `NEGOTIATION_SPEC` §3.1 and `RESOLUTION_SPEC` §3.1) against
+   * (`m1-resolution/3`; `NEGOTIATION_SPEC` §3.1 and `RESOLUTION_SPEC` §3.1) against
    * the campaign currently on screen, the same way `packages/content`'s scenario runner
    * already applies a scripted one: `commandId` and `expectedStateVersion` are supplied
    * here rather than by the caller, read off the campaign this session is holding right

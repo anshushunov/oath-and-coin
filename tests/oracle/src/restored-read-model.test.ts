@@ -128,7 +128,8 @@ describe('the screen a reloaded campaign draws', () => {
     // browser evidence run (`screen_draft`, `screen_locked`, `screen_settlement_due`,
     // `screen_word_broken`); `screen_loading` and `screen_error` reach no state, leaving
     // 43 that run, at two seeds each.
-    expect(SCENARIOS).toHaveLength(45);
+    // 49 since the resolution engine's Task 9: four scenarios of `RESOLUTION_SPEC` §10.4.
+    expect(SCENARIOS).toHaveLength(49);
 
     let ranCount = 0;
     let blockedSeen = 0;
@@ -225,17 +226,32 @@ describe('the screen a reloaded campaign draws', () => {
     // hero on a method tag, and none reaches `pollCrew` — the whole point of
     // `screen_settlement_due` and `screen_word_broken` is a crew filled without one
     // (`NEGOTIATION_SPEC` §3.1, `requiredCrew = 1`).
-    expect(ranCount).toBe(86);
+    //
+    // 94 since Task 9: four scenarios of `RESOLUTION_SPEC` §10.4, two seeds each. Only
+    // `ranCount` and `scoredSeen` move with them — none gates a hero on a method tag,
+    // and the two fork branches poll once each while the two crew-comparison scenarios
+    // poll once each as well.
+    expect(ranCount).toBe(94);
     expect(blockedSeen).toBe(16);
     // 180, not 234, since the resolution engine's Task 3: `pollCrew` asks the crew the
     // package invited rather than the whole remaining roster (`DEC-012` as amended,
     // `RESOLUTION_SPEC` §8), so every polled scenario produces exactly as many scored
     // decisions as it has seats — fifty-four fewer across the corpus, and every one of
     // them a question about a hero the player never asked.
-    expect(scoredSeen).toBe(180);
+    // 204 since Task 9: the four §10.4 scenarios add twenty-four scored decisions across
+    // two seeds — every hero each of them asks accepts, which is what a fixture roster
+    // with no principles and no caution is for.
+    expect(scoredSeen).toBe(204);
     // 20, not 26, for the same reason: three scenarios whose crew is now filled by the
     // invited heroes alone reach `pollCrew` with nobody left to ask, so the step is
     // refused and carries no decision to count.
-    expect(polledStepsSeen).toBe(20);
+    // 22 since Task 9, and only `resolution-break-promise` moves it: this counter is
+    // about a poll holding *several* decisions, and it is the only one of the four §10.4
+    // scenarios whose poll asks more than one hero — the deep run has three seats and the
+    // key hero has answered, so two are left. The other three poll once each and carry a
+    // single decision apiece, which this shape does not count. Measured, not reasoned:
+    // the per-step decision counts are [0,1,0,1,0], [0,1,0,1,0], [0,1,0,1,0,0,0,1,0,0]
+    // and [0,1,0,1,0,0,0,1,0,2,0].
+    expect(polledStepsSeen).toBe(22);
   });
 });
