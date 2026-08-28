@@ -62,7 +62,7 @@ import {
  * `schema_version: 4` and authoring `capability` on every hero and `needs` on every
  * contract (`RESOLUTION_SPEC` §2.2, §2.3).
  */
-const SHIPPED_CONTENT_VERSION = 'cd159cbb2363d417';
+const SHIPPED_CONTENT_VERSION = '94470ae66b2a1061';
 
 /**
  * The content version the corpus recorded for `screen_empty`'s own fixture root,

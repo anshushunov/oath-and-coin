@@ -14,6 +14,7 @@ import {
   SortedMap,
   SortedSet,
   compareHeroIds,
+  parseContentId,
   createContractState,
   deepEqual,
   proposeContractToHero,
@@ -38,7 +39,7 @@ const repoRoot = resolve(import.meta.dirname, '..', '..', '..', '..');
 const content = loadContentSet(join(repoRoot, 'content'));
 
 /**
- * The shipped tree's first contract, locked to one seat and one hero with a real
+ * The shipped crypt, locked to one seat and one hero with a real
  * `promisedBonus`, ready for `settleContract` — the state both
  * {@link campaignWithABrokenPromise} and {@link campaignWithAKeptPromise} settle
  * from, so the two fixtures differ only in `pay`, not in two independently-built
@@ -47,6 +48,13 @@ const content = loadContentSet(join(repoRoot, 'content'));
  * one hero so `settleContract` can run without a `pollCrew` neither test is
  * about. `createContractState` (`NEGOTIATION_SPEC` §2.1) validates the override
  * rather than merely hoping it is consistent.
+ *
+ * **Named, not "whichever contract sorts first".** It used to be the latter, and external
+ * review of the contract-loop UI plan's task 9 caught what that costs: the playtest's second
+ * pair put `core:burn_the_plague_barrow` ahead of the crypt in content-id order, so this
+ * fixture's subject changed under it in silence while every assertion stayed green and the
+ * comment above still described the crypt. A fixture that says which campaign it is about
+ * fails loudly when that campaign goes away.
  */
 function lockedSingleHeroCampaign(): {
   readonly state: GameState;
@@ -54,8 +62,8 @@ function lockedSingleHeroCampaign(): {
 } {
   const base = createInitialState(content, 7n, 'm1-resolution/1');
   const [heroKey] = base.heroes.keys();
-  const [contractKey] = base.contracts.keys();
-  const contract = base.contracts.get(contractKey!)!;
+  const contractKey = parseContentId('core:cleanse_the_crypt');
+  const contract = base.contracts.get(contractKey)!;
   const keyOnly = SortedSet.from(compareHeroIds, [heroKey!]);
 
   const lockedAndCrewed = createContractState({
@@ -118,7 +126,7 @@ function resolvedFrom(state: GameState, contractId: ContentId): GameState {
  * round-trip wiring was correct by inspection but untested against a non-default
  * value — every round-trip test before this one would pass identically if the
  * decoder reverted to hardcoded defaults for these three fields. This fixture is
- * what closes that: it locks the shipped tree's first contract to one seat, one
+ * what closes that: it locks the shipped crypt to one seat, one
  * hero, a real bonus, breaks the promise through the real `settleContract`, and
  * round-trips whatever that produced.
  */
@@ -259,13 +267,16 @@ describe('snapshot codec', () => {
   it('carries a resolution and a wound through a snapshot round trip', () => {
     const state = campaignWithAResolvedContract();
     const [heroKey] = state.heroes.keys();
-    const [contractKey] = state.contracts.keys();
+    // Named, not the board's first row: this fixture resolved the crypt (see
+    // `lockedSingleHeroCampaign`), and reading whichever contract sorts first is what let
+    // the subject drift silently once new content arrived.
+    const contractKey = parseContentId('core:cleanse_the_crypt');
 
     // Guards against the fixture quietly degenerating into the `null`/`0` case the rest
     // of the file already covers — a round trip of two defaults would prove nothing and
     // would still be green.
     expect(state.heroes.get(heroKey!)!.wounds).toBe(2);
-    expect(state.contracts.get(contractKey!)!.resolution).not.toBeNull();
+    expect(state.contracts.get(contractKey)!.resolution).not.toBeNull();
 
     const decoded = decodeSnapshot(JSON.parse(JSON.stringify(encodeSnapshot(state))));
 
@@ -397,20 +408,21 @@ describe('snapshot codec', () => {
     // `encodeSnapshot`/схемы не может пройти молча.
     const base = createInitialState(content, 7n, 'm1-resolution/1');
     const [heroKey] = base.heroes.keys();
-    const [contractKey] = base.contracts.keys();
+    const contractKey = parseContentId('core:cleanse_the_crypt');
     // `proposeContractToHero` (`DEC-008` Task 11) only lets the offer's key hero
     // answer while the package is a draft — this fixture keys the offer to the one
     // hero it proposes to directly, by hand, rather than through a real `composeOffer`
     // command, so the shape this test checks (`history`/`traces`/`appliedCommandIds`
     // each non-empty) is unchanged by a command this test is not about.
-    const contract = base.contracts.get(contractKey!)!;
+    const contract = base.contracts.get(contractKey)!;
     const keyed = {
       ...base,
-      contracts: base.contracts.set(contractKey!, {
+      contracts: base.contracts.set(contractKey, {
         ...contract,
         // One seat, so the key hero is the whole crew (`RESOLUTION_SPEC` §2.5) — the
         // shipped crypt asks for four, and this case is about a decision surviving a
-        // round trip, not about filling a crew.
+        // round trip, not about filling a crew. The crypt is named rather than taken as
+        // `contracts.keys()[0]`, for the reason `lockedSingleHeroCampaign` records.
         requiredCrew: 1,
         offer: {
           ...contract.offer,
@@ -422,7 +434,7 @@ describe('snapshot codec', () => {
     const result = proposeContractToHero(keyed, {
       commandId: 1,
       heroId: heroKey!,
-      contractId: contractKey!,
+      contractId: contractKey,
       expectedStateVersion: keyed.metadata.stateVersion
     });
 

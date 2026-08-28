@@ -14,7 +14,7 @@ import type { Comparator } from './comparator.ts';
  * this type it is not expressible.
  *
  * Backed by a frozen sorted array of entries with binary search. The campaign's
- * collections hold single digits of entries (six heroes, four contracts, eight
+ * collections hold single digits of entries (six heroes, six contracts, eight
  * traits), so `set` copying the array is cheaper than any tree would be, and it
  * is a few lines instead of a few hundred.
  */
