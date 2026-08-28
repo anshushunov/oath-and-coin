@@ -37,6 +37,27 @@ export interface ContractBoardRow {
   readonly requiredCrew: number;
   readonly needKeys: readonly string[];
   readonly availability: ContractAvailability;
+  /**
+   * The screen pressing this row opens, or `null` when pressing it would lead nowhere.
+   *
+   * The row's other half, and not a second spelling of {@link availability}: that one is the
+   * sentence a player reads, this is where the press goes. A screen may not work the second
+   * out of the first — that would be `RESOLUTION_SPEC` §6.4's table restated in a component,
+   * and the whole reason this layer exists is to keep such a table out of one — so the model
+   * answers it and the screen passes the answer through.
+   *
+   * `null` means "the screen this contract belongs on is the board", which for a player
+   * already looking at the board is a control that does nothing. A settled contract is the
+   * only row that is currently `null`, and it is stated as an absence rather than as
+   * `ContractBoard` so that the screen's branch stays a branch on a field being `null` —
+   * the one kind it is allowed.
+   *
+   * There are necessarily two pieces of code answering this: `screenKindFor` is the table
+   * itself and lives in `packages/application`, which this package may not import.
+   * `tests/oracle/src/restored-read-model.test.ts` holds the two against each other on every
+   * shipped scenario at both seeds, so they cannot part company unnoticed.
+   */
+  readonly opensScreen: ScreenKind | null;
 }
 
 export interface ContractBoardScreenModel {
@@ -224,14 +245,42 @@ function stateOf(rows: readonly ContractBoardRow[]): ScreenState {
 }
 
 function toRow(contract: ContractState): ContractBoardRow {
+  const availability = availabilityOf(contract);
+
   return {
     definition: contract.id,
     displayNameKey: contractDisplayNameKey(contract.id),
     patronFee: contract.patronFee,
     requiredCrew: contract.requiredCrew,
     needKeys: contract.needs.keys().map(needKey),
-    availability: availabilityOf(contract)
+    availability,
+    // Derived from the word above rather than from the contract a second time, so the two
+    // halves of a row cannot come from two different readings of one lifecycle.
+    opensScreen: opensScreenFor(availability)
   };
+}
+
+/**
+ * Where pressing a row of each kind goes — `RESOLUTION_SPEC` §6.4, read from the board's own
+ * side.
+ *
+ * The rows correspond one for one with `screenKindFor`'s: a settled contract belongs on the
+ * board (here, `null` — the player is already on it), a resolved one on the debrief, and
+ * anything else on the negotiation, whether its package is a draft somebody is still editing
+ * or a locked one waiting on a poll.
+ */
+function opensScreenFor(availability: ContractAvailability): ScreenKind | null {
+  switch (availability) {
+    case ContractAvailability.Settled:
+      return null;
+    case ContractAvailability.Resolved:
+      return ScreenKind.AfterAction;
+    case ContractAvailability.Open:
+    case ContractAvailability.InProgress:
+      return ScreenKind.ContractOffer;
+    default:
+      throw new Error(`Unknown contract availability '${String(availability)}'.`);
+  }
 }
 
 /**
@@ -279,7 +328,11 @@ export function describeContractBoardReadModel(model: ContractBoardScreenModel):
       patron_fee: row.patronFee,
       required_crew: row.requiredCrew,
       need_keys: [...row.needKeys],
-      availability: row.availability
+      availability: row.availability,
+      // In the hash even though no text comes of it, for the reason every content id on a
+      // screen model is: it is a fact the model asserts about the campaign, and a row that
+      // led to the wrong screen would otherwise be a difference no artifact records.
+      opens_screen: row.opensScreen
     })),
     treasury: validated.treasury
   };

@@ -48,6 +48,11 @@ export {
 
 export {
   screenFor,
+  // `RESOLUTION_SPEC` §6.4's table itself. Exported so that the one other answer to the
+  // same question — `ContractBoardRow.opensScreen`, which `packages/presentation` has to
+  // reach without importing this package — can be held against it on shipped campaigns
+  // (`tests/oracle/src/restored-read-model.test.ts`).
+  screenKindFor,
   startSession,
   type SaveFailure,
   type SessionRequest,

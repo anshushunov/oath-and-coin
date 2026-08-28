@@ -103,7 +103,8 @@ body {
  * coverage line per need, the diagnoses and the settlement.
  */
 .contract-offer,
-.after-action {
+.after-action,
+.contract-board {
   overflow: auto;
   min-height: 0;
   padding: 12px;
@@ -124,18 +125,21 @@ body {
  * player-facing text, so the gap has to come from here.
  */
 .contract-offer > .label,
-.after-action > .label {
+.after-action > .label,
+.contract-board > .label {
   display: block;
 }
 
 .contract-offer > .label:first-child,
-.after-action > .label:first-child {
+.after-action > .label:first-child,
+.contract-board > .label:first-child {
   font-size: 20px;
   font-weight: 600;
 }
 
 .contract-offer > .label:nth-child(2),
-.after-action > .label:nth-child(2) {
+.after-action > .label:nth-child(2),
+.contract-board > .label:nth-child(2) {
   color: var(--ink-dim);
 }
 
@@ -196,11 +200,57 @@ body {
 }
 
 .hero,
-.response {
+.response,
+.board-row {
   margin-bottom: 8px;
   padding: 8px 10px;
   border: 1px solid var(--edge);
   border-radius: 4px;
+}
+
+/*
+ * The board is a list of contracts and each one is a card, so the rows are laid out the way
+ * the roster is rather than as one long column: four contracts at five lines apiece is most
+ * of a window, and the board is the page a player scans rather than reads.
+ *
+ * `align-items: start` for the reason `.columns` has it — a short card must not stretch to a
+ * tall one's height and pad the board with emptiness.
+ */
+.board-rows {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: start;
+  gap: 0 16px;
+  margin-top: 12px;
+}
+
+/*
+ * The contract's own name is the control, so it has to read as a name first and as a button
+ * second: the row below it is already a row of captions, and a name in the browser's default
+ * button typeface would be the one text on the board that did not look like the screen.
+ */
+.board-row > button {
+  margin-bottom: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/*
+ * A contract nobody can take any more. Dimmed and un-underlined rather than removed: the row
+ * is still a fact about the campaign, and the state word under it says why the name stopped
+ * being a link.
+ */
+.board-row > button:disabled {
+  color: var(--ink-dim);
+  text-decoration: none;
+  cursor: default;
 }
 
 /*

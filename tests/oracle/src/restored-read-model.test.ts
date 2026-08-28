@@ -1,10 +1,15 @@
 import { readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-import { restoreDecidedSteps } from '@oath-and-coin/application';
+import { restoreDecidedSteps, screenKindFor } from '@oath-and-coin/application';
 import { decodeSnapshot, encodeSnapshot, type ScenarioOutcome } from '@oath-and-coin/content';
 import { loadAndRunScenario } from '@oath-and-coin/content/node';
-import { afterActionScreenModel, contractOfferScreenModel } from '@oath-and-coin/presentation';
+import {
+  ScreenKind,
+  afterActionScreenModel,
+  contractBoardScreenModel,
+  contractOfferScreenModel
+} from '@oath-and-coin/presentation';
 import type { ContentId } from '@oath-and-coin/simulation';
 import { describe, expect, it } from 'vitest';
 
@@ -309,5 +314,57 @@ describe('the screen a reloaded campaign draws', () => {
     // them (`resolution-keep-promise`, `resolution-break-promise` and
     // `promise_size_changes_the_price_of_breaking_it`) resolve two contracts apiece.
     expect(debriefsSeen).toBe(28);
+  });
+
+  it('sends every board row to the screen §6.4 puts that contract on', () => {
+    // **The one place the board's answer and the campaign's navigation can be compared.**
+    // `ContractBoardRow.opensScreen` says where pressing a row goes, and `screenKindFor` is
+    // `RESOLUTION_SPEC` §6.4's table itself — the function `start`, `load` and every applied
+    // command already route through. They are necessarily two pieces of code:
+    // `packages/presentation` may not import `packages/application`, so the board cannot
+    // call the table and has to answer from the same three lifecycle facts. This is the
+    // check that keeps the two answers from parting company, and it lives here because this
+    // is the only package that may see both.
+    //
+    // `null` means "the screen this row would open is the board", which is why the
+    // comparison folds it back to `ContractBoard` rather than skipping it: a row that led
+    // nowhere for the wrong reason would otherwise be untested.
+    let rowsSeen = 0;
+    let leadNowhereSeen = 0;
+    let leadToDebriefSeen = 0;
+
+    for (const seed of SEEDS) {
+      for (const scenario of SCENARIOS) {
+        const outcome = ran(scenario, seed);
+        if (outcome === null) {
+          continue;
+        }
+
+        for (const row of contractBoardScreenModel(outcome.finalState).rows) {
+          rowsSeen += 1;
+
+          if (row.opensScreen === null) {
+            leadNowhereSeen += 1;
+          }
+
+          if (row.opensScreen === ScreenKind.AfterAction) {
+            leadToDebriefSeen += 1;
+          }
+
+          expect(
+            row.opensScreen ?? ScreenKind.ContractBoard,
+            `${scenario}/seed-${String(seed)}/${row.definition}`
+          ).toBe(screenKindFor(outcome.finalState, row.definition));
+        }
+      }
+    }
+
+    // Three numbers rather than one, for the reason every other counter in this file has:
+    // a corpus in which no contract was ever settled, or never resolved-and-left-unsettled,
+    // would run the loop above without ever exercising the two rows that are not the
+    // trivial case. Both are the rows a wrong table would send a player to the wrong page.
+    expect(rowsSeen).toBeGreaterThan(0);
+    expect(leadNowhereSeen).toBeGreaterThan(0);
+    expect(leadToDebriefSeen).toBeGreaterThan(0);
   });
 });
