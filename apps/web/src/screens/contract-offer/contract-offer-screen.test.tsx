@@ -2,7 +2,11 @@
 import { startSession, type SessionState } from '@oath-and-coin/application';
 import {
   LeverDisabledKeys,
+  OFFER_ACTIONS,
   OfferFieldKeys,
+  REJECTION_KEYS,
+  RejectionCodes,
+  offerActionKey,
   PromiseTermsKeys,
   QualitativeGrade,
   ScreenKind,
@@ -13,6 +17,7 @@ import {
   expectedSnapshot,
   failedScreen,
   snapshotHash,
+  type AvailableAction,
   type ContentId,
   type ContractOfferScreenModel
 } from '@oath-and-coin/presentation';
@@ -481,13 +486,63 @@ describe('the draft block, the promise, the treasury and the settlement', () => 
     expect(captionedValue(container, textOf(SettlementFieldKeys.TreasuryIfKept))).toBe('290');
     expect(captionedValue(container, textOf(SettlementFieldKeys.TreasuryIfBroken))).toBe('300');
 
-    expect(container.querySelectorAll('button')).toHaveLength(0);
+    // **The settlement block itself still draws no control**, which is what this test has
+    // always been about: it briefly carried two `<button>` elements with no `onClick` at
+    // all, and the owner's ruling was to remove rather than wire them. Scoped to `.settlement`
+    // since Task 5, because the screen now does have buttons — the six protocol commands,
+    // which is a different claim tested below and not a retraction of this one.
+    expect(container.querySelector('.settlement')?.querySelectorAll('button')).toHaveLength(0);
+  });
+
+  it('offers all six commands, dark ones carrying the refusal they would get', () => {
+    // `crewedModel` refuses every one of the six, so this fixture exercises the dark branch
+    // — a button that is `disabled` and a reason line beside it. `draftModel` takes the
+    // other branch below.
+    const container = renderScreen(crewedModel());
+    const buttons = [...container.querySelectorAll('[data-testid="offer-actions"] button')];
+
+    expect(buttons.map((button) => button.textContent)).toEqual(
+      OFFER_ACTIONS.map((action) => textOf(offerActionKey(action)))
+    );
+    expect(buttons.every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+    expect(collectRenderedTexts(container)).toContain(textOf(RejectionCodes.AlreadySettled));
+  });
+
+  it('leaves a live command enabled and says nothing beside it', () => {
+    const container = renderScreen(draftModel());
+    const buttons = [...container.querySelectorAll('[data-testid="offer-actions"] button')];
+
+    expect(buttons).toHaveLength(OFFER_ACTIONS.length);
+    expect(buttons.some((button) => (button as HTMLButtonElement).disabled)).toBe(false);
+    // No refusal anywhere on the frame — a live control explains itself by being live.
+    expect(
+      collectRenderedTexts(container).filter((text) =>
+        REJECTION_KEYS.some((key) => text === textOf(key))
+      )
+    ).toEqual([]);
   });
 
   it('renders every label from ui-text, never a literal', () => {
     expect(literalsIn(ContractOfferScreen)).toEqual([]);
   });
 });
+
+/**
+ * The six commands with nothing refusing them, and the six with every one refused.
+ *
+ * Two constants rather than one, because the component draws a different branch for each —
+ * a live button carries no reason line, a dark one does — and a fixture that only ever took
+ * one of them would leave the other unrendered by every test in this file.
+ */
+const LIVE_ACTIONS: readonly AvailableAction[] = OFFER_ACTIONS.map((action) => ({
+  action,
+  disabledReasonKey: null
+}));
+
+const DARK_ACTIONS: readonly AvailableAction[] = OFFER_ACTIONS.map((action) => ({
+  action,
+  disabledReasonKey: RejectionCodes.AlreadySettled
+}));
 
 /**
  * A content id in a hand-built fixture.
@@ -588,6 +643,7 @@ function draftModel(): ContractOfferScreenModel {
     // (`NEGOTIATION_SPEC` §3.3) with `pay: true`, over one accepted seat: the draft
     // phase can only have the key hero in `acceptedBy` (`NEGOTIATION_SPEC` §2.1).
     treasuryForecast: 375,
+    availableActions: LIVE_ACTIONS,
     promiseTerms: {
       fulfilKey: PromiseTermsKeys.Fulfil,
       breachKey: PromiseTermsKeys.Breach,
@@ -657,6 +713,7 @@ function lockedUncrewedModel(): ContractOfferScreenModel {
       lockCommitment: 60
     },
     treasuryForecast: 335,
+    availableActions: LIVE_ACTIONS,
     promiseTerms: null,
     settlement: null
   });
@@ -734,6 +791,7 @@ function crewedModel(): ContractOfferScreenModel {
       lockCommitment: 40
     },
     treasuryForecast: 290,
+    availableActions: DARK_ACTIONS,
     promiseTerms: {
       fulfilKey: PromiseTermsKeys.Fulfil,
       breachKey: PromiseTermsKeys.Breach,

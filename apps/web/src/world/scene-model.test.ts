@@ -2,6 +2,7 @@ import { startSession } from '@oath-and-coin/application';
 import {
   AFTER_ACTION_LOADING_SCREEN,
   CONTRACT_BOARD_LOADING_SCREEN,
+  OFFER_ACTIONS,
   SCREEN_KINDS,
   ScreenKind,
   ScreenState,
@@ -143,6 +144,10 @@ function aModel(rosterDefinitions: readonly string[], responders: readonly strin
       lockCommitment: 0
     },
     treasuryForecast: 400,
+    // Not this file's question — the scene reads only `contract` and `roster` — but the
+    // model must be one the factory would build, and a package on screen always carries
+    // its six commands.
+    availableActions: OFFER_ACTIONS.map((action) => ({ action, disabledReasonKey: null })),
     promiseTerms: null,
     settlement: null
   });

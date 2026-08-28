@@ -6,11 +6,13 @@ import {
   TreasuryFieldKeys,
   actionKey,
   errorKey,
+  offerActionKey,
   offerPhaseKey,
   qualitativeKey,
   reasonDirectionKey,
   screenStateKey,
   waveredKey,
+  type AvailableAction,
   type ContractLine,
   type ContractOfferScreenModel,
   type HeroCard,
@@ -141,7 +143,47 @@ export function ContractOfferScreen({ model }: { readonly model: ContractOfferSc
           heroDisplayNameKeyOf={heroDisplayNameKeyOf}
         />
       )}
+
+      <ActionsBlock actions={model.availableActions} />
     </section>
+  );
+}
+
+/**
+ * The six commands of the protocol, each either live or dark with the refusal it would get
+ * (`offer-actions.ts`).
+ *
+ * **Buttons with no handler, deliberately, and only until Task 6 wires one.** The last time
+ * this screen carried a control that did nothing, review's ruling was to remove it rather
+ * than leave a promise — and that ruling was right about a control that could *never* do
+ * anything. These are different: the model now says which of them may be pressed and why
+ * the rest may not, which is exactly the fact Task 6 needs on the page before it can attach
+ * a handler, and `disabled` is a real answer a player reads rather than a placeholder.
+ *
+ * The one branch here is on `disabledReasonKey` being `null` — a model field, never a
+ * value — and `expectedSnapshot` makes the identical decision from the identical field.
+ */
+function ActionsBlock({ actions }: { readonly actions: readonly AvailableAction[] }) {
+  const text = useText();
+
+  if (actions.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="actions" data-testid="offer-actions">
+      {actions.map((available) => (
+        <div className="action" key={available.action}>
+          <button type="button" disabled={available.disabledReasonKey !== null}>
+            {text(offerActionKey(available.action))}
+          </button>
+
+          {available.disabledReasonKey === null ? null : (
+            <Label text={text(available.disabledReasonKey)} />
+          )}
+        </div>
+      ))}
+    </div>
   );
 }
 

@@ -44,6 +44,9 @@ export {
   LEVER_DISABLED_KEYS,
   LeverDisabledKeys,
   NEED_KEYS,
+  OFFER_ACTION_KEYS,
+  REJECTION_KEYS,
+  offerActionKey,
   OUTCOME_EVENT_KEYS,
   OUTCOME_GRADE_KEYS,
   OutcomeEventKeys,
@@ -114,6 +117,18 @@ export {
  */
 export type { ContentId } from '@oath-and-coin/simulation';
 
+/**
+ * The refusal vocabulary {@link AvailableAction.disabledReasonKey} is drawn from,
+ * re-exported for the same reason {@link ContentId} is: `apps/web` declares no dependency
+ * on `@oath-and-coin/simulation` and must not gain one (`ADR-010`), yet a screen — and a
+ * screen's tests — have to be able to name one of these codes without inventing the string.
+ *
+ * A value rather than only a type, unlike `ContentId`, because a caller names a *member*:
+ * the codes are the engine's closed set, and a literal `'rejected.already_settled'` written
+ * out in a component is exactly the second spelling `TDD` §11.1 exists to prevent.
+ */
+export { RejectionCodes, type RejectionCode } from '@oath-and-coin/simulation';
+
 export type {
   ChoiceLever,
   ChoiceOption,
@@ -125,6 +140,7 @@ export type {
 
 export {
   createContractOfferScreenModel,
+  enabledActions,
   leversOf,
   type ContractOfferScreenContent,
   type ContractLine,
@@ -148,6 +164,13 @@ export {
 } from './contract-offer-screen-model-factory.ts';
 
 export { SCREEN_KINDS, ScreenKind } from './screen-kind.ts';
+
+export {
+  OFFER_ACTIONS,
+  OfferAction,
+  availableActions,
+  type AvailableAction
+} from './offer-actions.ts';
 
 export { describeReadModel, readModelHash, type ScreenModel } from './screen-model.ts';
 

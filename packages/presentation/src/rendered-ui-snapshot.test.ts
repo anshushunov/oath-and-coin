@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { OfferPhase, ReasonCodes, parseContentId } from '@oath-and-coin/simulation';
+import { OfferPhase, ReasonCodes, RejectionCodes, parseContentId } from '@oath-and-coin/simulation';
 
 import {
   createContractOfferScreenModel,
@@ -8,6 +8,7 @@ import {
   type ContractOfferScreenModel
 } from './contract-offer-screen-model.ts';
 import { LOADING_SCREEN, failedScreen } from './contract-offer-screen-model-factory.ts';
+import { OfferAction } from './offer-actions.ts';
 import { TITLE_KEY } from './keys.ts';
 import { QualitativeGrade } from './qualitative-scale.ts';
 import { ReasonDirection, ScreenState } from './screen-state.ts';
@@ -242,6 +243,17 @@ const aFullModel = createContractOfferScreenModel({
   // 15 × 2 − 20` — `settleContract`'s own formula (`NEGOTIATION_SPEC` §3.3) with
   // `pay: true`.
   treasuryForecast: 390,
+  // Every one of the six, and deliberately not all in one condition: three live and
+  // three dark, so the walk visits both branches of the action list and a projection
+  // that forgot the refusals would be missing three texts rather than none.
+  availableActions: [
+    { action: OfferAction.Compose, disabledReasonKey: null },
+    { action: OfferAction.AskKeyHero, disabledReasonKey: RejectionCodes.AlreadyResponded },
+    { action: OfferAction.Lock, disabledReasonKey: RejectionCodes.OfferNotInDraft },
+    { action: OfferAction.Poll, disabledReasonKey: null },
+    { action: OfferAction.Resolve, disabledReasonKey: RejectionCodes.CrewNotFilled },
+    { action: OfferAction.Settle, disabledReasonKey: null }
+  ],
   promiseTerms: {
     fulfilKey: 'offer.promise.fulfil',
     breachKey: 'offer.promise.breach',
@@ -286,7 +298,8 @@ describe('the texts a correctly bound screen produces', () => {
       offer: null,
       treasuryForecast: 0,
       promiseTerms: null,
-      settlement: null
+      settlement: null,
+      availableActions: []
     });
 
     const loadingTexts = expectedSnapshot(LOADING_SCREEN, everyKeyOf(LOADING_SCREEN));
@@ -426,7 +439,16 @@ describe('the texts a correctly bound screen produces', () => {
       'text(field.settlement.treasury_if_kept)',
       '390',
       'text(field.settlement.treasury_if_broken)',
-      '410'
+      '410',
+      'text(action.offer.compose)',
+      'text(action.offer.ask_key_hero)',
+      'text(rejected.already_responded)',
+      'text(action.offer.lock)',
+      'text(rejected.offer_not_in_draft)',
+      'text(action.offer.poll)',
+      'text(action.offer.resolve)',
+      'text(rejected.crew_not_filled)',
+      'text(action.offer.settle)'
     ]);
   });
 

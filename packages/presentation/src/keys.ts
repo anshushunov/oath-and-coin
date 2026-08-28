@@ -29,6 +29,7 @@ import {
   NEED_IDS,
   OfferPhase,
   OutcomeGrade,
+  RejectionCodes,
   contentIdName,
   contentIdNamespace,
   type ContentId,
@@ -36,6 +37,7 @@ import {
 } from '@oath-and-coin/simulation';
 
 import { CONTRACT_AVAILABILITIES, type ContractAvailability } from './contract-availability.ts';
+import { OFFER_ACTIONS, type OfferAction } from './offer-actions.ts';
 import { ReasonDirection, ScreenState, REASON_DIRECTIONS, SCREEN_STATES } from './screen-state.ts';
 
 /** This screen's title. A key, not text — nothing in this package resolves one. */
@@ -296,6 +298,38 @@ export const LeverDisabledKeys = Object.freeze({
 export const LEVER_DISABLED_KEYS: readonly string[] = Object.freeze(
   Object.values(LeverDisabledKeys)
 );
+
+/**
+ * What each of the six protocol commands is called on a control (`NEGOTIATION_SPEC` §3.1,
+ * `RESOLUTION_SPEC` §3.1) — `compose` → `action.offer.compose`.
+ *
+ * Built from the action's own member by a fixed convention, the way {@link offerPhaseKey}
+ * is, so a seventh command cannot arrive in the protocol and quietly go unchecked against
+ * the catalogue.
+ *
+ * Its own prefix rather than {@link actionKey}'s: that one names what a *hero* answered
+ * (`action.accept`), and these name what the *guild* does. One namespace for both would put
+ * "accepted" and "record the terms" under one heading, and the two are not the same kind of
+ * thing at all.
+ */
+export function offerActionKey(action: OfferAction): string {
+  return `action.offer.${action}`;
+}
+
+export const OFFER_ACTION_KEYS: readonly string[] = Object.freeze(
+  OFFER_ACTIONS.map(offerActionKey)
+);
+
+/**
+ * Every refusal a dark control can name.
+ *
+ * The engine's own closed vocabulary, and its members are already dotted lowercase — so a
+ * `RejectionCodes` value *is* a localization key, exactly as a `ReasonCodes` value already
+ * is on a response line. Nothing here builds one; this list exists so the completeness
+ * check knows which texts the interface owes (`ADR-012`: the code is the engine's, the
+ * sentence a player reads is the screen's).
+ */
+export const REJECTION_KEYS: readonly string[] = Object.freeze(Object.values(RejectionCodes));
 
 /**
  * The captions for the two campaign-wide money facts (`NEGOTIATION_SPEC` §2.3, §5.1):

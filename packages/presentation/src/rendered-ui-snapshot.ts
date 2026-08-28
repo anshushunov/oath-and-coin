@@ -12,6 +12,7 @@ import {
   contractAvailabilityKey,
   contractBoardStateKey,
   errorKey,
+  offerActionKey,
   offerPhaseKey,
   reasonDirectionKey,
   screenStateKey,
@@ -215,6 +216,18 @@ function contractOfferSnapshot(
 
   if (model.settlement !== null) {
     resolveSettlement(model.settlement, resolve, texts, heroDisplayNameKeyOf);
+  }
+
+  // Last, because it is what a player does *after* reading everything above. Every one of
+  // the six, dark ones included, each followed by the refusal it would get — a control
+  // that vanished would leave the player with no way to learn what to do instead, and a
+  // dark one with no reason would leave them with no way to learn why not.
+  for (const available of model.availableActions) {
+    resolve(offerActionKey(available.action));
+
+    if (available.disabledReasonKey !== null) {
+      resolve(available.disabledReasonKey);
+    }
   }
 
   return texts;

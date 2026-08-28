@@ -10,6 +10,7 @@ import {
   type PromiseTermsLine,
   type SettlementLine
 } from './contract-offer-screen-model.ts';
+import { OFFER_ACTIONS } from './offer-actions.ts';
 import { QualitativeGrade } from './qualitative-scale.ts';
 import { ScreenState } from './screen-state.ts';
 import { TITLE_KEY } from './keys.ts';
@@ -63,6 +64,7 @@ function aModel(overrides: Partial<ContractOfferScreenContent> = {}): ContractOf
     treasuryForecast: 400,
     promiseTerms: null,
     settlement: null,
+    availableActions: OFFER_ACTIONS.map((action) => ({ action, disabledReasonKey: null })),
     ...overrides
   };
 }
@@ -70,7 +72,13 @@ function aModel(overrides: Partial<ContractOfferScreenContent> = {}): ContractOf
 /** A model with nothing to offer — the shape {@link anOfferLine} must never ride along on. */
 function anEmptyModel(): ContractOfferScreenContent {
   return createContractOfferScreenModel(
-    aModel({ state: ScreenState.Empty, contract: null, roster: [], offer: null })
+    aModel({
+      state: ScreenState.Empty,
+      contract: null,
+      roster: [],
+      offer: null,
+      availableActions: []
+    })
   );
 }
 
@@ -96,12 +104,24 @@ describe('the combinations a screen model refuses', () => {
     ).not.toThrow();
     expect(() =>
       createContractOfferScreenModel(
-        aModel({ state: ScreenState.Loading, contract: null, roster: [], offer: null })
+        aModel({
+          state: ScreenState.Loading,
+          contract: null,
+          roster: [],
+          offer: null,
+          availableActions: []
+        })
       )
     ).not.toThrow();
     expect(() =>
       createContractOfferScreenModel(
-        aModel({ state: ScreenState.Empty, contract: null, roster: [], offer: null })
+        aModel({
+          state: ScreenState.Empty,
+          contract: null,
+          roster: [],
+          offer: null,
+          availableActions: []
+        })
       )
     ).not.toThrow();
     expect(() =>
@@ -111,6 +131,7 @@ describe('the combinations a screen model refuses', () => {
           contract: null,
           roster: [],
           offer: null,
+          availableActions: [],
           errorCode: 'CONTENT_ROOT_NOT_FOUND',
           errorDetail: 'no such directory'
         })
@@ -211,6 +232,19 @@ describe('the combinations a screen model refuses', () => {
     expect(() =>
       createContractOfferScreenModel({ ...anEmptyModel(), settlement: aSettlementLine() })
     ).toThrow(/settlement/u);
+  });
+
+  it('refuses a model that carries commands with nothing to press them against', () => {
+    // The fourth field, pinned on its own for the reason the three above are: every other
+    // test that reaches this branch leaves `availableActions` empty by way of some other
+    // field, so a mutant deleting just this clause would stay green. Six live buttons over
+    // a screen with no package is exactly the leftover the whole check is about.
+    expect(() =>
+      createContractOfferScreenModel({
+        ...anEmptyModel(),
+        availableActions: OFFER_ACTIONS.map((action) => ({ action, disabledReasonKey: null }))
+      })
+    ).toThrow(/availableActions/u);
   });
 
   it.each([ScreenState.Incomplete, ScreenState.Normal])(

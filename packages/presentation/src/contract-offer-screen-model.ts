@@ -1,6 +1,7 @@
 import type { CausalTrace, ContentId, OfferPhase } from '@oath-and-coin/simulation';
 
 import type { ChoiceLever, Lever, MultiChoiceLever, NumericLever, OfferBudget } from './lever.ts';
+import type { AvailableAction, OfferAction } from './offer-actions.ts';
 import type { QualitativeGrade } from './qualitative-scale.ts';
 import { ScreenKind } from './screen-kind.ts';
 import { ScreenState, type ReasonDirection } from './screen-state.ts';
@@ -183,6 +184,21 @@ export function leversOf(offer: OfferLine): readonly Lever[] {
 }
 
 /**
+ * Just the commands a player may press, in {@link OFFER_ACTIONS} order.
+ *
+ * Here rather than beside `availableActions` in `offer-actions.ts`, and not by preference:
+ * this reads a `ContractOfferScreenModel`, that module is what the model's own field type
+ * comes from, and the two importing each other is the cycle `lint:deps`'s `no-circular`
+ * rule refuses — found by running into it, the same way `OfferPhase` ended up declared
+ * beside `ContractState` rather than in `offer-state.ts`.
+ */
+export function enabledActions(model: ContractOfferScreenModel): readonly OfferAction[] {
+  return model.availableActions
+    .filter((available) => available.disabledReasonKey === null)
+    .map((available) => available.action);
+}
+
+/**
  * What keeping the guild's word will mean and what breaking it will mean, stated as two
  * keys rather than one — `NEGOTIATION_SPEC` §5.1 requires both, named as the fix for
  * Football Manager's own failure mode: a promise counted broken at the moment it was
@@ -263,6 +279,15 @@ export interface ContractOfferScreenModel {
   readonly treasuryForecast: number;
   readonly promiseTerms: PromiseTermsLine | null;
   readonly settlement: SettlementLine | null;
+  /**
+   * All six commands of the protocol, each with the refusal it would get or `null` when it
+   * would be taken (`NEGOTIATION_SPEC` §3.1, `RESOLUTION_SPEC` §3.1).
+   *
+   * Always six, on every state, so a screen never has to decide which controls exist —
+   * only how to draw one that is dark. Empty exactly when {@link offer} is `null`: a screen
+   * with no package behind it has no command to press against one.
+   */
+  readonly availableActions: readonly AvailableAction[];
 }
 
 /**
@@ -344,12 +369,14 @@ function requireNoContractContent(model: ContractOfferScreenContent): void {
     model.responses.length > 0 ||
     model.offer !== null ||
     model.promiseTerms !== null ||
-    model.settlement !== null
+    model.settlement !== null ||
+    model.availableActions.length > 0
   ) {
     throw new Error(
-      `contract, roster, responses, offer, promiseTerms and settlement must all be empty when ` +
-        `state is ${model.state}: a screen with nothing to offer must not carry a roster, an ` +
-        'offer or its terms from some other offer.'
+      `contract, roster, responses, offer, promiseTerms, settlement and availableActions must ` +
+        `all be empty when state is ${model.state}: a screen with nothing to offer must not ` +
+        'carry a roster, an offer, its terms or a command to press against it from some other ' +
+        'offer.'
     );
   }
 }

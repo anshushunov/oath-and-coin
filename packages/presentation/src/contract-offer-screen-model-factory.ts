@@ -29,6 +29,7 @@ import {
   traitDisplayNameKey
 } from './keys.ts';
 import type { ChoiceLever, ChoiceOption, NumericLever, OfferBudget } from './lever.ts';
+import { availableActions, type AvailableAction } from './offer-actions.ts';
 import {
   createContractOfferScreenModel,
   type ContractLine,
@@ -111,7 +112,8 @@ export const LOADING_SCREEN: ContractOfferScreenModel = createContractOfferScree
   offer: null,
   treasuryForecast: 0,
   promiseTerms: null,
-  settlement: null
+  settlement: null,
+  availableActions: []
 });
 
 /**
@@ -139,7 +141,8 @@ export function failedScreen(errorCode: string, errorDetail: string): ContractOf
     offer: null,
     treasuryForecast: 0,
     promiseTerms: null,
-    settlement: null
+    settlement: null,
+    availableActions: []
   });
 }
 
@@ -203,7 +206,8 @@ export function contractOfferScreenModel(
       offer: null,
       treasuryForecast: state.treasury,
       promiseTerms: null,
-      settlement: null
+      settlement: null,
+      availableActions: []
     });
   }
 
@@ -262,7 +266,10 @@ export function contractOfferScreenModel(
       state.treasury,
       contract.patronFee,
       heroDefinitionByHeroId
-    )
+    ),
+    // All six, always — the screen draws a dark control with a reason rather than deciding
+    // which controls exist (`offer-actions.ts`).
+    availableActions: availableActions(state, contract)
   });
 }
 
@@ -799,8 +806,17 @@ export function describeContractOfferReadModel(model: ContractOfferScreenModel):
     treasury_forecast: validated.treasuryForecast,
     promise_terms:
       validated.promiseTerms === null ? null : describePromiseTerms(validated.promiseTerms),
-    settlement: validated.settlement === null ? null : describeSettlement(validated.settlement)
+    settlement: validated.settlement === null ? null : describeSettlement(validated.settlement),
+    // Both halves of each entry. Which commands *exist* never changes, so a projection of
+    // the actions alone would hash identically for a package waiting on its key hero and
+    // one waiting on a settlement — and the whole content of this field is which of them
+    // are dark and why.
+    available_actions: validated.availableActions.map(describeAvailableAction)
   };
+}
+
+function describeAvailableAction(available: AvailableAction): CanonicalValue {
+  return { action: available.action, disabled_reason_key: available.disabledReasonKey };
 }
 
 function describeContract(contract: ContractLine): CanonicalValue {
