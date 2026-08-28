@@ -54,12 +54,16 @@ test('a page that has been pressed still answers, and still draws', async ({ pag
 
   const before = await report(page);
 
-  await page.getByTestId('action-poll').click({ timeout: ANSWER_TIMEOUT });
+  // The press itself is raced as well as the question after it, because a frozen page can
+  // swallow either: Playwright waits for scheduled navigations once the click has landed,
+  // and a renderer that has stopped running never lets that wait finish.
+  await answerWithin(page.getByTestId('action-poll').click(), 'take a press');
 
   // The whole test in one line: a question the renderer's main thread has to run JavaScript
   // to answer. Everything below is detail about *what* the answer was.
   const after = await answerWithin(
-    page.evaluate(() => document.querySelector('[data-testid="run-report"]')?.textContent ?? '')
+    page.evaluate(() => document.querySelector('[data-testid="run-report"]')?.textContent ?? ''),
+    'answer for the command it applied'
   );
   const parsed = JSON.parse(after) as PageReport;
 
@@ -110,15 +114,15 @@ test('a page that has been pressed still answers, and still draws', async ({ pag
  * precisely "it never comes back": without this the whole run would die on Playwright's own
  * clock, in a message that names no cause.
  */
-async function answerWithin(answer: Promise<string>): Promise<string> {
+async function answerWithin<T>(answer: Promise<T>, what: string): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
   const gaveUp = new Promise<never>((_resolve, reject) => {
     timer = setTimeout(() => {
       reject(
         new Error(
-          `The page did not answer within ${String(ANSWER_TIMEOUT)}ms of an applied command. ` +
-            'That is what a frozen renderer looks like from outside: no error, no crash, and no ' +
-            'JavaScript running to reply with.'
+          `The page did not ${what} within ${String(ANSWER_TIMEOUT)}ms. That is what a frozen ` +
+            'renderer looks like from outside: no error, no crash, and no JavaScript running to ' +
+            'reply with.'
         )
       );
     }, ANSWER_TIMEOUT);
