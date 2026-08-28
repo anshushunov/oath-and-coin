@@ -337,17 +337,28 @@ describe('which of the six commands the screen offers', () => {
  * The check that makes the restatement safe.
  *
  * Every row, every command: the engine is asked to apply it for real, against a throwaway
- * copy of the campaign, and the set it accepts is compared with the set this module calls
- * enabled. Nothing here reads the table — a rule that drifted from `engine.ts` would show
- * up as a command the engine takes and the screen hides, or the reverse.
+ * copy of the campaign, and **the code it answers with** is compared with the one this
+ * module puts on the dark control. Nothing here reads the table — a rule that drifted from
+ * `engine.ts` shows up as a command the engine takes and the screen hides, as the reverse,
+ * or as a dark button naming the wrong refusal.
+ *
+ * **Comparing the codes and not merely `applied` is the whole point.** The first version of
+ * this suite compared the two sets of *enabled* actions, and external review was right that
+ * it left the interesting half unmeasured: `engine.ts` says outright that the order of
+ * refusals "is part of the canonical result of a command, not an implementation detail", so
+ * a dark control that names a true-but-later reason is wrong in exactly the way this module
+ * claims not to be — and two codes swapped between actions would have kept every enabled
+ * set and every code in the vocabulary identical.
  *
  * `composeOffer` is probed with a package that is otherwise valid — the crew the contract
  * already invites when it invites one, the first `requiredCrew` heroes otherwise — because
  * "may I revise" is a question about the phase, not about the package a player has yet to
- * assemble. Every other command carries no arguments of its own at all.
+ * assemble. A probe carrying a deliberately broken package would answer `crew_size_mismatch`
+ * everywhere and measure the probe rather than the screen. Every other command carries no
+ * arguments of its own at all.
  */
 describe('the engine agrees about every one of the six', () => {
-  function wouldApply(state: GameState, action: OfferAction): boolean {
+  function refusalOf(state: GameState, action: OfferAction): string | null {
     const contract = state.contracts.get(ids.caravan)!;
     const commandId = 999;
     const expectedStateVersion = state.metadata.stateVersion;
@@ -397,12 +408,25 @@ describe('the engine agrees about every one of the six', () => {
       }
     })();
 
-    return result.applied;
+    return result.applied ? null : result.rejectionCode;
   }
 
-  it.each(ROWS)('$name — the engine takes exactly what the screen offers', ({ state }) => {
+  it.each(ROWS)('$name — the engine answers exactly what the screen shows', ({ state }) => {
     const campaignState = state();
-    const accepted = OFFER_ACTIONS.filter((action) => wouldApply(campaignState, action));
+    const { availableActions: declared } = contractOfferScreenModel(campaignState, [], ids.caravan);
+
+    expect(declared.map((available) => [available.action, available.disabledReasonKey])).toEqual(
+      OFFER_ACTIONS.map((action) => [action, refusalOf(campaignState, action)])
+    );
+  });
+
+  it.each(ROWS)('$name — and takes exactly what the screen offers', ({ state }) => {
+    // The set, stated separately from the codes above. It is implied by them, and it is
+    // still worth its own line: this is the sentence a player experiences — the button was
+    // live and the command went through — while the codes are what they read when it did
+    // not, and a failure in one should not be reported as a failure in the other.
+    const campaignState = state();
+    const accepted = OFFER_ACTIONS.filter((action) => refusalOf(campaignState, action) === null);
 
     expect(actionsOf(campaignState)).toEqual(accepted);
   });
