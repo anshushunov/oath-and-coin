@@ -22,6 +22,7 @@ import {
   createContractBoardScreenModel
 } from './contract-board-screen-model.ts';
 import { CONTRACT_BOARD_TITLE_KEY } from './keys.ts';
+import { ScreenKind } from './screen-kind.ts';
 import { SCREEN_STATES, ScreenState } from './screen-state.ts';
 import {
   aCapableHero,
@@ -239,6 +240,22 @@ describe('a row', () => {
       [ids.crypt, ContractAvailability.Resolved],
       [debtId, ContractAvailability.InProgress],
       [ids.caravan, ContractAvailability.Settled]
+    ]);
+  });
+
+  it('says which screen pressing it opens, and that a settled contract opens none', () => {
+    // The row's other half: `availability` is the sentence a player reads, this is where the
+    // press goes. Read off the same lifecycle answer rather than worked out again, and
+    // `null` on the one row whose screen is the board itself — a control that took a player
+    // to the page they are already on does nothing, and a screen may not decide that for
+    // itself by reading the word beside it.
+    const board = contractBoardScreenModel(aCampaignAtEveryStage());
+
+    expect(board.rows.map((row) => [row.availability, row.opensScreen])).toEqual([
+      [ContractAvailability.Open, ScreenKind.ContractOffer],
+      [ContractAvailability.Resolved, ScreenKind.AfterAction],
+      [ContractAvailability.InProgress, ScreenKind.ContractOffer],
+      [ContractAvailability.Settled, null]
     ]);
   });
 
