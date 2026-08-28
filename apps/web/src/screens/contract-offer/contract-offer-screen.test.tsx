@@ -609,6 +609,61 @@ function everyActionLive(): ContractOfferScreenModel {
 }
 
 /**
+ * Three heroes, two seats, two method alternatives — a package in which *every* term can be
+ * moved to something the model does not already record.
+ *
+ * The crew is the reason there are three heroes and two seats: with two of each, a crew can
+ * only be emptied and refilled, never exchanged, and "the screen sent the draft" would still
+ * be indistinguishable from "the screen sent the model".
+ */
+function richDraftModel(): ContractOfferScreenModel {
+  const base = twoSeatDraftModel();
+  const heroes = [
+    { value: id('core:bram'), labelKey: 'hero.core.bram.name' },
+    { value: id('core:doran'), labelKey: 'hero.core.doran.name' },
+    { value: id('core:zara'), labelKey: 'hero.core.zara.name' }
+  ];
+
+  return createContractOfferScreenModel({
+    ...base,
+    roster: [
+      ...base.roster,
+      {
+        definition: 'core:zara',
+        displayNameKey: 'hero.core.zara.name',
+        greed: QualitativeGrade.Low,
+        caution: QualitativeGrade.Low,
+        pride: QualitativeGrade.High,
+        principleKeys: [],
+        inclinationKeys: []
+      }
+    ],
+    availableActions: LIVE_ACTIONS,
+    offer: {
+      ...base.offer!,
+      keyHeroLever: {
+        chosen: id('core:bram'),
+        options: heroes.map((hero) => ({
+          ...hero,
+          selected: hero.value === id('core:bram')
+        })),
+        disabledReasonKey: null
+      },
+      crewLever: {
+        ...base.offer!.crewLever,
+        chosen: [id('core:bram'), id('core:doran')],
+        options: heroes.map((hero) => ({
+          ...hero,
+          selected: hero.value !== id('core:zara')
+        })),
+        exactly: 2,
+        disabledReasonKey: null
+      }
+    }
+  });
+}
+
+/**
  * Two seats and two heroes invited — the shape a crew can actually be *changed* in.
  *
  * {@link crewedDraftModel} has one seat and one hero, so there is no tick to undo without
@@ -1072,24 +1127,43 @@ function collectLabelledAttributes(root: Node): readonly string[] {
  * throws away.
  */
 describe('the package a player is still assembling', () => {
-  it('sends the whole package under one command', () => {
+  it('sends the whole package under one command, as the player left it', () => {
+    // **Every term is moved off what the model records before the package is sent**, and
+    // that is what makes this test worth anything. External review found the first version
+    // typing `40` into a field the model already read `40` from, over a method, a key hero
+    // and a crew nobody touched — so a screen that ignored the draft entirely and sent
+    // `offer.advanceLever.value` and its neighbours would have passed. Not one field below
+    // matches what `richDraftModel` records.
     const controller = fakeController();
-    const { container } = renderWith(crewedDraftModel(), controller);
+    const { container } = renderWith(richDraftModel(), controller);
 
-    type(control(container, 'offer.advance'), '40');
+    type(control(container, 'offer.advance'), '41');
+    type(control(container, 'offer.promised_bonus'), '26');
+    // The method the package did *not* choose: `richDraftModel` chose `method:open`, which
+    // the contract lists second.
+    click(control(container, 'method-option-0'));
+    // The third hero, neither the package's key hero nor the roster's first.
+    click(control(container, 'key-hero-option-2'));
+    // A different crew of the same size: drop `core:doran`, take `core:zara`.
+    click(control(container, 'crew-option-1'));
+    click(control(container, 'crew-option-2'));
     click(actionButton(container, OfferAction.Compose));
 
     expect(controller.calls.map((call) => call.name)).toEqual(['composeOfferFromDraft']);
     expect(controller.calls[0]?.args[0]).toBe('core:escort_the_caravan');
-    // Every term of the package, not only the one that was touched: a screen that sent the
-    // advance alone would silently reset the promise and the method to nothing, because
-    // `composeOffer` replaces the package whole (`NEGOTIATION_SPEC` §3.3).
+    // Every term of the package, not only the ones that were touched: `composeOffer`
+    // replaces the package whole (`NEGOTIATION_SPEC` §3.3), so a screen sending less would
+    // silently reset the rest to nothing.
+    //
+    // `invited` is in the options' own order and not the order the boxes were ticked —
+    // `core:zara` was taken last and is listed last because that is where the roster puts
+    // it, which is the rule this assertion pins.
     expect(controller.calls[0]?.args[1]).toEqual({
-      advance: 40,
-      promisedBonus: 25,
-      methodTag: 'method:open',
-      keyHero: 'core:bram',
-      invited: ['core:bram']
+      advance: 41,
+      promisedBonus: 26,
+      methodTag: 'method:deception',
+      keyHero: 'core:zara',
+      invited: ['core:bram', 'core:zara']
     });
   });
 
@@ -1225,5 +1299,92 @@ describe('the package a player is still assembling', () => {
     }
 
     expect(controller.calls).toEqual([]);
+  });
+});
+
+/**
+ * What a number field does with input that is legal for `input[type=number]` and is not an
+ * integer.
+ *
+ * Every money term of a package is an integer — `advance` and `promisedBonus` are ints all
+ * the way down to the canonical artifact (`RESOLUTION_SPEC` §4.8) — but the control accepts
+ * far more than integers, and external review found what the first implementation did with
+ * the rest: `Number.parseInt` reads `1e1` as `1` and `1.5` as `1`, so the package quietly
+ * carried a term the player never typed.
+ */
+describe('the numbers a player types', () => {
+  function advanceAfter(typed: string): number {
+    const controller = fakeController();
+    const { container } = renderWith(everyActionLive(), controller);
+
+    type(control(container, 'offer.advance'), typed);
+    click(actionButton(container, OfferAction.Compose));
+
+    return (controller.calls[0]?.args[1] as { readonly advance: number }).advance;
+  }
+
+  it.each([
+    ['a plain integer', '7', 7],
+    // Legal in the control and not an integer: the field must keep what it had rather than
+    // invent a term by truncation. `draftModel`'s own advance is 40.
+    ['exponential notation', '1e1', 10],
+    ['a fraction', '1.5', 40],
+    ['nothing at all', '', 40]
+  ])('%s becomes %s', (_name, typed, expected) => {
+    expect(advanceAfter(typed)).toBe(expected);
+  });
+
+  it('declares itself an integer control', () => {
+    // `step` is what makes the browser itself refuse a fraction, rather than leaving the
+    // whole burden on the handler above.
+    const { container } = renderWith(everyActionLive(), fakeController());
+
+    expect((control(container, 'offer.advance') as HTMLInputElement).step).toBe('1');
+  });
+});
+
+/**
+ * A screen whose six controls are not all in the same condition.
+ *
+ * External review found that every interactive fixture in this file was uniform — six live
+ * or six dark, all for one reason — so an implementation that computed `disabled` once, off
+ * the first entry, would pass the lot. Real models are never uniform: the whole point of
+ * `availableActions` is that one command is live while five explain themselves.
+ */
+describe('a screen with some controls live and others dark', () => {
+  const MIXED: readonly AvailableAction[] = [
+    { action: OfferAction.Compose, disabledReasonKey: null },
+    { action: OfferAction.AskKeyHero, disabledReasonKey: RejectionCodes.AlreadyResponded },
+    { action: OfferAction.Lock, disabledReasonKey: null },
+    { action: OfferAction.Poll, disabledReasonKey: RejectionCodes.OfferNotLocked },
+    { action: OfferAction.Resolve, disabledReasonKey: RejectionCodes.CrewNotFilled },
+    { action: OfferAction.Settle, disabledReasonKey: RejectionCodes.NotResolved }
+  ];
+
+  function mixedModel(): ContractOfferScreenModel {
+    return createContractOfferScreenModel({ ...crewedDraftModel(), availableActions: MIXED });
+  }
+
+  it('darkens exactly the ones the model refuses', () => {
+    const { container } = renderWith(mixedModel(), fakeController());
+
+    expect(MIXED.map((available) => actionButton(container, available.action).disabled)).toEqual(
+      MIXED.map((available) => available.disabledReasonKey !== null)
+    );
+  });
+
+  it('presses only through the live ones', () => {
+    const controller = fakeController();
+    const { container } = renderWith(mixedModel(), controller);
+
+    for (const available of MIXED) {
+      click(actionButton(container, available.action));
+    }
+
+    // Compose and lock, in that order, and nothing from the four that are dark.
+    expect(controller.calls.map((call) => call.name)).toEqual([
+      'composeOfferFromDraft',
+      'lockOffer'
+    ]);
   });
 });

@@ -460,16 +460,27 @@ function NumberField({
       data-testid={testId}
       min={lever.min}
       max={lever.max}
+      // Every money term of a package is an integer, all the way down to the canonical
+      // artifact (`RESOLUTION_SPEC` §4.8), and `step` is what makes the control itself say
+      // so — the handler below is the second line of defence, not the only one.
+      step={1}
       value={String(value)}
       disabled={lever.disabledReasonKey !== null}
       onChange={(event) => {
-        const parsed = Number.parseInt(event.target.value, 10);
+        // **`valueAsNumber`, never `parseInt` over the text.** External review found what
+        // the difference costs: `input[type=number]` legitimately accepts `1e1` and `1.5`,
+        // and `Number.parseInt` reads both as `1` — so a player who typed ten got one, a
+        // player who typed one and a half got one, and in each case the package carried a
+        // term nobody entered with nothing on screen saying so. The browser's own parse
+        // reads `1e1` as ten.
+        const typed = event.target.valueAsNumber;
 
-        // An empty box is `NaN`, not zero: a player midway through clearing a field has not
-        // said "nothing", and turning that into a term would send a package they never
-        // typed. The last good value stands until they type another.
-        if (!Number.isNaN(parsed)) {
-          onChange(parsed);
+        // Anything that is not a whole number leaves the term where it was: an empty box is
+        // `NaN`, and a player midway through clearing a field has not said "nothing"; a
+        // fraction is a number this package cannot carry at all. Silence beats a value
+        // nobody typed — the last one they did type still stands, and the control shows it.
+        if (Number.isInteger(typed)) {
+          onChange(typed);
         }
       }}
     />
