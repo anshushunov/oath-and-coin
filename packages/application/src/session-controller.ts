@@ -201,9 +201,11 @@ export interface SessionController {
    * the code `composeOffer` itself answers with for a `HeroId` the roster does not hold —
    * and never a throw: a stale screen naming a hero the loaded campaign lacks is something
    * a player can be told, and every other command on this controller already answers that
-   * way. A contract this campaign does not carry answers `rejected.unknown_contract` for
-   * the same reason, before any hero is looked up, since without the contract there is no
-   * package to compose at all.
+   * way. A contract this campaign does not carry answers `rejected.unknown_contract` — from
+   * `composeOffer` itself, not from a guard here. This method briefly had one, and a mutant
+   * deleting it stayed green: the engine checks the contract before anything else it does,
+   * so the guard could never be the thing that answered. Removed rather than covered by a
+   * test — an equivalent mutant is a sign of dead code, not of a missing check.
    */
   composeOfferFromDraft(contractId: ContentId, draft: OfferDraft): CommandResult;
   proposeContractToHero(input: NegotiationCommandInput<ProposeContractToHero>): CommandResult;
@@ -382,10 +384,6 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
       ),
     composeOfferFromDraft: (contractId, draft) =>
       dispatchNegotiationCommand(store, contractId, (state, commandId, expectedStateVersion) => {
-        if (!state.contracts.has(contractId)) {
-          return rejected(state, RejectionCodes.UnknownContract);
-        }
-
         const heroIdByDefinition = new Map(
           state.heroes.values().map((hero) => [hero.definition, hero.id])
         );
