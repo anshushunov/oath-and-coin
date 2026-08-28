@@ -150,9 +150,17 @@ const content = loadContentSet(shippedContent);
  * player-facing text creeping back into `content/` after `ADR-012` moved it out, did not
  * happen here. The version moved alone, which is exactly the shape a data-only change is
  * supposed to have.
+ *
+ * The contract-loop UI plan's task 9 moved it a ninth time, to `a045593c0ff3b153`, and
+ * moved the key count with it, to 100: the playtest's second counterbalanced pair
+ * (`RESOLUTION_SPEC` §8) is two contracts — `core:hold_the_river_ford` and
+ * `core:burn_the_plague_barrow` — and each needs its own authored display name. **Two keys
+ * and exactly two**, which is what this pair of constants is for: a contract's name is
+ * content's to author (`ADR-012`), and any *third* key arriving in the same change would be
+ * interface text sneaking back into `content/` under cover of a content addition.
  */
-const FROZEN_CONTENT_VERSION = 'cd159cbb2363d417';
-const FROZEN_CONTENT_KEY_COUNT = 98;
+const FROZEN_CONTENT_VERSION = 'a045593c0ff3b153';
+const FROZEN_CONTENT_KEY_COUNT = 100;
 
 /** Every key the presentation layer can produce for the shipped content tree. */
 function everyKeyTheScreenCanShow(): readonly string[] {

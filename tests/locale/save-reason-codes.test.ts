@@ -24,6 +24,7 @@ import {
   ReasonCodes,
   SortedSet,
   compareHeroIds,
+  parseContentId,
   proposeContractToHero,
   type CausalTrace,
   type ContentId,
@@ -75,15 +76,22 @@ const CREATED_AT = '2026-08-19T00:00:00.000Z';
 function aDecidedCampaign(): { readonly state: GameState; readonly focused: ContentId } {
   const base = createInitialState(content, 7n, RULESET_VERSION);
   const [heroKey] = base.heroes.keys();
-  const [contractKey] = base.contracts.keys();
+  // Named rather than "the first contract on the board", and the difference has already
+  // cost once: this fixture needs a *scored* decision, so it needs a contract the hero it
+  // asks is not gated out of. The crypt is that contract for `core:bram`; the second
+  // counterbalanced pair (contract-loop UI plan's task 9) put
+  // `core:burn_the_plague_barrow` ahead of it in content-id order, and that one carries
+  // `target:temple` — which `core:bram` refuses on principle — so a blocked trace has no
+  // `positiveFactors[0]` for the tamper below to reach into.
+  const contractKey = parseContentId('core:cleanse_the_crypt');
   // `proposeContractToHero` (`DEC-008` Task 11) only lets the offer's key hero answer
   // while the package is a draft — this fixture keys the offer to the one hero it
   // proposes to directly, by hand, rather than through a real `composeOffer` command,
   // so the recorded decision this file's tamper cases need still exists.
-  const contract = base.contracts.get(contractKey!)!;
+  const contract = base.contracts.get(contractKey)!;
   const keyed: GameState = {
     ...base,
-    contracts: base.contracts.set(contractKey!, {
+    contracts: base.contracts.set(contractKey, {
       ...contract,
       // One seat, so the key hero is the whole crew: this fixture is about reason codes
       // reaching a save, not about staffing the shipped crypt.
@@ -101,11 +109,11 @@ function aDecidedCampaign(): { readonly state: GameState; readonly focused: Cont
   const { state } = proposeContractToHero(keyed, {
     commandId: 1,
     heroId: heroKey!,
-    contractId: contractKey!,
+    contractId: contractKey,
     expectedStateVersion: keyed.metadata.stateVersion
   });
 
-  return { state, focused: contractKey! };
+  return { state, focused: contractKey };
 }
 
 const { state: campaign, focused } = aDecidedCampaign();

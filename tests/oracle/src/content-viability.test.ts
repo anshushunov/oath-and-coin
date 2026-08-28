@@ -94,8 +94,13 @@ function eligiblePools(contract: ContractDefinition, set: ContentSet): readonly 
   );
 }
 
-/** The best crew this contract can be given, and what its coverage says about it. */
-function bestCrewFor(contract: ContractDefinition) {
+/**
+ * The best crew this contract can be given, and what its coverage says about it.
+ *
+ * `without`, when given, is a hero the search may not use — the question "is this job still
+ * doable if that one person will not come", which is what a broken promise leaves behind.
+ */
+function bestCrewFor(contract: ContractDefinition, without: string | null = null) {
   let best: {
     readonly crew: readonly HeroDefinition[];
     readonly coverage: readonly NeedCoverage[];
@@ -103,7 +108,10 @@ function bestCrewFor(contract: ContractDefinition) {
   } | null = null;
 
   for (const pool of eligiblePools(contract, content)) {
-    for (const crew of crewsOf(pool, contract.requiredCrew)) {
+    for (const crew of crewsOf(
+      pool.filter((hero) => String(hero.id) !== without),
+      contract.requiredCrew
+    )) {
       const coverage = coverNeeds(contract.needs, crew.map(asParticipant), {
         risk: contract.risk
       });
@@ -187,5 +195,114 @@ describe('the strongest crew is not the right crew', () => {
 
   it('so the weaker crew beats the stronger one on the only number that decides', () => {
     expect(baseMarginOf(coverageFor(fitting))).toBeGreaterThan(baseMarginOf(coverageFor(strong)));
+  });
+});
+
+/**
+ * The second counterbalanced pair the playtest needs (`RESOLUTION_SPEC` §8, the contract-loop
+ * UI plan's task 9): `core:hold_the_river_ford` and `core:burn_the_plague_barrow`.
+ *
+ * **Why a pair has to be checked and not merely authored.** §8's requirement is not "two more
+ * contracts" — it is that the two vary the hero at the centre, the tags, and how much a broken
+ * word costs, *and* that neither aggrieved man is indispensable to the other job. Every one of
+ * those is a fact about numbers and traits the loader can be asked for, and a pair that
+ * quietly stopped satisfying them would leave the playtest measuring obedience to the brief:
+ * if the man you wronged is the only one who can do the next job, paying up is the single
+ * rational answer and H-B measures nothing.
+ *
+ * What is deliberately *not* asserted here: whether breaking the promise pays. That is a
+ * function of the package a player composes and of the treasury at the time, not of content —
+ * what content owns is the ceiling on a promise (`patron_fee`, `NEGOTIATION_SPEC` §3.3) and
+ * the cost of replacing the man, and both are below.
+ */
+describe('the second counterbalanced pair', () => {
+  const contractOf = (id: string) => content.contracts.get(parseContentId(id))!;
+
+  const ford = contractOf('core:hold_the_river_ford');
+  const barrow = contractOf('core:burn_the_plague_barrow');
+  const caravan = contractOf('core:escort_the_caravan');
+
+  const namesOf = (crew: readonly HeroDefinition[]) => crew.map((hero) => String(hero.id)).sort();
+
+  it('the ford is the unannounced transfer: the caravan’s tags on a different job', () => {
+    // §8's third requirement. A transfer contract has to carry the *same* social facts —
+    // the same patron, the same quarry, the same two methods on offer — because what H-A1
+    // asks the tester to carry across is their reading of the people, not of a job they
+    // memorised. Everything that is not a tag differs, so it is a new contract and not a
+    // second printing of the caravan.
+    expect([...ford.tags].sort()).toEqual([...caravan.tags].sort());
+    expect([...ford.negotiableTags].sort()).toEqual([...caravan.negotiableTags].sort());
+
+    expect(ford.id).not.toBe(caravan.id);
+    expect(ford.requiredCrew).not.toBe(caravan.requiredCrew);
+    expect(ford.risk).not.toBe(caravan.risk);
+    expect(ford.patronFee).not.toBe(caravan.patronFee);
+    expect([...ford.needs.entries()]).not.toEqual([...caravan.needs.entries()]);
+  });
+
+  it('the two lean on different people', () => {
+    // §8's first requirement, read off the arithmetic rather than asserted in prose: the
+    // crew each job actually wants is a different set of names, and the man each leans on
+    // hardest is a different man. A pair answered by one crew teaches "take these four",
+    // which is the kill criterion `MVP_PLAN` §3.2 names.
+    const fordCrew = bestCrewFor(ford)!;
+    const barrowCrew = bestCrewFor(barrow)!;
+
+    expect(namesOf(fordCrew.crew)).not.toEqual(namesOf(barrowCrew.crew));
+
+    const strongest = (crew: readonly HeroDefinition[]) =>
+      [...crew].sort((left, right) => right.capability.grade - left.capability.grade)[0]!.id;
+
+    expect(String(strongest(fordCrew.crew))).not.toBe(String(strongest(barrowCrew.crew)));
+  });
+
+  it('the barrow asks people the ford never has to ask', () => {
+    // §8's second requirement. `target:temple` gates two heroes out of the barrow under
+    // *every* package it can be offered under, while the ford at its open method gates
+    // nobody — so the same roster answers the two jobs as two different rosters, which is
+    // what makes the tags a variable rather than decoration.
+    const barrowPools = eligiblePools(barrow, content).map(namesOf);
+    const fordPools = eligiblePools(ford, content).map(namesOf);
+
+    for (const pool of barrowPools) {
+      expect(pool).not.toContain('core:bram');
+      expect(pool).not.toContain('core:ilsa');
+    }
+
+    expect(fordPools.some((pool) => pool.length === content.heroes.values().length)).toBe(true);
+  });
+
+  it('nobody wronged on one of them is indispensable to the other', () => {
+    // The requirement the design spec states in so many words: a pair where the aggrieved
+    // hero cannot be replaced makes the honest payment obvious, and H-B then measures
+    // obedience to the brief rather than the loop. Checked in both directions and for every
+    // member of each best crew, because which of them the player promises to is the
+    // player's choice.
+    for (const [contract, other] of [
+      [ford, barrow],
+      [barrow, ford]
+    ] as const) {
+      for (const hero of bestCrewFor(contract)!.crew) {
+        const replacement = bestCrewFor(other, String(hero.id));
+
+        expect(replacement, `${other.id} has no crew at all without ${hero.id}`).not.toBeNull();
+        expect(
+          allClosed(replacement!.coverage),
+          `${other.id} cannot be finished cleanly without ${hero.id}, so wronging them on ` +
+            `${contract.id} would leave the honest payment as the only sensible answer`
+        ).toBe(true);
+        expect(
+          replacement!.base,
+          `${other.id} without ${hero.id}, base margin`
+        ).toBeGreaterThanOrEqual(0);
+      }
+    }
+  });
+
+  it('and the two put different ceilings on what can be promised', () => {
+    // `NEGOTIATION_SPEC` §3.3 bounds both the advance and the promised bonus by the patron
+    // fee, so the fee *is* the size of the fork a settlement offers. Two contracts with the
+    // same fee would offer the same fork twice.
+    expect(ford.patronFee).not.toBe(barrow.patronFee);
   });
 });

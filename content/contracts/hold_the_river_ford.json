@@ -1,0 +1,11 @@
+{
+  "schema_version": 4,
+  "id": "core:hold_the_river_ford",
+  "display_name_key": "contract.core.hold_the_river_ford.name",
+  "patron_fee": 60,
+  "risk": 30,
+  "required_crew": 3,
+  "needs": { "frontline": 45, "wilderness": 30 },
+  "tags": ["patron:merchant_guild", "target:bandits"],
+  "negotiable_tags": ["method:open", "method:deception"]
+}

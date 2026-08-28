@@ -12,6 +12,8 @@
     "contract.core.cleanse_the_crypt.name": "Очистить склеп",
     "contract.core.silence_the_cult.name": "Заставить культ замолчать",
     "contract.core.collect_the_debt.name": "Собрать долг",
+    "contract.core.hold_the_river_ford.name": "Удержать речной брод",
+    "contract.core.burn_the_plague_barrow.name": "Выжечь чумной курган",
     "trait.core.will_not_strike_a_temple.name": "Не подниму руку на храм",
     "trait.core.will_not_serve_slavers.name": "Не служу рабовладельцам",
     "trait.core.refuses_deception.name": "Не приемлет обман",
