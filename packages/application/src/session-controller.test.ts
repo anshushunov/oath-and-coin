@@ -2104,14 +2104,29 @@ describe('taking a package in the ids the screen actually holds', () => {
     // The screen holds no `HeroId` and does not need one here: the package itself names the
     // hero this command asks (`OfferState.keyHero`), so a screen passing one would be
     // repeating a fact the campaign already holds — and could repeat it wrongly.
-    const { controller } = harness();
+    //
+    // **The key hero is deliberately not the campaign's first.** `core:zara` is `heroId(2)`,
+    // so an implementation that asked "the first hero" instead of "the hero the package
+    // names" answers a different id here. Measured, not assumed: on the single-hero fixture
+    // this file started with, that mutant stayed green — the only hero *was* the key one.
+    const crypt = parseContentId('core:cleanse_the_crypt');
+    const zara = parseContentId('core:zara');
+    const { controller } = harness({ scenario: pollCrewScenario, content: pollCrewContentTree() });
     await controller.start();
-    controller.composeOfferFromDraft(escort, draft());
+    controller.composeOfferFromDraft(crypt, {
+      advance: 10,
+      promisedBonus: 0,
+      methodTag: null,
+      keyHero: zara,
+      invited: [zara, bram, parseContentId('core:doran')]
+    });
 
-    const result = controller.askKeyHero(escort);
+    const result = controller.askKeyHero(crypt);
 
     expect(result.applied).toBe(true);
-    expect(result.decisions).toHaveLength(1);
+    expect(result.events.map((event) => ('heroId' in event ? event.heroId : null))).toEqual([
+      heroId(2)
+    ]);
   });
 
   it('refuses to ask when the package has named nobody', async () => {
