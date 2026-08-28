@@ -3,6 +3,7 @@ import { startSession, type SessionState } from '@oath-and-coin/application';
 import {
   LeverDisabledKeys,
   OFFER_ACTIONS,
+  OfferAction,
   OfferFieldKeys,
   REJECTION_KEYS,
   RejectionCodes,
@@ -19,7 +20,8 @@ import {
   snapshotHash,
   type AvailableAction,
   type ContentId,
-  type ContractOfferScreenModel
+  type ContractOfferScreenModel,
+  type RejectionCode
 } from '@oath-and-coin/presentation';
 import { beforeAll, describe, expect, it } from 'vitest';
 
@@ -29,10 +31,10 @@ import {
   browserUiTextCatalogue
 } from '../../content-source.ts';
 import { collectRenderedAttributes, collectRenderedTexts } from '../../rendered-texts.ts';
-import { render } from '../../testing/render.tsx';
+import { click, mount, render, type } from '../../testing/render.tsx';
 import { TextSource } from '../../text.tsx';
 
-import { ContractOfferScreen } from './contract-offer-screen.tsx';
+import { ContractOfferScreen, type OfferScreenActions } from './contract-offer-screen.tsx';
 
 /**
  * The second hash, on the browser side of it.
@@ -173,9 +175,66 @@ function sessionFor(
 function renderScreen(model: ContractOfferScreenModel): HTMLElement {
   return render(
     <TextSource catalogue={catalogue}>
-      <ContractOfferScreen model={model} />
+      <ContractOfferScreen model={model} controller={fakeController()} />
     </TextSource>
   );
+}
+
+/**
+ * A controller that records what the screen asked of it and answers as told.
+ *
+ * Six methods, not the whole `SessionController`: the screen's prop type is the subset it
+ * is allowed to use (`OfferScreenActions`), so a fake of that subset is a complete fake —
+ * and a screen that grew a call to `save` or `load` would not compile against it, which is
+ * the point of narrowing the prop in the first place.
+ */
+interface FakeController extends OfferScreenActions {
+  readonly calls: { name: string; args: readonly unknown[] }[];
+}
+
+function fakeController(refusal: RejectionCode | null = null): FakeController {
+  const calls: { name: string; args: readonly unknown[] }[] = [];
+  const answer = (name: string) =>
+    ((...args: readonly unknown[]) => {
+      calls.push({ name, args });
+
+      return refusal === null
+        ? { applied: true, rejectionCode: null, state: null, events: [], decisions: [] }
+        : { applied: false, rejectionCode: refusal, state: null, events: [], decisions: [] };
+    }) as never;
+
+  return {
+    calls,
+    composeOfferFromDraft: answer('composeOfferFromDraft'),
+    askKeyHero: answer('askKeyHero'),
+    lockOffer: answer('lockOffer'),
+    pollCrew: answer('pollCrew'),
+    resolveContract: answer('resolveContract'),
+    show: answer('show')
+  };
+}
+
+function renderWith(model: ContractOfferScreenModel, controller: FakeController) {
+  return mount(
+    <TextSource catalogue={catalogue}>
+      <ContractOfferScreen model={model} controller={controller} />
+    </TextSource>
+  );
+}
+
+/** The control carrying `testId`, or a loud failure naming what was looked for. */
+function control(container: HTMLElement, testId: string): HTMLElement {
+  const element = container.querySelector(`[data-testid="${testId}"]`);
+
+  if (element === null) {
+    throw new Error(`No control marked '${testId}' was rendered.`);
+  }
+
+  return element as HTMLElement;
+}
+
+function actionButton(container: HTMLElement, action: OfferAction): HTMLButtonElement {
+  return control(container, `action-${action}`) as HTMLButtonElement;
 }
 
 describe('the five states the shipped scenarios reach', () => {
@@ -291,7 +350,7 @@ describe('a catalogue that cannot answer', () => {
     expect(() =>
       render(
         <TextSource catalogue={incomplete}>
-          <ContractOfferScreen model={screen} />
+          <ContractOfferScreen model={screen} controller={fakeController()} />
         </TextSource>
       )
     ).toThrow(/screen[.]contract_offer[.]title/u);
@@ -509,7 +568,7 @@ describe('the draft block, the promise, the treasury and the settlement', () => 
   });
 
   it('leaves a live command enabled and says nothing beside it', () => {
-    const container = renderScreen(draftModel());
+    const container = renderScreen(everyActionLive());
     const buttons = [...container.querySelectorAll('[data-testid="offer-actions"] button')];
 
     expect(buttons).toHaveLength(OFFER_ACTIONS.length);
@@ -526,6 +585,127 @@ describe('the draft block, the promise, the treasury and the settlement', () => 
     expect(literalsIn(ContractOfferScreen)).toEqual([]);
   });
 });
+
+/**
+ * A draft whose crew is exactly the size the contract asks for — one seat, one hero — so
+ * the compose control is live and the package can actually be sent.
+ *
+ * {@link draftModel} deliberately cannot: it needs three and invites one, which is what
+ * makes it the fixture for "a crew of the wrong size".
+ */
+function crewedDraftModel(): ContractOfferScreenModel {
+  const base = draftModel();
+
+  return createContractOfferScreenModel({
+    ...base,
+    contract: { ...base.contract!, requiredCrew: 1 },
+    offer: { ...base.offer!, crewLever: { ...base.offer!.crewLever, exactly: 1 } }
+  });
+}
+
+/** The same package with every command live, for the five controls that carry no terms. */
+function everyActionLive(): ContractOfferScreenModel {
+  return createContractOfferScreenModel({ ...crewedDraftModel(), availableActions: LIVE_ACTIONS });
+}
+
+/**
+ * Three heroes, two seats, two method alternatives — a package in which *every* term can be
+ * moved to something the model does not already record.
+ *
+ * The crew is the reason there are three heroes and two seats: with two of each, a crew can
+ * only be emptied and refilled, never exchanged, and "the screen sent the draft" would still
+ * be indistinguishable from "the screen sent the model".
+ */
+function richDraftModel(): ContractOfferScreenModel {
+  const base = twoSeatDraftModel();
+  const heroes = [
+    { value: id('core:bram'), labelKey: 'hero.core.bram.name' },
+    { value: id('core:doran'), labelKey: 'hero.core.doran.name' },
+    { value: id('core:zara'), labelKey: 'hero.core.zara.name' }
+  ];
+
+  return createContractOfferScreenModel({
+    ...base,
+    roster: [
+      ...base.roster,
+      {
+        definition: 'core:zara',
+        displayNameKey: 'hero.core.zara.name',
+        greed: QualitativeGrade.Low,
+        caution: QualitativeGrade.Low,
+        pride: QualitativeGrade.High,
+        principleKeys: [],
+        inclinationKeys: []
+      }
+    ],
+    availableActions: LIVE_ACTIONS,
+    offer: {
+      ...base.offer!,
+      keyHeroLever: {
+        chosen: id('core:bram'),
+        options: heroes.map((hero) => ({
+          ...hero,
+          selected: hero.value === id('core:bram')
+        })),
+        disabledReasonKey: null
+      },
+      crewLever: {
+        ...base.offer!.crewLever,
+        chosen: [id('core:bram'), id('core:doran')],
+        options: heroes.map((hero) => ({
+          ...hero,
+          selected: hero.value !== id('core:zara')
+        })),
+        exactly: 2,
+        disabledReasonKey: null
+      }
+    }
+  });
+}
+
+/**
+ * Two seats and two heroes invited — the shape a crew can actually be *changed* in.
+ *
+ * {@link crewedDraftModel} has one seat and one hero, so there is no tick to undo without
+ * emptying the crew altogether; this one can lose a member and get it back.
+ */
+function twoSeatDraftModel(): ContractOfferScreenModel {
+  const base = draftModel();
+  const heroes = [
+    { value: id('core:bram'), labelKey: 'hero.core.bram.name', selected: true },
+    { value: id('core:doran'), labelKey: 'hero.core.doran.name', selected: true }
+  ];
+
+  return createContractOfferScreenModel({
+    ...base,
+    contract: { ...base.contract!, requiredCrew: 2 },
+    roster: [
+      ...base.roster,
+      {
+        definition: 'core:doran',
+        displayNameKey: 'hero.core.doran.name',
+        greed: QualitativeGrade.High,
+        caution: QualitativeGrade.Low,
+        pride: QualitativeGrade.Low,
+        principleKeys: [],
+        inclinationKeys: []
+      }
+    ],
+    offer: {
+      ...base.offer!,
+      keyHeroLever: {
+        ...base.offer!.keyHeroLever,
+        options: heroes.map((hero) => ({ ...hero, selected: hero.value === id('core:bram') }))
+      },
+      crewLever: {
+        ...base.offer!.crewLever,
+        chosen: [id('core:bram'), id('core:doran')],
+        options: heroes,
+        exactly: 2
+      }
+    }
+  });
+}
 
 /**
  * The six commands with nothing refusing them, and the six with every one refused.
@@ -579,7 +759,7 @@ function draftModel(): ContractOfferScreenModel {
     state: ScreenState.Incomplete,
     titleKey: TITLE_KEY,
     contract: {
-      definition: 'core:escort_the_caravan',
+      definition: id('core:escort_the_caravan'),
       displayNameKey: 'contract.core.escort_the_caravan.name',
       patronFee: 40,
       risk: QualitativeGrade.Moderate,
@@ -666,7 +846,7 @@ function lockedUncrewedModel(): ContractOfferScreenModel {
     state: ScreenState.Incomplete,
     titleKey: TITLE_KEY,
     contract: {
-      definition: 'core:silence_the_cult',
+      definition: id('core:silence_the_cult'),
       displayNameKey: 'contract.core.silence_the_cult.name',
       patronFee: 55,
       risk: QualitativeGrade.High,
@@ -730,7 +910,7 @@ function crewedModel(): ContractOfferScreenModel {
     state: ScreenState.Normal,
     titleKey: TITLE_KEY,
     contract: {
-      definition: 'core:collect_the_debt',
+      definition: id('core:collect_the_debt'),
       displayNameKey: 'contract.core.collect_the_debt.name',
       patronFee: 30,
       risk: QualitativeGrade.Low,
@@ -855,11 +1035,7 @@ function radioChecked(container: HTMLElement, optionText: string): boolean {
  * which a player reads — so this looks only at the four attributes a literal could
  * hide behind unseen by a text-node walk: `aria-label`, `title`, `placeholder`, `alt`.
  */
-function literalsIn(
-  Component: (props: {
-    readonly model: ContractOfferScreenModel;
-  }) => ReturnType<typeof ContractOfferScreen>
-): readonly string[] {
+function literalsIn(Component: typeof ContractOfferScreen): readonly string[] {
   const seen = new Set<string>();
   const tracked = new Proxy(catalogue, {
     get: (target, prop, receiver) => {
@@ -889,7 +1065,7 @@ function literalsIn(
   ]) {
     const container = render(
       <TextSource catalogue={tracked}>
-        <Component model={model} />
+        <Component model={model} controller={fakeController()} />
       </TextSource>
     );
 
@@ -939,3 +1115,276 @@ function collectLabelledAttributes(root: Node): readonly string[] {
 
   return values;
 }
+
+/**
+ * The levers, wired.
+ *
+ * Everything below is about the one thing the model deliberately cannot hold: a package a
+ * player is still assembling. `ContractOfferScreenModel` is what the campaign *records*,
+ * and it is rebuilt from the engine on every command — so half-typed terms have nowhere to
+ * live in it, and they live in the component instead. The rules that state governs are the
+ * whole subject: what it starts as, what survives a refusal, and what a new contract
+ * throws away.
+ */
+describe('the package a player is still assembling', () => {
+  it('sends the whole package under one command, as the player left it', () => {
+    // **Every term is moved off what the model records before the package is sent**, and
+    // that is what makes this test worth anything. External review found the first version
+    // typing `40` into a field the model already read `40` from, over a method, a key hero
+    // and a crew nobody touched — so a screen that ignored the draft entirely and sent
+    // `offer.advanceLever.value` and its neighbours would have passed. Not one field below
+    // matches what `richDraftModel` records.
+    const controller = fakeController();
+    const { container } = renderWith(richDraftModel(), controller);
+
+    type(control(container, 'offer.advance'), '41');
+    type(control(container, 'offer.promised_bonus'), '26');
+    // The method the package did *not* choose: `richDraftModel` chose `method:open`, which
+    // the contract lists second.
+    click(control(container, 'method-option-0'));
+    // The third hero, neither the package's key hero nor the roster's first.
+    click(control(container, 'key-hero-option-2'));
+    // A different crew of the same size: drop `core:doran`, take `core:zara`.
+    click(control(container, 'crew-option-1'));
+    click(control(container, 'crew-option-2'));
+    click(actionButton(container, OfferAction.Compose));
+
+    expect(controller.calls.map((call) => call.name)).toEqual(['composeOfferFromDraft']);
+    expect(controller.calls[0]?.args[0]).toBe('core:escort_the_caravan');
+    // Every term of the package, not only the ones that were touched: `composeOffer`
+    // replaces the package whole (`NEGOTIATION_SPEC` §3.3), so a screen sending less would
+    // silently reset the rest to nothing.
+    //
+    // `invited` is in the options' own order and not the order the boxes were ticked —
+    // `core:zara` was taken last and is listed last because that is where the roster puts
+    // it, which is the rule this assertion pins.
+    expect(controller.calls[0]?.args[1]).toEqual({
+      advance: 41,
+      promisedBonus: 26,
+      methodTag: 'method:deception',
+      keyHero: 'core:zara',
+      invited: ['core:bram', 'core:zara']
+    });
+  });
+
+  it('sends a different command when the key hero is asked', () => {
+    // Two actions rather than one: recording the terms and asking the hero about them are
+    // separate commands, and a screen that folded them into one button would either never
+    // record the terms or never ask.
+    const controller = fakeController();
+    const { container } = renderWith(crewedDraftModel(), controller);
+
+    click(actionButton(container, OfferAction.AskKeyHero));
+
+    expect(controller.calls.map((call) => call.name)).toEqual(['askKeyHero']);
+  });
+
+  it('refuses to send a crew of the wrong size', () => {
+    // `draftModel` needs three and offers one, so the crew is short from the start.
+    // The bound is the model's own `crewLever.exactly`, not a number this screen picked.
+    const { container } = renderWith(draftModel(), fakeController());
+
+    expect(actionButton(container, OfferAction.Compose).disabled).toBe(true);
+  });
+
+  it('sends the crew a player actually ticked', () => {
+    const controller = fakeController();
+    const { container } = renderWith(twoSeatDraftModel(), controller);
+
+    // Two seats, both ticked to begin with. Untick the second — `core:doran`, the option at
+    // index 1 — and the crew is one short of what the contract asks, so the control goes
+    // dark against the model's own `crewLever.exactly`.
+    click(control(container, 'crew-option-1'));
+    expect(actionButton(container, OfferAction.Compose).disabled).toBe(true);
+
+    click(control(container, 'crew-option-1'));
+    click(actionButton(container, OfferAction.Compose));
+
+    expect(controller.calls[0]?.args[1]).toMatchObject({
+      invited: ['core:bram', 'core:doran']
+    });
+  });
+
+  it('keeps what was typed when the command is refused, and says why', () => {
+    // The refusal leaves the campaign untouched, so the model comes back unchanged — and a
+    // form rebuilt from an unchanged model would silently discard everything the player
+    // had entered. This is the case that rule exists for.
+    const controller = fakeController(RejectionCodes.StaleState);
+    const { container } = renderWith(crewedDraftModel(), controller);
+
+    type(control(container, 'offer.advance'), '17');
+    click(actionButton(container, OfferAction.Compose));
+
+    expect((control(container, 'offer.advance') as HTMLInputElement).value).toBe('17');
+    expect(collectRenderedTexts(container)).toContain(textOf(RejectionCodes.StaleState));
+  });
+
+  it('throws the draft away when the contract underneath changes', () => {
+    const { container, rerender } = renderWith(crewedDraftModel(), fakeController());
+
+    type(control(container, 'offer.advance'), '17');
+    expect((control(container, 'offer.advance') as HTMLInputElement).value).toBe('17');
+
+    // Another contract entirely — `core:silence_the_cult` against `core:escort_the_caravan`.
+    rerender(
+      <TextSource catalogue={catalogue}>
+        <ContractOfferScreen model={lockedUncrewedModel()} controller={fakeController()} />
+      </TextSource>
+    );
+
+    expect((control(container, 'offer.advance') as HTMLInputElement).value).toBe(
+      String(lockedUncrewedModel().offer!.advanceLever.value)
+    );
+  });
+
+  it('throws the draft away when the package moves to a new version', () => {
+    // The other half of the same rule, and the one a refusal must *not* trigger: an applied
+    // `composeOffer` answers with `version + 1`, and everything the player typed is now
+    // recorded — so the form starts again from what the campaign says rather than from what
+    // they were still editing.
+    const composed = crewedDraftModel();
+    const { container, rerender } = renderWith(composed, fakeController());
+
+    type(control(container, 'offer.advance'), '17');
+
+    rerender(
+      <TextSource catalogue={catalogue}>
+        <ContractOfferScreen
+          model={createContractOfferScreenModel({
+            ...composed,
+            offer: { ...composed.offer!, version: composed.offer!.version + 1 }
+          })}
+          controller={fakeController()}
+        />
+      </TextSource>
+    );
+
+    expect((control(container, 'offer.advance') as HTMLInputElement).value).toBe(
+      String(composed.offer!.advanceLever.value)
+    );
+  });
+
+  it.each([
+    [OfferAction.Lock, 'lockOffer'],
+    [OfferAction.Poll, 'pollCrew'],
+    [OfferAction.Resolve, 'resolveContract']
+  ])('%s presses its own command and nothing else', (action, expected) => {
+    const controller = fakeController();
+    const { container } = renderWith(everyActionLive(), controller);
+
+    click(actionButton(container, action));
+
+    expect(controller.calls.map((call) => call.name)).toEqual([expected]);
+  });
+
+  it('sends the player to the debrief rather than settling blind', () => {
+    // Owner's decision of 2026-08-28. Settling means choosing whether to pay the promised
+    // bonus, and the price of both branches is on the debrief — a button here that paid
+    // one way or the other would be the Football Manager failure mode this whole design
+    // fights: a promise answered without the player being able to see what it cost.
+    const controller = fakeController();
+    const { container } = renderWith(everyActionLive(), controller);
+
+    click(actionButton(container, OfferAction.Settle));
+
+    expect(controller.calls).toEqual([{ name: 'show', args: ['after_action'] }]);
+  });
+
+  it('presses nothing at all through a dark control', () => {
+    const controller = fakeController();
+    const { container } = renderWith(crewedModel(), controller);
+
+    for (const action of OFFER_ACTIONS) {
+      click(actionButton(container, action));
+    }
+
+    expect(controller.calls).toEqual([]);
+  });
+});
+
+/**
+ * What a number field does with input that is legal for `input[type=number]` and is not an
+ * integer.
+ *
+ * Every money term of a package is an integer — `advance` and `promisedBonus` are ints all
+ * the way down to the canonical artifact (`RESOLUTION_SPEC` §4.8) — but the control accepts
+ * far more than integers, and external review found what the first implementation did with
+ * the rest: `Number.parseInt` reads `1e1` as `1` and `1.5` as `1`, so the package quietly
+ * carried a term the player never typed.
+ */
+describe('the numbers a player types', () => {
+  function advanceAfter(typed: string): number {
+    const controller = fakeController();
+    const { container } = renderWith(everyActionLive(), controller);
+
+    type(control(container, 'offer.advance'), typed);
+    click(actionButton(container, OfferAction.Compose));
+
+    return (controller.calls[0]?.args[1] as { readonly advance: number }).advance;
+  }
+
+  it.each([
+    ['a plain integer', '7', 7],
+    // Legal in the control and not an integer: the field must keep what it had rather than
+    // invent a term by truncation. `draftModel`'s own advance is 40.
+    ['exponential notation', '1e1', 10],
+    ['a fraction', '1.5', 40],
+    ['nothing at all', '', 40]
+  ])('%s becomes %s', (_name, typed, expected) => {
+    expect(advanceAfter(typed)).toBe(expected);
+  });
+
+  it('declares itself an integer control', () => {
+    // `step` is what makes the browser itself refuse a fraction, rather than leaving the
+    // whole burden on the handler above.
+    const { container } = renderWith(everyActionLive(), fakeController());
+
+    expect((control(container, 'offer.advance') as HTMLInputElement).step).toBe('1');
+  });
+});
+
+/**
+ * A screen whose six controls are not all in the same condition.
+ *
+ * External review found that every interactive fixture in this file was uniform — six live
+ * or six dark, all for one reason — so an implementation that computed `disabled` once, off
+ * the first entry, would pass the lot. Real models are never uniform: the whole point of
+ * `availableActions` is that one command is live while five explain themselves.
+ */
+describe('a screen with some controls live and others dark', () => {
+  const MIXED: readonly AvailableAction[] = [
+    { action: OfferAction.Compose, disabledReasonKey: null },
+    { action: OfferAction.AskKeyHero, disabledReasonKey: RejectionCodes.AlreadyResponded },
+    { action: OfferAction.Lock, disabledReasonKey: null },
+    { action: OfferAction.Poll, disabledReasonKey: RejectionCodes.OfferNotLocked },
+    { action: OfferAction.Resolve, disabledReasonKey: RejectionCodes.CrewNotFilled },
+    { action: OfferAction.Settle, disabledReasonKey: RejectionCodes.NotResolved }
+  ];
+
+  function mixedModel(): ContractOfferScreenModel {
+    return createContractOfferScreenModel({ ...crewedDraftModel(), availableActions: MIXED });
+  }
+
+  it('darkens exactly the ones the model refuses', () => {
+    const { container } = renderWith(mixedModel(), fakeController());
+
+    expect(MIXED.map((available) => actionButton(container, available.action).disabled)).toEqual(
+      MIXED.map((available) => available.disabledReasonKey !== null)
+    );
+  });
+
+  it('presses only through the live ones', () => {
+    const controller = fakeController();
+    const { container } = renderWith(mixedModel(), controller);
+
+    for (const available of MIXED) {
+      click(actionButton(container, available.action));
+    }
+
+    // Compose and lock, in that order, and nothing from the four that are dark.
+    expect(controller.calls.map((call) => call.name)).toEqual([
+      'composeOfferFromDraft',
+      'lockOffer'
+    ]);
+  });
+});

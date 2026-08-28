@@ -91,7 +91,14 @@ export interface ResponseLine {
 
 /** The contract currently on offer, as the screen shows it. */
 export interface ContractLine {
-  readonly definition: string;
+  /**
+   * A `ContentId` rather than a plain string, unlike every other identifier on this model:
+   * this is the one a *command* is addressed to. Every negotiation command names the
+   * contract it acts on, so a screen that has to widen or cast this before it can dispatch
+   * one would be building an identifier rather than carrying the one it was handed —
+   * exactly what {@link OfferLine}'s hero levers avoid for heroes.
+   */
+  readonly definition: ContentId;
   readonly displayNameKey: string;
   /** The patron fee in coins — an objective fact, shown as a plain number on purpose. */
   readonly patronFee: number;

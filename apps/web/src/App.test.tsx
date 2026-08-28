@@ -139,6 +139,7 @@ function gatedController(run: RunRequest): {
       },
       composeOffer: (input) => inner.composeOffer(input),
       composeOfferFromDraft: (contractId, draft) => inner.composeOfferFromDraft(contractId, draft),
+      askKeyHero: (contractId) => inner.askKeyHero(contractId),
       proposeContractToHero: (input) => inner.proposeContractToHero(input),
       lockOffer: (input) => inner.lockOffer(input),
       pollCrew: (input) => inner.pollCrew(input),

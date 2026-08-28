@@ -18,9 +18,19 @@ import { createRoot } from 'react-dom/client';
 /** React refuses to run `act` unless the environment says it is a test one. */
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-/** A mounted tree, and the one thing a test can do to it besides read it. */
+/** A mounted tree, and the two things a test can do to it besides read it. */
 export interface Mounted {
   readonly container: HTMLElement;
+  /**
+   * Renders `element` into the same root, the way a parent re-rendering with new props
+   * does.
+   *
+   * The question this exists for is what a component *keeps* across a prop change and
+   * what it throws away — a screen holding a half-filled form has to reset it when the
+   * contract underneath changes and hold onto it when a command is merely refused, and
+   * neither half is observable from a fresh mount, which starts from nothing either way.
+   */
+  rerender(element: ReactNode): void;
   /** Unmounts the tree, flushing every effect cleanup React owes it. */
   unmount(): void;
 }
@@ -56,10 +66,56 @@ export function mount(element: ReactNode): Mounted {
 
   return {
     container,
+    rerender: (next) => {
+      act(() => {
+        root.render(next);
+      });
+    },
     unmount: () => {
       act(() => {
         root.unmount();
       });
     }
   };
+}
+
+/**
+ * Presses a control, flushing whatever React does about it.
+ *
+ * `element.click()` on its own dispatches the event and returns before React has
+ * re-rendered, so an assertion straight after it reads the DOM as it was — the same
+ * "passes on the second run" failure `act` exists to prevent.
+ */
+export function click(element: Element): void {
+  act(() => {
+    (element as HTMLElement).click();
+  });
+}
+
+/**
+ * Types `value` into a controlled input, the way a person does.
+ *
+ * Assigning `.value` directly is not enough and the reason is React's own: it patches the
+ * value property on the element instance to track what it last rendered, so a plain
+ * assignment updates the DOM and leaves React believing nothing changed — the `input`
+ * event then carries the *old* value and the component never sees the keystroke. Calling
+ * the prototype's setter writes past the patch, which is what makes the event honest.
+ */
+export function type(element: Element, value: string): void {
+  const input = element as HTMLInputElement;
+  const setValue = Object.getOwnPropertyDescriptor(
+    input instanceof HTMLTextAreaElement
+      ? HTMLTextAreaElement.prototype
+      : HTMLInputElement.prototype,
+    'value'
+  )?.set;
+
+  if (setValue === undefined) {
+    throw new Error('This environment has no value setter on HTMLInputElement.prototype.');
+  }
+
+  act(() => {
+    setValue.call(input, value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
 }

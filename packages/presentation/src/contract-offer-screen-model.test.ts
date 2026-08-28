@@ -16,7 +16,7 @@ import { ScreenState } from './screen-state.ts';
 import { TITLE_KEY } from './keys.ts';
 
 const aContractLine: ContractLine = {
-  definition: 'core:escort_the_caravan',
+  definition: 'core:escort_the_caravan' as ContractLine['definition'],
   displayNameKey: 'contract.core.escort_the_caravan.name',
   patronFee: 40,
   risk: QualitativeGrade.Moderate,
