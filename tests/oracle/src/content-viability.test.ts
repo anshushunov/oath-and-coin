@@ -355,11 +355,22 @@ describe('the second counterbalanced pair', () => {
       expect(promisable.length, `nobody can be taken on ${contract.id} at all`).toBeGreaterThan(0);
 
       for (const hero of promisable) {
+        const crews = cleanCrewsFor(other, hero);
+
         expect(
-          bestBaseWithout(other, hero),
+          crews.length,
           `${other.id} cannot be finished cleanly without ${hero}, so wronging them on ` +
             `${contract.id} would leave the honest payment as the only sensible answer`
-        ).not.toBeNull();
+        ).toBeGreaterThan(0);
+
+        // That the search really left them out, and not merely that it found something. The
+        // assertion above alone is satisfied by a search that ignored its own exclusion — a
+        // mutant dropping it stayed green on the very material this test exists to reject, so
+        // "without" has to be a claim about the crews, not only about their count.
+        expect(
+          crews.flatMap((entry) => entry.crew.map((member) => String(member.id))),
+          `a crew offered as ${other.id}-without-${hero} contains them`
+        ).not.toContain(hero);
       }
     }
   });
