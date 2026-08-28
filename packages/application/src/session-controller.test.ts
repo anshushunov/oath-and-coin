@@ -30,6 +30,7 @@ import { slotChanged, slotMayBeWritten } from './save/slot-guard.ts';
 import { SAVE_SLOTS, type SaveSlot } from './save/slots.ts';
 import {
   createSessionController,
+  type OfferDraft,
   type SessionController,
   type SessionControllerDeps
 } from './session-controller.ts';
@@ -1829,7 +1830,7 @@ describe('dispatching the six negotiation commands', () => {
     // The screen on the store moved with it — a controller that computed the right
     // `CommandResult` but forgot to publish it would leave a player looking at the
     // package they revised away from.
-    expect(offerScreen(controller.store.snapshot().screen).offer?.advance).toBe(40);
+    expect(offerScreen(controller.store.snapshot().screen).offer?.advanceLever.value).toBe(40);
     // `canonicalHash` is over the whole scripted `ScenarioOutcome`, and a live command
     // was never one of its steps — carrying the old hash forward would claim a
     // campaign this call just changed is still the one the run produced.
@@ -1948,6 +1949,95 @@ describe('dispatching the six negotiation commands', () => {
       heroId(1),
       heroId(2)
     ]);
+  });
+});
+
+describe('taking a package in the ids the screen actually holds', () => {
+  const escort = parseContentId('core:escort');
+  const bram = parseContentId('core:bram');
+
+  /** A package the screen could have assembled: content ids throughout, no `HeroId`. */
+  function draft(overrides: Partial<OfferDraft> = {}): OfferDraft {
+    return {
+      advance: 40,
+      promisedBonus: 0,
+      methodTag: null,
+      keyHero: bram,
+      invited: [bram],
+      ...overrides
+    };
+  }
+
+  it('resolves every definition to the runtime id the engine wants', async () => {
+    // `HeroCard` carries no `HeroId` at all, so a component holding a selection has only
+    // content ids to send. This is the one place that mapping is made, against the
+    // campaign where it is unambiguous.
+    const { controller } = harness();
+    await controller.start();
+
+    const result = controller.composeOfferFromDraft(escort, draft());
+
+    expect(result.applied).toBe(true);
+    expect(result.rejectionCode).toBeNull();
+    expect(offerScreen(controller.store.snapshot().screen).offer?.advanceLever.value).toBe(40);
+    expect(offerScreen(controller.store.snapshot().screen).offer?.keyHeroLever.chosen).toBe(bram);
+  });
+
+  it.each([
+    ['an unknown key hero', { keyHero: parseContentId('core:nobody') }],
+    ['an unknown invitee', { invited: [parseContentId('core:nobody')] }]
+  ])('refuses %s instead of throwing', async (_name, overrides) => {
+    // A definition the campaign does not carry is a refusal a screen can show, never an
+    // exception a React handler is left holding — the same rule every other command on
+    // this controller already follows.
+    const { controller } = harness();
+    await controller.start();
+    const before = controller.store.snapshot();
+
+    let result: CommandResult | undefined;
+    expect(() => {
+      result = controller.composeOfferFromDraft(escort, draft(overrides));
+    }).not.toThrow();
+
+    expect(result?.applied).toBe(false);
+    expect(result?.rejectionCode).toBe(RejectionCodes.UnknownHero);
+    expect(controller.store.snapshot()).toBe(before);
+  });
+
+  it('refuses a contract this campaign does not carry', async () => {
+    const { controller } = harness();
+    await controller.start();
+
+    const result = controller.composeOfferFromDraft(parseContentId('core:no_such'), draft());
+
+    expect(result.applied).toBe(false);
+    expect(result.rejectionCode).toBe(RejectionCodes.UnknownContract);
+  });
+
+  it('translates a whole crew hero by hero, not the first one several times', async () => {
+    // Three seats and three distinct heroes, named in an order that is neither the
+    // campaign's nor sorted — so a translation that mapped every entry to one id, dropped
+    // entries, or answered the same id twice cannot produce this crew. The screen reads
+    // the invited crew back in `HeroId` order (`OfferState.invited` is a `SortedSet`),
+    // which is what the assertion below states.
+    const crypt = parseContentId('core:cleanse_the_crypt');
+    const zara = parseContentId('core:zara');
+    const doran = parseContentId('core:doran');
+    const { controller } = harness({ scenario: pollCrewScenario, content: pollCrewContentTree() });
+    await controller.start();
+
+    const result = controller.composeOfferFromDraft(crypt, {
+      advance: 10,
+      promisedBonus: 0,
+      methodTag: null,
+      keyHero: zara,
+      invited: [zara, bram, doran]
+    });
+
+    expect(result.applied).toBe(true);
+    const offer = offerScreen(controller.store.snapshot().screen).offer;
+    expect(offer?.crewLever.chosen).toEqual([bram, doran, zara]);
+    expect(offer?.keyHeroLever.chosen).toBe(zara);
   });
 });
 

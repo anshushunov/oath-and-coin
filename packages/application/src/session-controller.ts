@@ -7,10 +7,13 @@ import {
   proposeContractToHero as applyProposeContractToHero,
   resolveContract as applyResolveContract,
   settleContract as applySettleContract,
+  RejectionCodes,
+  rejected,
   type CommandResult,
   type ComposeOffer,
   type ContentId,
   type GameState,
+  type HeroId,
   type LockOffer,
   type PollCrew,
   type ProposeContractToHero,
@@ -134,6 +137,37 @@ type NegotiationCommandInput<
   TCommand extends { readonly commandId: number; readonly expectedStateVersion: number }
 > = Omit<TCommand, 'commandId' | 'expectedStateVersion'>;
 
+/**
+ * A negotiation package as the *screen* holds one: content ids throughout, no `HeroId`
+ * anywhere (contract-loop UI plan, Task 4).
+ *
+ * **Why a second shape beside `ComposeOffer`.** The engine's own command names heroes by
+ * `HeroId`, the runtime number a campaign tracks answers by. The read model does not carry
+ * that number at all — `HeroCard`, `OfferLine.keyHeroLever` and `OfferLine.crewLever` are
+ * all content ids, deliberately, because a content id is the one identifier that survives
+ * a save and means the same thing in the catalogue. So a component holding a player's
+ * selection has nothing to build a `ComposeOffer` out of, and the alternatives were both
+ * worse: put `HeroId` on the read model (a runtime number leaking into the layer that may
+ * not invent one), or let the component look one up (a join, made per screen, over a
+ * roster it would have to be handed for the purpose).
+ *
+ * The mapping is made here instead, once, against the campaign this session is holding —
+ * where it is unambiguous, because `GameState.heroes` is keyed by `HeroId` and every hero
+ * carries exactly one `definition`.
+ *
+ * {@link invited} stays an array and is translated element by element, duplicates
+ * included: `composeOffer` refuses `[bram, bram]` as `crew_size_mismatch` precisely
+ * because it can see the duplicate, and a translation that folded the list into a set
+ * would hand it a crew of one and take that report away.
+ */
+export interface OfferDraft {
+  readonly advance: number;
+  readonly promisedBonus: number;
+  readonly methodTag: ContentId | null;
+  readonly keyHero: ContentId;
+  readonly invited: readonly ContentId[];
+}
+
 export interface SessionController {
   /** The observable session. A screen subscribes here; nothing else publishes to it. */
   readonly store: Store<SessionState>;
@@ -160,6 +194,18 @@ export interface SessionController {
    * nothing here to await.
    */
   composeOffer(input: NegotiationCommandInput<ComposeOffer>): CommandResult;
+  /**
+   * The same command, taken in the screen's own identifiers (see {@link OfferDraft}).
+   *
+   * A definition this campaign does not carry is a **refusal**, `rejected.unknown_hero` —
+   * the code `composeOffer` itself answers with for a `HeroId` the roster does not hold —
+   * and never a throw: a stale screen naming a hero the loaded campaign lacks is something
+   * a player can be told, and every other command on this controller already answers that
+   * way. A contract this campaign does not carry answers `rejected.unknown_contract` for
+   * the same reason, before any hero is looked up, since without the contract there is no
+   * package to compose at all.
+   */
+  composeOfferFromDraft(contractId: ContentId, draft: OfferDraft): CommandResult;
   proposeContractToHero(input: NegotiationCommandInput<ProposeContractToHero>): CommandResult;
   lockOffer(input: NegotiationCommandInput<LockOffer>): CommandResult;
   /**
@@ -334,6 +380,43 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
         (state, commandId, expectedStateVersion) =>
           applyComposeOffer(state, { ...input, commandId, expectedStateVersion })
       ),
+    composeOfferFromDraft: (contractId, draft) =>
+      dispatchNegotiationCommand(store, contractId, (state, commandId, expectedStateVersion) => {
+        if (!state.contracts.has(contractId)) {
+          return rejected(state, RejectionCodes.UnknownContract);
+        }
+
+        const heroIdByDefinition = new Map(
+          state.heroes.values().map((hero) => [hero.definition, hero.id])
+        );
+        const keyHero = heroIdByDefinition.get(draft.keyHero);
+        const invited: HeroId[] = [];
+
+        for (const definition of draft.invited) {
+          const id = heroIdByDefinition.get(definition);
+
+          if (id === undefined) {
+            return rejected(state, RejectionCodes.UnknownHero);
+          }
+
+          invited.push(id);
+        }
+
+        if (keyHero === undefined) {
+          return rejected(state, RejectionCodes.UnknownHero);
+        }
+
+        return applyComposeOffer(state, {
+          commandId,
+          contractId,
+          keyHero,
+          invited,
+          advance: draft.advance,
+          methodTag: draft.methodTag,
+          promisedBonus: draft.promisedBonus,
+          expectedStateVersion
+        });
+      }),
     proposeContractToHero: (input) =>
       dispatchNegotiationCommand(
         store,

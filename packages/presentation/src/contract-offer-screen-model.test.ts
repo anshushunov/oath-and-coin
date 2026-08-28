@@ -39,11 +39,12 @@ function anOfferLine(): OfferLine {
   return {
     version: 1,
     phase: OfferPhase.Draft,
-    advance: 0,
-    methodTagKey: null,
-    methodOptionKeys: [],
-    promisedBonus: 0,
-    keyHeroDefinition: null,
+    advanceLever: { value: 0, min: 0, max: 0, disabledReasonKey: null },
+    bonusLever: { value: 0, min: 0, max: 0, disabledReasonKey: null },
+    methodLever: { chosen: null, options: [], disabledReasonKey: null },
+    keyHeroLever: { chosen: null, options: [], disabledReasonKey: null },
+    crewLever: { chosen: [], options: [], exactly: 1, disabledReasonKey: null },
+    budget: { available: 0, maxAdvance: 0, maxBonus: 0 },
     lockCommitment: 0
   };
 }

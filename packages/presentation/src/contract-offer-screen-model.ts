@@ -1,5 +1,6 @@
 import type { CausalTrace, ContentId, OfferPhase } from '@oath-and-coin/simulation';
 
+import type { ChoiceLever, Lever, MultiChoiceLever, NumericLever, OfferBudget } from './lever.ts';
 import type { QualitativeGrade } from './qualitative-scale.ts';
 import { ScreenKind } from './screen-kind.ts';
 import { ScreenState, type ReasonDirection } from './screen-state.ts';
@@ -101,36 +102,52 @@ export interface ContractLine {
 
 /**
  * The negotiation package currently on offer for the contract this screen shows
- * (`NEGOTIATION_SPEC` §5.1) — version, phase, the money term, the value term and the
- * promise, all before anything is signed.
+ * (`NEGOTIATION_SPEC` §5.1) — version, phase, and the five terms a player may still move,
+ * each stated as a lever rather than as a bare value.
  *
- * `methodOptionKeys` names **both** alternatives of the contract's negotiable tag, not
- * only the one the current package chose: a player choosing between two things has to
- * see both of them, or there is nothing to choose between on the screen itself
- * (`NEGOTIATION_SPEC` §5.1's own phrasing — "доступные альтернативы ключами"). Empty
- * when the contract has no negotiable tag at all. `methodTagKey` is `null` in that same
- * case, and also whenever a negotiable contract's package has chosen none yet.
+ * **Levers replaced the bare terms rather than joining them, and that is the point.** The
+ * advance, the method tag, the promised bonus, the key hero and the crew each used to be
+ * a value (or a value plus a list of alternatives) that said nothing about whether it
+ * could be changed or how far. A screen drawing a control over one of those had two
+ * choices, and both are forbidden here: work the bounds out itself (`RESOLUTION_SPEC` §6 —
+ * the screen decides nothing), or offer no bounds at all and send the player into a
+ * refusal the engine was always going to make. Carrying the value *and* a lever over the
+ * same value would have been worse than either: two declarations of one term, free to
+ * disagree the first time one of them was updated.
  *
- * `keyHeroDefinition` is the raw content id of the hero this package is negotiated
- * with, `null` before the first revision names one — the same convention
- * {@link ResponseLine.heroDefinition} uses: the roster already carries every hero's own
- * display-name key, so a screen joins on this id rather than this line repeating one.
+ * `methodLever.options` names **both** alternatives of the contract's negotiable tag, not
+ * only the one the current package chose: a player choosing between two things has to see
+ * both of them, or there is nothing to choose between on the screen itself
+ * (`NEGOTIATION_SPEC` §5.1's own phrasing — "доступные альтернативы ключами"). Empty when
+ * the contract has no negotiable tag at all, in which case `chosen` is `null` too — as it
+ * also is whenever a negotiable contract's package has chosen none yet.
+ *
+ * `keyHeroLever.options` and `crewLever.options` are the whole roster, and each option
+ * carries the hero's own display-name key beside the content id: the id is the value a
+ * command is built from and `TDD` §11.1 forbids it reaching a label, so the join happens
+ * here, once, where the roster is.
  */
 export interface OfferLine {
   readonly version: number;
   readonly phase: OfferPhase;
-  readonly advance: number;
-  readonly methodTagKey: string | null;
-  readonly methodOptionKeys: readonly string[];
-  readonly promisedBonus: number;
-  readonly keyHeroDefinition: string | null;
+  readonly advanceLever: NumericLever;
+  readonly bonusLever: NumericLever;
+  readonly methodLever: ChoiceLever<ContentId>;
+  readonly keyHeroLever: ChoiceLever<ContentId>;
+  readonly crewLever: MultiChoiceLever<ContentId>;
+  /**
+   * What the treasury still allows this package as a whole (`NEGOTIATION_SPEC` §2.3) —
+   * the constraint {@link advanceLever} and {@link bonusLever} are each a projection of,
+   * shown in its own right because a player who has hit a ceiling is owed the reason.
+   */
+  readonly budget: OfferBudget;
   /**
    * What locking this package would reserve from the treasury — `advance ×
    * requiredCrew + promisedBonus` (`commitmentOf`, `@oath-and-coin/simulation`), the
    * exact quantity `lockOffer`'s own treasury check holds the campaign to
    * (`NEGOTIATION_SPEC` §2.3, §3.3).
    *
-   * Deliberately not the same money {@link OfferLine.advance} times {@link
+   * Deliberately not the same money {@link OfferLine.advanceLever}'s value times {@link
    * ContractLine.acceptedCount} would suggest, and not what drives {@link
    * ContractOfferScreenModel.treasuryForecast} during `draft`: that field is a
    * settlement forecast, faithful to `settleContract`'s own formula, which pays only
@@ -148,12 +165,30 @@ export interface OfferLine {
 }
 
 /**
+ * Every lever on a package, in the order the screen lays them out.
+ *
+ * Stated once, here, so that "each lever names its reason" is a claim about a list rather
+ * than five separate claims a sixth lever could quietly escape. The order is the one
+ * {@link import('./rendered-ui-snapshot.ts').expectedSnapshot} walks and the one the
+ * component renders — one statement, three readers.
+ */
+export function leversOf(offer: OfferLine): readonly Lever[] {
+  return [
+    offer.advanceLever,
+    offer.methodLever,
+    offer.bonusLever,
+    offer.keyHeroLever,
+    offer.crewLever
+  ];
+}
+
+/**
  * What keeping the guild's word will mean and what breaking it will mean, stated as two
  * keys rather than one — `NEGOTIATION_SPEC` §5.1 requires both, named as the fix for
  * Football Manager's own failure mode: a promise counted broken at the moment it was
  * kept, with nothing on screen to say why. `null` exactly when {@link
- * OfferLine.promisedBonus} is `0` — nothing was promised, so there is nothing to keep
- * or break.
+ * OfferLine.bonusLever}'s value is `0` — nothing was promised, so there is nothing to
+ * keep or break.
  */
 export interface PromiseTermsLine {
   readonly fulfilKey: string;

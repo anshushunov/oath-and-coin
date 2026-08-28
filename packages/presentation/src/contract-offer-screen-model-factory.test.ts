@@ -7,8 +7,10 @@ import {
   ReasonCodes,
   SortedMap,
   SortedSet,
+  canCover,
   compareContentIds,
   compareHeroIds,
+  divideTowardZero,
   heroId,
   parseContentId,
   type ContentId,
@@ -22,6 +24,8 @@ import {
   contractOfferScreenModel,
   failedScreen
 } from './contract-offer-screen-model-factory.ts';
+import { leversOf } from './contract-offer-screen-model.ts';
+import type { OfferBudget } from './lever.ts';
 import { describeReadModel, readModelHash } from './screen-model.ts';
 import { QualitativeGrade } from './qualitative-scale.ts';
 import { ReasonDirection, ScreenState } from './screen-state.ts';
@@ -1092,10 +1096,11 @@ describe('what the screen shows about the negotiation itself', () => {
   });
 
   it('names both alternatives of a negotiable tag, not only the chosen one', () => {
-    expect(contractOfferScreenModel(draftWithAPromise(), []).offer?.methodOptionKeys).toEqual([
-      'tag.method.open',
-      'tag.method.deception'
-    ]);
+    expect(
+      contractOfferScreenModel(draftWithAPromise(), []).offer?.methodLever.options.map(
+        (option) => option.labelKey
+      )
+    ).toEqual(['tag.method.open', 'tag.method.deception']);
   });
 
   it('shows the settlement only once the crew is filled', () => {
@@ -1131,14 +1136,41 @@ describe('what the screen shows about the negotiation itself', () => {
     // requiredCrew is 2 here (`crewedCampaignWithPromise`), so `lockCommitment` reads
     // `commitmentOf` — 15 × 2 + 30 = 60 — the full-crew price `lockOffer` would have
     // reserved, not the `acceptedBy.size`-scaled figure `treasuryForecast` uses.
+    // `crewedCampaignWithPromise` is locked *and* crewed, so every lever names the same
+    // reason — the deal is struck and the terms no longer move (`NEGOTIATION_SPEC` §3.1).
+    // Treasury 500, no other locked contract, so `available` is the whole 500; the
+    // ceilings are then `(500 − 30) / 2 = 235` and `500 − 15×2 = 470`, both clamped by the
+    // patron fee of 100 before they reach a lever.
+    const rosterOptions = [
+      { value: ids.bram, label_key: 'hero.core.bram.name' },
+      { value: ids.doran, label_key: 'hero.core.doran.name' }
+    ];
+
     expect(projection['offer']).toEqual({
       version: 3,
       phase: 'locked',
-      advance: 15,
-      method_tag_key: 'tag.method.open',
-      method_option_keys: ['tag.method.open', 'tag.method.deception'],
-      promised_bonus: 30,
-      key_hero_definition: ids.bram,
+      advance_lever: { value: 15, min: 0, max: 100, disabled_reason_key: 'offer.locked' },
+      bonus_lever: { value: 30, min: 0, max: 100, disabled_reason_key: 'offer.locked' },
+      method_lever: {
+        chosen: ids.methodOpen,
+        options: [
+          { value: ids.methodOpen, label_key: 'tag.method.open' },
+          { value: ids.methodDeception, label_key: 'tag.method.deception' }
+        ],
+        disabled_reason_key: 'offer.locked'
+      },
+      key_hero_lever: {
+        chosen: ids.bram,
+        options: rosterOptions,
+        disabled_reason_key: 'offer.locked'
+      },
+      crew_lever: {
+        chosen: [ids.bram, ids.doran],
+        options: rosterOptions,
+        exactly: 2,
+        disabled_reason_key: 'offer.locked'
+      },
+      budget: { available: 500, max_advance: 235, max_bonus: 470 },
       lock_commitment: 60
     });
     expect(projection['promise_terms']).toEqual({
@@ -1152,6 +1184,238 @@ describe('what the screen shows about the negotiation itself', () => {
       crew: [ids.bram, ids.doran],
       treasury_if_kept: 540,
       treasury_if_broken: 570
+    });
+  });
+});
+
+describe('the levers a player may pull', () => {
+  /**
+   * A campaign where a *second* contract already holds a reserve, so `available` cannot
+   * be the treasury and cannot be "the treasury minus this package" either.
+   *
+   * Every number here is chosen so that no ceiling lands on the patron fee: `patronFee`
+   * is 200 while the budget answers 100 and 150, so a lever that ignored the budget and
+   * clamped on the fee alone would read 200 and redden. The plan's own case — "простое
+   * `max <= treasury` разрешит заведомо отказной пакет" — needs exactly that separation.
+   */
+  function campaignWithAnotherReserve(
+    overrides: { readonly advance?: number; readonly promisedBonus?: number } = {}
+  ): GameState {
+    const { advance = 60, promisedBonus = 30 } = overrides;
+    const roster = heroes(ids.bram, ids.doran, ids.zara);
+    const everyone = responded(0, 1, 2);
+
+    const focused = aContract({
+      id: ids.caravan,
+      patronFee: 200,
+      requiredCrew: 3,
+      negotiableTags: SortedSet.from(compareContentIds, [ids.methodDeception, ids.methodOpen]),
+      offer: anOffer({
+        keyHero: heroId(0),
+        invited: everyone,
+        advance,
+        methodTag: ids.methodOpen,
+        promisedBonus
+      })
+    });
+
+    // Locked, so it reserves: `advance × requiredCrew + promisedBonus` = 20×3 + 10 = 70.
+    const elsewhere = aContract({
+      id: ids.crypt,
+      patronFee: 100,
+      requiredCrew: 3,
+      offer: anOffer({
+        phase: OfferPhase.Locked,
+        keyHero: heroId(1),
+        invited: everyone,
+        advance: 20,
+        promisedBonus: 10
+      })
+    });
+
+    return withContracts(withHeroes(aState({ treasury: 400 }), roster), [focused, elsewhere]);
+  }
+
+  function budgetOf(state: GameState): OfferBudget {
+    return contractOfferScreenModel(state, [], ids.caravan).offer!.budget;
+  }
+
+  it('counts other locked offers against the money this package may still spend', () => {
+    const budget = budgetOf(campaignWithAnotherReserve());
+
+    expect(budget.available).toBe(400 - 70);
+    expect(budget.maxAdvance).toBe(divideTowardZero(330 - 30, 3));
+    expect(budget.maxBonus).toBe(330 - 60 * 3);
+  });
+
+  it('lowers the advance ceiling when the promise rises', () => {
+    expect(budgetOf(campaignWithAnotherReserve({ promisedBonus: 30 })).maxAdvance).toBeLessThan(
+      budgetOf(campaignWithAnotherReserve({ promisedBonus: 0 })).maxAdvance
+    );
+  });
+
+  it('leaves this package its own reserve to spend again', () => {
+    // The focused contract is `locked` here, so `reservedCommitments` counts it too.
+    // Revising a package returns it to `draft` (`RESOLUTION_SPEC` §6.2), and a draft
+    // reserves nothing — so its own money is money the next version may spend, and a
+    // budget that subtracted it would refuse a player the coins they already hold.
+    const state = campaignWithAnotherReserve();
+    const focused = state.contracts.get(ids.caravan)!;
+    const locked = withContracts(state, [
+      { ...focused, offer: { ...focused.offer, phase: OfferPhase.Locked } },
+      state.contracts.get(ids.crypt)!
+    ]);
+
+    expect(budgetOf(locked).available).toBe(400 - 70);
+  });
+
+  it('stops the advance exactly where lockOffer would start refusing', () => {
+    // The whole point of the ceiling: one over it is a package the engine is certain to
+    // refuse, and the player had no way to see it coming. Measured against the engine's
+    // own predicate rather than against a second copy of its arithmetic written here.
+    const state = campaignWithAnotherReserve();
+    const contract = state.contracts.get(ids.caravan)!;
+    const { max } = contractOfferScreenModel(state, [], ids.caravan).offer!.advanceLever;
+
+    const at = (advance: number) => ({ ...contract, offer: { ...contract.offer, advance } });
+
+    expect(max).toBe(100);
+    expect(canCover(state, at(max))).toBe(true);
+    expect(canCover(state, at(max + 1))).toBe(false);
+  });
+
+  it('never offers a term the patron fee itself forbids', () => {
+    // `composeOffer` bounds both money terms by `patronFee` (`NEGOTIATION_SPEC` §3.3),
+    // and on a rich campaign the budget alone would answer far above it.
+    const contract = aContract({
+      patronFee: 12,
+      requiredCrew: 1,
+      offer: anOffer({ keyHero: heroId(0), invited: responded(0) })
+    });
+    const state = withContracts(withHeroes(aState({ treasury: 400 }), heroes(ids.bram)), [
+      contract
+    ]);
+
+    const offer = contractOfferScreenModel(state, [], ids.caravan).offer!;
+
+    expect(offer.advanceLever.max).toBe(12);
+    expect(offer.bonusLever.max).toBe(12);
+    expect(offer.advanceLever.min).toBe(0);
+    expect(offer.bonusLever.min).toBe(0);
+  });
+
+  it('carries every invited hero on the crew lever, and the whole roster as its options', () => {
+    const ilsa = parseContentId('core:ilsa');
+    const roster = heroes(ids.bram, ids.doran, ids.zara, ilsa);
+    const contract = aContract({
+      requiredCrew: 4,
+      offer: anOffer({ keyHero: heroId(0), invited: responded(0, 1, 2, 3) })
+    });
+    const state = withContracts(withHeroes(aState(), roster), [contract]);
+
+    const { crewLever } = contractOfferScreenModel(state, [], ids.caravan).offer!;
+
+    expect(crewLever.chosen).toEqual([ids.bram, ids.doran, ids.zara, ilsa]);
+    expect(crewLever.exactly).toBe(4);
+    expect(crewLever.options).toHaveLength(4);
+  });
+
+  it('gives every option a label key, not only a value', () => {
+    const offer = contractOfferScreenModel(campaignWithAnotherReserve(), [], ids.caravan).offer!;
+
+    for (const option of [
+      ...offer.methodLever.options,
+      ...offer.crewLever.options,
+      ...offer.keyHeroLever.options
+    ]) {
+      expect(option.labelKey).not.toBe('');
+      expect(option.labelKey).not.toBe(String(option.value));
+    }
+
+    expect(offer.methodLever.options.map((option) => option.labelKey)).toEqual([
+      'tag.method.open',
+      'tag.method.deception'
+    ]);
+    expect(offer.methodLever.chosen).toBe(ids.methodOpen);
+    expect(offer.keyHeroLever.chosen).toBe(ids.bram);
+  });
+
+  /** A campaign whose focused contract sits in `phase`, with `status` to match. */
+  function campaignInPhase(phase: OfferPhase, status: ContractStatus): GameState {
+    const acceptedBy = status === ContractStatus.Crewed ? responded(0, 1) : responded(0);
+    const contract = aContract({
+      requiredCrew: 2,
+      status,
+      offer: anOffer({
+        phase,
+        keyHero: heroId(0),
+        invited: responded(0, 1),
+        respondedBy: responded(0, 1),
+        acceptedBy
+      })
+    });
+
+    return withContracts(withHeroes(aState(), heroes(ids.bram, ids.doran)), [contract]);
+  }
+
+  it.each([
+    ['a draft', OfferPhase.Draft, ContractStatus.Offered, null],
+    // `RESOLUTION_SPEC` §6.2: a locked package whose crew never filled is exactly where
+    // a new version is legal, so the levers stay live — this row is the way out of the
+    // dead end, not an oversight.
+    ['locked with the crew unfilled', OfferPhase.Locked, ContractStatus.Offered, null],
+    ['locked with the crew filled', OfferPhase.Locked, ContractStatus.Crewed, 'offer.locked'],
+    ['settled', OfferPhase.Settled, ContractStatus.Crewed, 'offer.settled']
+  ])('%s: every lever answers %s', (_name, phase, status, expected) => {
+    const model = contractOfferScreenModel(campaignInPhase(phase, status), [], ids.caravan);
+    const levers = leversOf(model.offer!);
+
+    expect(levers).toHaveLength(5);
+    expect(levers.map((lever) => lever.disabledReasonKey)).toEqual(levers.map(() => expected));
+  });
+
+  it('distinguishes two models that differ only in a lever', () => {
+    const hashFor = (advance: number) =>
+      readModelHash(
+        contractOfferScreenModel(campaignWithAnotherReserve({ advance }), [], ids.caravan)
+      );
+
+    expect(hashFor(40)).not.toBe(hashFor(50));
+  });
+
+  it('projects every lever and the budget, not only the terms they carry', () => {
+    const projection = describeReadModel(
+      contractOfferScreenModel(campaignWithAnotherReserve(), [], ids.caravan)
+    ) as Record<string, unknown>;
+
+    const rosterOptions = [
+      { value: ids.bram, label_key: 'hero.core.bram.name' },
+      { value: ids.doran, label_key: 'hero.core.doran.name' },
+      { value: ids.zara, label_key: 'hero.core.zara.name' }
+    ];
+
+    expect(projection['offer']).toEqual({
+      version: 1,
+      phase: 'draft',
+      advance_lever: { value: 60, min: 0, max: 100, disabled_reason_key: null },
+      bonus_lever: { value: 30, min: 0, max: 150, disabled_reason_key: null },
+      method_lever: {
+        chosen: ids.methodOpen,
+        options: [
+          { value: ids.methodOpen, label_key: 'tag.method.open' },
+          { value: ids.methodDeception, label_key: 'tag.method.deception' }
+        ],
+        disabled_reason_key: null
+      },
+      key_hero_lever: { chosen: ids.bram, options: rosterOptions, disabled_reason_key: null },
+      crew_lever: {
+        chosen: [ids.bram, ids.doran, ids.zara],
+        options: rosterOptions,
+        exactly: 3,
+        disabled_reason_key: null
+      },
+      budget: { available: 330, max_advance: 100, max_bonus: 150 },
+      lock_commitment: 210
     });
   });
 });

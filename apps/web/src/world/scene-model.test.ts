@@ -134,11 +134,12 @@ function aModel(rosterDefinitions: readonly string[], responders: readonly strin
       // all (`package.json` names only `application`/`content`/`presentation`), and the
       // type this satisfies structurally is a plain string union either way.
       phase: 'draft',
-      advance: 0,
-      methodTagKey: null,
-      methodOptionKeys: [],
-      promisedBonus: 0,
-      keyHeroDefinition: null,
+      advanceLever: { value: 0, min: 0, max: 0, disabledReasonKey: null },
+      bonusLever: { value: 0, min: 0, max: 0, disabledReasonKey: null },
+      methodLever: { chosen: null, options: [], disabledReasonKey: null },
+      keyHeroLever: { chosen: null, options: [], disabledReasonKey: null },
+      crewLever: { chosen: [], options: [], exactly: 1, disabledReasonKey: null },
+      budget: { available: 0, maxAdvance: 0, maxBonus: 0 },
       lockCommitment: 0
     },
     treasuryForecast: 400,

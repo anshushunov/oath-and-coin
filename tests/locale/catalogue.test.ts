@@ -24,6 +24,7 @@ import {
   COVERAGE_VERDICT_KEYS,
   DEFICIT_KIND_KEYS,
   FIELD_KEYS,
+  LEVER_DISABLED_KEYS,
   NEED_KEYS,
   OUTCOME_EVENT_KEYS,
   OUTCOME_GRADE_KEYS,
@@ -229,6 +230,11 @@ function everyKeyTheInterfaceCanShow(): readonly string[] {
     ...PROMISE_TERMS_KEYS,
     ...OFFER_PHASE_KEYS,
     ...OFFER_FIELD_KEYS,
+    // Why a package's levers have stopped moving (contract-loop UI plan, Task 4). Its own
+    // vocabulary rather than a reuse of `OFFER_PHASE_KEYS`: the phase names where the
+    // negotiation is, and this names why a control refuses — a locked package with an
+    // unfilled crew is `locked` and not disabled at all (`RESOLUTION_SPEC` §6.2).
+    ...LEVER_DISABLED_KEYS,
     ...TREASURY_FIELD_KEYS,
     ...SETTLEMENT_FIELD_KEYS,
     ...SETTLEMENT_ACTION_KEYS,

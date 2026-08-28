@@ -262,10 +262,36 @@ export const OfferFieldKeys = Object.freeze({
   SelectedMethod: 'field.offer.method_selected',
   PromisedBonus: 'field.offer.promised_bonus',
   KeyHero: 'field.offer.key_hero',
+  Crew: 'field.offer.crew',
+  BudgetAvailable: 'field.offer.budget_available',
+  MaxAdvance: 'field.offer.max_advance',
+  MaxBonus: 'field.offer.max_bonus',
   LockCommitment: 'field.offer.lock_commitment'
 });
 
 export const OFFER_FIELD_KEYS: readonly string[] = Object.freeze(Object.values(OfferFieldKeys));
+
+/**
+ * Why a package's levers cannot be moved right now (`NEGOTIATION_SPEC` §3.1's table).
+ *
+ * Two keys, not one, because the two sentences are different and the difference is the
+ * one a player has to act on: a locked, crewed package is a deal already struck and the
+ * next move is to send the crew out; a settled one is finished and the money has moved.
+ * `composeOffer` refuses both with the same code, which is why the *screen's* vocabulary
+ * has to be finer than the engine's — a text that covered both would say neither.
+ *
+ * There is deliberately no key for "locked, crew unfilled": that is not disabled at all.
+ * `RESOLUTION_SPEC` §6.2 makes a new version legal exactly there, and it is the only way
+ * out of a package a declining invitee has stranded.
+ */
+export const LeverDisabledKeys = Object.freeze({
+  Locked: 'offer.locked',
+  Settled: 'offer.settled'
+});
+
+export const LEVER_DISABLED_KEYS: readonly string[] = Object.freeze(
+  Object.values(LeverDisabledKeys)
+);
 
 /**
  * The captions for the two campaign-wide money facts (`NEGOTIATION_SPEC` §2.3, §5.1):

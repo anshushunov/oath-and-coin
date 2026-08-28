@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { startSession, type SessionState } from '@oath-and-coin/application';
 import {
+  LeverDisabledKeys,
   OfferFieldKeys,
   PromiseTermsKeys,
   QualitativeGrade,
@@ -12,6 +13,7 @@ import {
   expectedSnapshot,
   failedScreen,
   snapshotHash,
+  type ContentId,
   type ContractOfferScreenModel
 } from '@oath-and-coin/presentation';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -332,8 +334,20 @@ function rawIdentifiersOf(model: ContractOfferScreenModel): readonly string[] {
     }
   }
 
-  if (model.offer !== null && model.offer.keyHeroDefinition !== null) {
-    identifiers.push(model.offer.keyHeroDefinition);
+  if (model.offer !== null) {
+    // Every id the package carries for bookkeeping: the key hero, the crew it invites and
+    // every option either lever offers. All of them are joined to a display-name key
+    // before they reach a label, and none may appear on the frame itself (`TDD` §11.1).
+    if (model.offer.keyHeroLever.chosen !== null) {
+      identifiers.push(model.offer.keyHeroLever.chosen);
+    }
+
+    identifiers.push(...model.offer.crewLever.chosen);
+    identifiers.push(
+      ...model.offer.keyHeroLever.options.map((option) => option.value),
+      ...model.offer.crewLever.options.map((option) => option.value),
+      ...model.offer.methodLever.options.map((option) => option.value)
+    );
   }
 
   if (model.settlement !== null) {
@@ -475,6 +489,18 @@ describe('the draft block, the promise, the treasury and the settlement', () => 
   });
 });
 
+/**
+ * A content id in a hand-built fixture.
+ *
+ * A cast rather than `parseContentId`, because `apps/web` declares no dependency on the
+ * simulation and must not gain one (`ADR-010`). Nothing in the app ever builds an id —
+ * every one it holds came off a model — so the parser belongs to the layers that make
+ * models, and these three fixtures are the only place in this app that states one at all.
+ */
+function id(text: string): ContentId {
+  return text as ContentId;
+}
+
 /** The catalogue's own answer for `key`, so a test reads the same text the screen does. */
 function textOf(key: string): string {
   const text = catalogue.get(key);
@@ -524,18 +550,38 @@ function draftModel(): ContractOfferScreenModel {
     offer: {
       version: 1,
       phase: 'draft',
-      advance: 40,
-      // Deliberately the *second* entry of `methodOptionKeys`, not the first: external
-      // review of this task found that a chosen-first fixture cannot tell a correct
-      // `methodTagKey` projection apart from a wrong one that just shows whichever
-      // option happens to render first — the two coincide whenever the choice sorts
-      // first, which is what the real factory's own convention always arranges. This
-      // model is hand-built and owes that convention nothing, so the test below can
-      // actually discriminate.
-      methodTagKey: 'tag.method.open',
-      methodOptionKeys: ['tag.method.deception', 'tag.method.open'],
-      promisedBonus: 25,
-      keyHeroDefinition: 'core:bram',
+      // A draft: every lever live, every reason `null`. `max` is the patron fee on both
+      // money levers, because the budget alone would allow far more on a treasury of 400
+      // — `(400 − 25) / 3` and `400 − 40 × 3` — and whichever ceiling binds first is the
+      // one a control can actually reach.
+      advanceLever: { value: 40, min: 0, max: 40, disabledReasonKey: null },
+      bonusLever: { value: 25, min: 0, max: 40, disabledReasonKey: null },
+      methodLever: {
+        // Deliberately the *second* option, not the first: external review of Task 17
+        // found that a chosen-first fixture cannot tell a correct projection of the
+        // chosen tag apart from a wrong one that just shows whichever option happens to
+        // render first — the two coincide whenever the choice sorts first, which is what
+        // the real factory's own convention always arranges. This model is hand-built and
+        // owes that convention nothing, so the test below can actually discriminate.
+        chosen: id('method:open'),
+        options: [
+          { value: id('method:deception'), labelKey: 'tag.method.deception' },
+          { value: id('method:open'), labelKey: 'tag.method.open' }
+        ],
+        disabledReasonKey: null
+      },
+      keyHeroLever: {
+        chosen: id('core:bram'),
+        options: [{ value: id('core:bram'), labelKey: 'hero.core.bram.name' }],
+        disabledReasonKey: null
+      },
+      crewLever: {
+        chosen: [id('core:bram')],
+        options: [{ value: id('core:bram'), labelKey: 'hero.core.bram.name' }],
+        exactly: 3,
+        disabledReasonKey: null
+      },
+      budget: { available: 400, maxAdvance: 125, maxBonus: 280 },
       lockCommitment: 145
     },
     // `400 + 40 - 40 * 1 - 25 = 375` — `settleContract`'s own formula
@@ -590,11 +636,24 @@ function lockedUncrewedModel(): ContractOfferScreenModel {
     offer: {
       version: 2,
       phase: 'locked',
-      advance: 20,
-      methodTagKey: null,
-      methodOptionKeys: [],
-      promisedBonus: 0,
-      keyHeroDefinition: 'core:mira',
+      // Locked with a seat still open — the one shape where `locked` does *not* disable
+      // anything (`RESOLUTION_SPEC` §6.2): a new version of the package is exactly the
+      // move left, and every reason below is `null` because of it.
+      advanceLever: { value: 20, min: 0, max: 55, disabledReasonKey: null },
+      bonusLever: { value: 0, min: 0, max: 55, disabledReasonKey: null },
+      methodLever: { chosen: null, options: [], disabledReasonKey: null },
+      keyHeroLever: {
+        chosen: id('core:mira'),
+        options: [{ value: id('core:mira'), labelKey: 'hero.core.mira.name' }],
+        disabledReasonKey: null
+      },
+      crewLever: {
+        chosen: [id('core:mira')],
+        options: [{ value: id('core:mira'), labelKey: 'hero.core.mira.name' }],
+        exactly: 3,
+        disabledReasonKey: null
+      },
+      budget: { available: 300, maxAdvance: 100, maxBonus: 240 },
       lockCommitment: 60
     },
     treasuryForecast: 335,
@@ -649,11 +708,29 @@ function crewedModel(): ContractOfferScreenModel {
     offer: {
       version: 3,
       phase: 'locked',
-      advance: 15,
-      methodTagKey: null,
-      methodOptionKeys: [],
-      promisedBonus: 10,
-      keyHeroDefinition: 'core:bram',
+      // Locked *and* crewed: the deal is struck, so every lever is disabled and each says
+      // so on its own line — the branch `draftModel` and `lockedUncrewedModel` never take.
+      advanceLever: { value: 15, min: 0, max: 30, disabledReasonKey: LeverDisabledKeys.Locked },
+      bonusLever: { value: 10, min: 0, max: 30, disabledReasonKey: LeverDisabledKeys.Locked },
+      methodLever: { chosen: null, options: [], disabledReasonKey: LeverDisabledKeys.Locked },
+      keyHeroLever: {
+        chosen: id('core:bram'),
+        options: [
+          { value: id('core:bram'), labelKey: 'hero.core.bram.name' },
+          { value: id('core:doran'), labelKey: 'hero.core.doran.name' }
+        ],
+        disabledReasonKey: LeverDisabledKeys.Locked
+      },
+      crewLever: {
+        chosen: [id('core:bram'), id('core:doran')],
+        options: [
+          { value: id('core:bram'), labelKey: 'hero.core.bram.name' },
+          { value: id('core:doran'), labelKey: 'hero.core.doran.name' }
+        ],
+        exactly: 2,
+        disabledReasonKey: LeverDisabledKeys.Locked
+      },
+      budget: { available: 300, maxAdvance: 145, maxBonus: 270 },
       lockCommitment: 40
     },
     treasuryForecast: 290,
