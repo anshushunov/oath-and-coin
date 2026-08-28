@@ -26,6 +26,7 @@ import {
   FIELD_KEYS,
   LEVER_DISABLED_KEYS,
   NEED_KEYS,
+  OFFER_ACTION_KEYS,
   OUTCOME_EVENT_KEYS,
   OUTCOME_GRADE_KEYS,
   OFFER_FIELD_KEYS,
@@ -33,6 +34,7 @@ import {
   PROMISE_TERMS_KEYS,
   QUALITATIVE_KEYS,
   REASON_DIRECTION_KEYS,
+  REJECTION_KEYS,
   SAVES_TITLE_KEY,
   SAVE_FIELD_KEYS,
   SAVE_OVERWRITE_KEYS,
@@ -235,6 +237,18 @@ function everyKeyTheInterfaceCanShow(): readonly string[] {
     // negotiation is, and this names why a control refuses — a locked package with an
     // unfilled crew is `locked` and not disabled at all (`RESOLUTION_SPEC` §6.2).
     ...LEVER_DISABLED_KEYS,
+    // The six commands a player presses, and every way the engine can refuse one
+    // (contract-loop UI plan, Task 5). A `RejectionCodes` member is already a dotted
+    // lowercase key — the same shape a `ReasonCodes` member has on a response line — so
+    // nothing builds these; what the interface owes is the *sentence*, which is why they
+    // are `ui-text/`'s and not `content/locale/`'s (`ADR-012`).
+    //
+    // All twenty, not only the thirteen a dark control can currently show: the list is the
+    // engine's own closed set, and picking the subset this screen happens to reach today
+    // would be a second, hand-maintained declaration of it — and would leave a code with no
+    // text the day a command started answering with it.
+    ...OFFER_ACTION_KEYS,
+    ...REJECTION_KEYS,
     ...TREASURY_FIELD_KEYS,
     ...SETTLEMENT_FIELD_KEYS,
     ...SETTLEMENT_ACTION_KEYS,

@@ -832,7 +832,11 @@ describe('the read-model hash', () => {
       offer: null,
       treasury_forecast: 0,
       promise_terms: null,
-      settlement: null
+      settlement: null,
+      // Empty rather than six dark entries: a loading screen has no package behind it, so
+      // there is no command to press against one — which is a different claim from "every
+      // command is refused" and hashes differently, as it should.
+      available_actions: []
     });
   });
 });
