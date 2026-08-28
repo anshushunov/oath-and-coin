@@ -30,12 +30,23 @@
     "offer.phase.locked": "Заблокирован",
     "offer.phase.settled": "Рассчитан",
 
+    "offer.locked": "Пакет заблокирован, отряд набран — условия больше не меняются.",
+    "offer.settled": "Контракт рассчитан — менять нечего.",
+
     "field.offer.version": "Версия пакета:",
     "field.offer.advance": "Аванс:",
     "field.offer.method": "Метод:",
     "field.offer.method_selected": "Выбрано:",
     "field.offer.promised_bonus": "Надбавка по возвращении:",
     "field.offer.key_hero": "Ключевой герой:",
+    "field.offer.key_hero_options": "Кого можно назвать ключевым:",
+    "field.offer.crew": "Приглашены:",
+    "field.offer.crew_options": "Кого можно позвать:",
+    "field.offer.crew_size": "Мест в отряде:",
+    "field.offer.budget_available": "Свободно в казне:",
+    "field.offer.max_advance": "Аванс не выше:",
+    "field.offer.max_bonus": "Надбавка не выше:",
+    "field.offer.shortfall": "Не хватает на пакет:",
     "field.offer.lock_commitment": "Резерв при блокировке:",
 
     "field.treasury": "Казна:",

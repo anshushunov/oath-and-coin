@@ -41,6 +41,8 @@ export {
   COVERAGE_VERDICT_KEYS,
   DEFICIT_KIND_KEYS,
   FIELD_KEYS,
+  LEVER_DISABLED_KEYS,
+  LeverDisabledKeys,
   NEED_KEYS,
   OUTCOME_EVENT_KEYS,
   OUTCOME_GRADE_KEYS,
@@ -99,8 +101,31 @@ export {
   waveredKey
 } from './keys.ts';
 
+/**
+ * The identifier type this package's own models are written in, re-exported so a consumer
+ * can name it without depending on the simulation directly.
+ *
+ * `apps/web` declares no dependency on `@oath-and-coin/simulation` and must not gain one
+ * (`ADR-010`'s chain is `simulation ← presentation ← application`), yet a component holding
+ * a player's crew selection has to give that state a type — and the values in it come
+ * straight off {@link OfferLine}'s levers, which are `ContentId`. A type-only re-export is
+ * the whole of what that needs: nothing runtime crosses, and no component ever *builds* an
+ * id, it only carries one the model handed it.
+ */
+export type { ContentId } from '@oath-and-coin/simulation';
+
+export type {
+  ChoiceLever,
+  ChoiceOption,
+  Lever,
+  MultiChoiceLever,
+  NumericLever,
+  OfferBudget
+} from './lever.ts';
+
 export {
   createContractOfferScreenModel,
+  leversOf,
   type ContractOfferScreenContent,
   type ContractLine,
   type ContractOfferScreenModel,

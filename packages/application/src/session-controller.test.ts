@@ -30,6 +30,7 @@ import { slotChanged, slotMayBeWritten } from './save/slot-guard.ts';
 import { SAVE_SLOTS, type SaveSlot } from './save/slots.ts';
 import {
   createSessionController,
+  type OfferDraft,
   type SessionController,
   type SessionControllerDeps
 } from './session-controller.ts';
@@ -1829,7 +1830,7 @@ describe('dispatching the six negotiation commands', () => {
     // The screen on the store moved with it — a controller that computed the right
     // `CommandResult` but forgot to publish it would leave a player looking at the
     // package they revised away from.
-    expect(offerScreen(controller.store.snapshot().screen).offer?.advance).toBe(40);
+    expect(offerScreen(controller.store.snapshot().screen).offer?.advanceLever.value).toBe(40);
     // `canonicalHash` is over the whole scripted `ScenarioOutcome`, and a live command
     // was never one of its steps — carrying the old hash forward would claim a
     // campaign this call just changed is still the one the run produced.
@@ -1948,6 +1949,181 @@ describe('dispatching the six negotiation commands', () => {
       heroId(1),
       heroId(2)
     ]);
+  });
+});
+
+describe('taking a package in the ids the screen actually holds', () => {
+  const escort = parseContentId('core:escort');
+  const bram = parseContentId('core:bram');
+
+  /** A package the screen could have assembled: content ids throughout, no `HeroId`. */
+  function draft(overrides: Partial<OfferDraft> = {}): OfferDraft {
+    return {
+      advance: 40,
+      promisedBonus: 0,
+      methodTag: null,
+      keyHero: bram,
+      invited: [bram],
+      ...overrides
+    };
+  }
+
+  it('resolves every definition to the runtime id the engine wants', async () => {
+    // `HeroCard` carries no `HeroId` at all, so a component holding a selection has only
+    // content ids to send. This is the one place that mapping is made, against the
+    // campaign where it is unambiguous.
+    const { controller } = harness();
+    await controller.start();
+
+    const result = controller.composeOfferFromDraft(escort, draft());
+
+    expect(result.applied).toBe(true);
+    expect(result.rejectionCode).toBeNull();
+    expect(offerScreen(controller.store.snapshot().screen).offer?.advanceLever.value).toBe(40);
+    expect(offerScreen(controller.store.snapshot().screen).offer?.keyHeroLever.chosen).toBe(bram);
+  });
+
+  it('refuses an unknown key hero instead of throwing', async () => {
+    // A definition the campaign does not carry is a refusal a screen can show, never an
+    // exception a React handler is left holding — the same rule every other command on
+    // this controller already follows. `core:nobody` fills the whole one-seat crew here,
+    // so the draft is faultless apart from naming somebody who does not exist.
+    const nobody = parseContentId('core:nobody');
+    const { controller } = harness();
+    await controller.start();
+    const before = controller.store.snapshot();
+
+    let result: CommandResult | undefined;
+    expect(() => {
+      result = controller.composeOfferFromDraft(
+        escort,
+        draft({ keyHero: nobody, invited: [nobody] })
+      );
+    }).not.toThrow();
+
+    expect(result?.applied).toBe(false);
+    expect(result?.rejectionCode).toBe(RejectionCodes.UnknownHero);
+    expect(controller.store.snapshot()).toBe(before);
+  });
+
+  it('refuses an unknown invitee once every earlier check has passed', async () => {
+    // Three seats, so the crew can hold a real key hero *and* a stranger at once: on the
+    // one-seat `core:escort` an unknown invitee is always also a key hero outside the
+    // crew, and the engine would answer that instead — the earlier row in its own order.
+    // This is the draft where nothing but the stranger is wrong.
+    const crypt = parseContentId('core:cleanse_the_crypt');
+    const { controller } = harness({ scenario: pollCrewScenario, content: pollCrewContentTree() });
+    await controller.start();
+
+    const result = controller.composeOfferFromDraft(crypt, {
+      advance: 10,
+      promisedBonus: 0,
+      methodTag: null,
+      keyHero: bram,
+      invited: [bram, parseContentId('core:doran'), parseContentId('core:nobody')]
+    });
+
+    expect(result.applied).toBe(false);
+    expect(result.rejectionCode).toBe(RejectionCodes.UnknownHero);
+  });
+
+  it('gives two unknown heroes two ids, so a full crew is not reported as the wrong size', async () => {
+    // The sentinel allocation's own property, and the reason it is per definition rather
+    // than one shared value. `composeOffer` measures the crew by its *distinct* count, so
+    // a single sentinel for both strangers would turn this crew of three into a crew of
+    // two and answer `crew_size_mismatch` — naming a fault the caller never made, instead
+    // of the one they did.
+    const crypt = parseContentId('core:cleanse_the_crypt');
+    const { controller } = harness({ scenario: pollCrewScenario, content: pollCrewContentTree() });
+    await controller.start();
+
+    const result = controller.composeOfferFromDraft(crypt, {
+      advance: 10,
+      promisedBonus: 0,
+      methodTag: null,
+      keyHero: bram,
+      invited: [bram, parseContentId('core:nobody'), parseContentId('core:no_one_else')]
+    });
+
+    expect(result.applied).toBe(false);
+    expect(result.rejectionCode).toBe(RejectionCodes.UnknownHero);
+  });
+
+  it('refuses a contract this campaign does not carry', async () => {
+    const { controller } = harness();
+    await controller.start();
+
+    const result = controller.composeOfferFromDraft(parseContentId('core:no_such'), draft());
+
+    expect(result.applied).toBe(false);
+    expect(result.rejectionCode).toBe(RejectionCodes.UnknownContract);
+  });
+
+  /**
+   * `composeOffer` refuses in a stated order, and `engine.ts` says outright that the order
+   * "is part of the canonical result of a command, not an implementation detail": the
+   * contract, then the key hero's existence, then the terms, then whether the package may
+   * be revised, then the crew's size, then the key hero's membership, and only last
+   * whether each invitee exists.
+   *
+   * An adapter that resolved ids first and refused on its own would answer
+   * `unknown_hero` to every one of these — naming the wrong one of two broken things,
+   * which is exactly what that comment forbids. Each row below is a draft with **two**
+   * faults, of which the engine's own order picks the earlier one.
+   */
+  it.each([
+    [
+      'an unknown contract beside an unknown invitee',
+      parseContentId('core:no_such'),
+      { invited: [parseContentId('core:nobody')] },
+      RejectionCodes.UnknownContract
+    ],
+    [
+      'a crew of the wrong size beside an unknown invitee',
+      escort,
+      { invited: [bram, parseContentId('core:nobody')] },
+      RejectionCodes.CrewSizeMismatch
+    ],
+    [
+      'a key hero outside the crew beside an unknown invitee',
+      escort,
+      { keyHero: bram, invited: [parseContentId('core:nobody')] },
+      RejectionCodes.KeyHeroNotInvited
+    ]
+  ])('refuses %s in the engine’s own order', async (_name, contractId, overrides, expected) => {
+    const { controller } = harness();
+    await controller.start();
+
+    const result = controller.composeOfferFromDraft(contractId, draft(overrides));
+
+    expect(result.applied).toBe(false);
+    expect(result.rejectionCode).toBe(expected);
+  });
+
+  it('translates a whole crew hero by hero, not the first one several times', async () => {
+    // Three seats and three distinct heroes, named in an order that is neither the
+    // campaign's nor sorted — so a translation that mapped every entry to one id, dropped
+    // entries, or answered the same id twice cannot produce this crew. The screen reads
+    // the invited crew back in `HeroId` order (`OfferState.invited` is a `SortedSet`),
+    // which is what the assertion below states.
+    const crypt = parseContentId('core:cleanse_the_crypt');
+    const zara = parseContentId('core:zara');
+    const doran = parseContentId('core:doran');
+    const { controller } = harness({ scenario: pollCrewScenario, content: pollCrewContentTree() });
+    await controller.start();
+
+    const result = controller.composeOfferFromDraft(crypt, {
+      advance: 10,
+      promisedBonus: 0,
+      methodTag: null,
+      keyHero: zara,
+      invited: [zara, bram, doran]
+    });
+
+    expect(result.applied).toBe(true);
+    const offer = offerScreen(controller.store.snapshot().screen).offer;
+    expect(offer?.crewLever.chosen).toEqual([bram, doran, zara]);
+    expect(offer?.keyHeroLever.chosen).toBe(zara);
   });
 });
 

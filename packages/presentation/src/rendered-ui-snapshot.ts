@@ -418,16 +418,19 @@ function contractBoardSnapshot(
 
 /**
  * The negotiation package (`NEGOTIATION_SPEC` §5.1): version and phase first — the two
- * facts about the package itself, rather than its terms — then the three levers a
- * player pulls (advance, method, promised bonus) in the order the screen groups them
- * as one draft block, the key hero the package names when it names one, and last the
- * reservation locking it would make, which is the price those three levers together
- * produce.
+ * facts about the package itself, rather than its terms — then the five levers a player
+ * pulls, in {@link leversOf}'s own order, then the budget those levers are bounded by, and
+ * last the reservation locking the package would make.
  *
  * The method choice is two entries, not one: {@link OfferFieldKeys.Method} names both
  * alternatives, and {@link OfferFieldKeys.SelectedMethod} — separately — names the one
  * actually chosen. Folding the second into "whichever alternative sorts first" would
  * make a wrong selection unprovable by this function's own output.
+ *
+ * **Each lever's disabled reason is emitted beside that lever, not once for the package.**
+ * They are equal today because one condition disables all five, and "equal today" is
+ * exactly the kind of fact this repository has already been burned by asserting: a single
+ * shared line would also be the one thing a screen reader cannot attribute to a control.
  */
 function resolveOffer(
   offer: OfferLine,
@@ -435,40 +438,112 @@ function resolveOffer(
   texts: string[],
   heroDisplayNameKeyOf: (definition: string) => string
 ): void {
+  const resolveIfSet = (key: string | null): void => {
+    if (key !== null) {
+      resolve(key);
+    }
+  };
+
   resolve(OfferFieldKeys.Version);
   texts.push(String(offer.version));
   resolve(offerPhaseKey(offer.phase));
 
   resolve(OfferFieldKeys.Advance);
-  texts.push(String(offer.advance));
+  texts.push(String(offer.advanceLever.value));
+  resolveIfSet(offer.advanceLever.disabledReasonKey);
 
-  // Both alternatives, in whatever order `OfferLine.methodOptionKeys` carries them
-  // (`methodOptionKeysOf` puts the chosen one first, but this function does not lean
-  // on that — a player choosing between two things has to see both, in *some* stated
-  // order, and an empty list means the contract carries no negotiable tag at all, so
-  // there is no caption for nothing to choose between).
-  if (offer.methodOptionKeys.length > 0) {
+  // Both alternatives, in whatever order `methodLever.options` carries them (the factory
+  // puts the chosen one first, but this function does not lean on that — a player
+  // choosing between two things has to see both, in *some* stated order, and an empty
+  // list means the contract carries no negotiable tag at all, so there is no caption for
+  // nothing to choose between).
+  if (offer.methodLever.options.length > 0) {
     resolve(OfferFieldKeys.Method);
-    offer.methodOptionKeys.forEach(resolve);
+    offer.methodLever.options.forEach((option) => {
+      resolve(option.labelKey);
+    });
   }
 
   // Which one is *chosen*, projected as its own ordinary value — never inferred from
-  // position in the list above. A radio's `checked` state has no text representation
-  // at all, so without this line "which alternative won" is provable only by reading a
-  // DOM property no walk over rendered text (`collectRenderedTexts`, this function's
-  // own caller) can see. `null` exactly when nothing has been chosen yet, the same gate
-  // {@link OfferLine.methodTagKey}'s own doc keeps.
-  if (offer.methodTagKey !== null) {
+  // position in the list above, and never re-derived by comparing ids. A radio's `checked`
+  // state has no text representation at all, so without this line "which alternative won"
+  // is provable only by reading a DOM property no walk over rendered text
+  // (`collectRenderedTexts`, this function's own caller) can see. Read off
+  // `ChoiceOption.selected`, the same field the component reads: a comparison made here
+  // and again there would be one decision in two places, and the two hashes agreeing
+  // could not catch either copy being wrong.
+  const chosenMethod = offer.methodLever.options.filter((option) => option.selected);
+
+  chosenMethod.forEach((option) => {
     resolve(OfferFieldKeys.SelectedMethod);
-    resolve(offer.methodTagKey);
-  }
+    resolve(option.labelKey);
+  });
+
+  resolveIfSet(offer.methodLever.disabledReasonKey);
 
   resolve(OfferFieldKeys.PromisedBonus);
-  texts.push(String(offer.promisedBonus));
+  texts.push(String(offer.bonusLever.value));
+  resolveIfSet(offer.bonusLever.disabledReasonKey);
 
-  if (offer.keyHeroDefinition !== null) {
+  // Both hero levers show every option they offer, not only the chosen ones: a choice a
+  // player cannot see is not a choice, and the crew lever's options are the whole point
+  // of the crew being part of the package (`RESOLUTION_SPEC` §2.5). Naming the chosen
+  // ones as well is not a repetition — it is the same distinction `SelectedMethod` draws
+  // above, since a checkbox's `checked` has no text behind it either.
+  resolve(OfferFieldKeys.KeyHeroOptions);
+  offer.keyHeroLever.options.forEach((option) => {
+    resolve(option.labelKey);
+  });
+
+  if (offer.keyHeroLever.chosen !== null) {
     resolve(OfferFieldKeys.KeyHero);
-    resolve(heroDisplayNameKeyOf(offer.keyHeroDefinition));
+    resolve(heroDisplayNameKeyOf(offer.keyHeroLever.chosen));
+  }
+
+  resolveIfSet(offer.keyHeroLever.disabledReasonKey);
+
+  resolve(OfferFieldKeys.CrewOptions);
+  offer.crewLever.options.forEach((option) => {
+    resolve(option.labelKey);
+  });
+
+  // How many seats the package must fill, exactly — the number `composeOffer` refuses a
+  // crew for missing (`rejected.crew_size_mismatch`), so a player choosing people has to
+  // be told it before they choose rather than after.
+  resolve(OfferFieldKeys.CrewSize);
+  texts.push(String(offer.crewLever.exactly));
+
+  if (offer.crewLever.chosen.length > 0) {
+    resolve(OfferFieldKeys.Crew);
+    offer.crewLever.chosen.forEach((definition) => {
+      resolve(heroDisplayNameKeyOf(definition));
+    });
+  }
+
+  resolveIfSet(offer.crewLever.disabledReasonKey);
+
+  // The budget in its own right (`NEGOTIATION_SPEC` §2.3): a control that has stopped
+  // moving says nothing about why, and "the guild has 330 left, of which this package may
+  // put 100 into each seat" is the sentence a player needs before they blame the control.
+  //
+  // The ceilings shown are the levers' own, not `budget.maxAdvance`/`maxBonus`: those two
+  // are what the *treasury* allows, while a lever's `max` is what the player may actually
+  // set, once `composeOffer`'s own patron-fee bound has had its say. Both are in the
+  // read-model hash; only the one a control can reach belongs on the page.
+  resolve(OfferFieldKeys.BudgetAvailable);
+  texts.push(String(offer.budget.available));
+  resolve(OfferFieldKeys.MaxAdvance);
+  texts.push(String(offer.advanceLever.max));
+  resolve(OfferFieldKeys.MaxBonus);
+  texts.push(String(offer.bonusLever.max));
+
+  // Only when the package has stopped fitting. A shortfall of zero is not a fact about
+  // this package — it is the absence of one — and a line reading "не хватает: 0" beside a
+  // package that fits perfectly is the heading-over-an-absence this projection refuses
+  // everywhere else.
+  if (offer.budget.shortfall > 0) {
+    resolve(OfferFieldKeys.Shortfall);
+    texts.push(String(offer.budget.shortfall));
   }
 
   resolve(OfferFieldKeys.LockCommitment);

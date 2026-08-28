@@ -14,6 +14,7 @@ import {
   type ContractLine,
   type ContractOfferScreenModel,
   type HeroCard,
+  type Lever,
   type OfferLine,
   type ResponseLine,
   type SettlementLine
@@ -63,11 +64,13 @@ import { Captioned, KeyList, Label } from '../labels.tsx';
  */
 export function ContractOfferScreen({ model }: { readonly model: ContractOfferScreenModel }) {
   const text = useText();
-  // The one join this screen has to make for itself: `OfferLine.keyHeroDefinition` and
+  // The one join this screen has to make for itself: `OfferLine`'s hero levers and
   // `SettlementLine.keyHeroDefinition`/`crew` carry a hero's raw content id for
   // bookkeeping (`OfferLine`'s own doc comment), and the roster already carries that
   // id's display-name key — the same convention `ResponseLine.heroDefinition` uses.
-  // Built once per render rather than per field that needs it.
+  // Built once per render rather than per field that needs it. A lever's *options* need
+  // no such join: each already carries its own label key, because a screen has no roster
+  // to look one up in for a hero nobody has chosen yet.
   const heroDisplayNameKeyOf = buildHeroDisplayNameKeyOf(model.roster);
   // `NEGOTIATION_SPEC` §5.1: the treasury reads on `Empty` exactly as it reads on
   // `Normal` — a campaign with nothing to offer still has one — and only `Loading` and
@@ -335,42 +338,108 @@ function OfferBlock({
       <Label text={text(offerPhaseKey(offer.phase))} />
 
       <div className="row lever">
-        <Captioned captionKey={OfferFieldKeys.Advance} value={String(offer.advance)} />
+        <Captioned captionKey={OfferFieldKeys.Advance} value={String(offer.advanceLever.value)} />
+        <DisabledReason lever={offer.advanceLever} />
 
-        {offer.methodOptionKeys.length === 0 ? null : (
+        {offer.methodLever.options.length === 0 ? null : (
           <div className="method-options">
             <Label text={text(OfferFieldKeys.Method)} />
-            {offer.methodOptionKeys.map((key) => (
-              <label className="method-option" key={key}>
-                <input
-                  type="radio"
-                  name="offer-method"
-                  checked={key === offer.methodTagKey}
-                  readOnly
-                />
-                <span className="label">{text(key)}</span>
+            {offer.methodLever.options.map((option) => (
+              <label className="method-option" key={option.value}>
+                <input type="radio" name="offer-method" checked={option.selected} readOnly />
+                <span className="label">{text(option.labelKey)}</span>
               </label>
             ))}
           </div>
         )}
 
-        {offer.methodTagKey === null ? null : (
-          <Captioned captionKey={OfferFieldKeys.SelectedMethod} value={text(offer.methodTagKey)} />
-        )}
+        {offer.methodLever.options
+          .filter((option) => option.selected)
+          .map((option) => (
+            <Captioned
+              key={option.value}
+              captionKey={OfferFieldKeys.SelectedMethod}
+              value={text(option.labelKey)}
+            />
+          ))}
 
-        <Captioned captionKey={OfferFieldKeys.PromisedBonus} value={String(offer.promisedBonus)} />
+        <DisabledReason lever={offer.methodLever} />
+
+        <Captioned
+          captionKey={OfferFieldKeys.PromisedBonus}
+          value={String(offer.bonusLever.value)}
+        />
+        <DisabledReason lever={offer.bonusLever} />
       </div>
 
-      {offer.keyHeroDefinition === null ? null : (
+      {/* Both hero levers show every option before they show the choice made out of it:
+          a set of alternatives a player cannot see is not a set they can choose from,
+          and the crew being part of the package is the whole point of `RESOLUTION_SPEC`
+          §2.5. Never gated on emptiness — a roster is never empty on a screen that has a
+          contract at all (`contractOfferScreenModel`'s own `Empty` guard). */}
+      <KeyList
+        captionKey={OfferFieldKeys.KeyHeroOptions}
+        keys={offer.keyHeroLever.options.map((option) => option.labelKey)}
+      />
+
+      {offer.keyHeroLever.chosen === null ? null : (
         <Captioned
           captionKey={OfferFieldKeys.KeyHero}
-          value={text(heroDisplayNameKeyOf(offer.keyHeroDefinition))}
+          value={text(heroDisplayNameKeyOf(offer.keyHeroLever.chosen))}
         />
       )}
+      <DisabledReason lever={offer.keyHeroLever} />
+
+      <KeyList
+        captionKey={OfferFieldKeys.CrewOptions}
+        keys={offer.crewLever.options.map((option) => option.labelKey)}
+      />
+      <Captioned captionKey={OfferFieldKeys.CrewSize} value={String(offer.crewLever.exactly)} />
+
+      <KeyList
+        captionKey={OfferFieldKeys.Crew}
+        keys={offer.crewLever.chosen.map(heroDisplayNameKeyOf)}
+      />
+      <DisabledReason lever={offer.crewLever} />
+
+      <div className="row budget">
+        <Captioned
+          captionKey={OfferFieldKeys.BudgetAvailable}
+          value={String(offer.budget.available)}
+        />
+        <Captioned captionKey={OfferFieldKeys.MaxAdvance} value={String(offer.advanceLever.max)} />
+        <Captioned captionKey={OfferFieldKeys.MaxBonus} value={String(offer.bonusLever.max)} />
+
+        {/* Only when the package has stopped fitting — a branch on a number being zero is
+            the same kind as a branch on an empty list, and "не хватает: 0" beside a
+            package that fits is a heading for an absence. */}
+        {offer.budget.shortfall === 0 ? null : (
+          <Captioned
+            captionKey={OfferFieldKeys.Shortfall}
+            value={String(offer.budget.shortfall)}
+            testId="offer-shortfall"
+          />
+        )}
+      </div>
 
       <Captioned captionKey={OfferFieldKeys.LockCommitment} value={String(offer.lockCommitment)} />
     </div>
   );
+}
+
+/**
+ * Why a lever cannot be moved, beside that lever — a branch on a model field being `null`
+ * and on nothing else.
+ *
+ * Its own line per lever rather than one for the package: the model states a reason per
+ * lever ({@link leversOf}), and a screen that collapsed five equal reasons into one would
+ * be asserting they must stay equal — plus leaving four disabled controls with no
+ * accessible explanation of their own.
+ */
+function DisabledReason({ lever }: { readonly lever: Lever }) {
+  const text = useText();
+
+  return lever.disabledReasonKey === null ? null : <Label text={text(lever.disabledReasonKey)} />;
 }
 
 /**

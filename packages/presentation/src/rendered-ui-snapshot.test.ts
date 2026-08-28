@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { OfferPhase, ReasonCodes } from '@oath-and-coin/simulation';
+import { OfferPhase, ReasonCodes, parseContentId } from '@oath-and-coin/simulation';
 
 import {
   createContractOfferScreenModel,
+  leversOf,
   type ContractOfferScreenModel
 } from './contract-offer-screen-model.ts';
 import { LOADING_SCREEN, failedScreen } from './contract-offer-screen-model-factory.ts';
@@ -99,6 +100,17 @@ const aFullModel = createContractOfferScreenModel({
       pride: QualitativeGrade.Extreme,
       principleKeys: [],
       inclinationKeys: []
+    },
+    {
+      // On the roster and in neither choice — the hero the offer's two option lists
+      // offer and its crew does not take. See `keyHeroLever`'s own remark below.
+      definition: 'core:ilsa',
+      displayNameKey: 'hero.core.ilsa.name',
+      greed: QualitativeGrade.Low,
+      caution: QualitativeGrade.Moderate,
+      pride: QualitativeGrade.Low,
+      principleKeys: [],
+      inclinationKeys: []
     }
   ],
   responses: [
@@ -162,17 +174,66 @@ const aFullModel = createContractOfferScreenModel({
   offer: {
     version: 3,
     phase: OfferPhase.Locked,
-    advance: 15,
-    // Deliberately the *second* entry of `methodOptionKeys`, not the first: external
-    // review of this task found that a chosen-first fixture cannot distinguish a
-    // correct `methodTagKey` projection from a wrong one that just showed
-    // `methodOptionKeys[0]` — the two coincide whenever the choice happens to sort
-    // first, which `methodOptionKeysOf`'s own convention always arranges for real
-    // model output. This fixture is hand-built and owes that convention nothing.
-    methodTagKey: 'tag.method.deception',
-    methodOptionKeys: ['tag.method.open', 'tag.method.deception'],
-    promisedBonus: 20,
-    keyHeroDefinition: 'core:doran',
+    // Every lever disabled, and each saying so on its own line: this package is locked
+    // with its crew filled, which is where `composeOffer` stops being legal
+    // (`NEGOTIATION_SPEC` §3.1). The fixture takes the disabled branch on purpose —
+    // `null` throughout would leave `resolveOffer`'s reason lines unwalked by any test
+    // in this file.
+    // Coherent with the budget below rather than merely legal-looking: `available` is 40,
+    // so `(40 − 20) / 2` and `40 − 15 × 2` both answer 10, and the patron fee of 40 does
+    // not bind. A fixture whose ceilings did not follow from its own budget would describe
+    // a screen the factory cannot produce — the trap review of Task 17 already caught
+    // here once, with a locked, uncrewed offer carrying a settlement.
+    advanceLever: { value: 15, min: 0, max: 10, disabledReasonKey: 'offer.locked' },
+    bonusLever: { value: 20, min: 0, max: 10, disabledReasonKey: 'offer.locked' },
+    methodLever: {
+      // Deliberately the *second* option, not the first: external review of Task 17
+      // found that a chosen-first fixture cannot distinguish a correct projection of
+      // the chosen tag from a wrong one that just showed `options[0]` — the two
+      // coincide whenever the choice happens to sort first, which the factory's own
+      // convention always arranges for real model output. This fixture is hand-built
+      // and owes that convention nothing.
+      chosen: parseContentId('method:deception'),
+      options: [
+        { value: parseContentId('method:open'), labelKey: 'tag.method.open', selected: false },
+        {
+          value: parseContentId('method:deception'),
+          labelKey: 'tag.method.deception',
+          selected: true
+        }
+      ],
+      disabledReasonKey: 'offer.locked'
+    },
+    // **Both hero levers offer a hero neither of them chose.** External review of this
+    // task found that with options equal to the chosen crew, "the frame resolves every
+    // key the model carries" passes whether or not the options are drawn at all — the
+    // chosen names are on the frame anyway, and `toContain` cannot tell one occurrence
+    // from three. `core:ilsa` is on the roster, on both option lists, and in neither
+    // choice, so a frame that skips the options is missing a name nothing else supplies.
+    keyHeroLever: {
+      // Deliberately not the roster's first entry, for the reason above.
+      chosen: parseContentId('core:doran'),
+      options: [
+        { value: parseContentId('core:bram'), labelKey: 'hero.core.bram.name', selected: false },
+        { value: parseContentId('core:doran'), labelKey: 'hero.core.doran.name', selected: true },
+        { value: parseContentId('core:ilsa'), labelKey: 'hero.core.ilsa.name', selected: false }
+      ],
+      disabledReasonKey: 'offer.locked'
+    },
+    crewLever: {
+      chosen: [parseContentId('core:bram'), parseContentId('core:doran')],
+      options: [
+        { value: parseContentId('core:bram'), labelKey: 'hero.core.bram.name', selected: true },
+        { value: parseContentId('core:doran'), labelKey: 'hero.core.doran.name', selected: true },
+        { value: parseContentId('core:ilsa'), labelKey: 'hero.core.ilsa.name', selected: false }
+      ],
+      exactly: 2,
+      disabledReasonKey: 'offer.locked'
+    },
+    // `shortfall` is non-zero on purpose: the branch that shows it is one no other model
+    // in this file takes, and a projection that dropped the line would otherwise never be
+    // walked. `lockCommitment` (50) against `available` (40) is short by 10.
+    budget: { available: 40, maxAdvance: 10, maxBonus: 10, shortfall: 10 },
     // `advance × requiredCrew + promisedBonus` = `15 × 2 + 20` (`NEGOTIATION_SPEC`
     // §2.3, §3.3's own reservation formula — `commitmentOf`, `@oath-and-coin/simulation`).
     lockCommitment: 50
@@ -277,6 +338,13 @@ describe('the texts a correctly bound screen produces', () => {
       'text(qualitative.negligible)',
       'text(field.hero.pride)',
       'text(qualitative.extreme)',
+      'text(hero.core.ilsa.name)',
+      'text(field.hero.greed)',
+      'text(qualitative.low)',
+      'text(field.hero.caution)',
+      'text(qualitative.moderate)',
+      'text(field.hero.pride)',
+      'text(qualitative.low)',
       'text(hero.core.bram.name)',
       'text(action.accept)',
       'text(hero.decision.personal_conviction)',
@@ -303,15 +371,41 @@ describe('the texts a correctly bound screen produces', () => {
       'text(offer.phase.locked)',
       'text(field.offer.advance)',
       '15',
+      'text(offer.locked)',
       'text(field.offer.method)',
       'text(tag.method.open)',
       'text(tag.method.deception)',
       'text(field.offer.method_selected)',
       'text(tag.method.deception)',
+      'text(offer.locked)',
       'text(field.offer.promised_bonus)',
       '20',
+      'text(offer.locked)',
+      'text(field.offer.key_hero_options)',
+      'text(hero.core.bram.name)',
+      'text(hero.core.doran.name)',
+      'text(hero.core.ilsa.name)',
       'text(field.offer.key_hero)',
       'text(hero.core.doran.name)',
+      'text(offer.locked)',
+      'text(field.offer.crew_options)',
+      'text(hero.core.bram.name)',
+      'text(hero.core.doran.name)',
+      'text(hero.core.ilsa.name)',
+      'text(field.offer.crew_size)',
+      '2',
+      'text(field.offer.crew)',
+      'text(hero.core.bram.name)',
+      'text(hero.core.doran.name)',
+      'text(offer.locked)',
+      'text(field.offer.budget_available)',
+      '40',
+      'text(field.offer.max_advance)',
+      '10',
+      'text(field.offer.max_bonus)',
+      '10',
+      'text(field.offer.shortfall)',
+      '10',
       'text(field.offer.lock_commitment)',
       '50',
       'text(field.treasury)',
@@ -379,12 +473,22 @@ describe('the texts a correctly bound screen produces', () => {
         ...(response.blockedByDisplayNameKey === null ? [] : [response.blockedByDisplayNameKey]),
         ...(response.tieBreakCode === null ? [] : [response.tieBreakCode])
       ]),
-      ...aFullModel.offer!.methodOptionKeys,
-      // `methodTagKey` is one of `methodOptionKeys`, but shown twice on screen — once
-      // in the group, once as the selection — and the coverage list says so plainly
-      // rather than relying on the group's own entry to stand in for both.
-      ...(aFullModel.offer!.methodTagKey === null ? [] : [aFullModel.offer!.methodTagKey]),
-      nameOf(aFullModel.offer!.keyHeroDefinition!),
+      ...aFullModel.offer!.methodLever.options.map((option) => option.labelKey),
+      // The chosen tag is one of the options, but shown twice on screen — once in the
+      // group, once as the selection — and the coverage list says so plainly rather
+      // than relying on the group's own entry to stand in for both.
+      ...aFullModel
+        .offer!.methodLever.options.filter(
+          (option) => option.value === aFullModel.offer!.methodLever.chosen
+        )
+        .map((option) => option.labelKey),
+      nameOf(aFullModel.offer!.keyHeroLever.chosen!),
+      ...aFullModel.offer!.crewLever.chosen.map(nameOf),
+      // Every lever's own reason, once per lever — five identical texts on this fixture,
+      // which the ordered assertion above pins position by position.
+      ...leversOf(aFullModel.offer!).flatMap((lever) =>
+        lever.disabledReasonKey === null ? [] : [lever.disabledReasonKey]
+      ),
       aFullModel.promiseTerms!.fulfilKey,
       aFullModel.promiseTerms!.breachKey,
       nameOf(aFullModel.settlement!.keyHeroDefinition!),
@@ -399,10 +503,12 @@ describe('the texts a correctly bound screen produces', () => {
     const literals = texts.filter((text) => !text.startsWith('text('));
 
     // Payment, required crew, accepted count, then the offer's own version, advance and
-    // promised bonus, its lock commitment, the treasury and its forecast, the promise's
-    // own bonus (shown again beside its two predicates) and the settlement's promised
-    // bonus and its two treasury outcomes — the values spec keeps as numbers on purpose.
-    // Any extra literal is a key or an identifier that escaped resolution.
+    // promised bonus, how many seats the crew must fill, the money the budget still
+    // allows and the two ceilings it puts on the levers, the shortfall this package has
+    // fallen into, its lock commitment, the treasury and its forecast, the promise's own
+    // bonus (shown again beside its two predicates) and the settlement's promised bonus
+    // and its two treasury outcomes — the values spec keeps as numbers on purpose. Any
+    // extra literal is a key or an identifier that escaped resolution.
     expect(literals).toEqual([
       '40',
       '2',
@@ -410,6 +516,11 @@ describe('the texts a correctly bound screen produces', () => {
       '3',
       '15',
       '20',
+      '2',
+      '40',
+      '10',
+      '10',
+      '10',
       '50',
       '400',
       '390',

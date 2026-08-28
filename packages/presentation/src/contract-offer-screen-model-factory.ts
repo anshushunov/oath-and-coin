@@ -1,9 +1,13 @@
 import {
   Actions,
+  ContractStatus,
+  OfferPhase,
   ReasonCodes,
   commitmentOf,
   compareContentIds,
   compareStrings,
+  divideTowardZero,
+  reservedCommitments,
   type CanonicalValue,
   type ContentId,
   type ContractState,
@@ -17,12 +21,14 @@ import {
 } from '@oath-and-coin/simulation';
 
 import {
+  LeverDisabledKeys,
   PromiseTermsKeys,
   TITLE_KEY,
   contractDisplayNameKey,
   tagKey,
   traitDisplayNameKey
 } from './keys.ts';
+import type { ChoiceLever, ChoiceOption, NumericLever, OfferBudget } from './lever.ts';
 import {
   createContractOfferScreenModel,
   type ContractLine,
@@ -244,7 +250,7 @@ export function contractOfferScreenModel(
     errorCode: null,
     errorDetail: null,
     treasury: state.treasury,
-    offer: toOfferLine(contract, heroDefinitionByHeroId),
+    offer: toOfferLine(state, contract, heroes, heroDefinitionByHeroId),
     // The whole fee, deliberately: this screen forecasts a settlement whose grade does not
     // exist yet (`RESOLUTION_SPEC` §5.3 sets the share from the outcome), and the price a
     // player is weighing while composing a package is what the job pays when it is done.
@@ -314,50 +320,158 @@ function toContractLine(contract: ContractState): ContractLine {
 }
 
 /**
- * The negotiation package currently on {@link contract} (`NEGOTIATION_SPEC` §5.1).
+ * The negotiation package currently on {@link contract} (`NEGOTIATION_SPEC` §5.1), with
+ * every term stated as a lever a player may or may not move.
  *
- * `methodOptionKeys` puts the chosen tag first when one is chosen, the alternative
- * second — the order the player made a choice in, and the one `contract-offer-screen-
- * model-factory.test.ts` pins. Natural `SortedSet` order is not it: `method:deception`
- * sorts ordinally before `method:open` regardless of which one the package picked, so a
- * plain iteration would silently reorder itself out from under whichever tag the player
- * actually chose. Sorted order otherwise, when nothing has been chosen yet — there is no
- * "the chosen one" to lead with.
+ * `methodLever.options` keeps the contract's own sorted order, whatever the package has
+ * chosen — **owner's decision of 2026-08-28.** It used to lead with the chosen tag, and
+ * external review of this task was right to call that a game rule taken inside an
+ * implementation: a list that rearranges itself the moment a player picks from it is one
+ * they have to re-read before every second click, and "put the choice first" and "never
+ * move" are two reasonable answers with no decision record behind either. The owner chose
+ * the stable order. Which alternative is chosen is said by `ChoiceOption.selected`, which
+ * is what made position redundant as a carrier of that fact.
+ *
+ * The roster's own order — `HeroId`, the order `GameState.heroes` is sorted in — is what
+ * the hero levers offer, because it is the order the roster is already drawn in and
+ * because it is the order `pollCrew` asks in (`NEGOTIATION_SPEC` §3.3).
  */
 function toOfferLine(
+  state: GameState,
   contract: ContractState,
+  heroes: readonly HeroState[],
   heroDefinitionByHeroId: ReadonlyMap<HeroId, ContentId>
 ): OfferLine {
   const { offer } = contract;
+  const budget = budgetFor(state, contract);
+  const disabledReasonKey = leverDisabledReasonKey(contract);
+  const invited = offer.invited
+    .values()
+    .map((heroId) => definitionOfHero(heroId, heroDefinitionByHeroId));
+  const keyHeroDefinition =
+    offer.keyHero === null ? null : definitionOfHero(offer.keyHero, heroDefinitionByHeroId);
+  const heroOptions = (isSelected: (definition: ContentId) => boolean) =>
+    heroes.map((hero): ChoiceOption<ContentId> => ({
+      value: hero.definition,
+      labelKey: hero.displayNameKey,
+      selected: isSelected(hero.definition)
+    }));
 
   return {
     version: offer.version,
     phase: offer.phase,
-    advance: offer.advance,
-    methodTagKey: offer.methodTag === null ? null : tagKey(offer.methodTag),
-    methodOptionKeys: methodOptionKeysOf(contract),
-    promisedBonus: offer.promisedBonus,
-    keyHeroDefinition:
-      offer.keyHero === null ? null : definitionOfHero(offer.keyHero, heroDefinitionByHeroId),
+    advanceLever: {
+      value: offer.advance,
+      min: 0,
+      // Both ceilings at once: the patron fee `composeOffer` bounds a term by, and the
+      // treasury `lockOffer` bounds the whole package by. Whichever binds first is the
+      // one a player can actually reach.
+      max: Math.min(contract.patronFee, budget.maxAdvance),
+      disabledReasonKey
+    },
+    bonusLever: {
+      value: offer.promisedBonus,
+      min: 0,
+      max: Math.min(contract.patronFee, budget.maxBonus),
+      disabledReasonKey
+    },
+    methodLever: methodLeverOf(contract, disabledReasonKey),
+    keyHeroLever: {
+      chosen: keyHeroDefinition,
+      options: heroOptions((definition) => definition === keyHeroDefinition),
+      disabledReasonKey
+    },
+    crewLever: {
+      chosen: invited,
+      options: heroOptions((definition) => invited.includes(definition)),
+      exactly: contract.requiredCrew,
+      disabledReasonKey
+    },
+    budget,
     lockCommitment: commitmentOf(contract)
   };
 }
 
-function methodOptionKeysOf(contract: ContractState): readonly string[] {
-  const { negotiableTags } = contract;
+/**
+ * The money this package may still commit, and the ceiling that puts on each of its two
+ * terms (`NEGOTIATION_SPEC` §2.3, §3.3).
+ *
+ * **This contract's own reserve is added back.** `reservedCommitments` counts every
+ * `locked` offer including this one, and a package being revised is on its way back to
+ * `draft` (`RESOLUTION_SPEC` §6.2), where it reserves nothing — so subtracting its own
+ * commitment would tell a player they cannot afford money they are already holding.
+ *
+ * The two ceilings are each computed against the *current* value of the other term, which
+ * is what makes them a joint constraint rather than two independent ones: `lockOffer`
+ * refuses on `advance × requiredCrew + promisedBonus` as a single sum, so raising the
+ * promise has to lower what is left for the advance and vice versa.
+ *
+ * `divideTowardZero`, never `/`: this layer produces the same integers on every host
+ * (`RESOLUTION_SPEC` §4.8), and a ceiling rounded up would be a ceiling the engine
+ * refuses. Clamped at zero because a campaign can be poorer than its own commitments are
+ * large — a negative ceiling is not a bound a control can express.
+ *
+ * **And that clamp is exactly why `shortfall` exists.** A ceiling of `0` reads identically
+ * whether the package fits with nothing to spare or overruns the purse outright, and both
+ * are reachable — `composeOffer` never checks a treasury, so a promise made when the money
+ * was there outlives another contract locking it away. `shortfall` is the difference the
+ * clamp swallows, computed against `commitmentOf` — the very quantity `canCover` compares
+ * — so "fits" here and "fits" there are one statement rather than two.
+ */
+function budgetFor(state: GameState, contract: ContractState): OfferBudget {
+  const ownReserve = contract.offer.phase === OfferPhase.Locked ? commitmentOf(contract) : 0;
+  const available = Math.max(0, state.treasury - reservedCommitments(state) + ownReserve);
+  const { advance, promisedBonus } = contract.offer;
 
-  if (negotiableTags === undefined || negotiableTags.size === 0) {
-    return [];
+  return {
+    available,
+    maxAdvance: Math.max(0, divideTowardZero(available - promisedBonus, contract.requiredCrew)),
+    maxBonus: Math.max(0, available - advance * contract.requiredCrew),
+    shortfall: Math.max(0, commitmentOf(contract) - available)
+  };
+}
+
+/**
+ * Why this package's levers cannot be moved, or `null` when they can.
+ *
+ * Read straight off `composeOffer`'s own permission (`NEGOTIATION_SPEC` §3.1's table): a
+ * `draft` may always be revised, and so may a `locked` package whose crew never filled —
+ * that second row is `RESOLUTION_SPEC` §6.2's way out of a dead end, and treating it as
+ * disabled would lock a contract forever the first time an invitee declined.
+ */
+function leverDisabledReasonKey(contract: ContractState): string | null {
+  switch (contract.offer.phase) {
+    case OfferPhase.Draft:
+      return null;
+    case OfferPhase.Locked:
+      return contract.status === ContractStatus.Crewed ? LeverDisabledKeys.Locked : null;
+    case OfferPhase.Settled:
+      return LeverDisabledKeys.Settled;
+    default:
+      return contract.offer.phase satisfies never;
   }
+}
 
-  const tags = [...negotiableTags.values()];
+function methodLeverOf(
+  contract: ContractState,
+  disabledReasonKey: string | null
+): ChoiceLever<ContentId> {
+  const { negotiableTags } = contract;
   const { methodTag } = contract.offer;
 
-  if (methodTag === null) {
-    return tags.map(tagKey);
+  if (negotiableTags === undefined || negotiableTags.size === 0) {
+    return { chosen: methodTag, options: [], disabledReasonKey };
   }
 
-  return [methodTag, ...tags.filter((tag) => tag !== methodTag)].map(tagKey);
+  return {
+    chosen: methodTag,
+    options: negotiableTags.values().map((tag) => ({
+      value: tag,
+      labelKey: tagKey(tag),
+      selected: tag === methodTag
+    })),
+    disabledReasonKey
+  };
 }
 
 /**
@@ -736,17 +850,57 @@ function describeReason(reason: ReasonLine): CanonicalValue {
   };
 }
 
+/**
+ * The package, lever by lever.
+ *
+ * Every field of every lever is projected, not only the value it currently carries: a
+ * ceiling that moved is a different screen — the player can press somewhere they could
+ * not before — and a lever that became disabled is a different screen for the same
+ * reason. A projection carrying only the values would call all three the same run.
+ */
 function describeOffer(offer: OfferLine): CanonicalValue {
   return {
     version: offer.version,
     phase: offer.phase,
-    advance: offer.advance,
-    method_tag_key: offer.methodTagKey,
-    method_option_keys: [...offer.methodOptionKeys],
-    promised_bonus: offer.promisedBonus,
-    key_hero_definition: offer.keyHeroDefinition,
+    advance_lever: describeNumericLever(offer.advanceLever),
+    bonus_lever: describeNumericLever(offer.bonusLever),
+    method_lever: describeChoiceLever(offer.methodLever),
+    key_hero_lever: describeChoiceLever(offer.keyHeroLever),
+    crew_lever: {
+      chosen: [...offer.crewLever.chosen],
+      options: offer.crewLever.options.map(describeOption),
+      exactly: offer.crewLever.exactly,
+      disabled_reason_key: offer.crewLever.disabledReasonKey
+    },
+    budget: {
+      available: offer.budget.available,
+      max_advance: offer.budget.maxAdvance,
+      max_bonus: offer.budget.maxBonus,
+      shortfall: offer.budget.shortfall
+    },
     lock_commitment: offer.lockCommitment
   };
+}
+
+function describeNumericLever(lever: NumericLever): CanonicalValue {
+  return {
+    value: lever.value,
+    min: lever.min,
+    max: lever.max,
+    disabled_reason_key: lever.disabledReasonKey
+  };
+}
+
+function describeChoiceLever(lever: ChoiceLever<ContentId>): CanonicalValue {
+  return {
+    chosen: lever.chosen,
+    options: lever.options.map(describeOption),
+    disabled_reason_key: lever.disabledReasonKey
+  };
+}
+
+function describeOption(option: ChoiceOption<ContentId>): CanonicalValue {
+  return { value: option.value, label_key: option.labelKey, selected: option.selected };
 }
 
 function describePromiseTerms(promiseTerms: PromiseTermsLine): CanonicalValue {
