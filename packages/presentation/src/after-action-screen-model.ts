@@ -14,7 +14,8 @@ import {
   type GameState,
   type HeroId,
   type HeroSufferedConsequence,
-  type NeedId
+  type NeedId,
+  type OfferState
 } from '@oath-and-coin/simulation';
 
 import {
@@ -26,7 +27,8 @@ import {
   coverageVerdictKey,
   deficitKindKey,
   needKey,
-  outcomeGradeKey
+  outcomeGradeKey,
+  SettlementConsequenceKeys
 } from './keys.ts';
 import { ScreenKind } from './screen-kind.ts';
 import { ScreenState } from './screen-state.ts';
@@ -105,6 +107,26 @@ export interface AfterActionDeficitLine {
 }
 
 /**
+ * What each answer to the promise does to people, as the sentences the screen owes each
+ * branch (`NEGOTIATION_SPEC` §2.2, §3.3).
+ *
+ * **Its own line, `null` exactly when nothing was promised** — the same gate the offer
+ * screen's `toPromiseTerms` applies, and for the engine's own reason: `settleContract`
+ * ignores `pay` on a package promising nothing (`NEGOTIATION_SPEC` §6, "обид не
+ * возникает"), so a branch named there would be named for a consequence that cannot happen.
+ * One nullable line rather than two lists that could each be empty on their own: a screen
+ * holding a kept branch with no matching broken one would be describing half a choice.
+ *
+ * Fixed keys and no magnitudes. Which grievance a break costs is
+ * `grievanceForBrokenPromise`'s arithmetic at the moment the command applies, and a figure
+ * quoted here would be a numeric forecast — the one thing `DEC-006` keeps qualitative.
+ */
+export interface AfterActionPromiseLine {
+  readonly keepConsequenceKeys: readonly string[];
+  readonly breakConsequenceKeys: readonly string[];
+}
+
+/**
  * The decision the debrief exists to put in front of the player: what keeping the guild's
  * word costs and what breaking it saves (`RESOLUTION_SPEC` §6.1's "блок расчёта обещания").
  *
@@ -129,6 +151,8 @@ export interface AfterActionSettlementLine {
   readonly patronPays: number;
   readonly treasuryIfKept: number;
   readonly treasuryIfBroken: number;
+  /** What each branch costs beyond the purse; `null` when nothing was promised. */
+  readonly promise: AfterActionPromiseLine | null;
 }
 
 /** What the outcome cost one person, and the reason it names (`RESOLUTION_SPEC` §5.2). */
@@ -447,7 +471,33 @@ function settlementDecisionOf(
     treasuryIfKept,
     // The same formula with `pay: false`, which skips the bonus term rather than computing
     // it a second, independent way.
-    treasuryIfBroken: treasuryIfKept + offer.promisedBonus
+    treasuryIfBroken: treasuryIfKept + offer.promisedBonus,
+    promise: promiseOf(offer)
+  };
+}
+
+/**
+ * What the two answers cost beyond the money, or `null` on a package that promised nothing.
+ *
+ * `promisedBonus <= 0` rather than `=== 0`, matching `toPromiseTerms`'s own test: the two
+ * gates answer the same question on the same field, and a pair of nearly-identical
+ * comparisons is where they start to differ.
+ */
+function promiseOf(offer: OfferState): AfterActionPromiseLine | null {
+  if (offer.promisedBonus <= 0) {
+    return null;
+  }
+
+  return {
+    keepConsequenceKeys: [SettlementConsequenceKeys.Kept],
+    // Two sentences because a break does two things to the key hero: he carries a grievance
+    // — and so does everyone who was in the crew to see it — and he stops believing the
+    // guild's word at all, which is the lever `composeOffer` will no longer be able to pull
+    // on him (`applyBrokenPromise`).
+    breakConsequenceKeys: [
+      SettlementConsequenceKeys.BrokenGrievance,
+      SettlementConsequenceKeys.BrokenDisbelief
+    ]
   };
 }
 
@@ -705,7 +755,14 @@ export function describeAfterActionReadModel(model: AfterActionScreenModel): Can
             crew: validated.settlement.crew.map(describeHeroLine),
             patron_pays: validated.settlement.patronPays,
             treasury_if_kept: validated.settlement.treasuryIfKept,
-            treasury_if_broken: validated.settlement.treasuryIfBroken
+            treasury_if_broken: validated.settlement.treasuryIfBroken,
+            promise:
+              validated.settlement.promise === null
+                ? null
+                : {
+                    keep_consequence_keys: [...validated.settlement.promise.keepConsequenceKeys],
+                    break_consequence_keys: [...validated.settlement.promise.breakConsequenceKeys]
+                  }
           }
   };
 }

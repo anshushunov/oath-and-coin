@@ -100,6 +100,47 @@ function anUnequalState() {
   });
 }
 
+/** {@link anUnequalState}'s crew, on a package that promised the key hero a bonus. */
+function aPromisedState() {
+  const weaker = aCapableHero({
+    id: 0,
+    definition: ids.bram,
+    grade: 50,
+    expertise: [
+      [NeedId.Frontline, 100],
+      [NeedId.Wilderness, 100]
+    ]
+  });
+  const stronger = aCapableHero({
+    id: 1,
+    definition: ids.doran,
+    grade: 60,
+    expertise: [
+      [NeedId.Frontline, 100],
+      [NeedId.Wilderness, 100]
+    ]
+  });
+
+  return aResolvedCampaign({
+    heroes: [weaker, stronger],
+    contracts: [
+      aCrewedContract({
+        id: ids.caravan,
+        needs: [
+          [NeedId.Frontline, 100],
+          [NeedId.Wilderness, 100]
+        ],
+        risk: 0,
+        promisedBonus: 12,
+        crew: [
+          { hero: weaker, commitment: CommitmentState.Committed },
+          { hero: stronger, commitment: CommitmentState.Committed }
+        ]
+      })
+    ]
+  });
+}
+
 function aResolvedState() {
   return aResolvedCampaign({
     heroes: [soldier],
@@ -345,8 +386,33 @@ describe('the rendered-UI snapshot', () => {
       'hero.core.doran.name',
       'field.settlement.treasury_if_kept',
       '416',
+      // No consequence between the figure and the button: nothing was promised, so
+      // `settleContract` ignores `pay` and there is no grievance to warn anybody about
+      // (`NEGOTIATION_SPEC` §6). The buttons stay — the command still has to be sent.
+      'settlement.pay',
       'field.settlement.treasury_if_broken',
-      '416'
+      '416',
+      'settlement.refuse'
+    ]);
+  });
+
+  it('puts each branch of a real promise beside the button that chooses it', () => {
+    // The same walk on the case the one above cannot reach: a package that promised
+    // something. Each branch is a treasury, what it costs beyond the treasury and its own
+    // control — the layout `RESOLUTION_SPEC` §6.1 asks for, since two bare numbers side by
+    // side do not say that one of them costs a man's trust.
+    const model = afterActionScreenModel(aPromisedState(), ids.caravan);
+
+    expect(expectedSnapshot(model, identityCatalogue(model)).slice(-9)).toEqual([
+      'field.settlement.treasury_if_kept',
+      String(model.settlement?.treasuryIfKept),
+      'settlement.consequence.kept',
+      'settlement.pay',
+      'field.settlement.treasury_if_broken',
+      String(model.settlement?.treasuryIfBroken),
+      'settlement.consequence.broken_grievance',
+      'settlement.consequence.broken_disbelief',
+      'settlement.refuse'
     ]);
   });
 

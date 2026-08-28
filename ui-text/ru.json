@@ -87,6 +87,10 @@
     "settlement.pay": "Выплатить",
     "settlement.refuse": "Отказаться платить",
 
+    "settlement.consequence.kept": "Надбавка уходит из казны, и никто не остаётся в обиде.",
+    "settlement.consequence.broken_grievance": "Ключевой герой затаит обиду, а те, кто был с ним в отряде, — свою долю той же обиды.",
+    "settlement.consequence.broken_disbelief": "Ключевой герой перестанет верить слову гильдии: надбавкой его больше не уговорить.",
+
     "save.slot.slot_a.name": "Слот A",
     "save.slot.slot_a.save": "Сохранить в слот A",
     "save.slot.slot_a.load": "Загрузить слот A",

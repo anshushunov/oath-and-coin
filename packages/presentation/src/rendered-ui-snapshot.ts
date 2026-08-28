@@ -5,6 +5,7 @@ import {
   ContractBoardFieldKeys,
   FieldKeys,
   OfferFieldKeys,
+  SettlementActionKeys,
   SettlementFieldKeys,
   TreasuryFieldKeys,
   actionKey,
@@ -369,10 +370,19 @@ function afterActionSnapshot(
       });
     }
 
+    // One branch at a time — its treasury, what it costs beyond the treasury, and the button
+    // that chooses it — rather than the two figures side by side with the rest elsewhere. A
+    // player weighing two bare numbers is not being shown that one of them costs a man's
+    // trust, which is the whole of what this block exists to put in front of them.
     resolve(SettlementFieldKeys.TreasuryIfKept);
     texts.push(String(settlement.treasuryIfKept));
+    settlement.promise?.keepConsequenceKeys.forEach(resolve);
+    resolve(SettlementActionKeys.Pay);
+
     resolve(SettlementFieldKeys.TreasuryIfBroken);
     texts.push(String(settlement.treasuryIfBroken));
+    settlement.promise?.breakConsequenceKeys.forEach(resolve);
+    resolve(SettlementActionKeys.Refuse);
   }
 
   return texts;

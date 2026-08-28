@@ -362,13 +362,14 @@ export const SETTLEMENT_FIELD_KEYS: readonly string[] = Object.freeze(
 );
 
 /**
- * What `settleContract`'s two outcomes (`pay: true`, `pay: false`) would be called on
- * screen, reserved here for whichever task first draws a control that dispatches the
- * command. `ContractOfferScreen` does not render either key today: the settlement block
- * shows what the promise costs once {@link ContractOfferScreenModel.settlement} is
- * non-`null` (`NEGOTIATION_SPEC` §5.1), but drew no control at all as of the task that
- * removed the two buttons that pretended otherwise — they carried no handler, so
- * pressing either did nothing.
+ * What `settleContract`'s two outcomes (`pay: true`, `pay: false`) are called on the two
+ * buttons that dispatch it — the debrief's, and only the debrief's.
+ *
+ * `ContractOfferScreen` renders neither, and that is the owner's decision of 2026-08-28
+ * rather than an omission: answering a promise is a choice between two prices, both of
+ * which are on the debrief (`RESOLUTION_SPEC` §6.1), so the offer screen's own settle
+ * control moves the player there instead of paying blind. These keys were reserved for
+ * "whichever task first draws a control that dispatches the command", and this is it.
  */
 export const SettlementActionKeys = Object.freeze({
   Pay: 'settlement.pay',
@@ -377,6 +378,31 @@ export const SettlementActionKeys = Object.freeze({
 
 export const SETTLEMENT_ACTION_KEYS: readonly string[] = Object.freeze(
   Object.values(SettlementActionKeys)
+);
+
+/**
+ * What each answer to the promise costs beyond the money (`NEGOTIATION_SPEC` §2.2, §3.3),
+ * one sentence per consequence the engine will actually apply.
+ *
+ * **Not a forecast, and that is why they are fixed texts rather than numbers.** `DEC-006`
+ * keeps predictions qualitative; what these say is which *kind* of thing happens — the key
+ * hero stops believing the guild's word, he and every witness carry a grievance — while the
+ * sizes are `grievanceForBrokenPromise`'s and belong to the moment the command applies. A
+ * screen quoting a grievance figure would be publishing an engine constant as a promise.
+ *
+ * Three keys and not two, because breaking a word does two separate things to one man and a
+ * single sentence covering both would name whichever the writer thought mattered more. The
+ * kept branch has one, and it is the honest whole of it: the bonus leaves, and nobody is
+ * owed anything afterwards.
+ */
+export const SettlementConsequenceKeys = Object.freeze({
+  Kept: 'settlement.consequence.kept',
+  BrokenGrievance: 'settlement.consequence.broken_grievance',
+  BrokenDisbelief: 'settlement.consequence.broken_disbelief'
+});
+
+export const SETTLEMENT_CONSEQUENCE_KEYS: readonly string[] = Object.freeze(
+  Object.values(SettlementConsequenceKeys)
 );
 
 /** The save-slots screen's title. Its own key, not a second use of {@link TITLE_KEY}. */
