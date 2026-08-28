@@ -230,6 +230,41 @@ jobs:
             echo
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
+      # The third evidence directory, and the only one produced by a run that *presses*
+      # something. Named here for the reason the two lists above are named: a run that
+      # stops producing evidence has to fail a stage, and the only place that can be
+      # noticed is a list of what was expected. This one covers the gap those two share —
+      # both photograph a screen the scenario replayed into place, so neither could see a
+      # page that freezes the moment a player touches it, which is exactly what happened.
+      - name: Summarise the live-command evidence
+        if: always() && steps.e2e.outcome != 'skipped'
+        shell: bash
+        run: |
+          root=artifacts/browser-evidence/live_command
+
+          missing=""
+          [ -f "$root/report.json" ] || missing="$missing report"
+          [ -f "$root/screenshot.png" ] || missing="$missing frame"
+          [ -f "$root/events.jsonl" ] || missing="$missing events"
+
+          if [ -n "$missing" ]; then
+            echo "::error::The live-command run produced no evidence for:$missing"
+            exit 1
+          fi
+
+          {
+            echo "### live-command evidence"
+            echo
+            echo "| scenario | command | read model before | read model after | screen | shapes | events |"
+            echo "|---|---|---|---|---|---|---|"
+            jq -r '
+              "| \(.scenario) | \(.command) | \(.read_model_hash_before[0:16]) "
+              + "| \(.read_model_hash_after[0:16]) | \(.campaign_screen_after) "
+              + "| \(.scene_shapes_after) | \(.events) |"
+            ' "$root/report.json"
+            echo
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
       # The vitest report of whatever ran here, on its own and under a bare
       # `always()`. It is not folded into the upload below, and that is the whole
       # point of it existing separately.
