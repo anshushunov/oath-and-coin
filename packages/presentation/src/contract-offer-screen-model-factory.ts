@@ -323,13 +323,14 @@ function toContractLine(contract: ContractState): ContractLine {
  * The negotiation package currently on {@link contract} (`NEGOTIATION_SPEC` §5.1), with
  * every term stated as a lever a player may or may not move.
  *
- * `methodLever.options` puts the chosen tag first when one is chosen, the alternative
- * second — the order the player made a choice in, and the one `contract-offer-screen-
- * model-factory.test.ts` pins. Natural `SortedSet` order is not it: `method:deception`
- * sorts ordinally before `method:open` regardless of which one the package picked, so a
- * plain iteration would silently reorder itself out from under whichever tag the player
- * actually chose. Sorted order otherwise, when nothing has been chosen yet — there is no
- * "the chosen one" to lead with.
+ * `methodLever.options` keeps the contract's own sorted order, whatever the package has
+ * chosen — **owner's decision of 2026-08-28.** It used to lead with the chosen tag, and
+ * external review of this task was right to call that a game rule taken inside an
+ * implementation: a list that rearranges itself the moment a player picks from it is one
+ * they have to re-read before every second click, and "put the choice first" and "never
+ * move" are two reasonable answers with no decision record behind either. The owner chose
+ * the stable order. Which alternative is chosen is said by `ChoiceOption.selected`, which
+ * is what made position redundant as a carrier of that fact.
  *
  * The roster's own order — `HeroId`, the order `GameState.heroes` is sorted in — is what
  * the hero levers offer, because it is the order the roster is already drawn in and
@@ -462,13 +463,9 @@ function methodLeverOf(
     return { chosen: methodTag, options: [], disabledReasonKey };
   }
 
-  const tags = [...negotiableTags.values()];
-  const ordered =
-    methodTag === null ? tags : [methodTag, ...tags.filter((tag) => tag !== methodTag)];
-
   return {
     chosen: methodTag,
-    options: ordered.map((tag) => ({
+    options: negotiableTags.values().map((tag) => ({
       value: tag,
       labelKey: tagKey(tag),
       selected: tag === methodTag

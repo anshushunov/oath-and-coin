@@ -1096,11 +1096,38 @@ describe('what the screen shows about the negotiation itself', () => {
   });
 
   it('names both alternatives of a negotiable tag, not only the chosen one', () => {
+    // Sorted order, which is `method:deception` before `method:open` — **not** the chosen
+    // one first. Owner's decision of 2026-08-28: the list of alternatives does not
+    // reorder itself when a player picks one, because a control that rearranges under the
+    // cursor is one a player has to re-read before every second click. Which one is
+    // chosen is said by `selected`, not by position.
     expect(
       contractOfferScreenModel(draftWithAPromise(), []).offer?.methodLever.options.map(
         (option) => option.labelKey
       )
-    ).toEqual(['tag.method.open', 'tag.method.deception']);
+    ).toEqual(['tag.method.deception', 'tag.method.open']);
+  });
+
+  it('keeps the alternatives in one order however the choice moves', () => {
+    // The property the row above only samples: the *same* contract with a different
+    // choice, and with none, produces the identical list. A "chosen first" implementation
+    // reddens on the first comparison; one that sorted only when nothing is chosen reddens
+    // on the second.
+    const labelsOf = (methodTag: ContentId | null) => {
+      const contract = aContract({
+        patronFee: 100,
+        negotiableTags: SortedSet.from(compareContentIds, [ids.methodDeception, ids.methodOpen]),
+        offer: anOffer({ keyHero: heroId(0), invited: responded(0), methodTag })
+      });
+      const state = withContracts(withHeroes(aState(), heroes(ids.bram)), [contract]);
+
+      return contractOfferScreenModel(state, [], ids.caravan).offer!.methodLever.options.map(
+        (option) => option.labelKey
+      );
+    };
+
+    expect(labelsOf(ids.methodOpen)).toEqual(labelsOf(ids.methodDeception));
+    expect(labelsOf(ids.methodOpen)).toEqual(labelsOf(null));
   });
 
   it('shows the settlement only once the crew is filled', () => {
@@ -1158,8 +1185,8 @@ describe('what the screen shows about the negotiation itself', () => {
       method_lever: {
         chosen: ids.methodOpen,
         options: [
-          { value: ids.methodOpen, label_key: 'tag.method.open', selected: true },
-          { value: ids.methodDeception, label_key: 'tag.method.deception', selected: false }
+          { value: ids.methodDeception, label_key: 'tag.method.deception', selected: false },
+          { value: ids.methodOpen, label_key: 'tag.method.open', selected: true }
         ],
         disabled_reason_key: 'offer.locked'
       },
@@ -1406,9 +1433,11 @@ describe('the levers a player may pull', () => {
       expect(option.labelKey).not.toBe(String(option.value));
     }
 
+    // The contract's own sorted order, not "chosen first" (owner, 2026-08-28) —
+    // `method:deception` sorts before `method:open`, and choosing `open` does not move it.
     expect(offer.methodLever.options.map((option) => option.labelKey)).toEqual([
-      'tag.method.open',
-      'tag.method.deception'
+      'tag.method.deception',
+      'tag.method.open'
     ]);
     expect(offer.methodLever.chosen).toBe(ids.methodOpen);
     expect(offer.keyHeroLever.chosen).toBe(ids.bram);
@@ -1422,7 +1451,7 @@ describe('the levers a player may pull', () => {
     // drawn, and the factory is the only place the two are related.
     const offer = contractOfferScreenModel(campaignWithAnotherReserve(), [], ids.caravan).offer!;
 
-    expect(offer.methodLever.options.map((option) => option.selected)).toEqual([true, false]);
+    expect(offer.methodLever.options.map((option) => option.selected)).toEqual([false, true]);
     // The key hero is the roster's first entry here, and the crew invites all three — so
     // the two levers disagree about which options are selected, and a `selected` computed
     // from the wrong lever cannot satisfy both.
@@ -1519,8 +1548,8 @@ describe('the levers a player may pull', () => {
       method_lever: {
         chosen: ids.methodOpen,
         options: [
-          { value: ids.methodOpen, label_key: 'tag.method.open', selected: true },
-          { value: ids.methodDeception, label_key: 'tag.method.deception', selected: false }
+          { value: ids.methodDeception, label_key: 'tag.method.deception', selected: false },
+          { value: ids.methodOpen, label_key: 'tag.method.open', selected: true }
         ],
         disabled_reason_key: null
       },
