@@ -362,18 +362,26 @@ export const SETTLEMENT_FIELD_KEYS: readonly string[] = Object.freeze(
 );
 
 /**
- * What `settleContract`'s two outcomes (`pay: true`, `pay: false`) are called on the two
- * buttons that dispatch it — the debrief's, and only the debrief's.
+ * What `settleContract` is called on the controls that dispatch it — the debrief's, and
+ * only the debrief's.
  *
- * `ContractOfferScreen` renders neither, and that is the owner's decision of 2026-08-28
- * rather than an omission: answering a promise is a choice between two prices, both of
- * which are on the debrief (`RESOLUTION_SPEC` §6.1), so the offer screen's own settle
- * control moves the player there instead of paying blind. These keys were reserved for
- * "whichever task first draws a control that dispatches the command", and this is it.
+ * `ContractOfferScreen` renders none of them, and that is the owner's decision of
+ * 2026-08-28 rather than an omission: answering a promise is a choice between two prices,
+ * both of which are on the debrief (`RESOLUTION_SPEC` §6.1), so the offer screen's own
+ * settle control moves the player there instead of paying blind. These keys were reserved
+ * for "whichever task first draws a control that dispatches the command", and this is it.
+ *
+ * **Three, because a package that promised nothing offers no choice at all.**
+ * `settleContract` ignores `pay` when `promisedBonus` is `0` (`NEGOTIATION_SPEC` §6), so
+ * "Выплатить" and "Отказаться платить" would there be two labels over one outcome — the
+ * fictional decision external review of this task found on a shipped scenario
+ * (`resolution-fitting-crew-wins` resolves a package with no promise). `Settle` is what a
+ * screen offers instead: one command, named for what it does.
  */
 export const SettlementActionKeys = Object.freeze({
   Pay: 'settlement.pay',
-  Refuse: 'settlement.refuse'
+  Refuse: 'settlement.refuse',
+  Settle: 'settlement.settle'
 });
 
 export const SETTLEMENT_ACTION_KEYS: readonly string[] = Object.freeze(
@@ -391,9 +399,13 @@ export const SETTLEMENT_ACTION_KEYS: readonly string[] = Object.freeze(
  * screen quoting a grievance figure would be publishing an engine constant as a promise.
  *
  * Three keys and not two, because breaking a word does two separate things to one man and a
- * single sentence covering both would name whichever the writer thought mattered more. The
- * kept branch has one, and it is the honest whole of it: the bonus leaves, and nobody is
- * owed anything afterwards.
+ * single sentence covering both would name whichever the writer thought mattered more.
+ *
+ * The kept branch has one, and it says only what keeping the word *does*: the bonus leaves,
+ * and no grievance comes of this promise. It deliberately does not say that nobody is
+ * aggrieved — external review caught that claim, and `settleContract` does not support it:
+ * `pay: true` touches no `HeroState` at all, so a man carrying a grievance from a word
+ * broken earlier still carries it afterwards.
  */
 export const SettlementConsequenceKeys = Object.freeze({
   Kept: 'settlement.consequence.kept',

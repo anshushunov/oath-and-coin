@@ -370,19 +370,32 @@ function afterActionSnapshot(
       });
     }
 
-    // One branch at a time — its treasury, what it costs beyond the treasury, and the button
-    // that chooses it — rather than the two figures side by side with the rest elsewhere. A
-    // player weighing two bare numbers is not being shown that one of them costs a man's
-    // trust, which is the whole of what this block exists to put in front of them.
-    resolve(SettlementFieldKeys.TreasuryIfKept);
-    texts.push(String(settlement.treasuryIfKept));
-    settlement.promise?.keepConsequenceKeys.forEach(resolve);
-    resolve(SettlementActionKeys.Pay);
+    const { promise } = settlement;
 
-    resolve(SettlementFieldKeys.TreasuryIfBroken);
-    texts.push(String(settlement.treasuryIfBroken));
-    settlement.promise?.breakConsequenceKeys.forEach(resolve);
-    resolve(SettlementActionKeys.Refuse);
+    if (promise === null) {
+      // Nothing was promised, so `settleContract` ignores `pay` (`NEGOTIATION_SPEC` §6):
+      // one figure and one command, because two of each would be a choice the campaign
+      // does not offer. The caption is the offer screen's own forecast — the same fact at
+      // two points of one lifecycle.
+      resolve(TreasuryFieldKeys.Forecast);
+      texts.push(String(settlement.treasuryIfKept));
+      resolve(SettlementActionKeys.Settle);
+    } else {
+      // One branch at a time — its treasury, what it costs beyond the treasury, and the
+      // button that chooses it — rather than the two figures side by side with the rest
+      // elsewhere. A player weighing two bare numbers is not being shown that one of them
+      // costs a man's trust, which is the whole of what this block exists to put in front
+      // of them.
+      resolve(SettlementFieldKeys.TreasuryIfKept);
+      texts.push(String(settlement.treasuryIfKept));
+      promise.keepConsequenceKeys.forEach(resolve);
+      resolve(SettlementActionKeys.Pay);
+
+      resolve(SettlementFieldKeys.TreasuryIfBroken);
+      texts.push(String(settlement.treasuryIfBroken));
+      promise.breakConsequenceKeys.forEach(resolve);
+      resolve(SettlementActionKeys.Refuse);
+    }
   }
 
   return texts;

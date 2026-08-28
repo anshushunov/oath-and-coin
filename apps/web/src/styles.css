@@ -92,8 +92,18 @@ body {
   padding: 12px;
 }
 
-/* The scrolling region, and the element Task 15 measures. */
-.contract-offer {
+/*
+ * The scrolling region, and the element Task 15 measures.
+ *
+ * The debrief joined it rather than getting a second copy of the same five declarations:
+ * both are a campaign screen inside `main`'s `minmax(0, 1fr)` row, and a screen without
+ * `overflow`/`min-height` there does not scroll — it grows past the row and pushes the
+ * canvas and the diagnostics off the window. That is the failure mode the debrief is most
+ * exposed to of the two: it is one long column of a feed, a contribution per hero, a
+ * coverage line per need, the diagnoses and the settlement.
+ */
+.contract-offer,
+.after-action {
   overflow: auto;
   min-height: 0;
   padding: 12px;
@@ -113,17 +123,57 @@ body {
  * The separation is a layout rule and not a space in a string: a screen may not compose
  * player-facing text, so the gap has to come from here.
  */
-.contract-offer > .label {
+.contract-offer > .label,
+.after-action > .label {
   display: block;
 }
 
-.contract-offer > .label:first-child {
+.contract-offer > .label:first-child,
+.after-action > .label:first-child {
   font-size: 20px;
   font-weight: 600;
 }
 
-.contract-offer > .label:nth-child(2) {
+.contract-offer > .label:nth-child(2),
+.after-action > .label:nth-child(2) {
   color: var(--ink-dim);
+}
+
+/*
+ * The debrief's own sections, and the reason each is a block rather than a run of inline
+ * spans: an event line, a coverage line and a consequence line are each several `.label`s
+ * in a row, and `Разбор` sitting against `Расчёт ещё не завершён` is the same defect the
+ * rule above exists for, one level down.
+ *
+ * `.contract-offer` reaches this through `.contract`, `.hero` and `.response`, which the
+ * debrief has none of — its blocks are its own.
+ */
+.events,
+.contributions,
+.coverage,
+.deficits,
+.consequences {
+  margin: 12px 0;
+  padding: 8px 10px;
+  border-left: 3px solid var(--edge);
+}
+
+/*
+ * Each answer to the promise as one column: its treasury, what it costs beyond the
+ * treasury, and the control that commits to it. Two columns of prose read side by side
+ * would be two paragraphs a player has to align by eye before they can compare them.
+ */
+.branches {
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.branch {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
 }
 
 .contract {

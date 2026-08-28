@@ -131,9 +131,9 @@ describe('the negotiation captions and phase keys', () => {
     expect(OFFER_FIELD_KEYS).toContain(OfferFieldKeys.KeyHero);
   });
 
-  it('names both settlement buttons', () => {
-    expect(SETTLEMENT_ACTION_KEYS).toHaveLength(2);
-    expect(new Set(SETTLEMENT_ACTION_KEYS).size).toBe(2);
+  it('names every settlement button, including the one for a package that promised nothing', () => {
+    expect(SETTLEMENT_ACTION_KEYS).toHaveLength(3);
+    expect(new Set(SETTLEMENT_ACTION_KEYS).size).toBe(3);
   });
 
   it('names what each answer to the promise costs, once each', () => {

@@ -8,6 +8,7 @@ import { RULESET_VERSION } from '@oath-and-coin/content';
 import {
   AFTER_ACTION_LOADING_SCREEN,
   RejectionCodes,
+  SETTLEMENT_CONSEQUENCE_KEYS,
   ScreenKind,
   ScreenState,
   afterActionFailedScreen,
@@ -111,39 +112,78 @@ function debriefFor(scenario: string, checkpoint: string): AfterActionScreenMode
 }
 
 /**
- * A promise still to be answered: `screen_settlement_due`'s locked, crewed package sent out
- * by a **live** `resolveContract`.
+ * A promise still to be answered: `screen_locked`'s package, polled and sent out by **live**
+ * commands.
  *
- * The command is dispatched here rather than scripted into the scenario because no shipped
- * scenario stops between the outcome and the settlement — every one that resolves goes on to
- * settle in the same command list, which is the state §6.4 routes to the board. So the run
- * supplies the package (a promised bonus of 5 on `core:collect_the_debt`) and this dispatch
- * supplies the one step that turns it into an outcome, exactly as a player's own press does.
+ * The two commands are dispatched here rather than scripted into the scenario because no
+ * shipped scenario stops between the outcome and the settlement — every one that resolves
+ * goes on to settle in the same command list, which is the state §6.4 routes to the board.
+ * So the run supplies the package and these dispatches supply the two steps that turn it
+ * into an outcome, exactly as a player's own presses do.
+ *
+ * **`screen_locked` rather than `screen_settlement_due`, and the difference is the whole
+ * point of the fixture.** That one is a single-seat contract whose key hero *is* the entire
+ * crew, so a component rendering `keyHero` where it should render the crew — or the crew's
+ * first man where it should render the key hero — agreed with the expectation by
+ * coincidence. Here four heroes go out and the key hero is `core:ilsa`, who is neither the
+ * first of them nor the only one.
  *
  * The screen is read off the session rather than rebuilt, because this is the one state
  * §6.4's first row is about: an applied `resolveContract` *is* the debrief.
  */
 function aPromisedDebrief(): AfterActionScreenModel {
-  const controller = controllerFor('screen_settlement_due', 'screen_settlement_due');
+  return aResolvedDebrief('screen_locked', 'screen_locked', ['pollCrew', 'resolveContract']);
+}
+
+/**
+ * The same shape with nothing promised: `crew_filled`'s package, whose crew the run has
+ * already filled, so only `resolveContract` is left to dispatch.
+ *
+ * `settleContract` ignores `pay` here (`NEGOTIATION_SPEC` §6), which is why this run and the
+ * one above must both be drawn: they are the two shapes the settlement block has, and a
+ * matrix carrying only the promised one lets the other be drawn as a choice that does not
+ * exist.
+ *
+ * `resolution-fitting-crew-wins` would be the obvious pick — it stops at its own
+ * `resolveContract` — and cannot be used: its content root names contracts under
+ * `fixture:the_long_road`, which `content/locale/ru.json` does not answer for, so a render
+ * against the shipped catalogue throws on the contract's own name.
+ */
+function anUnpromisedDebrief(): AfterActionScreenModel {
+  return aResolvedDebrief('crew_filled', 'final', ['resolveContract']);
+}
+
+function aResolvedDebrief(
+  scenario: string,
+  checkpoint: string,
+  live: readonly ('pollCrew' | 'resolveContract')[]
+): AfterActionScreenModel {
+  const controller = controllerFor(scenario, checkpoint);
   const contractId = controller.store.snapshot().focusedContract;
 
   if (contractId === null) {
-    throw new Error('The settlement-due run left no contract focused.');
+    throw new Error(`'${scenario}' left no contract focused.`);
   }
 
-  const resolved = controller.resolveContract({ contractId });
+  for (const command of live) {
+    const result =
+      command === 'pollCrew'
+        ? controller.pollCrew({ contractId })
+        : controller.resolveContract({ contractId });
 
-  if (!resolved.applied) {
-    throw new Error(
-      `The fixture's own resolveContract was refused as '${String(resolved.rejectionCode)}'; a ` +
-        'run that cannot send its crew out is measuring the refusal, not the screen.'
-    );
+    if (!result.applied) {
+      throw new Error(
+        `The fixture's own ${command} on '${scenario}' was refused as ` +
+          `'${String(result.rejectionCode)}'; a run that cannot send its crew out is measuring ` +
+          'the refusal, not the screen.'
+      );
+    }
   }
 
   const { screen } = controller.store.snapshot();
 
   if (screen.screen !== ScreenKind.AfterAction) {
-    throw new Error(`An applied resolveContract landed on '${screen.screen}', not the debrief.`);
+    throw new Error(`'${scenario}' landed on '${screen.screen}', not the debrief.`);
   }
 
   return screen;
@@ -159,7 +199,8 @@ function contractOf(model: AfterActionScreenModel): ContentId {
 }
 
 /**
- * The five shapes the debrief can be in, each from the run that produces it.
+ * The five shapes the debrief can be in, each from the run that produces it — and `Incomplete`
+ * twice, because the settlement block has two shapes of its own inside that one state.
  *
  * `screen_normal` polls a crew and stops, so its contract carries no resolution — the `Empty`
  * debrief, which is what a player sees on a contract whose crew is still at home.
@@ -185,6 +226,11 @@ const STATES = [
     state: ScreenState.Incomplete,
     describe: 'an outcome whose promise has not been answered',
     model: aPromisedDebrief
+  },
+  {
+    state: ScreenState.Incomplete,
+    describe: 'an outcome on a package that promised nothing',
+    model: anUnpromisedDebrief
   },
   {
     state: ScreenState.Normal,
@@ -347,6 +393,25 @@ describe('the promise still to be answered', () => {
     );
   });
 
+  it('names the whole crew and the key hero, who is neither the first of them nor all of them', () => {
+    // Two mutants this closes, both of which the single-seat fixture this file started with
+    // left green: rendering `keyHero` where the crew belongs, and rendering the crew's first
+    // man where the key hero belongs.
+    const model = aPromisedDebrief();
+    const shown = collectRenderedTexts(renderScreen(model));
+    const crew = model.settlement?.crew ?? [];
+    const keyHero = model.settlement?.keyHero;
+
+    expect(crew.length).toBeGreaterThan(1);
+    expect(keyHero?.definition).not.toBe(crew[0]?.definition);
+
+    for (const hero of crew) {
+      expect(shown).toContain(textOf(hero.displayNameKey));
+    }
+
+    expect(shown).toContain(textOf(keyHero?.displayNameKey ?? ''));
+  });
+
   it('offers nothing to press once the contract is settled', () => {
     // The money has moved and there is no promise left to answer, so a button here would
     // offer a choice the player has already made.
@@ -354,6 +419,42 @@ describe('the promise still to be answered', () => {
 
     expect(container.querySelector('[data-testid="settle-pay"]')).toBeNull();
     expect(container.querySelector('[data-testid="settle-refuse"]')).toBeNull();
+  });
+});
+
+describe('a package that promised nothing', () => {
+  it('offers one command and one figure, not a choice between two of each', () => {
+    // `settleContract` ignores `pay` here (`NEGOTIATION_SPEC` §6): both presses produce the
+    // same campaign, and the two treasuries are the same number. External review found this
+    // drawn as a decision on a shipped run, which is a screen inventing one the campaign
+    // does not offer.
+    const model = anUnpromisedDebrief();
+    const container = renderScreen(model);
+
+    expect(model.settlement?.promise).toBeNull();
+    expect(model.settlement?.treasuryIfKept).toBe(model.settlement?.treasuryIfBroken);
+    expect(container.querySelector('[data-testid="settle-pay"]')).toBeNull();
+    expect(container.querySelector('[data-testid="settle-refuse"]')).toBeNull();
+    expect(control(container, 'settle').disabled).toBe(false);
+  });
+
+  it('warns of no consequence, because the engine applies none', () => {
+    const shown = collectRenderedTexts(renderScreen(anUnpromisedDebrief()));
+
+    for (const key of SETTLEMENT_CONSEQUENCE_KEYS) {
+      expect(shown).not.toContain(textOf(key));
+    }
+  });
+
+  it('settles the contract when its one command is pressed', () => {
+    const model = anUnpromisedDebrief();
+    const controller = fakeController();
+
+    click(control(renderScreen(model, controller), 'settle'));
+
+    expect(controller.calls).toEqual([
+      { name: 'settleContract', args: [{ contractId: contractOf(model), pay: true }] }
+    ]);
   });
 });
 

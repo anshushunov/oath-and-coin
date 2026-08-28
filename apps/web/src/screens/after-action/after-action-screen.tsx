@@ -3,6 +3,7 @@ import {
   OfferFieldKeys,
   SettlementActionKeys,
   SettlementFieldKeys,
+  TreasuryFieldKeys,
   afterActionStateKey,
   errorKey,
   type AfterActionConsequenceLine,
@@ -286,11 +287,12 @@ function ConsequenceBlock({ line }: { readonly line: AfterActionConsequenceLine 
  * `NEGOTIATION_SPEC` §5.1's "цена уступки, видна до подтверждения", applied to the moment the
  * concession is actually made.
  *
- * The consequence lines appear only when something was promised, which is the model's own
- * `promise` being `null` — `settleContract` ignores `pay` on a package that promised nothing
- * (`NEGOTIATION_SPEC` §6), so a sentence there would name a grievance the engine will not
- * apply. The buttons stay in both cases: the command still has to be sent, and both values
- * of `pay` settle the contract exactly alike when there is no promise to break.
+ * **A package that promised nothing gets one control and one figure, not two of each.**
+ * `settleContract` ignores `pay` when `promisedBonus` is `0` (`NEGOTIATION_SPEC` §6), so the
+ * two treasuries are the same number and the two buttons do the same thing — external review
+ * found this drawn as a choice on a shipped run (`resolution-fitting-crew-wins`), which is a
+ * screen inventing a decision the campaign does not have. The branch is on the model's own
+ * `promise` being `null`, which is the one kind of branch this screen is allowed.
  */
 function SettlementBlock({
   settlement,
@@ -326,45 +328,69 @@ function SettlementBlock({
         keys={settlement.crew.map((hero) => hero.displayNameKey)}
       />
 
-      <div className="row branches">
+      {settlement.promise === null ? (
         <div className="branch">
+          {/* The treasury this settlement leaves, under the caption the offer screen
+              forecasts it with — the same fact at two points of one lifecycle, so the same
+              word for it. There is only one figure to show: with nothing promised, keeping
+              and breaking come to the same number. */}
           <Captioned
-            captionKey={SettlementFieldKeys.TreasuryIfKept}
+            captionKey={TreasuryFieldKeys.Forecast}
             value={String(settlement.treasuryIfKept)}
           />
-          {(settlement.promise?.keepConsequenceKeys ?? []).map((key) => (
-            <Label key={key} text={text(key)} />
-          ))}
           <button
             type="button"
-            data-testid="settle-pay"
+            data-testid="settle"
             onClick={() => {
+              // `pay` is ignored here, and `true` is what the guild is actually doing:
+              // paying everything it owes, which on this package is nothing extra.
               onAnswer(true);
             }}
           >
-            {text(SettlementActionKeys.Pay)}
+            {text(SettlementActionKeys.Settle)}
           </button>
         </div>
+      ) : (
+        <div className="row branches">
+          <div className="branch">
+            <Captioned
+              captionKey={SettlementFieldKeys.TreasuryIfKept}
+              value={String(settlement.treasuryIfKept)}
+            />
+            {settlement.promise.keepConsequenceKeys.map((key) => (
+              <Label key={key} text={text(key)} />
+            ))}
+            <button
+              type="button"
+              data-testid="settle-pay"
+              onClick={() => {
+                onAnswer(true);
+              }}
+            >
+              {text(SettlementActionKeys.Pay)}
+            </button>
+          </div>
 
-        <div className="branch">
-          <Captioned
-            captionKey={SettlementFieldKeys.TreasuryIfBroken}
-            value={String(settlement.treasuryIfBroken)}
-          />
-          {(settlement.promise?.breakConsequenceKeys ?? []).map((key) => (
-            <Label key={key} text={text(key)} />
-          ))}
-          <button
-            type="button"
-            data-testid="settle-refuse"
-            onClick={() => {
-              onAnswer(false);
-            }}
-          >
-            {text(SettlementActionKeys.Refuse)}
-          </button>
+          <div className="branch">
+            <Captioned
+              captionKey={SettlementFieldKeys.TreasuryIfBroken}
+              value={String(settlement.treasuryIfBroken)}
+            />
+            {settlement.promise.breakConsequenceKeys.map((key) => (
+              <Label key={key} text={text(key)} />
+            ))}
+            <button
+              type="button"
+              data-testid="settle-refuse"
+              onClick={() => {
+                onAnswer(false);
+              }}
+            >
+              {text(SettlementActionKeys.Refuse)}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {rejectionKey === null ? null : (
         <p className="rejection" data-testid="settlement-rejection">

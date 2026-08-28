@@ -86,8 +86,9 @@
 
     "settlement.pay": "Выплатить",
     "settlement.refuse": "Отказаться платить",
+    "settlement.settle": "Рассчитаться",
 
-    "settlement.consequence.kept": "Надбавка уходит из казны, и никто не остаётся в обиде.",
+    "settlement.consequence.kept": "Надбавка уйдёт из казны; новой обиды из-за этого обещания не возникнет.",
     "settlement.consequence.broken_grievance": "Ключевой герой затаит обиду, а те, кто был с ним в отряде, — свою долю той же обиды.",
     "settlement.consequence.broken_disbelief": "Ключевой герой перестанет верить слову гильдии: надбавкой его больше не уговорить.",
 
@@ -117,7 +118,7 @@
     "screen.after_action.state.loading": "Отряд ещё в пути",
     "screen.after_action.state.empty": "Разбирать нечего: отряд не отправляли",
     "screen.after_action.state.error": "Разбор не удалось собрать",
-    "screen.after_action.state.incomplete": "Ответ по обещанию ещё не дан",
+    "screen.after_action.state.incomplete": "Расчёт ещё не завершён",
     "screen.after_action.state.normal": "Контракт закрыт",
 
     "screen.contract_board.title": "Доска контрактов",
