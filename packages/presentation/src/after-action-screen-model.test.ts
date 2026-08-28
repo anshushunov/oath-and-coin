@@ -774,6 +774,28 @@ describe('coverage, deficits and consequences', () => {
     ]);
   });
 
+  it('names what each answer to the promise costs beyond the money', () => {
+    // The two treasuries say what each branch does to the purse and nothing about what it
+    // does to the people — and what it does to the people is the whole of why breaking a
+    // word is a decision rather than a discount (`NEGOTIATION_SPEC` §2.2, §3.3).
+    const promise = afterActionScreenModel(aPromisedCampaign(), ids.caravan).settlement?.promise;
+
+    expect(promise?.keepConsequenceKeys.length).toBeGreaterThan(0);
+    expect(promise?.breakConsequenceKeys.length).toBeGreaterThan(0);
+    // Two branches saying the same sentence would be a block that priced neither.
+    expect(promise?.keepConsequenceKeys).not.toEqual(promise?.breakConsequenceKeys);
+  });
+
+  it('names no consequence on a package that promised nothing', () => {
+    // `NEGOTIATION_SPEC` §6: "Расчёт без обещания — законен; `pay` игнорируется, обид не
+    // возникает" — the same gate `toPromiseTerms` applies on the offer screen. A block
+    // naming a grievance here would name one `settleContract` will not apply.
+    const model = afterActionScreenModel(aCleanCampaign(), ids.caravan);
+
+    expect(model.settlement).not.toBeNull();
+    expect(model.settlement?.promise).toBeNull();
+  });
+
   it('offers no branch to choose once the contract is settled', () => {
     // The money has moved. A block still projecting two futures off the post-settlement
     // treasury would count the same payment twice — which is exactly what reusing the

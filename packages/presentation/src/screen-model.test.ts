@@ -6,7 +6,8 @@ import {
   afterActionFailedScreen,
   afterActionScreenModel,
   createAfterActionScreenModel,
-  type AfterActionScreenModel
+  type AfterActionScreenModel,
+  type AfterActionSettlementLine
 } from './after-action-screen-model.ts';
 import {
   CONTRACT_BOARD_LOADING_SCREEN,
@@ -61,7 +62,7 @@ const soldier = aCapableHero({
  * and that is not a preference: with one man `amount` and `counted` are the same number, so
  * a walk that emitted the first of them twice would produce an identical list.
  */
-function anUnequalState() {
+function anUnequalState(promisedBonus = 0) {
   const weaker = aCapableHero({
     id: 0,
     definition: ids.bram,
@@ -91,6 +92,7 @@ function anUnequalState() {
           [NeedId.Wilderness, 100]
         ],
         risk: 0,
+        promisedBonus,
         crew: [
           { hero: weaker, commitment: CommitmentState.Committed },
           { hero: stronger, commitment: CommitmentState.Committed }
@@ -240,6 +242,33 @@ describe('the read-model hash', () => {
     expect(new Set(hashes).size).toBe(hashes.length);
   });
 
+  it('covers what each answer to a promise costs, not only what it pays', () => {
+    // The projection claims to carry every field a player can see, and external review
+    // found the claim unprovable for the newest one: on real campaigns `promise` moves
+    // only together with `promisedBonus`, so dropping it from the projection entirely left
+    // every hash in this file exactly where it was. These three models differ in that field
+    // and in nothing else, which is the only shape that can tell.
+    const promised = afterActionScreenModel(anUnequalState(12), ids.caravan);
+    const settlement = promised.settlement;
+
+    if (settlement === null || settlement.promise === null) {
+      throw new Error('The promised fixture carries no promise, so there is nothing to hash.');
+    }
+
+    const withPromise = (promise: AfterActionSettlementLine['promise']) =>
+      readModelHash(
+        createAfterActionScreenModel({ ...promised, settlement: { ...settlement, promise } })
+      );
+
+    expect(withPromise(null)).not.toBe(withPromise(settlement.promise));
+    expect(
+      withPromise({ ...settlement.promise, keepConsequenceKeys: ['settlement.made.up'] })
+    ).not.toBe(withPromise(settlement.promise));
+    expect(
+      withPromise({ ...settlement.promise, breakConsequenceKeys: ['settlement.made.up'] })
+    ).not.toBe(withPromise(settlement.promise));
+  });
+
   it('still distinguishes two screens of one kind that differ only in state', () => {
     // The property the frozen corpus already rests on, restated over the union: adding the
     // screen's name to the projection must not have made the state redundant.
@@ -343,10 +372,32 @@ describe('the rendered-UI snapshot', () => {
       'field.settlement.crew',
       'hero.core.bram.name',
       'hero.core.doran.name',
-      'field.settlement.treasury_if_kept',
+      // One figure and one command, because nothing was promised: `settleContract` ignores
+      // `pay` there (`NEGOTIATION_SPEC` §6), so a second treasury reading the same 416 and
+      // a second button doing the same thing would be a choice the campaign does not offer.
+      'field.treasury_forecast',
       '416',
+      'settlement.settle'
+    ]);
+  });
+
+  it('puts each branch of a real promise beside the button that chooses it', () => {
+    // The same walk on the case the one above cannot reach: a package that promised
+    // something. Each branch is a treasury, what it costs beyond the treasury and its own
+    // control — the layout `RESOLUTION_SPEC` §6.1 asks for, since two bare numbers side by
+    // side do not say that one of them costs a man's trust.
+    const model = afterActionScreenModel(anUnequalState(12), ids.caravan);
+
+    expect(expectedSnapshot(model, identityCatalogue(model)).slice(-9)).toEqual([
+      'field.settlement.treasury_if_kept',
+      String(model.settlement?.treasuryIfKept),
+      'settlement.consequence.kept',
+      'settlement.pay',
       'field.settlement.treasury_if_broken',
-      '416'
+      String(model.settlement?.treasuryIfBroken),
+      'settlement.consequence.broken_grievance',
+      'settlement.consequence.broken_disbelief',
+      'settlement.refuse'
     ]);
   });
 

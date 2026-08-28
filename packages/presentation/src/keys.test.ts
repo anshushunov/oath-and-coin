@@ -12,6 +12,7 @@ import {
   REASON_DIRECTION_KEYS,
   SCREEN_STATE_KEYS,
   SETTLEMENT_ACTION_KEYS,
+  SETTLEMENT_CONSEQUENCE_KEYS,
   SETTLEMENT_FIELD_KEYS,
   TREASURY_FIELD_KEYS,
   actionKey,
@@ -130,9 +131,19 @@ describe('the negotiation captions and phase keys', () => {
     expect(OFFER_FIELD_KEYS).toContain(OfferFieldKeys.KeyHero);
   });
 
-  it('names both settlement buttons', () => {
-    expect(SETTLEMENT_ACTION_KEYS).toHaveLength(2);
-    expect(new Set(SETTLEMENT_ACTION_KEYS).size).toBe(2);
+  it('names every settlement button, including the one for a package that promised nothing', () => {
+    expect(SETTLEMENT_ACTION_KEYS).toHaveLength(3);
+    expect(new Set(SETTLEMENT_ACTION_KEYS).size).toBe(3);
+  });
+
+  it('names what each answer to the promise costs, once each', () => {
+    expect(SETTLEMENT_CONSEQUENCE_KEYS).toHaveLength(3);
+    expect(new Set(SETTLEMENT_CONSEQUENCE_KEYS).size).toBe(3);
+    // The two vocabularies are disjoint: a button says what a player does, a consequence
+    // says what it costs, and one key doing both would leave one of the two unsayable.
+    expect(
+      SETTLEMENT_CONSEQUENCE_KEYS.filter((key) => SETTLEMENT_ACTION_KEYS.includes(key))
+    ).toEqual([]);
   });
 });
 
@@ -149,6 +160,7 @@ describe('every key this package can produce', () => {
       ...TREASURY_FIELD_KEYS,
       ...SETTLEMENT_FIELD_KEYS,
       ...SETTLEMENT_ACTION_KEYS,
+      ...SETTLEMENT_CONSEQUENCE_KEYS,
       errorKey('CHECKPOINT_UNKNOWN'),
       tagKey(parseContentId('target:cult')),
       contractDisplayNameKey(parseContentId('core:escort_the_caravan')),

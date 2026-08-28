@@ -76,12 +76,14 @@ export {
   SCREEN_LINK_KEYS,
   SCREEN_STATE_KEYS,
   SETTLEMENT_ACTION_KEYS,
+  SETTLEMENT_CONSEQUENCE_KEYS,
   SETTLEMENT_FIELD_KEYS,
   ScreenLinkKeys,
   SaveFieldKeys,
   SaveOverwriteKeys,
   SaveSlotStatusKeys,
   SettlementActionKeys,
+  SettlementConsequenceKeys,
   SettlementFieldKeys,
   TITLE_KEY,
   TREASURY_FIELD_KEYS,
@@ -187,6 +189,7 @@ export {
   type AfterActionDeficitLine,
   type AfterActionEventLine,
   type AfterActionHeroLine,
+  type AfterActionPromiseLine,
   type AfterActionScreenModel,
   type AfterActionSettlementLine
 } from './after-action-screen-model.ts';

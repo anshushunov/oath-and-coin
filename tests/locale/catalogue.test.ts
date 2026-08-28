@@ -44,6 +44,7 @@ import {
   SCREEN_STATES,
   SCREEN_STATE_KEYS,
   SETTLEMENT_ACTION_KEYS,
+  SETTLEMENT_CONSEQUENCE_KEYS,
   SETTLEMENT_FIELD_KEYS,
   TITLE_KEY,
   TREASURY_FIELD_KEYS,
@@ -252,6 +253,11 @@ function everyKeyTheInterfaceCanShow(): readonly string[] {
     ...TREASURY_FIELD_KEYS,
     ...SETTLEMENT_FIELD_KEYS,
     ...SETTLEMENT_ACTION_KEYS,
+    // What each answer to the promise costs beyond the money (contract-loop UI plan,
+    // Task 7). Interface text like the two buttons above it: the sentences describe what
+    // `settleContract` does to a hero's memory (`NEGOTIATION_SPEC` §2.2), and no contract
+    // author writes them.
+    ...SETTLEMENT_CONSEQUENCE_KEYS,
     ...SAVE_SLOTS.map(saveSlotDisplayNameKey),
     ...SAVE_SLOTS.map(saveSlotSaveKey),
     ...SAVE_SLOTS.map(saveSlotLoadKey),

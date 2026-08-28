@@ -195,6 +195,47 @@ describe('the page while its session is still arriving', () => {
   });
 });
 
+describe('the page when the campaign moves to the debrief', () => {
+  it('draws the debrief itself, not a section with its name on it', async () => {
+    // What `campaign_screen` in the report cannot say. The page routed to the debrief long
+    // before the debrief had a component, and drew a placeholder there on purpose — so a
+    // report reading `after_action` was true of the placeholder too. What tells the two
+    // apart is a control only the real screen has.
+    //
+    // The screen's own contents are `after-action-screen.test.tsx`'s subject, over every
+    // state and against an independently built expectation; what is measured here is the
+    // one thing that file cannot see, which is whether the page mounts it at all.
+    const gated = gatedController({
+      scenario: 'screen_settlement_due',
+      checkpoint: null,
+      seed: 424242n,
+      locale: 'ru',
+      screen: 'contract-offer'
+    });
+    const { container } = mount(<App createController={() => gated.controller} />);
+
+    await act(async () => {
+      await gated.finish();
+    });
+
+    const contractId = gated.controller.store.snapshot().focusedContract;
+
+    if (contractId === null) {
+      throw new Error('The settlement-due run left no contract focused.');
+    }
+
+    // A live command, the way a player's own press sends one — §6.4's first row is "an
+    // applied `resolveContract` → the debrief", and this is the page obeying it.
+    act(() => {
+      expect(gated.controller.resolveContract({ contractId }).applied).toBe(true);
+    });
+
+    expect(reportIn(container).campaign_screen).toBe(ScreenKind.AfterAction);
+    expect(container.querySelector('[data-testid="settle-pay"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="settle-refuse"]')).not.toBeNull();
+  });
+});
+
 describe('a page taken down while its session is still arriving', () => {
   it('is written into by nothing that arrives afterwards', async () => {
     // The hazard the lifecycle introduced: a run landing after the player has navigated

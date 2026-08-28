@@ -11,7 +11,6 @@ import {
   SAVE_SLOTS_LOADING_SCREEN,
   ScreenKind,
   ScreenLinkKeys,
-  afterActionStateKey,
   contractBoardStateKey,
   readModelHash,
   saveSlotsScreenModel,
@@ -28,6 +27,7 @@ import {
 } from './content-source.ts';
 import { parseRunRequest, type RunRequest, type ScreenName } from './run-request.ts';
 import { chooseSaveStore } from './save/choose-store.ts';
+import { AfterActionScreen } from './screens/after-action/after-action-screen.tsx';
 import { ContractOfferScreen } from './screens/contract-offer/contract-offer-screen.tsx';
 import { SavesScreen } from './screens/saves/saves-screen.tsx';
 import { TextSource, useText } from './text.tsx';
@@ -159,12 +159,12 @@ export function App({ createController = browserSessionController }: AppProps = 
  * discriminant: a fourth screen does not build until the page has been told what to draw
  * for it.
  *
- * **The debrief and the board are placeholders, and deliberately named as such.** Their read
- * models exist and their components do not — those are the contract-loop UI plan's own tasks
- * 7 and 8 — and until then the honest thing for the page to draw is the screen's title
- * beside which of the five shapes it is in, under the `data-testid` the end-to-end run will
- * look for. A page that rendered nothing at all would be indistinguishable from a page whose
- * routing sent the player nowhere.
+ * **The board is still a placeholder, and deliberately named as such.** Its read model exists
+ * and its component does not — that is the contract-loop UI plan's own task 8 — and until
+ * then the honest thing for the page to draw is the screen's title beside which of the five
+ * shapes it is in, under the `data-testid` the end-to-end run will look for. A page that
+ * rendered nothing at all would be indistinguishable from a page whose routing sent the
+ * player nowhere.
  */
 function CampaignScreen({
   model,
@@ -179,12 +179,7 @@ function CampaignScreen({
     case ScreenKind.ContractOffer:
       return <ContractOfferScreen model={model} controller={controller} />;
     case ScreenKind.AfterAction:
-      return (
-        <section data-testid="after-action-screen">
-          <h1>{text(model.titleKey)}</h1>
-          <p>{text(afterActionStateKey(model.state))}</p>
-        </section>
-      );
+      return <AfterActionScreen model={model} controller={controller} />;
     case ScreenKind.ContractBoard:
       return (
         <section data-testid="contract-board-screen">
