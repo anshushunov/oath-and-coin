@@ -2100,6 +2100,47 @@ describe('taking a package in the ids the screen actually holds', () => {
     expect(result.rejectionCode).toBe(expected);
   });
 
+  it('asks the key hero the package already names, without being told who', async () => {
+    // The screen holds no `HeroId` and does not need one here: the package itself names the
+    // hero this command asks (`OfferState.keyHero`), so a screen passing one would be
+    // repeating a fact the campaign already holds — and could repeat it wrongly.
+    const { controller } = harness();
+    await controller.start();
+    controller.composeOfferFromDraft(escort, draft());
+
+    const result = controller.askKeyHero(escort);
+
+    expect(result.applied).toBe(true);
+    expect(result.decisions).toHaveLength(1);
+  });
+
+  it('refuses to ask when the package has named nobody', async () => {
+    // `keyHero` is `null` until the first `composeOffer` (`initialOffer`), and the engine's
+    // own answer for every hero at that point is `not_the_key_hero` — so this refuses with
+    // the code the command itself would give rather than throwing on a `null`.
+    const { controller } = harness({ scenario: untouchedScenario });
+    await controller.start();
+
+    const result = controller.askKeyHero(parseContentId('core:archive_run'));
+
+    expect(result.applied).toBe(false);
+    expect(result.rejectionCode).toBe(RejectionCodes.NotTheKeyHero);
+  });
+
+  it('refuses to ask about a contract this campaign does not carry', async () => {
+    // Pinned rather than left to the engine, unlike `composeOfferFromDraft`'s own contract
+    // check: this command reads its hero *off* the contract, so a missing contract is
+    // answered here or nowhere — there is nothing to hand the engine that would make it
+    // answer for itself.
+    const { controller } = harness();
+    await controller.start();
+
+    const result = controller.askKeyHero(parseContentId('core:no_such'));
+
+    expect(result.applied).toBe(false);
+    expect(result.rejectionCode).toBe(RejectionCodes.UnknownContract);
+  });
+
   it('translates a whole crew hero by hero, not the first one several times', async () => {
     // Three seats and three distinct heroes, named in an order that is neither the
     // campaign's nor sorted — so a translation that mapped every entry to one id, dropped

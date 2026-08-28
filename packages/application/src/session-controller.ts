@@ -7,7 +7,9 @@ import {
   proposeContractToHero as applyProposeContractToHero,
   resolveContract as applyResolveContract,
   settleContract as applySettleContract,
+  RejectionCodes,
   heroId,
+  rejected,
   type CommandResult,
   type ComposeOffer,
   type ContentId,
@@ -210,6 +212,22 @@ export interface SessionController {
    * of a missing check.
    */
   composeOfferFromDraft(contractId: ContentId, draft: OfferDraft): CommandResult;
+  /**
+   * Asks the hero the package already names (`OfferState.keyHero`) what they make of it.
+   *
+   * **No hero is passed in, and that is the point.** `proposeContractToHero` takes a
+   * `HeroId`, which the read model does not carry; but the screen does not need to name
+   * anybody either, because the package itself already does — the action is "ask the key
+   * hero", and who that is, is a fact about the campaign rather than a choice made at the
+   * moment of pressing. A screen supplying one would be repeating that fact, and a repeated
+   * fact is one that can disagree.
+   *
+   * A package that has named nobody yet answers `rejected.not_the_key_hero` — the engine's
+   * own code for that state (`RejectionCodes.NotTheKeyHero`, whose doc says it refuses every
+   * hero before the first `composeOffer`), so the screen shows one sentence rather than two
+   * for one situation.
+   */
+  askKeyHero(contractId: ContentId): CommandResult;
   proposeContractToHero(input: NegotiationCommandInput<ProposeContractToHero>): CommandResult;
   lockOffer(input: NegotiationCommandInput<LockOffer>): CommandResult;
   /**
@@ -396,6 +414,32 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
           advance: draft.advance,
           methodTag: draft.methodTag,
           promisedBonus: draft.promisedBonus,
+          expectedStateVersion
+        });
+      }),
+    askKeyHero: (contractId) =>
+      dispatchNegotiationCommand(store, contractId, (state, commandId, expectedStateVersion) => {
+        // Two facts, in the only order they can be read: there is no key hero to ask
+        // without a contract to hold the package that names one. `proposeContractToHero`
+        // checks its *hero argument* before the contract, and that order does not transfer
+        // here because there is no hero argument to check — the hero is read off the
+        // contract, so the contract comes first by construction rather than by choice.
+        const contract = state.contracts.get(contractId);
+
+        if (contract === undefined) {
+          return rejected(state, RejectionCodes.UnknownContract);
+        }
+
+        const { keyHero } = contract.offer;
+
+        if (keyHero === null) {
+          return rejected(state, RejectionCodes.NotTheKeyHero);
+        }
+
+        return applyProposeContractToHero(state, {
+          commandId,
+          contractId,
+          heroId: keyHero,
           expectedStateVersion
         });
       }),

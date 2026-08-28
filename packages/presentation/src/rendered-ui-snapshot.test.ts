@@ -66,7 +66,7 @@ const aFullModel = createContractOfferScreenModel({
   state: ScreenState.Normal,
   titleKey: TITLE_KEY,
   contract: {
-    definition: 'core:escort_the_caravan',
+    definition: parseContentId('core:escort_the_caravan'),
     displayNameKey: 'contract.core.escort_the_caravan.name',
     patronFee: 40,
     risk: QualitativeGrade.Moderate,

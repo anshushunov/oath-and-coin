@@ -120,7 +120,7 @@ export function App({ createController = browserSessionController }: AppProps = 
             }}
           />
         ) : (
-          <CampaignScreen model={session.screen} />
+          <CampaignScreen model={session.screen} controller={controller} />
         )}
       </TextSource>
 
@@ -166,12 +166,18 @@ export function App({ createController = browserSessionController }: AppProps = 
  * look for. A page that rendered nothing at all would be indistinguishable from a page whose
  * routing sent the player nowhere.
  */
-function CampaignScreen({ model }: { readonly model: ScreenModel }) {
+function CampaignScreen({
+  model,
+  controller
+}: {
+  readonly model: ScreenModel;
+  readonly controller: SessionController;
+}) {
   const text = useText();
 
   switch (model.screen) {
     case ScreenKind.ContractOffer:
-      return <ContractOfferScreen model={model} />;
+      return <ContractOfferScreen model={model} controller={controller} />;
     case ScreenKind.AfterAction:
       return (
         <section data-testid="after-action-screen">

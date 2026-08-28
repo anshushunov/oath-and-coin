@@ -1,6 +1,8 @@
 import {
   FieldKeys,
   OfferFieldKeys,
+  OfferAction,
+  ScreenKind,
   ScreenState,
   SettlementFieldKeys,
   TreasuryFieldKeys,
@@ -13,14 +15,20 @@ import {
   screenStateKey,
   waveredKey,
   type AvailableAction,
+  type ChoiceOption,
+  type ContentId,
   type ContractLine,
   type ContractOfferScreenModel,
   type HeroCard,
   type Lever,
+  type NumericLever,
   type OfferLine,
   type ResponseLine,
   type SettlementLine
 } from '@oath-and-coin/presentation';
+
+import type { SessionController } from '@oath-and-coin/application';
+import { useState } from 'react';
 
 import { useText } from '../../text.tsx';
 
@@ -64,8 +72,30 @@ import { Captioned, KeyList, Label } from '../labels.tsx';
  * before every response text, so that is a layout choice and not a change to the
  * order the snapshot states.
  */
-export function ContractOfferScreen({ model }: { readonly model: ContractOfferScreenModel }) {
+export function ContractOfferScreen({
+  model,
+  controller
+}: {
+  readonly model: ContractOfferScreenModel;
+  readonly controller: OfferScreenActions;
+}) {
   const text = useText();
+  const [form, setForm] = useState(() => formFor(model));
+
+  // **Adjusting state while rendering, which React documents and which is the right shape
+  // here.** The alternative is an effect that resets the form after the wrong one has
+  // already been painted, and a player would see the previous contract's package for a
+  // frame on a screen that has moved to another one.
+  //
+  // The key is the contract *and* the package's version, and both halves are load-bearing.
+  // An applied `composeOffer` answers with `version + 1`, and everything typed is now
+  // recorded — so starting again from the campaign is right. A *refused* one moves neither,
+  // so the draft survives, which is the whole reason it exists: a refusal that silently
+  // emptied the form would make a player retype everything to find out whether the refusal
+  // was even about what they had typed.
+  if (form.key !== packageKeyOf(model)) {
+    setForm(formFor(model));
+  }
   // The one join this screen has to make for itself: `OfferLine`'s hero levers and
   // `SettlementLine.keyHeroDefinition`/`crew` carry a hero's raw content id for
   // bookkeeping (`OfferLine`'s own doc comment), and the roster already carries that
@@ -104,7 +134,16 @@ export function ContractOfferScreen({ model }: { readonly model: ContractOfferSc
       )}
 
       {model.offer === null ? null : (
-        <OfferBlock offer={model.offer} heroDisplayNameKeyOf={heroDisplayNameKeyOf} />
+        <OfferBlock
+          offer={model.offer}
+          draft={form.draft}
+          onDraft={(draft) => {
+            // A keystroke clears the last refusal: it was about the package as it stood,
+            // and the package has just changed.
+            setForm({ ...form, draft, rejectionKey: null });
+          }}
+          heroDisplayNameKeyOf={heroDisplayNameKeyOf}
+        />
       )}
 
       {/* Treasury and its forecast sit beside the promise (`NEGOTIATION_SPEC` §5.1's
@@ -144,26 +183,213 @@ export function ContractOfferScreen({ model }: { readonly model: ContractOfferSc
         />
       )}
 
-      <ActionsBlock actions={model.availableActions} />
+      <ActionsBlock
+        actions={model.availableActions}
+        canCompose={isSendable(form.draft, model)}
+        rejectionKey={form.rejectionKey}
+        onPress={(action) => {
+          setForm({ ...form, rejectionKey: press(controller, action, form.draft, model) });
+        }}
+      />
     </section>
   );
+}
+
+/**
+ * The subset of the session controller this screen is allowed to use.
+ *
+ * `Pick` over the controller's own type rather than a hand-written interface: there is one
+ * declaration of what each command takes, and this is a statement about *which* of them the
+ * negotiation screen may send — it may not save, may not load, and may not move the focus
+ * to another contract. A component that grew such a call would stop compiling rather than
+ * quietly gain the ability.
+ */
+export type OfferScreenActions = Pick<
+  SessionController,
+  'composeOfferFromDraft' | 'askKeyHero' | 'lockOffer' | 'pollCrew' | 'resolveContract' | 'show'
+>;
+
+/**
+ * A package as a player is assembling it, before any of it has been recorded.
+ *
+ * **This is the state the read model deliberately cannot hold.** `ContractOfferScreenModel`
+ * is what the campaign records, rebuilt from the engine after every command, so a
+ * half-filled term has nowhere in it to live — and an immutable projection that could hold
+ * one would have stopped being a projection.
+ *
+ * `keyHero` is nullable here and is not on `OfferDraft`, and the difference is the point: a
+ * command needs somebody to negotiate with, a form does not yet. Until one is chosen there
+ * is no `OfferDraft` to build at all, which is why {@link isSendable} refuses rather than
+ * this screen inventing a hero.
+ */
+interface OfferForm {
+  readonly advance: number;
+  readonly promisedBonus: number;
+  readonly methodTag: ContentId | null;
+  readonly keyHero: ContentId | null;
+  readonly invited: readonly ContentId[];
+}
+
+interface FormState {
+  /** The package this draft belongs to; a change to it throws the draft away. */
+  readonly key: string | null;
+  readonly draft: OfferForm;
+  /** The refusal the last press produced, or `null` when the last press was taken. */
+  readonly rejectionKey: string | null;
+}
+
+const EMPTY_FORM: OfferForm = {
+  advance: 0,
+  promisedBonus: 0,
+  methodTag: null,
+  keyHero: null,
+  invited: []
+};
+
+/**
+ * Which package a draft belongs to — the contract and the version together.
+ *
+ * `null` when there is no package on screen at all, and that is a key like any other: a
+ * screen that has just gained one differs from a screen that had none, so the form is
+ * rebuilt exactly as it should be.
+ */
+function packageKeyOf(model: ContractOfferScreenModel): string | null {
+  return model.contract === null || model.offer === null
+    ? null
+    : // Separated, not concatenated: a contract id may end in a digit, so `a` at version
+      // 11 and `a1` at version 1 would key the same, and a form would survive a change it
+      // must not survive. 0x1F is the separator this repository already joins strings with
+      // before hashing them, for exactly that collision, and it cannot occur inside an id.
+      `${model.contract.definition}${String(model.offer.version)}`;
+}
+
+/** The form a player starts from: whatever the package currently records. */
+function formFor(model: ContractOfferScreenModel): FormState {
+  const { offer } = model;
+
+  return {
+    key: packageKeyOf(model),
+    draft:
+      offer === null
+        ? EMPTY_FORM
+        : {
+            advance: offer.advanceLever.value,
+            promisedBonus: offer.bonusLever.value,
+            methodTag: offer.methodLever.chosen,
+            keyHero: offer.keyHeroLever.chosen,
+            invited: [...offer.crewLever.chosen]
+          },
+    rejectionKey: null
+  };
+}
+
+/**
+ * Whether this form can become a command at all.
+ *
+ * Two conditions, and neither is a game rule this screen invented. A crew of the wrong size
+ * is refused by `composeOffer` itself (`rejected.crew_size_mismatch`), and the size it is
+ * held to is the model's own `crewLever.exactly` — read, never chosen here. A form with no
+ * key hero cannot be turned into an `OfferDraft`, because the command names one; that is a
+ * fact about the shape of the command rather than a rule about packages.
+ *
+ * Everything else a package can get wrong — a key hero outside the crew, a term past the
+ * patron fee — is left to the engine, and the refusal it answers with is what the player
+ * reads. A screen that pre-empted those would be keeping a second copy of rules it does not
+ * own, which is the whole failure `offer-actions.ts` is built to avoid.
+ */
+function isSendable(draft: OfferForm, model: ContractOfferScreenModel): boolean {
+  return draft.keyHero !== null && draft.invited.length === (model.offer?.crewLever.exactly ?? 0);
+}
+
+/**
+ * Sends one command, and answers with the refusal it produced or `null`.
+ *
+ * `settle` is the one that sends nothing. Answering a promise means choosing whether to pay
+ * it, and what each choice costs is on the debrief (`RESOLUTION_SPEC` §6.1) — owner's
+ * decision of 2026-08-28. A button here that paid one way or the other would be a promise
+ * answered without the player being able to see the price, which is the Football Manager
+ * failure mode this design exists to fix, so it moves them to where the price is instead.
+ */
+function press(
+  controller: OfferScreenActions,
+  action: OfferAction,
+  draft: OfferForm,
+  model: ContractOfferScreenModel
+): string | null {
+  const contractId = model.contract?.definition;
+
+  if (contractId === undefined) {
+    throw new Error(
+      'A negotiation command was pressed on a screen with no contract — a defect in this ' +
+        'component, which must not draw a control for a package that is not there.'
+    );
+  }
+
+  switch (action) {
+    case OfferAction.Compose:
+      return draft.keyHero === null
+        ? null
+        : refusalOf(
+            controller.composeOfferFromDraft(contractId, {
+              advance: draft.advance,
+              promisedBonus: draft.promisedBonus,
+              methodTag: draft.methodTag,
+              keyHero: draft.keyHero,
+              invited: draft.invited
+            })
+          );
+    case OfferAction.AskKeyHero:
+      return refusalOf(controller.askKeyHero(contractId));
+    case OfferAction.Lock:
+      return refusalOf(controller.lockOffer({ contractId }));
+    case OfferAction.Poll:
+      return refusalOf(controller.pollCrew({ contractId }));
+    case OfferAction.Resolve:
+      return refusalOf(controller.resolveContract({ contractId }));
+    case OfferAction.Settle:
+      controller.show(ScreenKind.AfterAction);
+
+      return null;
+  }
+}
+
+function refusalOf(result: {
+  readonly applied: boolean;
+  readonly rejectionCode: string | null;
+}): string | null {
+  return result.applied ? null : result.rejectionCode;
 }
 
 /**
  * The six commands of the protocol, each either live or dark with the refusal it would get
  * (`offer-actions.ts`).
  *
- * **Buttons with no handler, deliberately, and only until Task 6 wires one.** The last time
- * this screen carried a control that did nothing, review's ruling was to remove it rather
- * than leave a promise — and that ruling was right about a control that could *never* do
- * anything. These are different: the model now says which of them may be pressed and why
- * the rest may not, which is exactly the fact Task 6 needs on the page before it can attach
- * a handler, and `disabled` is a real answer a player reads rather than a placeholder.
+ * **Two reasons a control can be dark, and only one of them is a rule.** The model's own
+ * `disabledReasonKey` is the engine's answer — this package cannot be revised, the crew is
+ * not filled — and it is shown as text beside the button. `canCompose` is the other: the
+ * *form* is not filled in yet, which is not a fact about the campaign and carries no
+ * refusal to show, because nothing has been refused. A player is told about the first and
+ * simply cannot press the second.
  *
- * The one branch here is on `disabledReasonKey` being `null` — a model field, never a
- * value — and `expectedSnapshot` makes the identical decision from the identical field.
+ * `rejectionKey` is a third thing again, and it lives outside the list: it is what the last
+ * press actually came back with, so it belongs to the moment rather than to any one control.
+ *
+ * Every branch here is on a field being `null` or a boolean the parent computed — never on
+ * which action this is — and `expectedSnapshot` makes the identical decisions from the
+ * identical model fields. `canCompose` and `rejectionKey` produce no text of their own, so
+ * neither can move the second hash.
  */
-function ActionsBlock({ actions }: { readonly actions: readonly AvailableAction[] }) {
+function ActionsBlock({
+  actions,
+  canCompose,
+  rejectionKey,
+  onPress
+}: {
+  readonly actions: readonly AvailableAction[];
+  readonly canCompose: boolean;
+  readonly rejectionKey: string | null;
+  readonly onPress: (action: OfferAction) => void;
+}) {
   const text = useText();
 
   if (actions.length === 0) {
@@ -174,7 +400,17 @@ function ActionsBlock({ actions }: { readonly actions: readonly AvailableAction[
     <div className="actions" data-testid="offer-actions">
       {actions.map((available) => (
         <div className="action" key={available.action}>
-          <button type="button" disabled={available.disabledReasonKey !== null}>
+          <button
+            type="button"
+            data-testid={`action-${available.action}`}
+            disabled={
+              available.disabledReasonKey !== null ||
+              (available.action === OfferAction.Compose && !canCompose)
+            }
+            onClick={() => {
+              onPress(available.action);
+            }}
+          >
             {text(offerActionKey(available.action))}
           </button>
 
@@ -182,6 +418,117 @@ function ActionsBlock({ actions }: { readonly actions: readonly AvailableAction[
             <Label text={text(available.disabledReasonKey)} />
           )}
         </div>
+      ))}
+
+      {rejectionKey === null ? null : (
+        <p className="rejection" data-testid="offer-rejection">
+          {text(rejectionKey)}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A number a player may move, beside the number the package already records.
+ *
+ * Both, not one: the caption above it shows what the campaign has *recorded*, which is what
+ * `expectedSnapshot` describes and what the rendered-UI hash compares — an input's value is
+ * a DOM property with no text node behind it, so a screen that replaced the text with a
+ * control would have made the recorded term unprovable from the frame. The input is what is
+ * being assembled; the text beside it is what stands.
+ *
+ * `min` and `max` come off the lever, so the control cannot be moved past a bound the engine
+ * would refuse — and `disabled` off the same lever's reason, so a locked package is not
+ * merely refused after the fact.
+ */
+function NumberField({
+  testId,
+  lever,
+  value,
+  onChange
+}: {
+  readonly testId: string;
+  readonly lever: NumericLever;
+  readonly value: number;
+  readonly onChange: (value: number) => void;
+}) {
+  return (
+    <input
+      type="number"
+      className="lever-input"
+      data-testid={testId}
+      min={lever.min}
+      max={lever.max}
+      value={String(value)}
+      disabled={lever.disabledReasonKey !== null}
+      onChange={(event) => {
+        const parsed = Number.parseInt(event.target.value, 10);
+
+        // An empty box is `NaN`, not zero: a player midway through clearing a field has not
+        // said "nothing", and turning that into a term would send a package they never
+        // typed. The last good value stands until they type another.
+        if (!Number.isNaN(parsed)) {
+          onChange(parsed);
+        }
+      }}
+    />
+  );
+}
+
+/**
+ * A closed set of options a player picks from — one of them, or several.
+ *
+ * Renders exactly the texts {@link KeyList} did before a handler existed, in the same order,
+ * so the second hash sees no difference between a list a player can act on and a list they
+ * could only read. What changed is what sits beside each name.
+ */
+function OptionList({
+  captionKey,
+  type,
+  name,
+  prefix,
+  options,
+  disabled,
+  isChosen,
+  onToggle
+}: {
+  readonly captionKey: string;
+  readonly type: 'radio' | 'checkbox';
+  readonly name: string;
+  readonly prefix: string;
+  readonly options: readonly ChoiceOption<ContentId>[];
+  readonly disabled: boolean;
+  readonly isChosen: (value: ContentId) => boolean;
+  readonly onToggle: (value: ContentId) => void;
+}) {
+  const text = useText();
+
+  if (options.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="key-list">
+      <Label text={text(captionKey)} />
+      {options.map((option, index) => (
+        <label className="option" key={option.value}>
+          <input
+            type={type}
+            name={name}
+            // Positional, never the option's own id:  asserts
+            // that no content id reaches *any* attribute, not only the ones a player reads,
+            // and a hook carrying one would put the raw identifier back on the page through
+            // the one door that walk exists to watch.
+            data-testid={`${prefix}-option-${String(index)}`}
+            checked={isChosen(option.value)}
+            disabled={disabled}
+            onChange={() => {
+              onToggle(option.value);
+            }}
+          />
+          <span className="label">{text(option.labelKey)}</span>
+        </label>
       ))}
     </div>
   );
@@ -367,9 +714,13 @@ function ResponseBlock({ response }: { readonly response: ResponseLine }) {
  */
 function OfferBlock({
   offer,
+  draft,
+  onDraft,
   heroDisplayNameKeyOf
 }: {
   readonly offer: OfferLine;
+  readonly draft: OfferForm;
+  readonly onDraft: (next: OfferForm) => void;
   readonly heroDisplayNameKeyOf: (definition: string) => string;
 }) {
   const text = useText();
@@ -381,14 +732,31 @@ function OfferBlock({
 
       <div className="row lever">
         <Captioned captionKey={OfferFieldKeys.Advance} value={String(offer.advanceLever.value)} />
+        <NumberField
+          testId="offer.advance"
+          lever={offer.advanceLever}
+          value={draft.advance}
+          onChange={(advance) => {
+            onDraft({ ...draft, advance });
+          }}
+        />
         <DisabledReason lever={offer.advanceLever} />
 
         {offer.methodLever.options.length === 0 ? null : (
           <div className="method-options">
             <Label text={text(OfferFieldKeys.Method)} />
-            {offer.methodLever.options.map((option) => (
+            {offer.methodLever.options.map((option, index) => (
               <label className="method-option" key={option.value}>
-                <input type="radio" name="offer-method" checked={option.selected} readOnly />
+                <input
+                  type="radio"
+                  name="offer-method"
+                  data-testid={`method-option-${String(index)}`}
+                  checked={option.value === draft.methodTag}
+                  disabled={offer.methodLever.disabledReasonKey !== null}
+                  onChange={() => {
+                    onDraft({ ...draft, methodTag: option.value });
+                  }}
+                />
                 <span className="label">{text(option.labelKey)}</span>
               </label>
             ))}
@@ -411,6 +779,14 @@ function OfferBlock({
           captionKey={OfferFieldKeys.PromisedBonus}
           value={String(offer.bonusLever.value)}
         />
+        <NumberField
+          testId="offer.promised_bonus"
+          lever={offer.bonusLever}
+          value={draft.promisedBonus}
+          onChange={(promisedBonus) => {
+            onDraft({ ...draft, promisedBonus });
+          }}
+        />
         <DisabledReason lever={offer.bonusLever} />
       </div>
 
@@ -419,9 +795,17 @@ function OfferBlock({
           and the crew being part of the package is the whole point of `RESOLUTION_SPEC`
           §2.5. Never gated on emptiness — a roster is never empty on a screen that has a
           contract at all (`contractOfferScreenModel`'s own `Empty` guard). */}
-      <KeyList
+      <OptionList
         captionKey={OfferFieldKeys.KeyHeroOptions}
-        keys={offer.keyHeroLever.options.map((option) => option.labelKey)}
+        type="radio"
+        name="offer-key-hero"
+        prefix="key-hero"
+        options={offer.keyHeroLever.options}
+        disabled={offer.keyHeroLever.disabledReasonKey !== null}
+        isChosen={(value) => value === draft.keyHero}
+        onToggle={(keyHero) => {
+          onDraft({ ...draft, keyHero });
+        }}
       />
 
       {offer.keyHeroLever.chosen === null ? null : (
@@ -432,9 +816,31 @@ function OfferBlock({
       )}
       <DisabledReason lever={offer.keyHeroLever} />
 
-      <KeyList
+      <OptionList
         captionKey={OfferFieldKeys.CrewOptions}
-        keys={offer.crewLever.options.map((option) => option.labelKey)}
+        type="checkbox"
+        name="offer-crew"
+        prefix="crew"
+        options={offer.crewLever.options}
+        disabled={offer.crewLever.disabledReasonKey !== null}
+        isChosen={(value) => draft.invited.includes(value)}
+        onToggle={(value) => {
+          // Kept in the options' own order rather than in the order they were ticked: the
+          // engine sorts the crew into a `SortedSet` anyway (`composeOffer`), so click order
+          // is a difference nothing downstream can see — and a list that reordered itself as
+          // a player worked would be the same thing the owner rejected for the method
+          // alternatives.
+          onDraft({
+            ...draft,
+            invited: offer.crewLever.options
+              .map((option) => option.value)
+              .filter((candidate) =>
+                candidate === value
+                  ? !draft.invited.includes(value)
+                  : draft.invited.includes(candidate)
+              )
+          });
+        }}
       />
       <Captioned captionKey={OfferFieldKeys.CrewSize} value={String(offer.crewLever.exactly)} />
 

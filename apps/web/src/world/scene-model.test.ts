@@ -100,7 +100,7 @@ function aResponse(heroDefinition: string): ResponseLine {
 }
 
 const A_CONTRACT: ContractLine = {
-  definition: 'core:escort_the_caravan',
+  definition: 'core:escort_the_caravan' as ContractLine['definition'],
   displayNameKey: 'contract.core.escort_the_caravan.name',
   patronFee: 40,
   risk: 'Moderate',
