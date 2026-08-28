@@ -154,8 +154,8 @@ function aSettledBoard(): ContractBoardScreenModel {
  * A board with nothing left to take.
  *
  * Assembled from {@link aSettledBoard}'s own rows rather than from a run, and that is a
- * limit of the shipped corpus rather than a preference: the tree ships four contracts and
- * no scenario starts all four, so `Incomplete` is unreachable from any manifest. Every row
+ * limit of the shipped corpus rather than a preference: the tree ships six contracts and
+ * no scenario starts all of them, so `Incomplete` is unreachable from any manifest. Every row
  * here is still a row a campaign produced — the filter drops rows, it does not invent one —
  * and the factory recomputes the state from what is left, so a board claiming the wrong
  * word about its own rows would throw here rather than render. The reachability of

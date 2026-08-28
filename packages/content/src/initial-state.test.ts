@@ -55,7 +55,7 @@ describe('createInitialState', () => {
       // `required_crew: 2 → 1`, then `46416b20360bbedd` until the resolution engine's
       // Task 2 raised every file to `schema_version: 4` and authored `capability` and
       // `needs` (`content-set.test.ts` carries the same move's full history).
-      contentVersion: 'a045593c0ff3b153',
+      contentVersion: '94470ae66b2a1061',
       campaignSeed: 7n,
       stateVersion: 0,
       logicalTime: 0,

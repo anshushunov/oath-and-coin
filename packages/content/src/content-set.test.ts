@@ -81,7 +81,7 @@ const shippedContent = join(repoRoot, 'content');
  * `negotiable_tags`, both fields are *required*, which is why the version had to move
  * with them rather than merely alongside them.
  *
- * The contract-loop UI plan's task 9 moved it a ninth time, to `a045593c0ff3b153`: two
+ * The contract-loop UI plan's task 9 moved it a ninth time, to `94470ae66b2a1061`: two
  * contracts, `core:hold_the_river_ford` and `core:burn_the_plague_barrow`, the second
  * counterbalanced pair the playtest measures the loop with (`RESOLUTION_SPEC` §8). Four
  * shipped contracts became six, which is why the counts below moved as well.
@@ -212,9 +212,9 @@ describe('loadContentSet over the shipped tree', () => {
     // touching the tags or any hero. The resolution engine's Task 2 moved it an eighth
     // time, to `cd159cbb2363d417`, raising every file to `schema_version: 4` and
     // authoring the two fields `RESOLUTION_SPEC` §2.2 and §2.3 add. The contract-loop UI
-    // plan's task 9 moved it a ninth time, to `a045593c0ff3b153`, with the playtest's
+    // plan's task 9 moved it a ninth time, to `94470ae66b2a1061`, with the playtest's
     // second counterbalanced pair (`RESOLUTION_SPEC` §8).
-    expect(content.contentVersion).toBe('a045593c0ff3b153');
+    expect(content.contentVersion).toBe('94470ae66b2a1061');
   });
 
   it('keys heroes, contracts and traits in content-id order', () => {

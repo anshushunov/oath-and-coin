@@ -6,6 +6,6 @@
   "risk": 40,
   "required_crew": 3,
   "needs": { "frontline": 20, "undead_knowledge": 40 },
-  "tags": ["target:undead", "target:temple"],
+  "tags": ["target:cult", "target:undead"],
   "negotiable_tags": ["method:open", "method:public_contract"]
 }

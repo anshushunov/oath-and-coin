@@ -151,7 +151,7 @@ const content = loadContentSet(shippedContent);
  * happen here. The version moved alone, which is exactly the shape a data-only change is
  * supposed to have.
  *
- * The contract-loop UI plan's task 9 moved it a ninth time, to `a045593c0ff3b153`, and
+ * The contract-loop UI plan's task 9 moved it a ninth time, to `94470ae66b2a1061`, and
  * moved the key count with it, to 100: the playtest's second counterbalanced pair
  * (`RESOLUTION_SPEC` §8) is two contracts — `core:hold_the_river_ford` and
  * `core:burn_the_plague_barrow` — and each needs its own authored display name. **Two keys
@@ -159,7 +159,7 @@ const content = loadContentSet(shippedContent);
  * content's to author (`ADR-012`), and any *third* key arriving in the same change would be
  * interface text sneaking back into `content/` under cover of a content addition.
  */
-const FROZEN_CONTENT_VERSION = 'a045593c0ff3b153';
+const FROZEN_CONTENT_VERSION = '94470ae66b2a1061';
 const FROZEN_CONTENT_KEY_COUNT = 100;
 
 /** Every key the presentation layer can produce for the shipped content tree. */
