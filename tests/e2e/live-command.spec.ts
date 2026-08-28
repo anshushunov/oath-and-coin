@@ -7,18 +7,20 @@ import { expect, test, type ConsoleMessage, type Page, type Request } from '@pla
 /**
  * What happens to the page **after** a player presses something.
  *
- * Every other browser run in this suite photographs a screen the scenario replayed into
- * place and never touches a control. That is a real gap and it cost a real defect: from the
- * moment the negotiation controls became live, the first press of any command froze the
- * page — the renderer was destroyed and re-initialized on the same `<canvas>` on every
- * model change, and the second `init` on a released context blocks the renderer's main
- * thread for good. `pnpm verify` was green throughout, because the jsdom tests replace the
- * canvas with `null` and no run in this directory ever clicked.
+ * Clicking is not what is new here — `save-slots.spec.ts` saves and confirms, and its
+ * presses leave the campaign exactly where it was. What no run in this directory did was
+ * apply a command that *moves* the campaign, and every other run photographs a screen the
+ * scenario replayed into place. That gap cost a real defect: from the moment the
+ * negotiation controls became live, the first press of any command froze the page — the
+ * renderer was destroyed and re-initialized on the same `<canvas>` on every model change,
+ * and the second `init` on a released context blocks the renderer's main thread for good.
+ * `pnpm verify` was green throughout, because the jsdom tests replace the canvas with
+ * `null`.
  *
- * So this file measures one thing the others structurally cannot: the page is still alive
- * once the campaign has moved. It presses a real command, then asks the page a question and
- * requires an answer. A frozen page fails by timing out, which is the only way a frozen page
- * can fail.
+ * So this file measures two things the others structurally cannot: the page is still alive
+ * once the campaign has moved, and the scene under it was redrawn rather than left
+ * standing. A frozen page fails by timing out, which is the only way a frozen page can
+ * fail; a stale scene fails on its own pixels, because the shape count does not move here.
  *
  * `screen_locked` is the run it presses on: its package is locked with seats still to fill,
  * so `pollCrew` is a command a player can actually press there, and applying it moves the
@@ -53,6 +55,7 @@ test('a page that has been pressed still answers, and still draws', async ({ pag
   await expect(page.getByTestId('world-canvas')).toHaveAttribute('data-scene-shapes', /^\d+$/u);
 
   const before = await report(page);
+  const drawnBefore = await frameDigest(page);
 
   // The press itself is raced as well as the question after it, because a frozen page can
   // swallow either: Playwright waits for scheduled navigations once the click has landed,
@@ -70,9 +73,19 @@ test('a page that has been pressed still answers, and still draws', async ({ pag
   // The command really applied — otherwise the page would have been asked to survive
   // nothing at all, and a refusal would leave the model exactly where it was.
   expect(parsed.read_model_hash).not.toBe(before.read_model_hash);
-  // And the renderer is still the one that was brought up: still attached, still reporting
-  // what it drew. A page that answers while its canvas has gone blank is half the fix.
+  // And the renderer is still the one that was brought up, and it **redrew**. Read off the
+  // pixels rather than off `data-scene-shapes`, because that number does not move here: the
+  // poll changes which heroes have answered, so the tokens change colour while their count
+  // stays exactly what it was. A check on the count alone would pass over a component that
+  // skipped the redraw entirely, which is a live mutant external review named.
   await expect(page.getByTestId('world-canvas')).toHaveAttribute('data-scene-shapes', /^\d+$/u);
+  const drawnAfter = await answerWithin(frameDigest(page), 'redraw its scene');
+
+  expect(drawnAfter.shapes).toBe(drawnBefore.shapes);
+  expect(drawnAfter.pixels).not.toBe(drawnBefore.pixels);
+  // Not a blank canvas: a renderer that lost its context clears to one colour, which would
+  // differ from the frame before it and satisfy the line above on its own.
+  expect(drawnAfter.distinctColors).toBeGreaterThan(1);
   // Nothing was thrown along the way. The renderer failing to come up reaches the page as an
   // unhandled rejection by design (`world-canvas.tsx`), so an empty log is a claim about the
   // renderer as well as about the screen.
@@ -92,7 +105,13 @@ test('a page that has been pressed still answers, and still draws', async ({ pag
         read_model_hash_after: parsed.read_model_hash,
         screen_state_after: parsed.screen_state,
         campaign_screen_after: parsed.campaign_screen,
-        scene_shapes_after: await sceneShapes(page),
+        scene_shapes_before: drawnBefore.shapes,
+        scene_shapes_after: drawnAfter.shapes,
+        // The pair that says the scene was redrawn rather than merely left standing: the
+        // shape count is the same on both sides and the pixels are not.
+        frame_digest_before: drawnBefore.pixels,
+        frame_digest_after: drawnAfter.pixels,
+        distinct_colors_after: drawnAfter.distinctColors,
         events: events.length
       },
       null,
@@ -145,8 +164,66 @@ async function report(page: Page): Promise<PageReport> {
   return JSON.parse((await page.getByTestId('run-report').textContent()) ?? '') as PageReport;
 }
 
-async function sceneShapes(page: Page): Promise<string | null> {
-  return page.getByTestId('world-canvas').getAttribute('data-scene-shapes');
+/** What the canvas is actually showing, read back as pixels the page cannot fake. */
+interface FrameDigest {
+  /** The shape count the component reports, for comparison against the pixels. */
+  readonly shapes: number;
+  /** FNV-1a over every byte of the frame — equal frames, equal digest. */
+  readonly pixels: string;
+  readonly distinctColors: number;
+}
+
+/**
+ * Reads the drawn frame back off the canvas.
+ *
+ * The same technique `contract-offer.spec.ts` uses to prove a scene was drawn at all —
+ * `preserveDrawingBuffer` is on for exactly this — carried one step further: a digest, so
+ * two frames of one scene can be told apart rather than only "something was drawn".
+ */
+async function frameDigest(page: Page): Promise<FrameDigest> {
+  return page.evaluate((testId: string) => {
+    const canvas = document.querySelector(`[data-testid="${testId}"]`);
+
+    if (!(canvas instanceof HTMLCanvasElement)) {
+      throw new Error(`The page has no <canvas data-testid="${testId}">.`);
+    }
+
+    const probe = document.createElement('canvas');
+    probe.width = canvas.width;
+    probe.height = canvas.height;
+
+    const context = probe.getContext('2d', { willReadFrequently: true });
+
+    if (context === null) {
+      throw new Error('This browser gave no 2D context to read the scene back with.');
+    }
+
+    context.drawImage(canvas, 0, 0);
+
+    const { data } = context.getImageData(0, 0, probe.width, probe.height);
+    const colours = new Set<number>();
+    let hash = 0x811c9dc5;
+
+    for (let offset = 0; offset < data.length; offset += 4) {
+      const pixel =
+        ((data[offset] ?? 0) << 24) |
+        ((data[offset + 1] ?? 0) << 16) |
+        ((data[offset + 2] ?? 0) << 8) |
+        (data[offset + 3] ?? 0);
+
+      colours.add(pixel);
+      hash = Math.imul(hash ^ (pixel & 0xff), 0x01000193);
+      hash = Math.imul(hash ^ ((pixel >>> 8) & 0xff), 0x01000193);
+      hash = Math.imul(hash ^ ((pixel >>> 16) & 0xff), 0x01000193);
+      hash = Math.imul(hash ^ ((pixel >>> 24) & 0xff), 0x01000193);
+    }
+
+    return {
+      shapes: Number(canvas.dataset['sceneShapes'] ?? '-1'),
+      pixels: (hash >>> 0).toString(16).padStart(8, '0'),
+      distinctColors: colours.size
+    };
+  }, 'world-canvas');
 }
 
 function runUrl(): string {

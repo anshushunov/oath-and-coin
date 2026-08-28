@@ -230,12 +230,15 @@ jobs:
             echo
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
-      # The third evidence directory, and the only one produced by a run that *presses*
-      # something. Named here for the reason the two lists above are named: a run that
-      # stops producing evidence has to fail a stage, and the only place that can be
-      # noticed is a list of what was expected. This one covers the gap those two share —
-      # both photograph a screen the scenario replayed into place, so neither could see a
-      # page that freezes the moment a player touches it, which is exactly what happened.
+      # The third evidence directory, and the only one produced by a run that applies a
+      # game command. The save-slots run does press buttons, so what is new here is not the
+      # click: it is that the campaign underneath the page *moves*, which is the transition
+      # both lists above are blind to — they photograph a screen the scenario replayed into
+      # place. That blindness cost a page which froze the moment a player touched it.
+      #
+      # Named here for the reason the two lists are named: a run that stops producing
+      # evidence has to fail a stage, and the only place that can be noticed is a list of
+      # what was expected.
       - name: Summarise the live-command evidence
         if: always() && steps.e2e.outcome != 'skipped'
         shell: bash
@@ -255,12 +258,14 @@ jobs:
           {
             echo "### live-command evidence"
             echo
-            echo "| scenario | command | read model before | read model after | screen | shapes | events |"
-            echo "|---|---|---|---|---|---|---|"
+            echo "| scenario | command | read model before | read model after | screen | shapes | frame before | frame after | colors | events |"
+            echo "|---|---|---|---|---|---|---|---|---|---|"
             jq -r '
               "| \(.scenario) | \(.command) | \(.read_model_hash_before[0:16]) "
               + "| \(.read_model_hash_after[0:16]) | \(.campaign_screen_after) "
-              + "| \(.scene_shapes_after) | \(.events) |"
+              + "| \(.scene_shapes_before)→\(.scene_shapes_after) "
+              + "| \(.frame_digest_before) | \(.frame_digest_after) "
+              + "| \(.distinct_colors_after) | \(.events) |"
             ' "$root/report.json"
             echo
           } | tee -a "$GITHUB_STEP_SUMMARY"
