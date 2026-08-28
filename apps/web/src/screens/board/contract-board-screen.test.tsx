@@ -46,10 +46,17 @@ import { ContractBoardScreen, type ContractBoardScreenActions } from './contract
 /** The seed the scenario runner's CLI defaults to, and the one the corpus records. */
 const SEED = 424242n;
 
-/** The four contracts the shipped tree carries, by the ids this file presses on. */
+/** The contracts of the shipped tree this file presses on. */
 const CRYPT = 'core:cleanse_the_crypt' as ContentId;
 const DEBT = 'core:collect_the_debt' as ContentId;
 const CARAVAN = 'core:escort_the_caravan' as ContentId;
+const CULT = 'core:silence_the_cult' as ContentId;
+
+/** The four heroes one fixture below sends to the crypt — the seats it asks for. */
+const BRAM = 'core:bram' as ContentId;
+const DORAN = 'core:doran' as ContentId;
+const KESTREL = 'core:kestrel' as ContentId;
+const MIRA = 'core:mira' as ContentId;
 
 let catalogue: ReadonlyMap<string, string>;
 
@@ -94,19 +101,50 @@ function controllerFor(scenario: string, checkpoint: string): SessionController 
 }
 
 /**
- * The board a settled campaign lands on: `screen_word_broken` settles
- * `core:collect_the_debt` and breaks its word, which is exactly the row §6.4 routes to the
- * board (`session.ts`'s own table).
+ * The board a settled campaign lands on, with a second contract already under way.
  *
- * Read off the session rather than rebuilt, because that is the claim: the run *arrives*
- * here. The other three contracts are untouched, so the board is `Normal` and carries one
- * row of each kind this component has to draw differently.
+ * `screen_word_broken` settles `core:collect_the_debt` and breaks its word, which is
+ * exactly the row §6.4 routes to the board (`session.ts`'s own table). The package composed
+ * on the crypt afterwards is a live command, not a hand-built row, and it is here because
+ * without it this file drew no `in_progress` row at all: external review of this task found
+ * the mutant that follows from that, `disabled={opensScreen === null || availability ===
+ * InProgress}` — the value-branch this whole design exists to forbid — surviving the entire
+ * suite.
+ *
+ * Composing moves the focus to the crypt, and §6.4 then puts an unresolved contract on the
+ * negotiation, so the board is asked for again with `show`. That the settlement *routes*
+ * here on its own is the loop test's claim, asserted there against the untouched session.
+ *
+ * The result carries three of the four availabilities — settled, in progress, open — which
+ * is every kind this component has to draw differently except the resolved one
+ * ({@link aResolvedBoard}).
  */
 function aSettledBoard(): ContractBoardScreenModel {
-  const { screen } = controllerFor('screen_word_broken', 'screen_word_broken').store.snapshot();
+  const controller = controllerFor('screen_word_broken', 'screen_word_broken');
+  const composed = controller.composeOfferFromDraft(CRYPT, {
+    // Deliberately modest terms: `composeOffer` bounds the advance and the bonus by the
+    // patron fee and checks the crew size, and nothing else (`NEGOTIATION_SPEC` §3.3) — this
+    // fixture is about a contract being *started*, not about what it costs.
+    advance: 5,
+    promisedBonus: 0,
+    methodTag: null,
+    keyHero: BRAM,
+    invited: [BRAM, DORAN, KESTREL, MIRA]
+  });
+
+  if (!composed.applied) {
+    throw new Error(
+      `The fixture's own composeOffer was refused as '${String(composed.rejectionCode)}'; a ` +
+        'board with no contract under way is not the board this file is about.'
+    );
+  }
+
+  controller.show(ScreenKind.ContractBoard);
+
+  const { screen } = controller.store.snapshot();
 
   if (screen.screen !== ScreenKind.ContractBoard) {
-    throw new Error(`'screen_word_broken' landed on '${screen.screen}', not the board.`);
+    throw new Error(`'screen_word_broken' would not show the board; '${screen.screen}' did.`);
   }
 
   return screen;
@@ -127,6 +165,13 @@ function aSettledBoard(): ContractBoardScreenModel {
 function aFinishedBoard(): ContractBoardScreenModel {
   const board = aSettledBoard();
   const rows = board.rows.filter((row) => row.availability !== ContractAvailability.Open);
+
+  if (rows.length < 2) {
+    throw new Error(
+      'A finished board assembled from fewer than two rows would say nothing about the ' +
+        'difference between a contract that is closed and one that is under way.'
+    );
+  }
 
   return createContractBoardScreenModel({
     ...board,
@@ -178,7 +223,7 @@ const STATES = [
   },
   {
     state: ScreenState.Normal,
-    describe: 'a campaign with one contract settled and three still open',
+    describe: 'a campaign with one contract settled, one under way and two still open',
     model: aSettledBoard
   }
 ] as const;
@@ -285,12 +330,40 @@ describe('what a row leads to', () => {
 
   it('opens the negotiation of a contract nobody has taken', () => {
     const controller = fakeController();
+    const board = aSettledBoard();
 
-    click(rowControl(renderScreen(aSettledBoard(), controller), CRYPT));
+    expect(board.rows.find((row) => row.definition === CULT)?.availability).toBe(
+      ContractAvailability.Open
+    );
+
+    click(rowControl(renderScreen(board, controller), CULT));
 
     // Two calls in this order, and the order is the whole of it: `focus` moves the
     // contract and redraws whatever screen is up, `show` moves the screen — so a board
     // that showed first would draw the offer of the *previous* contract for a frame.
+    expect(controller.calls).toEqual([
+      { name: 'focus', args: [CULT] },
+      { name: 'show', args: [ScreenKind.ContractOffer] }
+    ]);
+  });
+
+  it('keeps a contract already under way open, and reopens its negotiation', () => {
+    // The row external review found untested, and the mutant that followed from it:
+    // `disabled={opensScreen === null || availability === InProgress}` survived the whole
+    // suite. It is the value-branch this design forbids, and it would strand a player on a
+    // package they had started — `RESOLUTION_SPEC` §6.2's way out of a dead end runs
+    // through exactly this row.
+    const controller = fakeController();
+    const board = aSettledBoard();
+    const container = renderScreen(board, controller);
+
+    expect(board.rows.find((row) => row.definition === CRYPT)?.availability).toBe(
+      ContractAvailability.InProgress
+    );
+    expect(rowControl(container, CRYPT).disabled).toBe(false);
+
+    click(rowControl(container, CRYPT));
+
     expect(controller.calls).toEqual([
       { name: 'focus', args: [CRYPT] },
       { name: 'show', args: [ScreenKind.ContractOffer] }
