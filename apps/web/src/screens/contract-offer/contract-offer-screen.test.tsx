@@ -565,23 +565,23 @@ function draftModel(): ContractOfferScreenModel {
         // owes that convention nothing, so the test below can actually discriminate.
         chosen: id('method:open'),
         options: [
-          { value: id('method:deception'), labelKey: 'tag.method.deception' },
-          { value: id('method:open'), labelKey: 'tag.method.open' }
+          { value: id('method:deception'), labelKey: 'tag.method.deception', selected: false },
+          { value: id('method:open'), labelKey: 'tag.method.open', selected: true }
         ],
         disabledReasonKey: null
       },
       keyHeroLever: {
         chosen: id('core:bram'),
-        options: [{ value: id('core:bram'), labelKey: 'hero.core.bram.name' }],
+        options: [{ value: id('core:bram'), labelKey: 'hero.core.bram.name', selected: true }],
         disabledReasonKey: null
       },
       crewLever: {
         chosen: [id('core:bram')],
-        options: [{ value: id('core:bram'), labelKey: 'hero.core.bram.name' }],
+        options: [{ value: id('core:bram'), labelKey: 'hero.core.bram.name', selected: true }],
         exactly: 3,
         disabledReasonKey: null
       },
-      budget: { available: 400, maxAdvance: 125, maxBonus: 280 },
+      budget: { available: 400, maxAdvance: 125, maxBonus: 280, shortfall: 0 },
       lockCommitment: 145
     },
     // `400 + 40 - 40 * 1 - 25 = 375` — `settleContract`'s own formula
@@ -644,16 +644,16 @@ function lockedUncrewedModel(): ContractOfferScreenModel {
       methodLever: { chosen: null, options: [], disabledReasonKey: null },
       keyHeroLever: {
         chosen: id('core:mira'),
-        options: [{ value: id('core:mira'), labelKey: 'hero.core.mira.name' }],
+        options: [{ value: id('core:mira'), labelKey: 'hero.core.mira.name', selected: true }],
         disabledReasonKey: null
       },
       crewLever: {
         chosen: [id('core:mira')],
-        options: [{ value: id('core:mira'), labelKey: 'hero.core.mira.name' }],
+        options: [{ value: id('core:mira'), labelKey: 'hero.core.mira.name', selected: true }],
         exactly: 3,
         disabledReasonKey: null
       },
-      budget: { available: 300, maxAdvance: 100, maxBonus: 240 },
+      budget: { available: 300, maxAdvance: 100, maxBonus: 240, shortfall: 0 },
       lockCommitment: 60
     },
     treasuryForecast: 335,
@@ -716,21 +716,21 @@ function crewedModel(): ContractOfferScreenModel {
       keyHeroLever: {
         chosen: id('core:bram'),
         options: [
-          { value: id('core:bram'), labelKey: 'hero.core.bram.name' },
-          { value: id('core:doran'), labelKey: 'hero.core.doran.name' }
+          { value: id('core:bram'), labelKey: 'hero.core.bram.name', selected: true },
+          { value: id('core:doran'), labelKey: 'hero.core.doran.name', selected: false }
         ],
         disabledReasonKey: LeverDisabledKeys.Locked
       },
       crewLever: {
         chosen: [id('core:bram'), id('core:doran')],
         options: [
-          { value: id('core:bram'), labelKey: 'hero.core.bram.name' },
-          { value: id('core:doran'), labelKey: 'hero.core.doran.name' }
+          { value: id('core:bram'), labelKey: 'hero.core.bram.name', selected: true },
+          { value: id('core:doran'), labelKey: 'hero.core.doran.name', selected: true }
         ],
         exactly: 2,
         disabledReasonKey: LeverDisabledKeys.Locked
       },
-      budget: { available: 300, maxAdvance: 145, maxBonus: 270 },
+      budget: { available: 300, maxAdvance: 145, maxBonus: 270, shortfall: 0 },
       lockCommitment: 40
     },
     treasuryForecast: 290,

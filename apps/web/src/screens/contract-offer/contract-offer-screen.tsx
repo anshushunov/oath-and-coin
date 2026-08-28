@@ -331,9 +331,6 @@ function OfferBlock({
   readonly heroDisplayNameKeyOf: (definition: string) => string;
 }) {
   const text = useText();
-  const chosenMethod = offer.methodLever.options.find(
-    (option) => option.value === offer.methodLever.chosen
-  );
 
   return (
     <div className="offer">
@@ -349,24 +346,22 @@ function OfferBlock({
             <Label text={text(OfferFieldKeys.Method)} />
             {offer.methodLever.options.map((option) => (
               <label className="method-option" key={option.value}>
-                <input
-                  type="radio"
-                  name="offer-method"
-                  checked={option.value === offer.methodLever.chosen}
-                  readOnly
-                />
+                <input type="radio" name="offer-method" checked={option.selected} readOnly />
                 <span className="label">{text(option.labelKey)}</span>
               </label>
             ))}
           </div>
         )}
 
-        {chosenMethod === undefined ? null : (
-          <Captioned
-            captionKey={OfferFieldKeys.SelectedMethod}
-            value={text(chosenMethod.labelKey)}
-          />
-        )}
+        {offer.methodLever.options
+          .filter((option) => option.selected)
+          .map((option) => (
+            <Captioned
+              key={option.value}
+              captionKey={OfferFieldKeys.SelectedMethod}
+              value={text(option.labelKey)}
+            />
+          ))}
 
         <DisabledReason lever={offer.methodLever} />
 
@@ -377,6 +372,16 @@ function OfferBlock({
         <DisabledReason lever={offer.bonusLever} />
       </div>
 
+      {/* Both hero levers show every option before they show the choice made out of it:
+          a set of alternatives a player cannot see is not a set they can choose from,
+          and the crew being part of the package is the whole point of `RESOLUTION_SPEC`
+          §2.5. Never gated on emptiness — a roster is never empty on a screen that has a
+          contract at all (`contractOfferScreenModel`'s own `Empty` guard). */}
+      <KeyList
+        captionKey={OfferFieldKeys.KeyHeroOptions}
+        keys={offer.keyHeroLever.options.map((option) => option.labelKey)}
+      />
+
       {offer.keyHeroLever.chosen === null ? null : (
         <Captioned
           captionKey={OfferFieldKeys.KeyHero}
@@ -384,6 +389,12 @@ function OfferBlock({
         />
       )}
       <DisabledReason lever={offer.keyHeroLever} />
+
+      <KeyList
+        captionKey={OfferFieldKeys.CrewOptions}
+        keys={offer.crewLever.options.map((option) => option.labelKey)}
+      />
+      <Captioned captionKey={OfferFieldKeys.CrewSize} value={String(offer.crewLever.exactly)} />
 
       <KeyList
         captionKey={OfferFieldKeys.Crew}
@@ -398,6 +409,17 @@ function OfferBlock({
         />
         <Captioned captionKey={OfferFieldKeys.MaxAdvance} value={String(offer.advanceLever.max)} />
         <Captioned captionKey={OfferFieldKeys.MaxBonus} value={String(offer.bonusLever.max)} />
+
+        {/* Only when the package has stopped fitting — a branch on a number being zero is
+            the same kind as a branch on an empty list, and "не хватает: 0" beside a
+            package that fits is a heading for an absence. */}
+        {offer.budget.shortfall === 0 ? null : (
+          <Captioned
+            captionKey={OfferFieldKeys.Shortfall}
+            value={String(offer.budget.shortfall)}
+            testId="offer-shortfall"
+          />
+        )}
       </div>
 
       <Captioned captionKey={OfferFieldKeys.LockCommitment} value={String(offer.lockCommitment)} />

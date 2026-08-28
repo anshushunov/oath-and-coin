@@ -1141,9 +1141,13 @@ describe('what the screen shows about the negotiation itself', () => {
     // Treasury 500, no other locked contract, so `available` is the whole 500; the
     // ceilings are then `(500 − 30) / 2 = 235` and `500 − 15×2 = 470`, both clamped by the
     // patron fee of 100 before they reach a lever.
-    const rosterOptions = [
-      { value: ids.bram, label_key: 'hero.core.bram.name' },
-      { value: ids.doran, label_key: 'hero.core.doran.name' }
+    const crewOptions = [
+      { value: ids.bram, label_key: 'hero.core.bram.name', selected: true },
+      { value: ids.doran, label_key: 'hero.core.doran.name', selected: true }
+    ];
+    const keyHeroOptions = [
+      { value: ids.bram, label_key: 'hero.core.bram.name', selected: true },
+      { value: ids.doran, label_key: 'hero.core.doran.name', selected: false }
     ];
 
     expect(projection['offer']).toEqual({
@@ -1154,23 +1158,23 @@ describe('what the screen shows about the negotiation itself', () => {
       method_lever: {
         chosen: ids.methodOpen,
         options: [
-          { value: ids.methodOpen, label_key: 'tag.method.open' },
-          { value: ids.methodDeception, label_key: 'tag.method.deception' }
+          { value: ids.methodOpen, label_key: 'tag.method.open', selected: true },
+          { value: ids.methodDeception, label_key: 'tag.method.deception', selected: false }
         ],
         disabled_reason_key: 'offer.locked'
       },
       key_hero_lever: {
         chosen: ids.bram,
-        options: rosterOptions,
+        options: keyHeroOptions,
         disabled_reason_key: 'offer.locked'
       },
       crew_lever: {
         chosen: [ids.bram, ids.doran],
-        options: rosterOptions,
+        options: crewOptions,
         exactly: 2,
         disabled_reason_key: 'offer.locked'
       },
-      budget: { available: 500, max_advance: 235, max_bonus: 470 },
+      budget: { available: 500, max_advance: 235, max_bonus: 470, shortfall: 0 },
       lock_commitment: 60
     });
     expect(projection['promise_terms']).toEqual({
@@ -1284,6 +1288,76 @@ describe('the levers a player may pull', () => {
     expect(canCover(state, at(max + 1))).toBe(false);
   });
 
+  /**
+   * A campaign whose whole treasury is reserved by somebody else, over a package that
+   * already promises a coin.
+   *
+   * Reachable, not contrived: `composeOffer` checks no treasury at all
+   * (`NEGOTIATION_SPEC` §3.3), so a package composed while the money was there stays
+   * composed after another contract locks it away. External review of this task found
+   * that the ceilings alone describe this state as if it were fine.
+   */
+  function campaignWithNothingLeft(): GameState {
+    const roster = heroes(ids.bram);
+    const seat = responded(0);
+    const focused = aContract({
+      id: ids.caravan,
+      patronFee: 100,
+      requiredCrew: 1,
+      offer: anOffer({ keyHero: heroId(0), invited: seat, advance: 0, promisedBonus: 1 })
+    });
+    const elsewhere = aContract({
+      id: ids.crypt,
+      patronFee: 400,
+      requiredCrew: 1,
+      offer: anOffer({
+        phase: OfferPhase.Locked,
+        keyHero: heroId(0),
+        invited: seat,
+        advance: 400,
+        promisedBonus: 0
+      })
+    });
+
+    return withContracts(withHeroes(aState({ treasury: 400 }), roster), [focused, elsewhere]);
+  }
+
+  it('says by how much a package has stopped fitting, rather than describing a ceiling that is not one', () => {
+    // `available` is 0 and every ceiling clamps to 0, so the levers on their own read
+    // exactly like a package that fits with nothing to spare. It does not fit: the coin
+    // already promised is one more than the guild has, and `lockOffer` refuses even at an
+    // advance of zero. `shortfall` is what says so, and it is the number a player acts on
+    // — it names the promise to lower.
+    const state = campaignWithNothingLeft();
+    const contract = state.contracts.get(ids.caravan)!;
+    const offer = contractOfferScreenModel(state, [], ids.caravan).offer!;
+
+    expect(offer.budget.available).toBe(0);
+    expect(offer.advanceLever.max).toBe(0);
+    expect(canCover(state, contract)).toBe(false);
+    expect(offer.budget.shortfall).toBe(1);
+  });
+
+  it('reports no shortfall for a package that does fit', () => {
+    // The other half of the pair: `shortfall` must not be a number that is simply always
+    // positive, and a fixture where the package fits with room is what says so.
+    const offer = contractOfferScreenModel(campaignWithAnotherReserve(), [], ids.caravan).offer!;
+
+    expect(offer.budget.shortfall).toBe(0);
+  });
+
+  it('agrees with lockOffer on every package it is shown', () => {
+    // The property behind both numbers, stated once: a package fits exactly when the
+    // engine's own predicate says it does. Measured over both fixtures rather than
+    // asserted twice by hand, so neither can drift into agreeing by coincidence.
+    for (const state of [campaignWithAnotherReserve(), campaignWithNothingLeft()]) {
+      const contract = state.contracts.get(ids.caravan)!;
+      const offer = contractOfferScreenModel(state, [], ids.caravan).offer!;
+
+      expect(offer.budget.shortfall === 0).toBe(canCover(state, contract));
+    }
+  });
+
   it('never offers a term the patron fee itself forbids', () => {
     // `composeOffer` bounds both money terms by `patronFee` (`NEGOTIATION_SPEC` §3.3),
     // and on a rich campaign the budget alone would answer far above it.
@@ -1340,6 +1414,44 @@ describe('the levers a player may pull', () => {
     expect(offer.keyHeroLever.chosen).toBe(ids.bram);
   });
 
+  it('marks which options are selected, so nothing downstream has to compare ids', () => {
+    // External review of this task found the screen doing `option.value === chosen` to
+    // decide a radio's `checked` — a branch on a *value*, which is the one kind this
+    // layer exists to take off the screen. Stated on the option instead, once, here.
+    // `chosen` stays because it is what a command is built from; `selected` is how it is
+    // drawn, and the factory is the only place the two are related.
+    const offer = contractOfferScreenModel(campaignWithAnotherReserve(), [], ids.caravan).offer!;
+
+    expect(offer.methodLever.options.map((option) => option.selected)).toEqual([true, false]);
+    // The key hero is the roster's first entry here, and the crew invites all three — so
+    // the two levers disagree about which options are selected, and a `selected` computed
+    // from the wrong lever cannot satisfy both.
+    expect(offer.keyHeroLever.options.map((option) => option.selected)).toEqual([
+      true,
+      false,
+      false
+    ]);
+    expect(offer.crewLever.options.map((option) => option.selected)).toEqual([true, true, true]);
+  });
+
+  it('leaves every option unselected when nothing has been chosen', () => {
+    // The closed vocabulary's other value: without this, `selected: true` could be a
+    // constant and every assertion above would still pass.
+    const contract = aContract({
+      requiredCrew: 1,
+      negotiableTags: SortedSet.from(compareContentIds, [ids.methodDeception, ids.methodOpen]),
+      offer: anOffer()
+    });
+    const state = withContracts(withHeroes(aState(), heroes(ids.bram)), [contract]);
+
+    const offer = contractOfferScreenModel(state, [], ids.caravan).offer!;
+
+    expect(offer.methodLever.chosen).toBeNull();
+    expect(offer.methodLever.options.map((option) => option.selected)).toEqual([false, false]);
+    expect(offer.keyHeroLever.options.map((option) => option.selected)).toEqual([false]);
+    expect(offer.crewLever.options.map((option) => option.selected)).toEqual([false]);
+  });
+
   /** A campaign whose focused contract sits in `phase`, with `status` to match. */
   function campaignInPhase(phase: OfferPhase, status: ContractStatus): GameState {
     const acceptedBy = status === ContractStatus.Crewed ? responded(0, 1) : responded(0);
@@ -1388,10 +1500,15 @@ describe('the levers a player may pull', () => {
       contractOfferScreenModel(campaignWithAnotherReserve(), [], ids.caravan)
     ) as Record<string, unknown>;
 
-    const rosterOptions = [
-      { value: ids.bram, label_key: 'hero.core.bram.name' },
-      { value: ids.doran, label_key: 'hero.core.doran.name' },
-      { value: ids.zara, label_key: 'hero.core.zara.name' }
+    const crewOptions = [
+      { value: ids.bram, label_key: 'hero.core.bram.name', selected: true },
+      { value: ids.doran, label_key: 'hero.core.doran.name', selected: true },
+      { value: ids.zara, label_key: 'hero.core.zara.name', selected: true }
+    ];
+    const keyHeroOptions = [
+      { value: ids.bram, label_key: 'hero.core.bram.name', selected: true },
+      { value: ids.doran, label_key: 'hero.core.doran.name', selected: false },
+      { value: ids.zara, label_key: 'hero.core.zara.name', selected: false }
     ];
 
     expect(projection['offer']).toEqual({
@@ -1402,19 +1519,19 @@ describe('the levers a player may pull', () => {
       method_lever: {
         chosen: ids.methodOpen,
         options: [
-          { value: ids.methodOpen, label_key: 'tag.method.open' },
-          { value: ids.methodDeception, label_key: 'tag.method.deception' }
+          { value: ids.methodOpen, label_key: 'tag.method.open', selected: true },
+          { value: ids.methodDeception, label_key: 'tag.method.deception', selected: false }
         ],
         disabled_reason_key: null
       },
-      key_hero_lever: { chosen: ids.bram, options: rosterOptions, disabled_reason_key: null },
+      key_hero_lever: { chosen: ids.bram, options: keyHeroOptions, disabled_reason_key: null },
       crew_lever: {
         chosen: [ids.bram, ids.doran, ids.zara],
-        options: rosterOptions,
+        options: crewOptions,
         exactly: 3,
         disabled_reason_key: null
       },
-      budget: { available: 330, max_advance: 100, max_bonus: 150 },
+      budget: { available: 330, max_advance: 100, max_bonus: 150, shortfall: 0 },
       lock_commitment: 210
     });
   });

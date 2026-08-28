@@ -262,10 +262,14 @@ export const OfferFieldKeys = Object.freeze({
   SelectedMethod: 'field.offer.method_selected',
   PromisedBonus: 'field.offer.promised_bonus',
   KeyHero: 'field.offer.key_hero',
+  KeyHeroOptions: 'field.offer.key_hero_options',
   Crew: 'field.offer.crew',
+  CrewOptions: 'field.offer.crew_options',
+  CrewSize: 'field.offer.crew_size',
   BudgetAvailable: 'field.offer.budget_available',
   MaxAdvance: 'field.offer.max_advance',
   MaxBonus: 'field.offer.max_bonus',
+  Shortfall: 'field.offer.shortfall',
   LockCommitment: 'field.offer.lock_commitment'
 });
 

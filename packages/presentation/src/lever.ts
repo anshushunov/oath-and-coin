@@ -22,6 +22,18 @@
  * either would send them into a refusal they had no way to foresee.
  */
 export interface NumericLever {
+  /**
+   * What the package currently says — **not** guaranteed to sit between {@link min} and
+   * {@link max}, and that is a state rather than a defect.
+   *
+   * `composeOffer` checks no treasury at all (`NEGOTIATION_SPEC` §3.3), so a term composed
+   * while the money was there survives another contract locking that money away. The
+   * package then carries a value above what the budget still allows, and the honest thing
+   * to report is exactly that: a value, a ceiling below it, and — on {@link
+   * OfferBudget.shortfall} — how far the package as a whole has stopped fitting. Reporting
+   * the value as though it were inside the range would hide the one number the player has
+   * to act on.
+   */
   readonly value: number;
   readonly min: number;
   readonly max: number;
@@ -40,6 +52,20 @@ export interface NumericLever {
 export interface ChoiceOption<T> {
   readonly value: T;
   readonly labelKey: string;
+  /**
+   * Whether this option is one of the ones currently chosen.
+   *
+   * Stated here rather than left to a reader comparing {@link ChoiceLever.chosen} against
+   * each option. That comparison is a branch on a *value*, which is the one kind of
+   * decision `RESOLUTION_SPEC` §6 takes off the screen — and it was being made twice, in
+   * the component and again in the rendered-UI projection, so the two hashes agreeing
+   * could not have caught either of them being wrong. One statement, made where the
+   * package is.
+   *
+   * {@link ChoiceLever.chosen} stays beside it and is not a duplicate: that is the value a
+   * command is built from, this is how the option is drawn.
+   */
+  readonly selected: boolean;
 }
 
 export interface ChoiceLever<T> {
@@ -87,6 +113,20 @@ export interface OfferBudget {
   readonly available: number;
   readonly maxAdvance: number;
   readonly maxBonus: number;
+  /**
+   * How much the package as it stands exceeds {@link available} — `0` exactly when
+   * `lockOffer` would not refuse it on the treasury.
+   *
+   * **Without it the two ceilings can both be truthful and still describe a package that
+   * cannot be locked.** External review of this task found the case, and it is reachable
+   * rather than theoretical: `composeOffer` checks no treasury, so a package promising one
+   * coin survives another contract locking the whole guild purse away. `available` is then
+   * `0`, both ceilings clamp to `0`, and every lever reads exactly like a package that
+   * fits with nothing to spare — while `canCover` refuses it even at an advance of zero.
+   * A ceiling can only ever say "do not raise this one"; this says "the package does not
+   * fit, by this much", which is the sentence that names the promise to lower.
+   */
+  readonly shortfall: number;
 }
 
 /**

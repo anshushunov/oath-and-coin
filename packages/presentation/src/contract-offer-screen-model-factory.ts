@@ -344,10 +344,17 @@ function toOfferLine(
   const { offer } = contract;
   const budget = budgetFor(state, contract);
   const disabledReasonKey = leverDisabledReasonKey(contract);
-  const heroOptions = heroes.map((hero): ChoiceOption<ContentId> => ({
-    value: hero.definition,
-    labelKey: hero.displayNameKey
-  }));
+  const invited = offer.invited
+    .values()
+    .map((heroId) => definitionOfHero(heroId, heroDefinitionByHeroId));
+  const keyHeroDefinition =
+    offer.keyHero === null ? null : definitionOfHero(offer.keyHero, heroDefinitionByHeroId);
+  const heroOptions = (isSelected: (definition: ContentId) => boolean) =>
+    heroes.map((hero): ChoiceOption<ContentId> => ({
+      value: hero.definition,
+      labelKey: hero.displayNameKey,
+      selected: isSelected(hero.definition)
+    }));
 
   return {
     version: offer.version,
@@ -369,16 +376,13 @@ function toOfferLine(
     },
     methodLever: methodLeverOf(contract, disabledReasonKey),
     keyHeroLever: {
-      chosen:
-        offer.keyHero === null ? null : definitionOfHero(offer.keyHero, heroDefinitionByHeroId),
-      options: heroOptions,
+      chosen: keyHeroDefinition,
+      options: heroOptions((definition) => definition === keyHeroDefinition),
       disabledReasonKey
     },
     crewLever: {
-      chosen: offer.invited
-        .values()
-        .map((heroId) => definitionOfHero(heroId, heroDefinitionByHeroId)),
-      options: heroOptions,
+      chosen: invited,
+      options: heroOptions((definition) => invited.includes(definition)),
       exactly: contract.requiredCrew,
       disabledReasonKey
     },
@@ -405,6 +409,13 @@ function toOfferLine(
  * (`RESOLUTION_SPEC` §4.8), and a ceiling rounded up would be a ceiling the engine
  * refuses. Clamped at zero because a campaign can be poorer than its own commitments are
  * large — a negative ceiling is not a bound a control can express.
+ *
+ * **And that clamp is exactly why `shortfall` exists.** A ceiling of `0` reads identically
+ * whether the package fits with nothing to spare or overruns the purse outright, and both
+ * are reachable — `composeOffer` never checks a treasury, so a promise made when the money
+ * was there outlives another contract locking it away. `shortfall` is the difference the
+ * clamp swallows, computed against `commitmentOf` — the very quantity `canCover` compares
+ * — so "fits" here and "fits" there are one statement rather than two.
  */
 function budgetFor(state: GameState, contract: ContractState): OfferBudget {
   const ownReserve = contract.offer.phase === OfferPhase.Locked ? commitmentOf(contract) : 0;
@@ -414,7 +425,8 @@ function budgetFor(state: GameState, contract: ContractState): OfferBudget {
   return {
     available,
     maxAdvance: Math.max(0, divideTowardZero(available - promisedBonus, contract.requiredCrew)),
-    maxBonus: Math.max(0, available - advance * contract.requiredCrew)
+    maxBonus: Math.max(0, available - advance * contract.requiredCrew),
+    shortfall: Math.max(0, commitmentOf(contract) - available)
   };
 }
 
@@ -456,7 +468,11 @@ function methodLeverOf(
 
   return {
     chosen: methodTag,
-    options: ordered.map((tag) => ({ value: tag, labelKey: tagKey(tag) })),
+    options: ordered.map((tag) => ({
+      value: tag,
+      labelKey: tagKey(tag),
+      selected: tag === methodTag
+    })),
     disabledReasonKey
   };
 }
@@ -862,7 +878,8 @@ function describeOffer(offer: OfferLine): CanonicalValue {
     budget: {
       available: offer.budget.available,
       max_advance: offer.budget.maxAdvance,
-      max_bonus: offer.budget.maxBonus
+      max_bonus: offer.budget.maxBonus,
+      shortfall: offer.budget.shortfall
     },
     lock_commitment: offer.lockCommitment
   };
@@ -886,7 +903,7 @@ function describeChoiceLever(lever: ChoiceLever<ContentId>): CanonicalValue {
 }
 
 function describeOption(option: ChoiceOption<ContentId>): CanonicalValue {
-  return { value: option.value, label_key: option.labelKey };
+  return { value: option.value, label_key: option.labelKey, selected: option.selected };
 }
 
 function describePromiseTerms(promiseTerms: PromiseTermsLine): CanonicalValue {

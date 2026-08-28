@@ -7,8 +7,7 @@ import {
   proposeContractToHero as applyProposeContractToHero,
   resolveContract as applyResolveContract,
   settleContract as applySettleContract,
-  RejectionCodes,
-  rejected,
+  heroId,
   type CommandResult,
   type ComposeOffer,
   type ContentId,
@@ -201,11 +200,14 @@ export interface SessionController {
    * the code `composeOffer` itself answers with for a `HeroId` the roster does not hold —
    * and never a throw: a stale screen naming a hero the loaded campaign lacks is something
    * a player can be told, and every other command on this controller already answers that
-   * way. A contract this campaign does not carry answers `rejected.unknown_contract` — from
-   * `composeOffer` itself, not from a guard here. This method briefly had one, and a mutant
-   * deleting it stayed green: the engine checks the contract before anything else it does,
-   * so the guard could never be the thing that answered. Removed rather than covered by a
-   * test — an equivalent mutant is a sign of dead code, not of a missing check.
+   * way. Every one of those refusals comes from `composeOffer` itself rather than from a
+   * guard here, and {@link heroIdResolver} is what makes that possible: a definition this
+   * campaign does not carry becomes an id the campaign does not carry, so the engine
+   * refuses it in its own order alongside every other fault the draft may have. This method
+   * briefly guarded the contract itself, and a mutant deleting that guard stayed green —
+   * the engine checks the contract first, so the guard could never be what answered.
+   * Removed rather than covered by a test: an equivalent mutant is a sign of dead code, not
+   * of a missing check.
    */
   composeOfferFromDraft(contractId: ContentId, draft: OfferDraft): CommandResult;
   proposeContractToHero(input: NegotiationCommandInput<ProposeContractToHero>): CommandResult;
@@ -384,31 +386,13 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
       ),
     composeOfferFromDraft: (contractId, draft) =>
       dispatchNegotiationCommand(store, contractId, (state, commandId, expectedStateVersion) => {
-        const heroIdByDefinition = new Map(
-          state.heroes.values().map((hero) => [hero.definition, hero.id])
-        );
-        const keyHero = heroIdByDefinition.get(draft.keyHero);
-        const invited: HeroId[] = [];
-
-        for (const definition of draft.invited) {
-          const id = heroIdByDefinition.get(definition);
-
-          if (id === undefined) {
-            return rejected(state, RejectionCodes.UnknownHero);
-          }
-
-          invited.push(id);
-        }
-
-        if (keyHero === undefined) {
-          return rejected(state, RejectionCodes.UnknownHero);
-        }
+        const resolve = heroIdResolver(state);
 
         return applyComposeOffer(state, {
           commandId,
           contractId,
-          keyHero,
-          invited,
+          keyHero: resolve(draft.keyHero),
+          invited: draft.invited.map(resolve),
           advance: draft.advance,
           methodTag: draft.methodTag,
           promisedBonus: draft.promisedBonus,
@@ -511,6 +495,57 @@ function dispatchNegotiationCommand(
   });
 
   return result;
+}
+
+/**
+ * Turns a screen's own content id into the `HeroId` the engine names heroes by, and turns
+ * one it does not recognise into an id the engine will not recognise either.
+ *
+ * **The sentinel is what keeps the order of refusals the engine's.** `composeOffer` refuses
+ * in a stated sequence — the contract, then the key hero's existence, the terms, whether
+ * the package may be revised, the crew's size, the key hero's membership, and only last
+ * whether each invitee exists — and `engine.ts` says outright that this order "is part of
+ * the canonical result of a command, not an implementation detail". An adapter that
+ * refused an unresolvable definition on the spot would answer `unknown_hero` to a draft
+ * whose *contract* is also stale, naming the wrong one of two broken things. Handing the
+ * command an id nobody holds lets the engine answer every one of those cases itself, in
+ * its own order, with no second copy of its rules living here.
+ *
+ * Distinct sentinels per distinct definition, allocated above every id the campaign
+ * carries: `composeOffer` measures the crew by its *distinct* count, so collapsing two
+ * unknown heroes onto one sentinel would turn a crew of the right size into a
+ * `crew_size_mismatch` the caller never caused. Repeating the same unknown definition
+ * still collapses, which is correct — it is the same person named twice.
+ *
+ * `HeroId` is a signed 32-bit domain and a campaign's roster is a handful of heroes, so
+ * "one past the largest" cannot run out in any campaign this game produces; `heroId`
+ * itself throws if it ever did, which is the honest failure for a defect rather than a
+ * silent wrap.
+ */
+function heroIdResolver(state: GameState): (definition: ContentId) => HeroId {
+  const known = new Map(state.heroes.values().map((hero) => [hero.definition, hero.id]));
+  const sentinels = new Map<ContentId, HeroId>();
+  let nextSentinel = Math.max(0, ...state.heroes.keys()) + 1;
+
+  return (definition) => {
+    const id = known.get(definition);
+
+    if (id !== undefined) {
+      return id;
+    }
+
+    const existing = sentinels.get(definition);
+
+    if (existing !== undefined) {
+      return existing;
+    }
+
+    const sentinel = heroId(nextSentinel);
+    nextSentinel += 1;
+    sentinels.set(definition, sentinel);
+
+    return sentinel;
+  };
 }
 
 /** Which of the three screens the session is showing right now. */

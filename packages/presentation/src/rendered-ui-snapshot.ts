@@ -465,18 +465,19 @@ function resolveOffer(
   }
 
   // Which one is *chosen*, projected as its own ordinary value — never inferred from
-  // position in the list above. A radio's `checked` state has no text representation
-  // at all, so without this line "which alternative won" is provable only by reading a
-  // DOM property no walk over rendered text (`collectRenderedTexts`, this function's
-  // own caller) can see. `null` exactly when nothing has been chosen yet.
-  const chosenMethod = offer.methodLever.options.find(
-    (option) => option.value === offer.methodLever.chosen
-  );
+  // position in the list above, and never re-derived by comparing ids. A radio's `checked`
+  // state has no text representation at all, so without this line "which alternative won"
+  // is provable only by reading a DOM property no walk over rendered text
+  // (`collectRenderedTexts`, this function's own caller) can see. Read off
+  // `ChoiceOption.selected`, the same field the component reads: a comparison made here
+  // and again there would be one decision in two places, and the two hashes agreeing
+  // could not catch either copy being wrong.
+  const chosenMethod = offer.methodLever.options.filter((option) => option.selected);
 
-  if (chosenMethod !== undefined) {
+  chosenMethod.forEach((option) => {
     resolve(OfferFieldKeys.SelectedMethod);
-    resolve(chosenMethod.labelKey);
-  }
+    resolve(option.labelKey);
+  });
 
   resolveIfSet(offer.methodLever.disabledReasonKey);
 
@@ -484,12 +485,33 @@ function resolveOffer(
   texts.push(String(offer.bonusLever.value));
   resolveIfSet(offer.bonusLever.disabledReasonKey);
 
+  // Both hero levers show every option they offer, not only the chosen ones: a choice a
+  // player cannot see is not a choice, and the crew lever's options are the whole point
+  // of the crew being part of the package (`RESOLUTION_SPEC` §2.5). Naming the chosen
+  // ones as well is not a repetition — it is the same distinction `SelectedMethod` draws
+  // above, since a checkbox's `checked` has no text behind it either.
+  resolve(OfferFieldKeys.KeyHeroOptions);
+  offer.keyHeroLever.options.forEach((option) => {
+    resolve(option.labelKey);
+  });
+
   if (offer.keyHeroLever.chosen !== null) {
     resolve(OfferFieldKeys.KeyHero);
     resolve(heroDisplayNameKeyOf(offer.keyHeroLever.chosen));
   }
 
   resolveIfSet(offer.keyHeroLever.disabledReasonKey);
+
+  resolve(OfferFieldKeys.CrewOptions);
+  offer.crewLever.options.forEach((option) => {
+    resolve(option.labelKey);
+  });
+
+  // How many seats the package must fill, exactly — the number `composeOffer` refuses a
+  // crew for missing (`rejected.crew_size_mismatch`), so a player choosing people has to
+  // be told it before they choose rather than after.
+  resolve(OfferFieldKeys.CrewSize);
+  texts.push(String(offer.crewLever.exactly));
 
   if (offer.crewLever.chosen.length > 0) {
     resolve(OfferFieldKeys.Crew);
@@ -503,12 +525,26 @@ function resolveOffer(
   // The budget in its own right (`NEGOTIATION_SPEC` §2.3): a control that has stopped
   // moving says nothing about why, and "the guild has 330 left, of which this package may
   // put 100 into each seat" is the sentence a player needs before they blame the control.
+  //
+  // The ceilings shown are the levers' own, not `budget.maxAdvance`/`maxBonus`: those two
+  // are what the *treasury* allows, while a lever's `max` is what the player may actually
+  // set, once `composeOffer`'s own patron-fee bound has had its say. Both are in the
+  // read-model hash; only the one a control can reach belongs on the page.
   resolve(OfferFieldKeys.BudgetAvailable);
   texts.push(String(offer.budget.available));
   resolve(OfferFieldKeys.MaxAdvance);
   texts.push(String(offer.advanceLever.max));
   resolve(OfferFieldKeys.MaxBonus);
   texts.push(String(offer.bonusLever.max));
+
+  // Only when the package has stopped fitting. A shortfall of zero is not a fact about
+  // this package — it is the absence of one — and a line reading "не хватает: 0" beside a
+  // package that fits perfectly is the heading-over-an-absence this projection refuses
+  // everywhere else.
+  if (offer.budget.shortfall > 0) {
+    resolve(OfferFieldKeys.Shortfall);
+    texts.push(String(offer.budget.shortfall));
+  }
 
   resolve(OfferFieldKeys.LockCommitment);
   texts.push(String(offer.lockCommitment));

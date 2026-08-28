@@ -1983,25 +1983,70 @@ describe('taking a package in the ids the screen actually holds', () => {
     expect(offerScreen(controller.store.snapshot().screen).offer?.keyHeroLever.chosen).toBe(bram);
   });
 
-  it.each([
-    ['an unknown key hero', { keyHero: parseContentId('core:nobody') }],
-    ['an unknown invitee', { invited: [parseContentId('core:nobody')] }]
-  ])('refuses %s instead of throwing', async (_name, overrides) => {
+  it('refuses an unknown key hero instead of throwing', async () => {
     // A definition the campaign does not carry is a refusal a screen can show, never an
     // exception a React handler is left holding — the same rule every other command on
-    // this controller already follows.
+    // this controller already follows. `core:nobody` fills the whole one-seat crew here,
+    // so the draft is faultless apart from naming somebody who does not exist.
+    const nobody = parseContentId('core:nobody');
     const { controller } = harness();
     await controller.start();
     const before = controller.store.snapshot();
 
     let result: CommandResult | undefined;
     expect(() => {
-      result = controller.composeOfferFromDraft(escort, draft(overrides));
+      result = controller.composeOfferFromDraft(
+        escort,
+        draft({ keyHero: nobody, invited: [nobody] })
+      );
     }).not.toThrow();
 
     expect(result?.applied).toBe(false);
     expect(result?.rejectionCode).toBe(RejectionCodes.UnknownHero);
     expect(controller.store.snapshot()).toBe(before);
+  });
+
+  it('refuses an unknown invitee once every earlier check has passed', async () => {
+    // Three seats, so the crew can hold a real key hero *and* a stranger at once: on the
+    // one-seat `core:escort` an unknown invitee is always also a key hero outside the
+    // crew, and the engine would answer that instead — the earlier row in its own order.
+    // This is the draft where nothing but the stranger is wrong.
+    const crypt = parseContentId('core:cleanse_the_crypt');
+    const { controller } = harness({ scenario: pollCrewScenario, content: pollCrewContentTree() });
+    await controller.start();
+
+    const result = controller.composeOfferFromDraft(crypt, {
+      advance: 10,
+      promisedBonus: 0,
+      methodTag: null,
+      keyHero: bram,
+      invited: [bram, parseContentId('core:doran'), parseContentId('core:nobody')]
+    });
+
+    expect(result.applied).toBe(false);
+    expect(result.rejectionCode).toBe(RejectionCodes.UnknownHero);
+  });
+
+  it('gives two unknown heroes two ids, so a full crew is not reported as the wrong size', async () => {
+    // The sentinel allocation's own property, and the reason it is per definition rather
+    // than one shared value. `composeOffer` measures the crew by its *distinct* count, so
+    // a single sentinel for both strangers would turn this crew of three into a crew of
+    // two and answer `crew_size_mismatch` — naming a fault the caller never made, instead
+    // of the one they did.
+    const crypt = parseContentId('core:cleanse_the_crypt');
+    const { controller } = harness({ scenario: pollCrewScenario, content: pollCrewContentTree() });
+    await controller.start();
+
+    const result = controller.composeOfferFromDraft(crypt, {
+      advance: 10,
+      promisedBonus: 0,
+      methodTag: null,
+      keyHero: bram,
+      invited: [bram, parseContentId('core:nobody'), parseContentId('core:no_one_else')]
+    });
+
+    expect(result.applied).toBe(false);
+    expect(result.rejectionCode).toBe(RejectionCodes.UnknownHero);
   });
 
   it('refuses a contract this campaign does not carry', async () => {
@@ -2012,6 +2057,47 @@ describe('taking a package in the ids the screen actually holds', () => {
 
     expect(result.applied).toBe(false);
     expect(result.rejectionCode).toBe(RejectionCodes.UnknownContract);
+  });
+
+  /**
+   * `composeOffer` refuses in a stated order, and `engine.ts` says outright that the order
+   * "is part of the canonical result of a command, not an implementation detail": the
+   * contract, then the key hero's existence, then the terms, then whether the package may
+   * be revised, then the crew's size, then the key hero's membership, and only last
+   * whether each invitee exists.
+   *
+   * An adapter that resolved ids first and refused on its own would answer
+   * `unknown_hero` to every one of these — naming the wrong one of two broken things,
+   * which is exactly what that comment forbids. Each row below is a draft with **two**
+   * faults, of which the engine's own order picks the earlier one.
+   */
+  it.each([
+    [
+      'an unknown contract beside an unknown invitee',
+      parseContentId('core:no_such'),
+      { invited: [parseContentId('core:nobody')] },
+      RejectionCodes.UnknownContract
+    ],
+    [
+      'a crew of the wrong size beside an unknown invitee',
+      escort,
+      { invited: [bram, parseContentId('core:nobody')] },
+      RejectionCodes.CrewSizeMismatch
+    ],
+    [
+      'a key hero outside the crew beside an unknown invitee',
+      escort,
+      { keyHero: bram, invited: [parseContentId('core:nobody')] },
+      RejectionCodes.KeyHeroNotInvited
+    ]
+  ])('refuses %s in the engine’s own order', async (_name, contractId, overrides, expected) => {
+    const { controller } = harness();
+    await controller.start();
+
+    const result = controller.composeOfferFromDraft(contractId, draft(overrides));
+
+    expect(result.applied).toBe(false);
+    expect(result.rejectionCode).toBe(expected);
   });
 
   it('translates a whole crew hero by hero, not the first one several times', async () => {

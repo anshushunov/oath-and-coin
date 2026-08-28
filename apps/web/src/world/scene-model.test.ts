@@ -139,7 +139,7 @@ function aModel(rosterDefinitions: readonly string[], responders: readonly strin
       methodLever: { chosen: null, options: [], disabledReasonKey: null },
       keyHeroLever: { chosen: null, options: [], disabledReasonKey: null },
       crewLever: { chosen: [], options: [], exactly: 1, disabledReasonKey: null },
-      budget: { available: 0, maxAdvance: 0, maxBonus: 0 },
+      budget: { available: 0, maxAdvance: 0, maxBonus: 0, shortfall: 0 },
       lockCommitment: 0
     },
     treasuryForecast: 400,
