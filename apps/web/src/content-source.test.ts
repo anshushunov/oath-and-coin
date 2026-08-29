@@ -62,7 +62,7 @@ import {
  * `schema_version: 5` and authoring `capability` on every hero and `needs` on every
  * contract (`RESOLUTION_SPEC` §2.2, §2.3).
  */
-const SHIPPED_CONTENT_VERSION = 'd630e880dca41631';
+const SHIPPED_CONTENT_VERSION = 'c02e365478576dd7';
 
 /**
  * The content version the corpus recorded for `screen_empty`'s own fixture root,
@@ -77,7 +77,7 @@ const SHIPPED_CONTENT_VERSION = 'd630e880dca41631';
  * `exhaustive: true` silently skips dotfiles. This is the number that moves when it
  * does.
  */
-const SCREEN_EMPTY_CONTENT_VERSION = 'c9b92949420cd59a';
+const SCREEN_EMPTY_CONTENT_VERSION = '533bae0a162a49af';
 
 function requireRoot(root: string) {
   const source = openRepositoryRoot(root);

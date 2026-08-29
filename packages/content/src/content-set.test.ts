@@ -216,10 +216,10 @@ describe('loadContentSet over the shipped tree', () => {
     // authoring the two fields `RESOLUTION_SPEC` §2.2 and §2.3 add. The contract-loop UI
     // plan's task 9 moved it a ninth time, to `94470ae66b2a1061`, with the playtest's
     // second counterbalanced pair (`RESOLUTION_SPEC` §8).
-    // The Combat Lab's first segment moved it a tenth time, to `d630e880dca41631`
+    // The Combat Lab's first segment moved it a tenth time, to `c02e365478576dd7`
     // (`DEC-016`): every hero file lost `capability.grade` and gained `combat` and `role`,
     // and the content format went 4 → 5 with them.
-    expect(content.contentVersion).toBe('d630e880dca41631');
+    expect(content.contentVersion).toBe('c02e365478576dd7');
   });
 
   it('keys heroes, contracts and traits in content-id order', () => {

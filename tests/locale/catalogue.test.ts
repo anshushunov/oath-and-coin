@@ -159,11 +159,11 @@ const content = loadContentSet(shippedContent);
  * content's to author (`ADR-012`), and any *third* key arriving in the same change would be
  * interface text sneaking back into `content/` under cover of a content addition.
  *
- * The Combat Lab's first segment moved it a tenth time, to `d630e880dca41631` (`DEC-016`):
+ * The Combat Lab's first segment moved it a tenth time, to `c02e365478576dd7` (`DEC-016`):
  * every hero file lost `capability.grade` and gained `combat` and `role`. The key count did
  * not move — the change is fields of a hero, not a text.
  */
-const FROZEN_CONTENT_VERSION = 'd630e880dca41631';
+const FROZEN_CONTENT_VERSION = 'c02e365478576dd7';
 const FROZEN_CONTENT_KEY_COUNT = 100;
 
 /** Every key the presentation layer can produce for the shipped content tree. */
