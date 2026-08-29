@@ -1,0 +1,591 @@
+import { compareStrings } from '../collections/comparator.ts';
+import { SortedMap } from '../collections/sorted-map.ts';
+import { CombatRole } from '../domain/combat-role.ts';
+
+import { decideCombatAction } from './decision.ts';
+import type { DoctrineId } from './doctrine.ts';
+import { absorbedBy, applyEffect } from './effect.ts';
+import { BattleOutcome, CombatAction, type BattleEvent } from './events.ts';
+import { isAdjacent, occupantOf, opposing, type Cell, type Row } from './field.ts';
+import { blockersBetween } from './field.ts';
+import {
+  BLEED,
+  GUARD_ABSORB,
+  STEADY_BONUS,
+  StatusId,
+  chillPointsOf,
+  healingOf,
+  meleeDamageOf,
+  rangedDamageOf,
+  shortDamageOf,
+  withStatus,
+  type BattleUnit,
+  type BattleUnitId,
+  type StatusInstance
+} from './unit.ts';
+
+/**
+ * One battle, from the formation to the outcome (`COMBAT_SPEC` §5, §6.1).
+ *
+ * **No randomness of any kind** (§9). Not a simplification that will be revisited quietly:
+ * `DEC-011` §3 fixes integer arithmetic, `DEC-011` §Проверка asks that the reason a
+ * formation wins be explainable "without numerical crutches", and a lab whose outcomes vary
+ * by a roll measures its own variance instead of the player's decision. Introducing a roll
+ * is a decision of its own (`AGENTS.md` §5), and this file neither takes it nor prepares
+ * for it: there is no RNG stream here, because a stream nobody reads is a promise of
+ * non-determinism with no benefit (`ADR-003`).
+ */
+
+/** Beyond this the battle ends undecided (`COMBAT_SPEC` §6.1). */
+export const MAX_ROUNDS = 12;
+
+export interface BattleState {
+  readonly round: number;
+  readonly units: readonly BattleUnit[];
+  readonly doctrine: DoctrineId;
+  readonly outcome: BattleOutcome | null;
+}
+
+export interface BattleRecord {
+  readonly initial: BattleState;
+  readonly final: BattleState;
+  readonly events: readonly BattleEvent[];
+  readonly rounds: number;
+  readonly outcome: BattleOutcome;
+}
+
+/** Sets a battle up. Refuses two units on one cell before the first event (§11). */
+export function startBattle(units: readonly BattleUnit[], doctrine: DoctrineId): BattleState {
+  const seen = new Set<string>();
+
+  for (const unit of units) {
+    const key = `${unit.side}:${String(unit.cell.row)}:${String(unit.cell.column)}`;
+
+    if (seen.has(key)) {
+      throw new Error(
+        `Two units stand on ${key}. A battle that began on an illegal board would produce ` +
+          'explainable nonsense, so the formation is refused before the first event ' +
+          '(COMBAT_SPEC §3.7: cell_taken).'
+      );
+    }
+
+    seen.add(key);
+  }
+
+  return { round: 0, units, doctrine, outcome: null };
+}
+
+/** Plays a battle to its end and returns everything it produced. */
+export function runBattle(initial: BattleState): BattleRecord {
+  const events: BattleEvent[] = [
+    {
+      kind: 'battle_started',
+      // Sorted, not in the order the caller handed them over: the event log is compared
+      // byte for byte by the determinism property (`COMBAT_SPEC` §12.1 п.2–3), and an
+      // opening event that echoed the input array would make two identical battles differ
+      // in their first line.
+      crew: rosterOf(initial.units, 'crew'),
+      foes: rosterOf(initial.units, 'foe'),
+      doctrine: initial.doctrine
+    }
+  ];
+
+  let state = initial;
+
+  while (state.outcome === null && state.round < MAX_ROUNDS) {
+    const step = runRound(state);
+    state = step.state;
+    events.push(...step.events);
+  }
+
+  const outcome = state.outcome ?? BattleOutcome.TimedOut;
+  events.push({ kind: 'battle_ended', outcome });
+
+  return {
+    initial,
+    final: { ...state, outcome },
+    events,
+    rounds: state.round,
+    outcome
+  };
+}
+
+/**
+ * One round: every standing, unspent unit acts once, in initiative order, then the statuses
+ * tick (`COMBAT_SPEC` §5).
+ *
+ * Initiative is recomputed at the start and frozen for the round, so a unit knocked into
+ * another row mid-round acts at its own place in the queue — from the new row. There is no
+ * simultaneity: each action resolves fully before the next begins, which `DEC-011` §4 makes
+ * the only option by declining to define a conflict-resolution order.
+ */
+export function runRound(state: BattleState): {
+  readonly state: BattleState;
+  readonly events: readonly BattleEvent[];
+} {
+  const round = state.round + 1;
+  const events: BattleEvent[] = [{ kind: 'round_started', round }];
+  let units = state.units;
+
+  const order = [...units]
+    .sort((left, right) => right.combat.focus - left.combat.focus || (left.id < right.id ? -1 : 1))
+    .map((unit) => unit.id);
+
+  for (const actorId of order) {
+    if (standingOn(units, 'crew').length === 0 || standingOn(units, 'foe').length === 0) {
+      break;
+    }
+
+    const actor = byId(units, actorId);
+
+    if (actor === null || !actor.standing) {
+      continue;
+    }
+
+    if (actor.spent) {
+      units = replace(units, { ...actor, spent: false });
+      events.push({ kind: 'turn_spent', unit: actor.id });
+      continue;
+    }
+
+    const step = takeTurn(units, actor, state.doctrine);
+    units = step.units;
+    events.push(...step.events);
+  }
+
+  const ticked = tickStatuses(units);
+  units = ticked.units;
+  events.push(...ticked.events);
+
+  events.push({ kind: 'round_ended', round });
+
+  return { state: { ...state, round, units, outcome: outcomeOf(units) }, events };
+}
+
+function takeTurn(
+  units: readonly BattleUnit[],
+  actor: BattleUnit,
+  doctrine: DoctrineId
+): { readonly units: readonly BattleUnit[]; readonly events: readonly BattleEvent[] } {
+  const decision = decideCombatAction(actor, units, doctrine);
+  const events: BattleEvent[] = [
+    {
+      kind: 'intent_declared',
+      actor: actor.id,
+      action: decision.action,
+      target: decision.target?.id ?? null,
+      reason: decision.reason,
+      contraryTo: decision.contraryTo
+    }
+  ];
+
+  let next = units;
+
+  if (decision.contraryTo !== null) {
+    next = replace(next, { ...actor, brokeDoctrine: true });
+    events.push({
+      kind: 'doctrine_broken',
+      unit: actor.id,
+      doctrine: decision.contraryTo,
+      // The union's only member today, and read off the decision rather than assumed, so a
+      // second motive arrives as a type error here instead of a wrong label on the screen.
+      motive: 'combat.motive.stood_by_a_friend'
+    });
+  }
+
+  const resolved = resolve(next, byId(next, actor.id) ?? actor, decision.action, decision.target);
+
+  return { units: resolved.units, events: [...events, ...resolved.events] };
+}
+
+function resolve(
+  units: readonly BattleUnit[],
+  actor: BattleUnit,
+  action: CombatAction,
+  target: BattleUnit | null
+): { readonly units: readonly BattleUnit[]; readonly events: readonly BattleEvent[] } {
+  switch (action) {
+    case CombatAction.Strike:
+      return strike(units, actor, target, meleeDamageOf(actor.combat), true);
+    case CombatAction.ShortStrike:
+      // The short strike reaches over one's own front rank, so nothing is in the way of it
+      // by construction (`COMBAT_SPEC` §4.2) — the one action that ignores obstruction.
+      return strike(units, actor, target, shortDamageOf(actor.combat), false);
+    case CombatAction.Shot:
+      return strike(units, actor, target, rangedDamageOf(actor.combat), true);
+    case CombatAction.Status:
+      return applyStatus(units, actor, target);
+    case CombatAction.Support:
+      return support(units, actor, target);
+    case CombatAction.Shift:
+      return shift(units, actor, target);
+    case CombatAction.Reposition:
+      return reposition(units, actor);
+    case CombatAction.Steady:
+      return {
+        units: replace(units, {
+          ...actor,
+          stability: Math.min(100, actor.stability + STEADY_BONUS),
+          spent: false
+        }),
+        events: []
+      };
+  }
+}
+
+function strike(
+  units: readonly BattleUnit[],
+  actor: BattleUnit,
+  target: BattleUnit | null,
+  base: number,
+  countObstruction: boolean
+): { readonly units: readonly BattleUnit[]; readonly events: readonly BattleEvent[] } {
+  if (target === null) {
+    return { units, events: [] };
+  }
+
+  const guard = target.statuses.get(StatusId.Guarded);
+  const provenance = applyEffect({
+    base,
+    chillPoints: chillPointsOf(actor),
+    blockers: countObstruction ? blockersBetween(actor, target, units) : 0,
+    absorb: guard === undefined ? null : { amount: GUARD_ABSORB, by: guard.source },
+    actor: actor.id
+  });
+
+  const events: BattleEvent[] = [
+    {
+      kind: 'damage_dealt',
+      actor: actor.id,
+      target: target.id,
+      amount: provenance.final,
+      provenance
+    }
+  ];
+
+  const absorbed = absorbedBy(provenance);
+
+  if (absorbed > 0 && guard !== undefined) {
+    events.push({
+      kind: 'damage_absorbed',
+      target: target.id,
+      by: guard.source,
+      amount: absorbed
+    });
+  }
+
+  return { units: hurt(units, target, provenance.final, actor.id, events), events };
+}
+
+function applyStatus(
+  units: readonly BattleUnit[],
+  actor: BattleUnit,
+  target: BattleUnit | null
+): { readonly units: readonly BattleUnit[]; readonly events: readonly BattleEvent[] } {
+  if (target === null) {
+    return { units, events: [] };
+  }
+
+  const applied = withStatus(target, StatusId.Chilled, actor.id);
+
+  return {
+    units: replace(units, applied.unit),
+    events: [
+      {
+        kind: 'status_applied',
+        target: target.id,
+        status: StatusId.Chilled,
+        source: actor.id,
+        rounds: 1,
+        refreshed: applied.refreshed
+      }
+    ]
+  };
+}
+
+function support(
+  units: readonly BattleUnit[],
+  actor: BattleUnit,
+  target: BattleUnit | null
+): { readonly units: readonly BattleUnit[]; readonly events: readonly BattleEvent[] } {
+  if (target === null) {
+    return { units, events: [] };
+  }
+
+  const provenance = applyEffect({
+    base: healingOf(actor.combat),
+    chillPoints: chillPointsOf(actor),
+    blockers: 0,
+    absorb: null,
+    actor: actor.id
+  });
+
+  const healed = Math.min(target.maxHealth, target.health + provenance.final);
+  const guarded = withStatus({ ...target, health: healed }, StatusId.Guarded, actor.id);
+
+  return {
+    units: replace(units, guarded.unit),
+    events: [
+      {
+        kind: 'healing_done',
+        actor: actor.id,
+        target: target.id,
+        amount: healed - target.health,
+        provenance
+      },
+      {
+        kind: 'status_applied',
+        target: target.id,
+        status: StatusId.Guarded,
+        source: actor.id,
+        rounds: 1,
+        refreshed: guarded.refreshed
+      }
+    ]
+  };
+}
+
+/**
+ * Displacement (`COMBAT_SPEC` §4.6).
+ *
+ * `might` against `stability`, strictly greater, integer, no roll. Toward the target's own
+ * rear; into an occupied cell it is a swap and **both** lose their next action; against the
+ * back wall it pins instead — a shove that lands is never a shove that vanished.
+ */
+function shift(
+  units: readonly BattleUnit[],
+  actor: BattleUnit,
+  target: BattleUnit | null
+): { readonly units: readonly BattleUnit[]; readonly events: readonly BattleEvent[] } {
+  if (target === null) {
+    return { units, events: [] };
+  }
+
+  if (actor.combat.might <= target.stability) {
+    return { units, events: [{ kind: 'shift_resisted', unit: target.id, by: actor.id }] };
+  }
+
+  if (target.cell.row === 3) {
+    const pinned = withStatus(target, StatusId.Pinned, actor.id);
+
+    return {
+      units: replace(units, { ...pinned.unit, spent: true }),
+      events: [
+        { kind: 'unit_pinned', unit: target.id },
+        {
+          kind: 'status_applied',
+          target: target.id,
+          status: StatusId.Pinned,
+          source: actor.id,
+          rounds: 1,
+          refreshed: pinned.refreshed
+        }
+      ]
+    };
+  }
+
+  const to: Cell = { row: (target.cell.row + 1) as Row, column: target.cell.column };
+  const partner = occupantOf(target.side, to, units);
+  const from = target.cell;
+
+  if (partner === null) {
+    return {
+      units: replace(units, { ...target, cell: to }),
+      events: [{ kind: 'unit_shifted', unit: target.id, from, to, forced: true, partner: null }]
+    };
+  }
+
+  const swapped = replace(replace(units, { ...target, cell: to, spent: true }), {
+    ...partner,
+    cell: from,
+    spent: true
+  });
+
+  return {
+    units: swapped,
+    events: [
+      { kind: 'unit_shifted', unit: target.id, from, to, forced: true, partner: partner.id },
+      {
+        kind: 'unit_shifted',
+        unit: partner.id,
+        from: to,
+        to: from,
+        forced: true,
+        partner: target.id
+      }
+    ]
+  };
+}
+
+/**
+ * A step back toward the row this unit's own actions live in (`COMBAT_SPEC` §4.6).
+ *
+ * One action into an empty cell; a swap with an ally costs the ally his next one, so a
+ * crowded formation reacts at half the speed of a loose one — §4.5's second benefit, and
+ * the one that holds whatever the enemy happens to be.
+ */
+function reposition(
+  units: readonly BattleUnit[],
+  actor: BattleUnit
+): { readonly units: readonly BattleUnit[]; readonly events: readonly BattleEvent[] } {
+  const home = HOME_ROW[actor.role];
+  const step: Cell = {
+    row: (actor.cell.row + (home < actor.cell.row ? -1 : 1)) as Row,
+    column: actor.cell.column
+  };
+
+  if (!isAdjacent(actor.cell, step)) {
+    return { units, events: [] };
+  }
+
+  const partner = occupantOf(actor.side, step, units);
+  const from = actor.cell;
+
+  if (partner === null) {
+    return {
+      units: replace(units, { ...actor, cell: step }),
+      events: [
+        { kind: 'unit_shifted', unit: actor.id, from, to: step, forced: false, partner: null }
+      ]
+    };
+  }
+
+  return {
+    units: replace(replace(units, { ...actor, cell: step }), {
+      ...partner,
+      cell: from,
+      spent: true
+    }),
+    events: [
+      { kind: 'unit_shifted', unit: actor.id, from, to: step, forced: false, partner: partner.id },
+      {
+        kind: 'unit_shifted',
+        unit: partner.id,
+        from: step,
+        to: from,
+        forced: false,
+        partner: actor.id
+      }
+    ]
+  };
+}
+
+const HOME_ROW: Readonly<Record<CombatRole, Row>> = Object.freeze({
+  [CombatRole.Vanguard]: 1,
+  [CombatRole.Support]: 2,
+  [CombatRole.Rear]: 3,
+  [CombatRole.Breaker]: 1
+});
+
+/** Statuses lose a round; `bleeding` bites on the way out, and names who caused it. */
+function tickStatuses(units: readonly BattleUnit[]): {
+  readonly units: readonly BattleUnit[];
+  readonly events: readonly BattleEvent[];
+} {
+  const events: BattleEvent[] = [];
+  let next = units;
+
+  for (const unit of [...units].sort((left, right) => (left.id < right.id ? -1 : 1))) {
+    const current = byId(next, unit.id);
+
+    if (current === null || !current.standing) {
+      continue;
+    }
+
+    let updated = current;
+    const bleeding = current.statuses.get(StatusId.Bleeding);
+
+    if (bleeding !== undefined) {
+      const provenance = applyEffect({
+        base: BLEED,
+        chillPoints: 0,
+        blockers: 0,
+        absorb: null,
+        actor: bleeding.source
+      });
+
+      events.push({
+        kind: 'damage_dealt',
+        actor: bleeding.source,
+        target: current.id,
+        amount: provenance.final,
+        provenance
+      });
+
+      next = hurt(next, current, provenance.final, bleeding.source, events);
+      updated = byId(next, current.id) ?? current;
+    }
+
+    // Rebuilt rather than edited in place: a `SortedMap` has no removal, and an expiry is a
+    // removal. Built from the surviving entries in the map's own key order, which is what
+    // keeps enumeration — and therefore the artifact — a property of the state.
+    const surviving: (readonly [StatusId, StatusInstance])[] = [];
+
+    for (const [status, instance] of updated.statuses.entries()) {
+      if (instance.remainingRounds <= 1) {
+        events.push({ kind: 'status_expired', target: updated.id, status });
+      } else {
+        surviving.push([status, { ...instance, remainingRounds: instance.remainingRounds - 1 }]);
+      }
+    }
+
+    updated = { ...updated, statuses: SortedMap.from(compareStrings, surviving) };
+
+    next = replace(next, updated);
+  }
+
+  return { units: next, events };
+}
+
+function hurt(
+  units: readonly BattleUnit[],
+  target: BattleUnit,
+  amount: number,
+  by: BattleUnitId,
+  events: BattleEvent[]
+): readonly BattleUnit[] {
+  const health = Math.max(0, target.health - amount);
+  const standing = health > 0;
+
+  if (target.standing && !standing) {
+    events.push({ kind: 'unit_downed', unit: target.id, by });
+  }
+
+  return replace(units, { ...target, health, standing });
+}
+
+function outcomeOf(units: readonly BattleUnit[]): BattleOutcome | null {
+  const crew = standingOn(units, 'crew').length;
+  const foes = standingOn(units, 'foe').length;
+
+  if (foes === 0) {
+    return BattleOutcome.CrewStanding;
+  }
+
+  if (crew === 0) {
+    return BattleOutcome.FoesStanding;
+  }
+
+  return null;
+}
+
+function rosterOf(units: readonly BattleUnit[], side: 'crew' | 'foe'): readonly BattleUnitId[] {
+  return units
+    .filter((unit) => unit.side === side)
+    .map((unit) => unit.id)
+    .sort((left, right) => (left < right ? -1 : 1));
+}
+
+function standingOn(units: readonly BattleUnit[], side: 'crew' | 'foe'): readonly BattleUnit[] {
+  return units.filter((unit) => unit.standing && unit.side === side);
+}
+
+function byId(units: readonly BattleUnit[], id: BattleUnitId): BattleUnit | null {
+  return units.find((unit) => unit.id === id) ?? null;
+}
+
+function replace(units: readonly BattleUnit[], unit: BattleUnit): readonly BattleUnit[] {
+  return units.map((current) => (current.id === unit.id ? unit : current));
+}
+
+export { opposing };

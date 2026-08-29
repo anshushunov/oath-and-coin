@@ -47,6 +47,107 @@ export {
 } from './domain/combat-attributes.ts';
 export { COMBAT_ROLES, CombatRole, compareCombatRoles } from './domain/combat-role.ts';
 export { EQUIPMENT_GRADE_NONE, gradeFrom } from './combat/grade.ts';
+
+// The combat core (`COMBAT_SPEC`). Exported as a whole because the battle resolver, the
+// balance runner and the battle screen all read it, and each of the three needs a different
+// slice — a curated subset here would be a fourth opinion about what the layer is.
+export {
+  COLUMNS,
+  LATERAL_BLOCKERS,
+  MIN_EFFECT_PERCENT,
+  OBSTRUCTION_STEP,
+  ROWS,
+  blockersBetween,
+  effectPercent,
+  isAdjacent,
+  isColumnClearThrough,
+  isColumnOpen,
+  occupantOf,
+  opposing,
+  type BattleSide,
+  type Cell,
+  type Column,
+  type Positioned,
+  type Row
+} from './combat/field.ts';
+export {
+  BLEED,
+  CHILL_EFFECT,
+  GUARD_ABSORB,
+  STATUS_IDS,
+  STATUS_ROUNDS,
+  STEADY_BONUS,
+  StatusId,
+  chillPointsOf,
+  compareBattleUnitIds,
+  healingOf,
+  maxHealthOf,
+  meleeDamageOf,
+  rangedDamageOf,
+  shortDamageOf,
+  stabilityOf,
+  unitFrom,
+  withStatus,
+  type BattleUnit,
+  type BattleUnitId,
+  type StatusInstance,
+  type UnitBlueprint
+} from './combat/unit.ts';
+export {
+  MODIFIER_CODES,
+  ModifierCodes,
+  absorbedBy,
+  applyEffect,
+  eatenByTheFormation,
+  type AmountProvenance,
+  type ModifierCode,
+  type ProvenanceStep
+} from './combat/effect.ts';
+export {
+  TARGET_REASONS,
+  TargetReasons,
+  meleeAim,
+  rangedAim,
+  shiftAim,
+  shortAim,
+  statusAim,
+  supportAim,
+  type Aim,
+  type TargetReason
+} from './combat/targeting.ts';
+export {
+  BattleOutcome,
+  BlockReasons,
+  COMBAT_ACTIONS,
+  CombatAction,
+  MotiveReasons,
+  unitNamedBy,
+  type BattleEvent,
+  type BlockReason,
+  type MotiveReason
+} from './combat/events.ts';
+export {
+  DOCTRINE_IDS,
+  DOCTRINE_PREFERENCE,
+  DoctrineId,
+  compareDoctrineIds
+} from './combat/doctrine.ts';
+export {
+  BOND_STRONG,
+  HELP_THRESHOLD,
+  availableActions,
+  decideCombatAction,
+  friendInTrouble,
+  type CombatDecision
+} from './combat/decision.ts';
+export {
+  MAX_ROUNDS,
+  runBattle,
+  runRound,
+  startBattle,
+  type BattleRecord,
+  type BattleState
+} from './combat/battle.ts';
 export {
   ConsequenceKind,
   CoverageVerdict,
