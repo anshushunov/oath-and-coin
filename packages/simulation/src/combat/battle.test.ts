@@ -203,12 +203,27 @@ describe('displacement, and what it costs the man behind', () => {
     const front = unit('foe:front', 'foe', 1, 2, { combat: { ...AVERAGE, guard: 10, focus: 1 } });
     const behind = unit('foe:behind', 'foe', 2, 2, { combat: { ...AVERAGE, focus: 1 } });
 
-    const { state } = runRound(startBattle([breaker, front, behind], DoctrineId.BreakThemFirst));
+    const { state, events } = runRound(
+      startBattle([breaker, front, behind], DoctrineId.BreakThemFirst)
+    );
 
     // They changed places, and **both** paid for it — the third of §4.5's benefits, read
     // from the losing side: a crowded formation is the one that holds displacement worst.
-    expect(state.units.find((one) => one.id === 'foe:front')?.cell).toEqual({ row: 2, column: 2 });
-    expect(state.units.find((one) => one.id === 'foe:behind')?.cell).toEqual({ row: 1, column: 2 });
+    const shoved = state.units.find((one) => one.id === 'foe:front');
+    const displaced = state.units.find((one) => one.id === 'foe:behind');
+
+    expect(shoved?.cell).toEqual({ row: 2, column: 2 });
+    expect(displaced?.cell).toEqual({ row: 1, column: 2 });
+    // The half a check on the cells alone cannot see, and a live mutant found it: a swap
+    // that moved both and charged neither passed every assertion above. The price *is* the
+    // benefit of an empty cell, so a swap that is free makes §4.5 say nothing.
+    //
+    // Read off the events rather than off the flag at the end of the round: the flag is
+    // consumed the moment each of them comes to act, so by then it is `false` on both
+    // whether they were charged or not. What survives is the shape of the round — one
+    // intent, from the breaker, and two turns nobody took.
+    expect(kinds(events).filter((kind) => kind === 'intent_declared')).toHaveLength(1);
+    expect(kinds(events).filter((kind) => kind === 'turn_spent')).toHaveLength(2);
   });
 
   it('pins a unit already at the back wall instead of losing the shove', () => {
@@ -271,6 +286,27 @@ describe('the personality reaction, which is what the lab is for', () => {
     const { events } = runRound(startBattle([distant, hurtFriend, foe], DoctrineId.BreakThemFirst));
 
     expect(kinds(events)).not.toContain('doctrine_broken');
+  });
+
+  it('is not a breach when the doctrine would have helped him anyway', () => {
+    // The case a mutant survived without: the bond qualifies and the friend is losing, so
+    // the reaction *fires* — and `spare_the_people` already ranks support first, so the
+    // action it chooses is the action the doctrine chose. Nothing was broken, and a rule
+    // that announced a breach here would put "вопреки доктрине" on a screen beside a hero
+    // doing exactly what he was told.
+    const loyal = unit('crew:loyal', 'crew', 2, 2, {
+      role: CombatRole.Support,
+      bonds: bonds([['crew:friend', BOND_STRONG]])
+    });
+
+    const { events } = runRound(startBattle([loyal, hurtFriend, foe], DoctrineId.SpareThePeople));
+
+    expect(kinds(events)).not.toContain('doctrine_broken');
+    // And it did help him — otherwise this would pass for the wrong reason, by the
+    // reaction not firing at all.
+    expect(events).toContainEqual(
+      expect.objectContaining({ kind: 'healing_done', actor: 'crew:loyal', target: 'crew:friend' })
+    );
   });
 
   it('fires once in a battle and not again', () => {
