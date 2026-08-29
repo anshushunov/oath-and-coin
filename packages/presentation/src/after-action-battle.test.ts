@@ -154,6 +154,19 @@ describe('a resolution a battle produced, read by the debrief screen’s own fac
     expect(model.coverage.map((row) => row.needKey)).toHaveLength(2);
   });
 
+  it('is the battle’s own result and not the abstract resolver’s (ADR-016 §5)', () => {
+    // The half the routing rule is *for*: on a contract that goes to a fight, the state the
+    // command wrote is the state the battle produced. A mutant routing every contract to
+    // the abstract resolver leaves the screen perfectly readable and this assertion red,
+    // which is the difference between "the debrief works" and "the debrief is about the
+    // fight that happened".
+    const { state, contractId } = fought();
+    const stored = state.contracts.get(contractId)?.resolution;
+
+    expect(stored?.battle).not.toBeNull();
+    expect(stored?.battle?.events.at(-1)?.kind).toBe('battle_ended');
+  });
+
   it('hashes like any other screen, so the browser evidence can measure it', () => {
     const { state, contractId } = fought();
 

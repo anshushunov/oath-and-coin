@@ -225,14 +225,29 @@ describe('what a battle answers with (ADR-016 §1, §4)', () => {
 
 describe('the two properties that keep the resolvers out of each other’s way', () => {
   it('the abstract resolver does not read `deployment` at all (§12.1 п.8)', () => {
-    const { deployment: _dropped, ...bare } = input();
+    // **Weights of 100 and not the fixture's 40 and 30**, and a live mutant is why. A
+    // resolver reading the formation would most plausibly do it by nudging one of the
+    // numbers the coverage arithmetic already takes; at a weight of 40 a nudge of one point
+    // to `risk` truncates away in `weight × (100 + risk) / 100` and the check stayed green
+    // over a resolver that was reading the formation. At a hundred, a point is a point.
+    const sensitive = (): ResolutionInput => ({
+      ...input(),
+      contract: {
+        ...contract(),
+        needs: SortedMap.from<NeedId, number>(compareNeedIds, [
+          [NeedId.Frontline, 100],
+          [NeedId.Wilderness, 100]
+        ])
+      }
+    });
+    const { deployment: _dropped, ...bare } = sensitive();
 
-    // Byte for byte the same answer, with and without a formation on the input. A mutant
-    // that made `draftResolution` read the formation — any part of it — reddens here.
-    expect(JSON.stringify(draftResolution(input()).intents)).toBe(
-      JSON.stringify(draftResolution(bare).intents)
+    // Byte for byte the same answer, with and without a formation on the input — the whole
+    // draft, not only its intents: the resolution carries the coverage.
+    expect(JSON.stringify(draftResolution(sensitive()))).toBe(
+      JSON.stringify(draftResolution(bare))
     );
-    expect(draftResolution(input()).resolution.battle).toBeNull();
+    expect(draftResolution(sensitive()).resolution.battle).toBeNull();
   });
 
   it('routes by the contract, before the crew is sent (ADR-014 §1)', () => {
