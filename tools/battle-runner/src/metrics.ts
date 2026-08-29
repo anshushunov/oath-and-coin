@@ -407,14 +407,16 @@ export function dominantCrew(content: ContentSet): Measurement {
   let crews = 0;
 
   for (const crew of crewsOf(pool, definition.requiredCrew)) {
-    const won = patterns.filter((foes) =>
-      FORMATION_SHAPES.some(
-        (shape) =>
-          battleResolver(
-            inputFor({ content, definition, crew, shape, plan: subdueEverything(foes) })
-          ).resolution.battle!.outcome === BattleOutcome.CrewStanding
+    const won = threatsBeaten(
+      patterns.map((foes) =>
+        FORMATION_SHAPES.map(
+          (shape) =>
+            battleResolver(
+              inputFor({ content, definition, crew, shape, plan: subdueEverything(foes) })
+            ).resolution.battle!.outcome === BattleOutcome.CrewStanding
+        )
       )
-    ).length;
+    );
 
     crews += 1;
 
@@ -445,6 +447,18 @@ export function dominantCrew(content: ContentSet): Measurement {
         ? 'no crew won anything'
         : `best: ${by}; ${String(sweeping)} of ${String(crews)} crews took every threat`
   });
+}
+
+/**
+ * How many threats a crew beat, given how each of its formations fared against each.
+ *
+ * One row per threat, one entry per shape. **A threat is beaten if any shape beats it** — the
+ * player picks the formation, so a crew that has an answer has an answer. Averaging the rows
+ * instead would count the shapes that lost, which is a question about how forgiving the crew
+ * is of a bad choice, and the one the first edition answered without meaning to.
+ */
+export function threatsBeaten(byThreat: readonly (readonly boolean[])[]): number {
+  return byThreat.filter((shapes) => shapes.some((won) => won)).length;
 }
 
 /** The mean of what a rear unit's actions actually landed for, in this battle. */

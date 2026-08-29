@@ -12,6 +12,7 @@ import {
   forecastAgreement,
   formationChangesOutcome,
   formationDominance,
+  threatsBeaten,
   type FoughtCase
 } from './metrics.ts';
 
@@ -142,5 +143,25 @@ describe('strict dominance is asked of §13.1’s own matrix', () => {
 
     expect(dominanceOf(tied).status).toBe('ok');
     expect(dominanceOf(tied).note).toContain('ram→tie');
+  });
+});
+
+describe('what "the crew beat the held-out threat" counts', () => {
+  it('counts a threat beaten when any formation beats it, because the player picks one', () => {
+    // Three threats: taken in one shape of three, taken in all three, taken in none. Two
+    // beaten. Averaging the nine cells instead gives 4/9 — the number the first edition
+    // printed, and a fact about how forgiving the crew is of a bad shape rather than about
+    // how many threats it has an answer to.
+    expect(
+      threatsBeaten([
+        [false, true, false],
+        [true, true, true],
+        [false, false, false]
+      ])
+    ).toBe(2);
+  });
+
+  it('counts nothing beaten when nothing was', () => {
+    expect(threatsBeaten([[false, false, false]])).toBe(0);
   });
 });
