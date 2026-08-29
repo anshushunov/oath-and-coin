@@ -69,17 +69,32 @@ describe('the combat layer and the motivational scales are read by different rul
 /**
  * Files under `directory` whose text reads `field` as a property.
  *
- * `.field` and `field:` rather than the bare word, because the bare word appears in prose:
+ * Punctuation-anchored rather than the bare word, because the bare word appears in prose:
  * `focus` and `care` are ordinary English, and a comment explaining *why* a rule does not
  * read greed would fail a check that looked for the word alone. What is being caught is a
- * read — `hero.greed`, `{ greed: … }`, `greed,` in a destructuring — and those all carry a
- * punctuation mark the prose does not.
+ * read, and every shape a read takes carries a mark the prose does not:
+ *
+ * | shape | mark |
+ * |---|---|
+ * | `hero.greed` | a dot before |
+ * | `{ greed: … }`, `greed: number` | a colon after |
+ * | `const { greed, other } = hero` | a comma after |
+ * | `const { greed } = hero` | a brace on either side |
+ *
+ * **The brace case is here because a mutant survived without it.** `const { greed } = hero`
+ * carries no dot, no colon and no comma, and the first version of this check let it
+ * through — the one shape that reads a scale while looking least like it. `AGENTS.md` §8: a
+ * green mutant is closed by a check that reddens on it, not by calling the mutant
+ * unrealistic.
  *
  * Test files are excluded: a test may legitimately construct a hero with both layers set,
  * which is not a rule reading one from the other.
  */
 function mentions(directory: string, field: string): readonly string[] {
-  const read = new RegExp(String.raw`(\.${field}\b|\b${field}\s*:|\b${field}\s*,)`, 'u');
+  const read = new RegExp(
+    String.raw`(\.${field}\b|\b${field}\s*[:,]|\{\s*${field}\b|\b${field}\s*\})`,
+    'u'
+  );
 
   return sourcesUnder(directory).filter((file) =>
     read.test(readFileSync(join(repoRoot, directory, file), 'utf8'))
