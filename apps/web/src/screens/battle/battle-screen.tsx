@@ -1,5 +1,4 @@
 import {
-  BattleControlKeys,
   BattleFieldKeys,
   battleStateKey,
   errorKey,
@@ -44,7 +43,7 @@ export function BattleScreen({
   const text = useText();
 
   return (
-    <section className="battle" data-testid="battle-screen">
+    <section className="battle" data-testid="battle-screen" data-state={model.state}>
       <Label text={text(model.titleKey)} />
       <Label text={text(battleStateKey(model.state))} />
 
@@ -127,6 +126,13 @@ function UnitRow({ unit }: { readonly unit: BattleUnitLine }) {
 
   return (
     <div className="unit" data-testid={`battle-unit-${unit.unit}`}>
+      {/*
+        Which side he is on, in a word and not only in a colour. Found by looking at the
+        frame: the list under the board read as nine men with four names and five roles,
+        and nothing on it said which of them the player had sent — §10.2 п.5's argument
+        about status applies to the side just as directly (`GDD` §16.6).
+      */}
+      <Label text={text(unit.side === 'crew' ? BattleFieldKeys.Crew : BattleFieldKeys.Foes)} />
       {unit.displayNameKey === null ? null : <Label text={text(unit.displayNameKey)} />}
       <Label text={text(unit.roleKey)} />
       <Captioned captionKey={BattleFieldKeys.Health} value={String(unit.health)} />
@@ -157,9 +163,6 @@ function JournalRow({ line }: { readonly line: BattleJournalLine }) {
 
 /** What the player may press, and what each press means to the feed (`COMBAT_SPEC` §10.2). */
 export interface BattleControls {
-  readonly paused: boolean;
-  /** `1` or `2`. A number rather than a flag, because §10.2 asks for two *speeds*. */
-  readonly speed: number;
   togglePause(): void;
   toggleSpeed(): void;
   skip(): void;
@@ -181,16 +184,16 @@ function Controls({
   return (
     <div className="controls" data-testid="battle-controls">
       <button type="button" data-testid="battle-pause" onClick={controls.togglePause}>
-        {text(controls.paused ? BattleControlKeys.Resume : BattleControlKeys.Pause)}
+        {text(model.controls.pauseKey)}
       </button>
       <button type="button" data-testid="battle-speed" onClick={controls.toggleSpeed}>
-        {text(BattleControlKeys.Speed)}
+        {text(model.controls.speedKey)}
       </button>
       <button type="button" data-testid="battle-skip" onClick={controls.skip}>
-        {text(BattleControlKeys.Skip)}
+        {text(model.controls.skipKey)}
       </button>
       <button type="button" data-testid="battle-replay" onClick={controls.replay}>
-        {text(BattleControlKeys.Replay)}
+        {text(model.controls.replayKey)}
       </button>
 
       {retreat === null ? null : (

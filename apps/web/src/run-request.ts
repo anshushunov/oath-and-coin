@@ -36,7 +36,16 @@ export interface RunRequest {
 }
 
 /** The two screens the page can open on. Anything else is a typo, not an extension. */
-export const SCREEN_NAMES = ['contract-offer', 'saves'] as const;
+/**
+ * Which screen the page opens on.
+ *
+ * `battle` is the combat lab (`COMBAT_SPEC` §10.2, `DEC-007`): a scenario run to a placed
+ * crew, and the fight it is about to go to, played back from the opening position. It is a
+ * screen name rather than a second page for the reason the spike measured — a second entry
+ * point costs one line of `vite.config.ts` and it would still need this parameter to say
+ * *which* fight — and the lab is where the five states of that screen are reachable at all.
+ */
+export const SCREEN_NAMES = ['contract-offer', 'saves', 'battle'] as const;
 
 export type ScreenName = (typeof SCREEN_NAMES)[number];
 

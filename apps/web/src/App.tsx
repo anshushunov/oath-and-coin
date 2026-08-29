@@ -8,8 +8,10 @@ import {
 } from '@oath-and-coin/application';
 import { RULESET_VERSION } from '@oath-and-coin/content';
 import {
+  BATTLE_LOADING_SCREEN,
   SAVE_SLOTS_LOADING_SCREEN,
   ScreenKind,
+  battleFailedScreen,
   ScreenLinkKeys,
   readModelHash,
   saveSlotsScreenModel,
@@ -149,6 +151,8 @@ export function App({ createController = browserSessionController }: AppProps = 
               );
             }}
           />
+        ) : screen === 'battle' ? (
+          <BattleLab session={session} controller={controller} />
         ) : watching === null ? (
           <CampaignScreen model={session.screen} controller={controller} onBattle={watch} />
         ) : (
@@ -179,8 +183,14 @@ export function App({ createController = browserSessionController }: AppProps = 
         Drawn on both screens, and from the same model: it is the campaign behind the
         page rather than a decoration of one screen, and a canvas that blanked while the
         player looked at the slots would be claiming the campaign went away.
+
+        **Not while a battle is on screen.** The battle draws its own board, and this one
+        would be a second canvas showing the campaign's line-up under it — two pictures of
+        different things, one above the other, with nothing saying which is which. Found by
+        looking at the frame, and by nothing else: every hash was green on it, correctly,
+        because a canvas has no texts for either of them to see.
       */}
-      <WorldCanvas model={session.screen} />
+      {screen === 'battle' || watching !== null ? null : <WorldCanvas model={session.screen} />}
 
       {/*
         Not part of the screen, and deliberately after it: one fact worth reporting
@@ -535,4 +545,56 @@ function describeNodeApiExposure(): 'absent' | 'present' {
   const reachable = 'require' in scope || 'process' in scope;
 
   return reachable ? 'present' : 'absent';
+}
+
+/**
+ * The combat lab: one fight, opened from a scenario, paused at its first frame
+ * (`COMBAT_SPEC` §10.2, `DEC-007`).
+ *
+ * **The one place the battle screen's five states are all reachable.** Three of them are
+ * about the session rather than about a fight — no campaign yet, a run that failed, a
+ * contract that never goes to one — and the fourth and fifth are the feed inside a battle
+ * and at the end of it. A screen a player reaches only by finishing a negotiation could not
+ * show the first three at all, and `AGENTS.md` §7 asks for a frame of each.
+ *
+ * **Paused at the opening position.** A feed running on `requestAnimationFrame` is at a
+ * different place in every run, so a screenshot of one is a screenshot of the machine's
+ * timing rather than of the screen; pressing play is the player's own first click.
+ */
+function BattleLab({
+  session,
+  controller
+}: {
+  readonly session: SessionState;
+  readonly controller: SessionController;
+}) {
+  const errorCode = session.screen.errorCode;
+
+  if (errorCode !== null) {
+    return (
+      <BattleScreen
+        model={battleFailedScreen(errorCode, session.errorDetail ?? errorCode)}
+        controls={INERT_CONTROLS}
+      />
+    );
+  }
+
+  if (session.state === null || session.focusedContract === null) {
+    return <BattleScreen model={BATTLE_LOADING_SCREEN} controls={INERT_CONTROLS} />;
+  }
+
+  const contractId = session.focusedContract;
+
+  // A contract the abstract resolver answers, or one whose crew is not on the board yet:
+  // both are "there is no fight here", and the screen's own `Empty` says so.
+  if (controller.previewBattle(contractId, null) === null) {
+    return (
+      <BattleScreen
+        model={controller.battleScreen(contractId, null, 0) ?? BATTLE_LOADING_SCREEN}
+        controls={INERT_CONTROLS}
+      />
+    );
+  }
+
+  return <BattlePlayback contractId={contractId} port={controller} startPaused />;
 }

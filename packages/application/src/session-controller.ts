@@ -325,8 +325,17 @@ export interface SessionController {
    */
   battleScreen(
     contractId: ContentId,
-    record: BattleRecord,
-    applied: number
+    /**
+     * The battle to play, or `null` for whatever the contract already carries.
+     *
+     * `null` is not "no battle": it is "the stored one", which on a contract that never
+     * fights is nothing at all and the screen's own `Empty` says so.
+     */
+    record: BattleRecord | null,
+    applied: number,
+    /** Whether the feed is waiting for the player, and at which of the two speeds. */
+    paused?: boolean,
+    speed?: number
   ): BattleScreenModel | null;
   resolveContract(input: NegotiationCommandInput<ResolveContract>): CommandResult;
   settleContract(input: NegotiationCommandInput<SettleContract>): CommandResult;
@@ -562,14 +571,19 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
     },
     battleOf: (contractId) =>
       store.snapshot().state?.contracts.get(contractId)?.resolution?.battle ?? null,
-    battleScreen: (contractId, record, applied) => {
+    battleScreen: (contractId, record, applied, paused = false, speed = 1) => {
       const campaign = store.snapshot().state;
 
       if (campaign === null) {
         return null;
       }
 
-      return battleScreenModel(campaign, contractId, { applied, record });
+      return battleScreenModel(campaign, contractId, {
+        applied,
+        paused,
+        speed,
+        ...(record === null ? {} : { record })
+      });
     },
     placeCrewFromDraft: (contractId, draft) =>
       dispatchNegotiationCommand(store, contractId, (state, commandId, expectedStateVersion) => {

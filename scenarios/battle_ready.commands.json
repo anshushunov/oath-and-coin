@@ -1,0 +1,69 @@
+{
+  "commands": [
+    {
+      "command": "compose_offer",
+      "command_id": 1,
+      "contract": "core:break_the_siege_camp",
+      "key_hero_index": 0,
+      "invited_indexes": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "advance": 60,
+      "method_tag": null,
+      "promised_bonus": 0,
+      "expected_state_version": 0
+    },
+    {
+      "command": "propose_contract_to_hero",
+      "command_id": 2,
+      "contract": "core:break_the_siege_camp",
+      "hero_index": 0,
+      "expected_state_version": 1
+    },
+    {
+      "command": "lock_offer",
+      "command_id": 3,
+      "contract": "core:break_the_siege_camp",
+      "expected_state_version": 2
+    },
+    {
+      "command": "poll_crew",
+      "command_id": 4,
+      "contract": "core:break_the_siege_camp",
+      "expected_state_version": 3
+    },
+    {
+      "command": "place_crew",
+      "command_id": 5,
+      "contract": "core:break_the_siege_camp",
+      "placement": [
+        {
+          "hero_index": 0,
+          "row": 1,
+          "column": 1
+        },
+        {
+          "hero_index": 1,
+          "row": 1,
+          "column": 2
+        },
+        {
+          "hero_index": 2,
+          "row": 2,
+          "column": 2
+        },
+        {
+          "hero_index": 3,
+          "row": 3,
+          "column": 2
+        }
+      ],
+      "doctrine": "hold_the_line",
+      "retreat_below_percent": 0,
+      "expected_state_version": 6
+    }
+  ]
+}

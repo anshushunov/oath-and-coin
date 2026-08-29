@@ -47,17 +47,29 @@ export interface BattlePlaybackPort {
   battleScreen(
     contractId: ContentId,
     record: BattleRecord,
-    applied: number
+    applied: number,
+    paused: boolean,
+    speed: number
   ): BattleScreenModel | null;
 }
 
 export function BattlePlayback({
   contractId,
   port,
-  onFinished
+  onFinished,
+  startPaused = false
 }: {
   readonly contractId: ContentId;
   readonly port: BattlePlaybackPort;
+  /**
+   * Whether the feed waits for the player to start it.
+   *
+   * The lab opens paused, and that is the only way the browser evidence can measure a frame
+   * at all: a feed running on `requestAnimationFrame` is at a different position in every
+   * run, so a screenshot of it would be a screenshot of the machine's timing. Pressing play
+   * is one click, and it is the same click a player makes.
+   */
+  readonly startPaused?: boolean;
   /**
    * Called once, the first time the feed reaches the end, with the round a withdrawal was
    * signalled at — which is what the caller then commits `resolveContract` with.
@@ -66,7 +78,7 @@ export function BattlePlayback({
 }) {
   const [retreatAtRound, setRetreatAtRound] = useState<number | null>(null);
   const [record, setRecord] = useState(() => port.previewBattle(contractId, null));
-  const [feed, setFeed] = useState<BattleFeed>(startFeed);
+  const [feed, setFeed] = useState<BattleFeed>(() => ({ ...startFeed(), paused: startPaused }));
   const [phase, setPhase] = useState(0);
   const announced = useRef(false);
 
@@ -129,8 +141,6 @@ export function BattlePlayback({
   );
 
   const controls: BattleControls = {
-    paused: feed.paused,
-    speed: feed.speed,
     togglePause: () => {
       setFeed((current) => ({ ...current, paused: !current.paused }));
     },
@@ -155,7 +165,10 @@ export function BattlePlayback({
     retreat: signalRetreat
   };
 
-  const model = record === null ? null : port.battleScreen(contractId, record, feed.applied);
+  const model =
+    record === null
+      ? null
+      : port.battleScreen(contractId, record, feed.applied, feed.paused, feed.speed);
 
   if (model === null) {
     return null;

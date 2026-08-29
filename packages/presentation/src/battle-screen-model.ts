@@ -135,6 +135,23 @@ export interface BattleRetreatLine {
   readonly givenAtRound: number | null;
 }
 
+/**
+ * What the four controls read (`COMBAT_SPEC` §10.2).
+ *
+ * The pause button says two different things and which one is a fact about the feed, so the
+ * key is stated here rather than worked out by a component — the same rule that keeps every
+ * other branch on a value off a screen.
+ */
+export interface BattleControlsLine {
+  readonly paused: boolean;
+  /** `1` or `2` — §10.2 asks for two speeds, so this is a number and not a flag. */
+  readonly speed: number;
+  readonly pauseKey: string;
+  readonly speedKey: string;
+  readonly skipKey: string;
+  readonly replayKey: string;
+}
+
 export interface BattleScreenModel {
   readonly screen: typeof ScreenKind.Battle;
   readonly state: ScreenState;
@@ -151,6 +168,18 @@ export interface BattleScreenModel {
   readonly intent: BattleIntentLine | null;
   readonly journal: readonly BattleJournalLine[];
   readonly retreat: BattleRetreatLine | null;
+  /**
+   * The four controls of §10.2, as the screen reads them right now.
+   *
+   * **On the model, and the argument against it lost to a measurement.** Pause and speed are
+   * the player's own choices rather than animation coordinates — the position in the feed is
+   * `applied`, and that is already here — so a screen that is paused and one that is running
+   * are two different screens to the person in front of them, and the button says different
+   * words. A model that did not carry them would leave `expectedSnapshot` unable to say what
+   * the pause button reads, which is the same as saying the browser evidence cannot check
+   * the controls at all.
+   */
+  readonly controls: BattleControlsLine;
   /** `null` until the feed has reached the end of the battle. */
   readonly outcomeKey: string | null;
   readonly errorCode: string | null;
@@ -271,8 +300,28 @@ function requireNoBattle(model: BattleScreenContent): void {
   }
 }
 
+/**
+ * The controls as they read at rest — running, at the slower speed.
+ *
+ * Present on every state, the three with no fight included: a screen that dropped its
+ * buttons when it had nothing to play would be a different screen rather than the same one
+ * with nothing in it, and the player who arrived by a broken link would have nothing to
+ * recognise.
+ */
+export function controlsLine(paused: boolean, speed: number): BattleControlsLine {
+  return {
+    paused,
+    speed,
+    pauseKey: paused ? BattleControlKeys.Resume : BattleControlKeys.Pause,
+    speedKey: BattleControlKeys.Speed,
+    skipKey: BattleControlKeys.Skip,
+    replayKey: BattleControlKeys.Replay
+  };
+}
+
 const NOTHING_TO_WATCH = {
   titleKey: BATTLE_TITLE_KEY,
+  controls: controlsLine(false, 1),
   contractDefinition: null,
   contractDisplayNameKey: null,
   doctrineKey: null,
@@ -315,6 +364,10 @@ export function battleFailedScreen(errorCode: string, errorDetail: string): Batt
 export interface BattleView {
   /** How many of the record's events have been applied. */
   readonly applied: number;
+  /** Whether the feed is waiting for the player. Defaults to running. */
+  readonly paused?: boolean;
+  /** `1` or `2`. Defaults to the slower of the two. */
+  readonly speed?: number;
   /**
    * The battle to play, when it is not the one the campaign has already stored.
    *
@@ -360,6 +413,7 @@ export function battleScreenModel(
     // player to wait for a fight that is not coming.
     return createBattleScreenModel({
       ...NOTHING_TO_WATCH,
+      controls: controlsLine(view.paused ?? false, view.speed ?? 1),
       state: ScreenState.Empty,
       errorCode: null,
       errorDetail: null
@@ -383,6 +437,7 @@ export function battleScreenModel(
     intent: lastIntentOf(record, applied, names),
     journal: journalOf(record, applied, names),
     retreat: retreatOf(record, board.round, finished),
+    controls: controlsLine(view.paused ?? false, view.speed ?? 1),
     outcomeKey: finished ? battleOutcomeKey(record.outcome) : null,
     errorCode: null,
     errorDetail: null
@@ -619,6 +674,14 @@ export function describeBattleReadModel(model: BattleScreenModel): CanonicalValu
       amount: line.amount,
       round: line.round
     })),
+    controls: {
+      paused: validated.controls.paused,
+      speed: validated.controls.speed,
+      pause_key: validated.controls.pauseKey,
+      speed_key: validated.controls.speedKey,
+      skip_key: validated.controls.skipKey,
+      replay_key: validated.controls.replayKey
+    },
     retreat:
       validated.retreat === null
         ? null

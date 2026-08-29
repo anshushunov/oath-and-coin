@@ -104,7 +104,8 @@ body {
  */
 .contract-offer,
 .after-action,
-.contract-board {
+.contract-board,
+.battle {
   overflow: auto;
   min-height: 0;
   padding: 12px;
@@ -126,20 +127,23 @@ body {
  */
 .contract-offer > .label,
 .after-action > .label,
-.contract-board > .label {
+.contract-board > .label,
+.battle > .label {
   display: block;
 }
 
 .contract-offer > .label:first-child,
 .after-action > .label:first-child,
-.contract-board > .label:first-child {
+.contract-board > .label:first-child,
+.battle > .label:first-child {
   font-size: 20px;
   font-weight: 600;
 }
 
 .contract-offer > .label:nth-child(2),
 .after-action > .label:nth-child(2),
-.contract-board > .label:nth-child(2) {
+.contract-board > .label:nth-child(2),
+.battle > .label:nth-child(2) {
   color: var(--ink-dim);
 }
 
@@ -287,6 +291,110 @@ body {
   margin-top: 4px;
   padding-left: 8px;
   border-left: 2px solid var(--edge);
+}
+
+/*
+ * The battle screen's own sections (`COMBAT_SPEC` §10.2).
+ *
+ * The same block rule the debrief's sections have, and for the same reason one level down:
+ * a journal line is several `.label`s in a row, and eighty of them run together into one
+ * paragraph without it. The board is a grid of one row per man rather than a column of
+ * runs, and the buttons sit on one line because they are one group of controls.
+ */
+.board,
+.journal,
+.battle-feed,
+.formation {
+  margin: 12px 0;
+  padding: 8px 10px;
+  border-left: 3px solid var(--edge);
+}
+
+.unit,
+.journal-line,
+.battle-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
+/*
+ * The intent line, and the reason it is a flex row rather than a block like the sections
+ * beside it: its children are four `.label` spans and inline spans have no gap, so the
+ * frame read `НамерениеИльзаВыстрелСамый доступный выстрел` — four correct texts painted
+ * into one word, with both hashes green. The same defect `labels.tsx` records one level up,
+ * and found the same way: by looking.
+ */
+.intent {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 12px 0;
+  padding: 8px 10px;
+  border-left: 3px solid var(--edge);
+}
+
+.status {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.controls button {
+  padding: 4px 10px;
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.controls button:disabled {
+  color: var(--ink-dim);
+  cursor: default;
+}
+
+/*
+ * The formation board: nine cells as a 3×3 rather than a run of buttons, because the whole
+ * decision is *where* on a grid a man stands (`COMBAT_SPEC` §3.1, §4.1) and a row of nine
+ * buttons is not that grid.
+ */
+.formation-board {
+  display: grid;
+  grid-template-columns: repeat(3, 40px);
+  gap: 4px;
+  margin: 8px 0;
+}
+
+.formation-crew,
+.formation-doctrine {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.formation button {
+  padding: 4px 8px;
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.formation button[aria-pressed='true'] {
+  border-color: var(--ink);
 }
 
 /*

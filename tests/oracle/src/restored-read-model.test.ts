@@ -134,7 +134,8 @@ describe('the screen a reloaded campaign draws', () => {
     // `screen_word_broken`); `screen_loading` and `screen_error` reach no state, leaving
     // 43 that run, at two seeds each.
     // 49 since the resolution engine's Task 9: four scenarios of `RESOLUTION_SPEC` §10.4.
-    expect(SCENARIOS).toHaveLength(49);
+    // 50 since the combat lab's segment E: `battle_ready`, the crew on the board.
+    expect(SCENARIOS).toHaveLength(50);
 
     let ranCount = 0;
     let blockedSeen = 0;
@@ -236,7 +237,11 @@ describe('the screen a reloaded campaign draws', () => {
     // `ranCount` and `scoredSeen` move with them — none gates a hero on a method tag,
     // and the two fork branches poll once each while the two crew-comparison scenarios
     // poll once each as well.
-    expect(ranCount).toBe(94);
+    // 96 since the combat lab's segment E: `battle_ready` at two seeds. The counters below
+    // move with it too — its poll asks the three invited heroes the key hero did not
+    // answer for, which is six scored decisions across two seeds and two polls holding
+    // more than one apiece.
+    expect(ranCount).toBe(96);
     expect(blockedSeen).toBe(16);
     // 180, not 234, since the resolution engine's Task 3: `pollCrew` asks the crew the
     // package invited rather than the whole remaining roster (`DEC-012` as amended,
@@ -246,7 +251,9 @@ describe('the screen a reloaded campaign draws', () => {
     // 204 since Task 9: the four §10.4 scenarios add twenty-four scored decisions across
     // two seeds — every hero each of them asks accepts, which is what a fixture roster
     // with no principles and no caution is for.
-    expect(scoredSeen).toBe(204);
+    // 212 since segment E: `battle_ready` invites four and its key hero answers first, so
+    // its poll scores three at each of two seeds, plus the key hero's own two.
+    expect(scoredSeen).toBe(212);
     // 20, not 26, for the same reason: three scenarios whose crew is now filled by the
     // invited heroes alone reach `pollCrew` with nobody left to ask, so the step is
     // refused and carries no decision to count.
@@ -257,7 +264,9 @@ describe('the screen a reloaded campaign draws', () => {
     // single decision apiece, which this shape does not count. Measured, not reasoned:
     // the per-step decision counts are [0,1,0,1,0], [0,1,0,1,0], [0,1,0,1,0,0,0,1,0,0]
     // and [0,1,0,1,0,0,0,1,0,2,0].
-    expect(polledStepsSeen).toBe(22);
+    // 24 since segment E: `battle_ready`'s poll holds three decisions at each of two seeds,
+    // which is a poll asking more than one hero and is exactly what this counter is about.
+    expect(polledStepsSeen).toBe(24);
   });
 
   it('builds a debrief for every contract that came back, on both sides of a reload', () => {

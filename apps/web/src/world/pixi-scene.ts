@@ -55,8 +55,15 @@ const TOKEN_WAITING = 0x3a3f4b;
 const CELL_FILL = 0x1a1d26;
 const TOKEN_CREW = 0x4a7fc8;
 const TOKEN_FOE = 0xc85a4a;
-const TOKEN_DOWNED = 0x2a2d36;
+/*
+ * A man who is out of the fight. Far enough from the cell's own fill to read as a token
+ * rather than as an empty cell — found by looking at the frame, where the first value
+ * (`0x2a2d36`) was within a shade of `CELL_FILL` and four downed men looked like four
+ * cells nobody had ever stood in.
+ */
+const TOKEN_DOWNED = 0x5a4a52;
 const HEALTH_FILL = 0x6fbf73;
+const HEALTH_EMPTY = 0x3a2a2a;
 const STATUS_MARK = 0xd8c26a;
 
 /**
@@ -174,6 +181,15 @@ function draw(shape: SceneShape): Container {
     .fill(fillFor(shape))
     .stroke({ color: OUTLINE, width: OUTLINE_WIDTH });
 
+  // A health bar is the one shape whose *width* is the fact it carries. Drawn full above
+  // like every other rectangle — that is the box — and then filled to the share that is
+  // left. Without this second rectangle a man with nothing left reads as a man at full
+  // health, which is what the frame of the finished battle showed: four downed foes with
+  // four full green bars under them, every hash green, because a canvas has no texts.
+  if (shape.kind === 'battle-health') {
+    graphics.rect(shape.x, shape.y, shape.width * shape.filled, shape.height).fill(HEALTH_FILL);
+  }
+
   return graphics;
 }
 
@@ -227,7 +243,8 @@ function fillFor(shape: Exclude<SceneShape, BattlePopup>): number {
 
       return shape.side === 'crew' ? TOKEN_CREW : TOKEN_FOE;
     case 'battle-health':
-      return HEALTH_FILL;
+      // The empty part of the bar. What is left is drawn over it in `draw`.
+      return HEALTH_EMPTY;
     case 'battle-status-mark':
       return STATUS_MARK;
   }

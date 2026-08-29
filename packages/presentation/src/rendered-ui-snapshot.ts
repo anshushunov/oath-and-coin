@@ -148,6 +148,8 @@ function battleSnapshot(
     resolve(BattleFieldKeys.Board);
 
     for (const unit of model.units) {
+      resolve(unit.side === 'crew' ? BattleFieldKeys.Crew : BattleFieldKeys.Foes);
+
       if (unit.displayNameKey !== null) {
         resolve(unit.displayNameKey);
       }
@@ -206,6 +208,14 @@ function battleSnapshot(
       }
     }
   }
+
+  // Always, and in the order the screen draws them: a control that vanished would leave a
+  // player with no way to learn it existed, which is the same argument the offer screen's
+  // dark buttons make.
+  resolve(model.controls.pauseKey);
+  resolve(model.controls.speedKey);
+  resolve(model.controls.skipKey);
+  resolve(model.controls.replayKey);
 
   if (model.retreat !== null) {
     resolve(model.retreat.labelKey);
