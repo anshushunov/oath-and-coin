@@ -19,7 +19,7 @@
     "schema:check": "node scripts/check-schemas.mjs",
     "bench:decision": "node scripts/benchmark-decision.mjs",
     "test": "vitest run",
-    "test:scenario": "vitest run tests/oracle tools/scenario-runner",
+    "test:scenario": "vitest run tests/oracle tools/scenario-runner tools/battle-runner",
     "test:e2e": "playwright test",
     "test:desktop": "playwright test --config playwright.desktop.config.ts",
     "build": "node scripts/build-workspace.mjs",
