@@ -45,7 +45,20 @@ import { describeScene, type SceneDescription } from './scene-model.ts';
  * command that moved the campaign. `PixiScene.apply` had existed for exactly this since
  * the scene was written and nothing outside `mountPixiScene` ever called it.
  */
-export function WorldCanvas({ model }: { readonly model: ScreenModel }) {
+export function WorldCanvas({
+  model,
+  phase = 0
+}: {
+  readonly model: ScreenModel;
+  /**
+   * How far into the current event's own life this frame is, 0 to 1.
+   *
+   * The whole of what the feed's second input reaches (`COMBAT_SPEC` §10.2 п.1): `apply`
+   * changes the model, `advance` changes this. Nought — the default — is the instant the
+   * event landed, which is the only frame a caller with no clock can name.
+   */
+  readonly phase?: number;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chainRef = useRef<Promise<void>>(Promise.resolve());
   const sceneRef = useRef<PixiScene | null>(null);
@@ -53,7 +66,7 @@ export function WorldCanvas({ model }: { readonly model: ScreenModel }) {
   // from "not drawn yet". Compared by identity, which is exactly what `useMemo` gives it:
   // one description per model, and one model per store update.
   const drawnRef = useRef<SceneDescription | null>(null);
-  const description = useMemo(() => describeScene(model), [model]);
+  const description = useMemo(() => describeScene(model, phase), [model, phase]);
 
   useEffect(() => {
     const canvas = canvasRef.current;

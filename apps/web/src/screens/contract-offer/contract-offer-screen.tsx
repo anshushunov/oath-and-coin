@@ -74,10 +74,20 @@ import { Captioned, KeyList, Label } from '../labels.tsx';
  */
 export function ContractOfferScreen({
   model,
-  controller
+  controller,
+  onBattle
 }: {
   readonly model: ContractOfferScreenModel;
   readonly controller: OfferScreenActions;
+  /**
+   * Whether sending this crew starts a fight the player watches before it is committed
+   * (`COMBAT_SPEC` §6.3), answered by the host.
+   *
+   * Here rather than on the read model, because the model carries no plan and giving it one
+   * so that a button could branch would put the enemy pattern on the negotiation screen —
+   * which is a thing the player is not told before he sends anybody.
+   */
+  readonly onBattle?: (contractId: ContentId) => boolean;
 }) {
   const text = useText();
   const [form, setForm] = useState(() => formFor(model));
@@ -188,7 +198,10 @@ export function ContractOfferScreen({
         canCompose={isSendable(form.draft, model)}
         rejectionKey={form.rejectionKey}
         onPress={(action) => {
-          setForm({ ...form, rejectionKey: press(controller, action, form.draft, model) });
+          setForm({
+            ...form,
+            rejectionKey: press(controller, action, form.draft, model, onBattle)
+          });
         }}
       />
     </section>
@@ -314,7 +327,8 @@ function press(
   controller: OfferScreenActions,
   action: OfferAction,
   draft: OfferForm,
-  model: ContractOfferScreenModel
+  model: ContractOfferScreenModel,
+  onBattle?: (contractId: ContentId) => boolean
 ): string | null {
   const contractId = model.contract?.definition;
 
@@ -345,6 +359,16 @@ function press(
     case OfferAction.Poll:
       return refusalOf(controller.pollCrew({ contractId }));
     case OfferAction.Resolve:
+      // A contract that goes to a fight is not resolved by pressing this: the fight is
+      // watched first, and the outcome is committed at the end of it with whatever the
+      // player decided about withdrawing (`COMBAT_SPEC` §6.3). `onBattle` answers whether
+      // this is such a contract, and it is the host's question rather than the screen's —
+      // the read model carries no plan, and giving it one so that a button could branch
+      // would put the enemy pattern on the negotiation screen.
+      if (onBattle?.(contractId) === true) {
+        return null;
+      }
+
       return refusalOf(controller.resolveContract({ retreatAtRound: null, contractId }));
     case OfferAction.Settle:
       controller.show(ScreenKind.AfterAction);

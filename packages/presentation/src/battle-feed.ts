@@ -57,6 +57,15 @@ export interface FeedStep {
   /** Hand this many milliseconds to the scene's `advance`. */
   readonly advance: number;
   /**
+   * How far into the *next* event's own duration the feed now is, from 0 to 1.
+   *
+   * The form the scene actually wants. `advance` is milliseconds and says how much time has
+   * passed; this says how far through the current effect that time has taken us, which is
+   * what an animation is a function of. Computed here rather than in the host because it is
+   * arithmetic over the durations, and the durations are this module's.
+   */
+  readonly share: number;
+  /**
    * The scene must be torn back down to the battle's opening position before applying
    * anything. Only a replay sets it: a skip goes *forward* through the same battle.
    */
@@ -144,7 +153,7 @@ export function tickFeed(
   elapsed: number
 ): FeedStep {
   if (feed.paused) {
-    return { feed, apply: [], advance: 0, rewound: false };
+    return { feed, apply: [], advance: 0, share: shareOf(feed, events), rewound: false };
   }
 
   let applied = feed.applied;
@@ -172,12 +181,28 @@ export function tickFeed(
     phase -= owed;
   }
 
+  const moved: BattleFeed = { ...feed, applied, phase };
+
   return {
-    feed: { ...feed, applied, phase },
+    feed: moved,
     apply,
     advance: elapsed * feed.speed,
+    share: shareOf(moved, events),
     rewound: false
   };
+}
+
+/** How far through the event it is on the feed is. `1` once there is nothing left to be on. */
+function shareOf(feed: BattleFeed, events: readonly BattleEvent[]): number {
+  const next = events[feed.applied];
+
+  if (next === undefined) {
+    return 1;
+  }
+
+  const owed = durationOf(next);
+
+  return owed <= 0 ? 1 : Math.min(1, feed.phase / owed);
 }
 
 /**
@@ -203,6 +228,10 @@ export function skipFeed(feed: BattleFeed, events: readonly BattleEvent[]): Feed
     feed: { ...feed, applied: events.length, phase: 0 },
     apply: events.slice(feed.applied),
     advance: SKIP_ADVANCE,
+    // Every effect is over, which is what `SKIP_ADVANCE` is for: a skip that left an
+    // animation half-drawn is the spike's own finding, and the share is the half of it the
+    // scene reads.
+    share: 1,
     rewound: false
   };
 }
@@ -221,6 +250,7 @@ export function replayFeed(feed: BattleFeed): FeedStep {
     feed: { applied: 0, phase: 0, paused: feed.paused, speed: feed.speed },
     apply: [],
     advance: 0,
+    share: 0,
     rewound: true
   };
 }

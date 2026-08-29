@@ -2,6 +2,8 @@ import { canonicalSha256, type CanonicalValue } from '@oath-and-coin/simulation'
 
 import { describeAfterActionReadModel } from './after-action-screen-model.ts';
 import type { AfterActionScreenModel } from './after-action-screen-model.ts';
+import { describeBattleReadModel } from './battle-screen-model.ts';
+import type { BattleScreenModel } from './battle-screen-model.ts';
 import { describeContractBoardReadModel } from './contract-board-screen-model.ts';
 import type { ContractBoardScreenModel } from './contract-board-screen-model.ts';
 import { describeContractOfferReadModel } from './contract-offer-screen-model-factory.ts';
@@ -10,7 +12,7 @@ import { requireCorpusComparableText } from './corpus-comparable-text.ts';
 import { ScreenKind } from './screen-kind.ts';
 
 /**
- * The three screens a campaign has, as one discriminated union.
+ * The four screens a campaign has, as one discriminated union.
  *
  * **Why a union rather than three parallel types.** A session shows one screen at a time
  * and everything downstream — the hash, the rendered snapshot, the scene behind the page,
@@ -24,7 +26,7 @@ import { ScreenKind } from './screen-kind.ts';
  * cannot claim to be another one, and a spread cannot lose the field that says which it is.
  */
 export type ScreenModel =
-  ContractOfferScreenModel | AfterActionScreenModel | ContractBoardScreenModel;
+  ContractOfferScreenModel | AfterActionScreenModel | ContractBoardScreenModel | BattleScreenModel;
 
 /**
  * The canonical projection the read-model hash is taken over, for whichever screen this is.
@@ -68,6 +70,8 @@ function describeScreen(model: ScreenModel): CanonicalValue {
       return describeAfterActionReadModel(model);
     case ScreenKind.ContractBoard:
       return describeContractBoardReadModel(model);
+    case ScreenKind.Battle:
+      return describeBattleReadModel(model);
   }
 }
 

@@ -1,5 +1,5 @@
 /**
- * Which of the campaign's three screens a read model is.
+ * Which of the campaign's four screens a read model is.
  *
  * **A discriminant, not a label.** It is the field every reader of {@link
  * import('./screen-model.ts').ScreenModel} narrows on, which is what makes the compiler
@@ -23,10 +23,12 @@ export const ScreenKind = Object.freeze({
   /** The debrief: what the run cost, and the promise still to be answered. */
   AfterAction: 'after_action',
   /** The board: every contract of the campaign and how far each has got. */
-  ContractBoard: 'contract_board'
+  ContractBoard: 'contract_board',
+  /** The fight: a position in a battle the resolver already ran to the end. */
+  Battle: 'battle'
 });
 
 export type ScreenKind = (typeof ScreenKind)[keyof typeof ScreenKind];
 
-/** The three, in the order above. */
+/** The four, in the order above. */
 export const SCREEN_KINDS: readonly ScreenKind[] = Object.freeze(Object.values(ScreenKind));

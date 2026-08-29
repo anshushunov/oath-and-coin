@@ -1,30 +1,8 @@
-import {
-  CombatRole,
-  CommitmentState,
-  ContractStatus,
-  DoctrineId,
-  NeedId,
-  OfferPhase,
-  SortedMap,
-  SortedSet,
-  compareContentIds,
-  compareHeroIds,
-  compareNeedIds,
-  createContractState,
-  heroId,
-  placeCrew,
-  resolveContract,
-  type BattleObjective,
-  type Cell,
-  type ContractBattlePlan,
-  type GameState,
-  type HeroId
-} from '@oath-and-coin/simulation';
 import { describe, expect, it } from 'vitest';
 
 import { afterActionScreenModel } from './after-action-screen-model.ts';
 import { readModelHash } from './screen-model.ts';
-import { aContract, aHero, anOffer, aState } from './testing/fixtures.ts';
+import { fought } from './testing/fought.ts';
 
 /**
  * `ADR-016` §Проверка, third bullet, as a compiling test rather than as a promise:
@@ -43,102 +21,6 @@ import { aContract, aHero, anOffer, aState } from './testing/fixtures.ts';
  * built by a fixture would prove that the factory reads a shape somebody typed; what has to
  * be true is that it reads the shape the engine produces.
  */
-
-const KEY: HeroId = heroId(0);
-const SECOND: HeroId = heroId(1);
-
-const SOLID = { might: 80, guard: 70, aim: 80, focus: 60, care: 50 };
-const THIN = { might: 20, guard: 10, aim: 20, focus: 20, care: 0 };
-
-function plan(): ContractBattlePlan {
-  return {
-    objectives: SortedMap.from<NeedId, BattleObjective>(compareNeedIds, [
-      [NeedId.Frontline, { kind: 'subdue', targets: ['foe:a'] }],
-      [NeedId.Wilderness, { kind: 'hold', rounds: 3 }]
-    ]),
-    foes: [
-      { id: 'foe:a', role: CombatRole.Vanguard, cell: { row: 1, column: 1 }, combat: THIN },
-      { id: 'foe:b', role: CombatRole.Vanguard, cell: { row: 1, column: 3 }, combat: THIN }
-    ],
-    wards: []
-  };
-}
-
-/** A locked, crewed, battle-bound campaign — one command away from a fight. */
-function campaign(): GameState {
-  const crew = SortedSet.from(compareHeroIds, [KEY, SECOND]);
-
-  const contract = createContractState(
-    aContract({
-      requiredCrew: 2,
-      risk: 0,
-      needs: SortedMap.from<NeedId, number>(compareNeedIds, [
-        [NeedId.Frontline, 40],
-        [NeedId.Wilderness, 30]
-      ]),
-      battle: plan(),
-      status: ContractStatus.Crewed,
-      offer: anOffer({
-        keyHero: KEY,
-        phase: OfferPhase.Locked,
-        invited: crew,
-        respondedBy: crew,
-        acceptedBy: crew,
-        commitments: SortedMap.from(compareHeroIds, [
-          [KEY, CommitmentState.Committed],
-          [SECOND, CommitmentState.Committed]
-        ])
-      })
-    })
-  );
-
-  return aState({
-    heroes: SortedMap.from(compareHeroIds, [
-      [KEY, aHero({ id: KEY, role: CombatRole.Vanguard, combat: SOLID })],
-      [SECOND, aHero({ id: SECOND, role: CombatRole.Rear, combat: SOLID })]
-    ]),
-    contracts: SortedMap.from(compareContentIds, [[contract.id, contract]])
-  });
-}
-
-const at = (row: 1 | 2 | 3, column: 1 | 2 | 3): Cell => ({ row, column });
-
-function fought(): {
-  readonly state: GameState;
-  readonly contractId: ReturnType<typeof aContract>['id'];
-} {
-  const start = campaign();
-  const contractId = aContract().id;
-
-  const placed = placeCrew(start, {
-    commandId: 1,
-    contractId,
-    expectedStateVersion: start.metadata.stateVersion,
-    placement: [
-      { hero: KEY, cell: at(1, 1) },
-      { hero: SECOND, cell: at(3, 2) }
-    ],
-    doctrine: DoctrineId.HoldTheLine,
-    retreatBelowPercent: 0
-  });
-
-  if (placed.rejectionCode !== null) {
-    throw new Error(`placeCrew was refused: ${placed.rejectionCode}`);
-  }
-
-  const resolved = resolveContract(placed.state, {
-    commandId: 2,
-    contractId,
-    expectedStateVersion: placed.state.metadata.stateVersion,
-    retreatAtRound: null
-  });
-
-  if (resolved.rejectionCode !== null) {
-    throw new Error(`resolveContract was refused: ${resolved.rejectionCode}`);
-  }
-
-  return { state: resolved.state, contractId };
-}
 
 describe('a resolution a battle produced, read by the debrief screen’s own factory', () => {
   it('is read by the same factory, without a second reading for battles', () => {

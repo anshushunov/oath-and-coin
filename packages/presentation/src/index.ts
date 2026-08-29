@@ -30,6 +30,26 @@ export { CONTRACT_AVAILABILITIES, ContractAvailability } from './contract-availa
 export {
   ACTION_KEYS,
   AFTER_ACTION_FIELD_KEYS,
+  BATTLE_CONTROL_KEYS,
+  BATTLE_EVENT_KEYS,
+  BATTLE_FIELD_KEYS,
+  BATTLE_OUTCOME_KEYS,
+  BATTLE_STATE_KEYS,
+  BATTLE_STATUS_KEYS,
+  BATTLE_TITLE_KEY,
+  BattleControlKeys,
+  BattleEventKeys,
+  BattleFieldKeys,
+  COMBAT_ACTION_KEYS,
+  COMBAT_ROLE_KEYS,
+  DOCTRINE_KEYS,
+  battleOutcomeKey,
+  battleStateKey,
+  battleStatusKey,
+  battleStatusMarkKey,
+  combatActionKey,
+  combatRoleKey,
+  doctrineKey,
   AFTER_ACTION_STATE_KEYS,
   AFTER_ACTION_TITLE_KEY,
   COMMITMENT_STATE_KEYS,
@@ -117,7 +137,7 @@ export {
  * the whole of what that needs: nothing runtime crosses, and no component ever *builds* an
  * id, it only carries one the model handed it.
  */
-export type { ContentId } from '@oath-and-coin/simulation';
+export type { BattleRecord, ContentId } from '@oath-and-coin/simulation';
 
 /**
  * The refusal vocabulary {@link AvailableAction.disabledReasonKey} is drawn from,
@@ -193,6 +213,42 @@ export {
   type AfterActionScreenModel,
   type AfterActionSettlementLine
 } from './after-action-screen-model.ts';
+
+export {
+  BATTLE_LOADING_SCREEN,
+  battleFailedScreen,
+  battleScreenModel,
+  createBattleScreenModel,
+  describeBattleReadModel,
+  type BattleIntentLine,
+  type BattleJournalLine,
+  type BattleRetreatLine,
+  type BattleScreenContent,
+  type BattleScreenModel,
+  type BattleStatusLine,
+  type BattleUnitLine,
+  type BattleView
+} from './battle-screen-model.ts';
+
+export {
+  FEED_SPEEDS,
+  FeedSpeed,
+  SKIP_ADVANCE,
+  durationOf,
+  replayFeed,
+  skipFeed,
+  startFeed,
+  tickFeed,
+  type BattleFeed,
+  type FeedStep
+} from './battle-feed.ts';
+
+export {
+  boardAfter,
+  type BattleBoard,
+  type BattleBoardStatus,
+  type BattleBoardUnit
+} from './battle-board.ts';
 
 export {
   CONTRACT_BOARD_LOADING_SCREEN,

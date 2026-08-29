@@ -327,6 +327,7 @@ export {
   composeOffer,
   lockOffer,
   placeCrew,
+  resolutionInputFor,
   pollCrew,
   proposeContractToHero,
   resolveContract,

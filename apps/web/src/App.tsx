@@ -13,6 +13,8 @@ import {
   ScreenLinkKeys,
   readModelHash,
   saveSlotsScreenModel,
+  type ContentId,
+  type BattleScreenModel,
   type SaveSlotsScreenModel,
   type ScreenModel
 } from '@oath-and-coin/presentation';
@@ -27,6 +29,8 @@ import {
 import { parseRunRequest, type RunRequest, type ScreenName } from './run-request.ts';
 import { chooseSaveStore } from './save/choose-store.ts';
 import { AfterActionScreen } from './screens/after-action/after-action-screen.tsx';
+import { BattlePlayback } from './screens/battle/battle-playback.tsx';
+import { BattleScreen } from './screens/battle/battle-screen.tsx';
 import { ContractBoardScreen } from './screens/board/contract-board-screen.tsx';
 import { ContractOfferScreen } from './screens/contract-offer/contract-offer-screen.tsx';
 import { SavesScreen } from './screens/saves/saves-screen.tsx';
@@ -83,6 +87,32 @@ export function App({ createController = browserSessionController }: AppProps = 
   const [controller] = useState(() => createController(run));
   const session = useSyncExternalStore(controller.store.subscribe, controller.store.snapshot);
   const [screen, setScreen] = useState<ScreenName>(run.screen);
+  /**
+   * The contract whose battle the player is watching right now, or `null`.
+   *
+   * Its own state and deliberately not on the session: nothing about the campaign has
+   * happened yet. The fight is run by the resolver, watched, and only then committed
+   * (`COMBAT_SPEC` §6.3) — so "am I watching" is a fact about this moment in front of this
+   * person, and the campaign is exactly where it was when the crew was sent.
+   */
+  const [watching, setWatching] = useState<ContentId | null>(null);
+
+  /**
+   * Answers the offer screen's "does sending this crew start a fight I watch first".
+   *
+   * `previewBattle` is both the question and the answer: a contract with a plan and a
+   * placed crew produces a record, and a contract without one produces `null` and is sent
+   * the way every contract was sent before there were battles.
+   */
+  const watch = (contractId: ContentId): boolean => {
+    if (controller.previewBattle(contractId, null) === null) {
+      return false;
+    }
+
+    setWatching(contractId);
+
+    return true;
+  };
   const slots = useSaveSlots(controller, screen === 'saves');
 
   useEffect(() => {
@@ -119,8 +149,24 @@ export function App({ createController = browserSessionController }: AppProps = 
               );
             }}
           />
+        ) : watching === null ? (
+          <CampaignScreen model={session.screen} controller={controller} onBattle={watch} />
         ) : (
-          <CampaignScreen model={session.screen} controller={controller} />
+          /*
+            The fight, before the campaign has it (`COMBAT_SPEC` §6.3). It is here rather
+            than in `CampaignScreen` because it is not a screen the campaign is *on*: the
+            outcome has not been committed, and it is committed at the end of the playback
+            with whatever the player decided about withdrawing. That is the only arrangement
+            in which the retreat button can do anything at all.
+          */
+          <BattlePlayback
+            contractId={watching}
+            port={controller}
+            onFinished={(retreatAtRound) => {
+              controller.resolveContract({ contractId: watching, retreatAtRound });
+              setWatching(null);
+            }}
+          />
         )}
       </TextSource>
 
@@ -165,20 +211,61 @@ export function App({ createController = browserSessionController }: AppProps = 
  */
 function CampaignScreen({
   model,
-  controller
+  controller,
+  onBattle
 }: {
   readonly model: ScreenModel;
   readonly controller: SessionController;
+  readonly onBattle: (contractId: ContentId) => boolean;
 }) {
   switch (model.screen) {
     case ScreenKind.ContractOffer:
-      return <ContractOfferScreen model={model} controller={controller} />;
+      return <ContractOfferScreen model={model} controller={controller} onBattle={onBattle} />;
     case ScreenKind.AfterAction:
       return <AfterActionScreen model={model} controller={controller} />;
     case ScreenKind.ContractBoard:
       return <ContractBoardScreen model={model} controller={controller} />;
+    case ScreenKind.Battle:
+      // The replay: by the time the campaign is *on* this screen the record is stored, so
+      // there is nothing left to decide and nothing to commit. The controls still work —
+      // pause, both speeds, skip, replay — and the retreat button is the one that does not,
+      // which the model already says by handing it no round to signal for.
+      return <StoredBattle model={model} controller={controller} />;
   }
 }
+
+/** The battle a resolved contract already carries, played back with no decision attached. */
+function StoredBattle({
+  model,
+  controller
+}: {
+  readonly model: BattleScreenModel;
+  readonly controller: SessionController;
+}) {
+  if (model.contractDefinition === null) {
+    return <BattleScreen model={model} controls={INERT_CONTROLS} />;
+  }
+
+  return <BattlePlayback contractId={model.contractDefinition} port={controller} />;
+}
+
+/**
+ * The controls of a battle screen with no battle behind it — the three states that carry
+ * none (§10.2's `Loading`, `Empty` and `Error`).
+ *
+ * Present rather than absent so those three draw the same frame as the other two with the
+ * buttons dead, which is what a player who arrived by a broken link should see: the screen he
+ * expected, saying it has nothing.
+ */
+const INERT_CONTROLS = {
+  paused: false,
+  speed: 1,
+  togglePause: () => undefined,
+  toggleSpeed: () => undefined,
+  skip: () => undefined,
+  replay: () => undefined,
+  retreat: () => undefined
+};
 
 export interface AppProps {
   /**

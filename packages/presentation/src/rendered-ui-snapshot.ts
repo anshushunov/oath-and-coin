@@ -9,7 +9,9 @@ import {
   SettlementFieldKeys,
   TreasuryFieldKeys,
   actionKey,
+  BattleFieldKeys,
   afterActionStateKey,
+  battleStateKey,
   contractAvailabilityKey,
   contractBoardStateKey,
   errorKey,
@@ -20,6 +22,7 @@ import {
   waveredKey
 } from './keys.ts';
 import { createAfterActionScreenModel } from './after-action-screen-model.ts';
+import { createBattleScreenModel } from './battle-screen-model.ts';
 import { createContractBoardScreenModel } from './contract-board-screen-model.ts';
 import {
   createContractOfferScreenModel,
@@ -30,6 +33,7 @@ import {
   type SettlementLine
 } from './contract-offer-screen-model.ts';
 import type { AfterActionScreenModel } from './after-action-screen-model.ts';
+import type { BattleScreenModel } from './battle-screen-model.ts';
 import type { ContractBoardScreenModel } from './contract-board-screen-model.ts';
 import { ScreenKind } from './screen-kind.ts';
 import type { ScreenModel } from './screen-model.ts';
@@ -95,7 +99,125 @@ export function expectedSnapshot(
       return afterActionSnapshot(model, catalogue);
     case ScreenKind.ContractBoard:
       return contractBoardSnapshot(model, catalogue);
+    case ScreenKind.Battle:
+      return battleSnapshot(model, catalogue);
   }
+}
+
+/**
+ * What a correctly bound battle screen puts on the page (`COMBAT_SPEC` §10.2).
+ *
+ * **The journal is in and the board is not.** A token's position is a picture and this list
+ * is a list of *texts*; what a screen owes a player who cannot read the picture is the
+ * journal, the intent line and every status by name — which is §10.2 п.5 and `GDD` §16.6, and
+ * is exactly what a snapshot can hold a screen to. Health is a number beside a caption for
+ * the same reason `DEC-014`'s two numbers are: "17" with nothing naming it is a figure a
+ * player cannot read.
+ */
+function battleSnapshot(
+  model: BattleScreenModel,
+  catalogue: ReadonlyMap<string, string>
+): readonly string[] {
+  createBattleScreenModel(model);
+
+  const texts: string[] = [];
+  const resolve = (key: string): void => {
+    texts.push(resolveText(catalogue, key));
+  };
+
+  resolve(model.titleKey);
+  resolve(battleStateKey(model.state));
+
+  if (model.errorCode !== null) {
+    resolve(errorKey(model.errorCode));
+  }
+
+  if (model.contractDisplayNameKey !== null) {
+    resolve(model.contractDisplayNameKey);
+  }
+
+  if (model.doctrineKey !== null) {
+    resolve(BattleFieldKeys.Doctrine);
+    resolve(model.doctrineKey);
+  }
+
+  if (model.units.length > 0) {
+    resolve(BattleFieldKeys.Round);
+    texts.push(String(model.round));
+
+    resolve(BattleFieldKeys.Board);
+
+    for (const unit of model.units) {
+      if (unit.displayNameKey !== null) {
+        resolve(unit.displayNameKey);
+      }
+
+      resolve(unit.roleKey);
+      resolve(BattleFieldKeys.Health);
+      texts.push(String(unit.health));
+
+      if (unit.leftKey !== null) {
+        resolve(unit.leftKey);
+      }
+
+      for (const status of unit.statuses) {
+        resolve(status.key);
+        resolve(status.markKey);
+      }
+    }
+  }
+
+  if (model.intent !== null) {
+    resolve(BattleFieldKeys.Intent);
+
+    if (model.intent.displayNameKey !== null) {
+      resolve(model.intent.displayNameKey);
+    }
+
+    resolve(model.intent.actionKey);
+
+    if (model.intent.targetDisplayNameKey !== null) {
+      resolve(model.intent.targetDisplayNameKey);
+    }
+
+    resolve(model.intent.reasonKey);
+
+    if (model.intent.contraryToDoctrineKey !== null) {
+      resolve(model.intent.contraryToDoctrineKey);
+    }
+  }
+
+  if (model.journal.length > 0) {
+    resolve(BattleFieldKeys.Journal);
+
+    for (const line of model.journal) {
+      resolve(line.key);
+
+      if (line.displayNameKey !== null) {
+        resolve(line.displayNameKey);
+      }
+
+      if (line.detailKey !== null) {
+        resolve(line.detailKey);
+      }
+
+      if (line.amount !== null) {
+        texts.push(String(line.amount));
+      }
+    }
+  }
+
+  if (model.retreat !== null) {
+    resolve(model.retreat.labelKey);
+    resolve(model.retreat.costKey);
+  }
+
+  if (model.outcomeKey !== null) {
+    resolve(BattleFieldKeys.Outcome);
+    resolve(model.outcomeKey);
+  }
+
+  return texts;
 }
 
 function contractOfferSnapshot(

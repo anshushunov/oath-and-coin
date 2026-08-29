@@ -4,6 +4,8 @@ import {
   type ScreenModel
 } from '@oath-and-coin/presentation';
 
+import { describeBattleScene, type BattleShape } from './battle-scene-model.ts';
+
 /**
  * The schematic world behind the contract-offer screen, described as data.
  *
@@ -107,7 +109,7 @@ export interface HeroToken extends SceneShapeBase {
   readonly answered: boolean;
 }
 
-export type SceneShape = ContractMarker | HeroToken;
+export type SceneShape = ContractMarker | HeroToken | BattleShape;
 
 /** Everything the renderer needs to draw the scene, and nothing it has to work out. */
 export interface SceneDescription {
@@ -123,7 +125,7 @@ export interface SceneDescription {
  * Total and deterministic: the same model gives the same description, down to the
  * numbers, which is what lets the description be compared rather than looked at.
  */
-export function describeScene(model: ScreenModel): SceneDescription {
+export function describeScene(model: ScreenModel, phase = 0): SceneDescription {
   // **What the debrief and the board draw is `DEC-015`, the owner's decision of
   // 2026-08-28, not a choice made here.** The scene is a line-up — a marker for the
   // contract on offer and a token per hero in the crew — and neither of those two models
@@ -145,6 +147,11 @@ export function describeScene(model: ScreenModel): SceneDescription {
     case ScreenKind.AfterAction:
     case ScreenKind.ContractBoard:
       return EMPTY_SCENE;
+    case ScreenKind.Battle:
+      // The phase defaults to nought — the instant the event landed — so everything holding
+      // a `ScreenModel` and no clock (the evidence run, a snapshot, a test) gets a frame it
+      // can compare, and only the screen that is actually playing a battle passes one.
+      return describeBattleScene(model, phase);
   }
 }
 
