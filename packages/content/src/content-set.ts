@@ -1,12 +1,16 @@
 import type { ZodType } from 'zod';
 
 import {
+  EQUIPMENT_GRADE_NONE,
   SortedMap,
   compareContentIds,
   compareNeedIds,
+  gradeFrom,
   parseContentId,
+  type CombatRole,
   type ContentId,
   type HeroCapability,
+  type HeroCombatLayer,
   type NeedId
 } from '@oath-and-coin/simulation';
 
@@ -77,6 +81,17 @@ export interface HeroDefinition {
    * skill is not the same hero as one the need is no business of (§2.2).
    */
   readonly capability: HeroCapability;
+  /**
+   * What the hero is made of in a fight (`DEC-016` §1) — the five attributes the file
+   * states, carried through unchanged.
+   *
+   * This is where `capability.grade` now comes from: the file no longer states it, and
+   * {@link toHeroDefinition} computes it with `gradeFrom` so that a definition and the save
+   * that outlives it cannot disagree about how strong a hero is (`DEC-016` §3).
+   */
+  readonly combat: HeroCombatLayer;
+  /** Which of the four jobs he holds (`COMBAT_SPEC` §3.3). */
+  readonly role: CombatRole;
   readonly traits: readonly ContentId[];
   readonly relationships: readonly HeroRelationship[];
 }
@@ -202,9 +217,13 @@ function toHeroDefinition(file: HeroFile): HeroDefinition {
     pride: file.pride,
     trustInGuild: file.trust_in_guild,
     capability: {
-      grade: file.capability.grade,
+      // Derived, never read from the file — `DEC-016` §3 retired the authored constant, and
+      // `heroCapabilityFileSchema` refuses the key by name so a stale one cannot slip back.
+      grade: gradeFrom(file.combat, EQUIPMENT_GRADE_NONE),
       expertise: toNeedMap(file.capability.expertise)
     },
+    combat: file.combat,
+    role: file.role,
     traits: file.traits.map((trait) => parseContentId(trait)),
     relationships: file.relationships.map((relationship) => ({
       hero: parseContentId(relationship.hero),

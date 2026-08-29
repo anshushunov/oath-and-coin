@@ -1,5 +1,5 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "id": "fixture:scout",
   "display_name_key": "hero.fixture.scout.name",
   "greed": 100,
@@ -7,9 +7,18 @@
   "pride": 0,
   "trust_in_guild": 100,
   "capability": {
-    "grade": 60,
-    "expertise": { "wilderness": 90 }
+    "expertise": {
+      "wilderness": 90
+    }
   },
+  "combat": {
+    "might": 60,
+    "guard": 60,
+    "aim": 60,
+    "focus": 60,
+    "care": 60
+  },
+  "role": "vanguard",
   "traits": [],
   "relationships": []
 }

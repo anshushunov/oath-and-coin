@@ -59,21 +59,23 @@ import {
  */
 
 const BRAM = {
-  schema_version: 4,
+  schema_version: 5,
   id: 'core:bram',
   display_name_key: 'hero.core.bram.name',
   greed: 60,
   caution: 30,
   pride: 45,
   trust_in_guild: 50,
-  capability: { grade: 50, expertise: { frontline: 50, wilderness: 50 } },
+  capability: { expertise: { frontline: 50, wilderness: 50 } },
+  combat: { might: 50, guard: 50, aim: 50, focus: 50, care: 50 },
+  role: 'vanguard',
   traits: ['core:greedy'],
   relationships: []
 };
 
 /** Sorts before `core:escort`, and is deliberately never the contract anyone answers. */
 const ARCHIVE_RUN = {
-  schema_version: 4,
+  schema_version: 5,
   id: 'core:archive_run',
   display_name_key: 'contract.core.archive_run.name',
   patron_fee: 30,
@@ -84,7 +86,7 @@ const ARCHIVE_RUN = {
 };
 
 const ESCORT = {
-  schema_version: 4,
+  schema_version: 5,
   id: 'core:escort',
   display_name_key: 'contract.core.escort.name',
   patron_fee: 70,
@@ -95,7 +97,7 @@ const ESCORT = {
 };
 
 const GREEDY = {
-  schema_version: 4,
+  schema_version: 5,
   id: 'core:greedy',
   display_name_key: 'trait.core.greedy.name',
   kind: 'inclination',
@@ -132,7 +134,7 @@ const ZARA = { ...BRAM, id: 'core:zara', display_name_key: 'hero.core.zara.name'
  * produced" needs more than one decision to be a claim about a list.
  */
 const CRYPT = {
-  schema_version: 4,
+  schema_version: 5,
   id: 'core:cleanse_the_crypt',
   display_name_key: 'contract.core.cleanse_the_crypt.name',
   patron_fee: 70,

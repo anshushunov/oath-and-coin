@@ -1,5 +1,5 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "id": "fixture:plain_beta",
   "display_name_key": "contract.fixture.plain_beta.name",
   "patron_fee": 50,

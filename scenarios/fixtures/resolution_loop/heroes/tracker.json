@@ -1,5 +1,5 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "id": "fixture:tracker",
   "display_name_key": "hero.fixture.tracker.name",
   "greed": 100,
@@ -7,9 +7,18 @@
   "pride": 0,
   "trust_in_guild": 100,
   "capability": {
-    "grade": 40,
-    "expertise": { "wilderness": 90 }
+    "expertise": {
+      "wilderness": 90
+    }
   },
+  "combat": {
+    "might": 40,
+    "guard": 40,
+    "aim": 40,
+    "focus": 40,
+    "care": 40
+  },
+  "role": "vanguard",
   "traits": [],
   "relationships": []
 }

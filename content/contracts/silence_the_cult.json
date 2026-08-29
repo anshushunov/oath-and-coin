@@ -1,11 +1,21 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "id": "core:silence_the_cult",
   "display_name_key": "contract.core.silence_the_cult.name",
   "patron_fee": 55,
   "risk": 65,
   "required_crew": 3,
-  "needs": { "frontline": 25, "undead_knowledge": 30, "wilderness": 20 },
-  "tags": ["target:cult", "target:temple"],
-  "negotiable_tags": ["method:open", "method:deception"]
+  "needs": {
+    "frontline": 25,
+    "undead_knowledge": 30,
+    "wilderness": 20
+  },
+  "tags": [
+    "target:cult",
+    "target:temple"
+  ],
+  "negotiable_tags": [
+    "method:open",
+    "method:deception"
+  ]
 }

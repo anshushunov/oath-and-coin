@@ -64,6 +64,13 @@ const { CONTENT_ID_PATTERN } = await moduleAt(
 // three literals out — a schema has no other way to state an enum — and this is what
 // holds those spellings to the closed vocabulary `RESOLUTION_SPEC` §2.1 declares.
 const { NEED_IDS } = await moduleAt('packages', 'simulation', 'src', 'domain', 'need-id.ts');
+const { COMBAT_ROLES } = await moduleAt(
+  'packages',
+  'simulation',
+  'src',
+  'domain',
+  'combat-role.ts'
+);
 
 const failures = [];
 
@@ -134,14 +141,32 @@ const expectations = {
     // crew is. Comparing these to `heroScale` here would build exactly the coupling the
     // two constant pairs exist to prevent.
     'properties.capability.additionalProperties': false,
-    'properties.capability.required': ['grade', 'expertise'],
-    'properties.capability.properties.grade.minimum': bounds.CAPABILITY_GRADE_MIN,
-    'properties.capability.properties.grade.maximum': bounds.CAPABILITY_GRADE_MAX,
+    // `grade` is not in this list, and its absence is the check (`DEC-016` §3). The
+    // number is derived from `combat` below, so a schema still requiring it would admit
+    // a file stating a strength its own attributes do not produce — the second truth
+    // `DEC-013` §Проверка made it an obligation to remove.
+    'properties.capability.required': ['expertise'],
     'properties.capability.properties.expertise.propertyNames.enum': NEED_IDS,
     'properties.capability.properties.expertise.additionalProperties.minimum':
       bounds.CAPABILITY_EXPERTISE_MIN,
     'properties.capability.properties.expertise.additionalProperties.maximum':
       bounds.CAPABILITY_EXPERTISE_MAX,
+    // The combat layer against its *own* constants, for the reason capability is checked
+    // against its own: `BQ-013` requires that an edit aimed at a motivational scale cannot
+    // raise how hard a hero hits.
+    'properties.combat.additionalProperties': false,
+    'properties.combat.required': ['might', 'guard', 'aim', 'focus', 'care'],
+    'properties.combat.properties.might.minimum': bounds.COMBAT_ATTRIBUTE_MIN,
+    'properties.combat.properties.might.maximum': bounds.COMBAT_ATTRIBUTE_MAX,
+    'properties.combat.properties.guard.minimum': bounds.COMBAT_ATTRIBUTE_MIN,
+    'properties.combat.properties.guard.maximum': bounds.COMBAT_ATTRIBUTE_MAX,
+    'properties.combat.properties.aim.minimum': bounds.COMBAT_ATTRIBUTE_MIN,
+    'properties.combat.properties.aim.maximum': bounds.COMBAT_ATTRIBUTE_MAX,
+    'properties.combat.properties.focus.minimum': bounds.COMBAT_ATTRIBUTE_MIN,
+    'properties.combat.properties.focus.maximum': bounds.COMBAT_ATTRIBUTE_MAX,
+    'properties.combat.properties.care.minimum': bounds.COMBAT_ATTRIBUTE_MIN,
+    'properties.combat.properties.care.maximum': bounds.COMBAT_ATTRIBUTE_MAX,
+    'properties.role.enum': COMBAT_ROLES,
     'properties.traits.maxItems': limits.MAX_TRAITS_PER_HERO,
     'properties.traits.items.pattern': CONTENT_ID_PATTERN,
     'properties.relationships.maxItems': limits.MAX_RELATIONSHIPS_PER_HERO,

@@ -142,7 +142,7 @@ const content = loadContentSet(shippedContent);
  * (`content/contracts/collect_the_debt.json`) rather than by touching a tag or a hero.
  *
  * The contract-resolution engine's Task 2 moved it an eighth time, to
- * `cd159cbb2363d417`: every content file now declares `schema_version: 4`, every hero a
+ * `cd159cbb2363d417`: every content file now declares `schema_version: 5`, every hero a
  * `capability` and every contract its `needs` (`RESOLUTION_SPEC` §2.2, §2.3). **The key
  * count did not move, and that is the assertion, not a side note.** Needs and capability
  * are numbers, not text — a weight is authored, a need never is, because `NeedId` is a
@@ -158,8 +158,12 @@ const content = loadContentSet(shippedContent);
  * and exactly two**, which is what this pair of constants is for: a contract's name is
  * content's to author (`ADR-012`), and any *third* key arriving in the same change would be
  * interface text sneaking back into `content/` under cover of a content addition.
+ *
+ * The Combat Lab's first segment moved it a tenth time, to `c02e365478576dd7` (`DEC-016`):
+ * every hero file lost `capability.grade` and gained `combat` and `role`. The key count did
+ * not move — the change is fields of a hero, not a text.
  */
-const FROZEN_CONTENT_VERSION = '94470ae66b2a1061';
+const FROZEN_CONTENT_VERSION = 'c02e365478576dd7';
 const FROZEN_CONTENT_KEY_COUNT = 100;
 
 /** Every key the presentation layer can produce for the shipped content tree. */

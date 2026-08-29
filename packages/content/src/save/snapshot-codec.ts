@@ -23,10 +23,13 @@ import {
   UINT64_MAX,
   compareContentIds,
   compareHeroIds,
+  COMBAT_ROLES,
+  EQUIPMENT_GRADE_NONE,
   compareNeedIds,
   compareNumbers,
   createContractState,
   freezeDeep,
+  gradeFrom,
   heroId,
   parseContentId,
   type CausalTrace,
@@ -48,8 +51,8 @@ import {
 import {
   CAPABILITY_EXPERTISE_MAX,
   CAPABILITY_EXPERTISE_MIN,
-  CAPABILITY_GRADE_MAX,
-  CAPABILITY_GRADE_MIN,
+  COMBAT_ATTRIBUTE_MAX,
+  COMBAT_ATTRIBUTE_MIN,
   INCLINATION_WEIGHT_MAX,
   INCLINATION_WEIGHT_MIN,
   NEED_WEIGHT_MAX,
@@ -217,10 +220,28 @@ const entries = <K extends z.ZodTypeAny, V extends z.ZodTypeAny>(key: K, value: 
 const needEntries = <V extends z.ZodTypeAny>(value: V) =>
   entries(z.enum(NEED_IDS), value).max(MAX_NEEDS_PER_CONTRACT);
 
-/** `HeroCapability` (`RESOLUTION_SPEC` §2.2) — the bounds `bounds.ts` states, restated. */
+/**
+ * `HeroCapability` (`RESOLUTION_SPEC` §2.2) — the bounds `bounds.ts` states, restated.
+ *
+ * **`grade` is not persisted** (`DEC-016` §3). It is derived from `combat`, and a save that
+ * also stored it would be a third truth about a hero's strength beside the content file and
+ * the derivation — with the save being exactly where the three first disagree, because a
+ * file written by yesterday's build outlives yesterday's attributes. `decodeSnapshot`
+ * recomputes it with the same `gradeFrom` the loader uses.
+ */
 const capabilityValueSchema = z.strictObject({
-  grade: z.int().min(CAPABILITY_GRADE_MIN).max(CAPABILITY_GRADE_MAX),
   expertise: needEntries(z.int().min(CAPABILITY_EXPERTISE_MIN).max(CAPABILITY_EXPERTISE_MAX))
+});
+
+const combatAttributeValue = z.int().min(COMBAT_ATTRIBUTE_MIN).max(COMBAT_ATTRIBUTE_MAX);
+
+/** `HeroCombatLayer` (`DEC-016` §1) — five attributes, all required. */
+const combatValueSchema = z.strictObject({
+  might: combatAttributeValue,
+  guard: combatAttributeValue,
+  aim: combatAttributeValue,
+  focus: combatAttributeValue,
+  care: combatAttributeValue
 });
 
 const relationshipsSchema = entries(
@@ -247,6 +268,8 @@ const heroValueSchema = z.strictObject({
   // `negotiableTags`, these arrive with a `SAVE_SCHEMA_VERSION` bump of their own, so
   // there is no save under this version that legitimately lacks them.
   capability: capabilityValueSchema,
+  combat: combatValueSchema,
+  role: z.enum(COMBAT_ROLES),
   // Bounded by `WOUNDS_CEILING` and not by a domain rule, because M1 has no domain
   // ceiling on wounds (`R-08`). What this bound is for is the same thing every other
   // ceiling in this file is for: a tampered save must not be able to claim a number the
@@ -761,11 +784,12 @@ export function encodeSnapshot(state: GameState): unknown {
         believesGuildPromises: value.believesGuildPromises,
         grievance: value.grievance,
         capability: {
-          grade: value.capability.grade,
           expertise: value.capability.expertise
             .entries()
             .map(([need, amount]) => ({ key: need, value: amount }))
         },
+        combat: value.combat,
+        role: value.role,
         wounds: value.wounds
       }
     })),
@@ -861,9 +885,13 @@ export function decodeSnapshot(value: unknown): GameState {
       // rather than trusted in file order, for the reason every other map here is:
       // enumeration order reaches the artifact, and a file's order is the writer's.
       capability: {
-        grade: raw.capability.grade,
+        // Recomputed, not read: the save carries `combat`, and `gradeFrom` is the one
+        // producer of this number (`DEC-016` §3).
+        grade: gradeFrom(raw.combat, EQUIPMENT_GRADE_NONE),
         expertise: buildNeedMap(raw.capability.expertise)
       },
+      combat: raw.combat,
+      role: raw.role,
       wounds: raw.wounds
     }),
     'heroes'

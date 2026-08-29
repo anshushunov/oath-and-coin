@@ -7,7 +7,7 @@
   "properties": {
     "schema_version": {
       "type": "number",
-      "const": 4
+      "const": 5
     },
     "id": {
       "type": "string",
@@ -41,11 +41,6 @@
     "capability": {
       "type": "object",
       "properties": {
-        "grade": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 100
-        },
         "expertise": {
           "type": "object",
           "propertyNames": {
@@ -64,10 +59,56 @@
         }
       },
       "required": [
-        "grade",
         "expertise"
       ],
       "additionalProperties": false
+    },
+    "combat": {
+      "type": "object",
+      "properties": {
+        "might": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "guard": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "aim": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "focus": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "care": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        }
+      },
+      "required": [
+        "might",
+        "guard",
+        "aim",
+        "focus",
+        "care"
+      ],
+      "additionalProperties": false
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "vanguard",
+        "support",
+        "rear",
+        "breaker"
+      ]
     },
     "traits": {
       "maxItems": 4,
@@ -110,6 +151,8 @@
     "pride",
     "trust_in_guild",
     "capability",
+    "combat",
+    "role",
     "traits",
     "relationships"
   ],

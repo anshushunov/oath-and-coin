@@ -1,11 +1,20 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "id": "core:escort_the_caravan",
   "display_name_key": "contract.core.escort_the_caravan.name",
   "patron_fee": 40,
   "risk": 50,
   "required_crew": 4,
-  "needs": { "frontline": 40, "wilderness": 42 },
-  "tags": ["patron:merchant_guild", "target:bandits"],
-  "negotiable_tags": ["method:open", "method:deception"]
+  "needs": {
+    "frontline": 40,
+    "wilderness": 42
+  },
+  "tags": [
+    "patron:merchant_guild",
+    "target:bandits"
+  ],
+  "negotiable_tags": [
+    "method:open",
+    "method:deception"
+  ]
 }

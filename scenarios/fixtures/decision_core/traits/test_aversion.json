@@ -1,5 +1,5 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "id": "fixture:test_aversion",
   "display_name_key": "trait.fixture.test_aversion.name",
   "kind": "inclination",

@@ -1,5 +1,5 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "id": "fixture:the_long_road",
   "display_name_key": "contract.fixture.the_long_road.name",
   "patron_fee": 100,

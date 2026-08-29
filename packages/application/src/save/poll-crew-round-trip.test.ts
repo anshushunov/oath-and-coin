@@ -32,46 +32,52 @@ import { buildSave, readSave } from './envelope.ts';
  */
 
 const KEY_HERO_FILE = {
-  schema_version: 4,
+  schema_version: 5,
   id: 'core:bram',
   display_name_key: 'hero.core.bram.name',
   greed: 60,
   caution: 0,
   pride: 0,
   trust_in_guild: 50,
-  capability: { grade: 50, expertise: { frontline: 50, wilderness: 50 } },
+  capability: { expertise: { frontline: 50, wilderness: 50 } },
+  combat: { might: 50, guard: 50, aim: 50, focus: 50, care: 50 },
+  role: 'vanguard',
   traits: [],
   relationships: []
 };
 
 const OTHER_HERO_FILE = {
-  schema_version: 4,
+  schema_version: 5,
   id: 'core:doran',
   display_name_key: 'hero.core.doran.name',
   greed: 60,
   caution: 0,
   pride: 0,
   trust_in_guild: 50,
-  capability: { grade: 50, expertise: { frontline: 50, wilderness: 50 } },
+  capability: { expertise: { frontline: 50, wilderness: 50 } },
+  combat: { might: 50, guard: 50, aim: 50, focus: 50, care: 50 },
+  role: 'vanguard',
   traits: [],
   relationships: []
 };
 
 const THIRD_HERO_FILE = {
-  schema_version: 4,
+  schema_version: 5,
   id: 'core:zara',
   display_name_key: 'hero.core.zara.name',
   greed: 60,
   caution: 0,
   pride: 0,
   trust_in_guild: 50,
-  capability: { grade: 50, expertise: { frontline: 50, wilderness: 50 } },
+  capability: { expertise: { frontline: 50, wilderness: 50 } },
+  combat: { might: 50, guard: 50, aim: 50, focus: 50, care: 50 },
+  role: 'vanguard',
   traits: [],
   relationships: []
 };
 
 const CONTRACT_FILE = {
-  schema_version: 4,
+  schema_version: 5,
   id: 'core:cleanse_the_crypt',
   display_name_key: 'contract.core.cleanse_the_crypt.name',
   patron_fee: 70,
@@ -86,7 +92,7 @@ const CONTRACT_FILE = {
 
 /** Unused by any hero here — `loadContentSet` still requires a `traits/` directory. */
 const UNUSED_TRAIT_FILE = {
-  schema_version: 4,
+  schema_version: 5,
   id: 'core:greedy',
   display_name_key: 'trait.core.greedy.name',
   kind: 'inclination',

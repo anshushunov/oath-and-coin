@@ -27,8 +27,20 @@
  * one rather than the same kind: a version 3 file is not a legal version 4 file at
  * all, and reading one would mean inventing a capability for a hero the author never
  * gave one — the guess a version field exists to refuse.
+ *
+ * Raised to 5 by Milestone 2's first segment ([`DEC-016`](../../../docs/decisions/DEC-016-hero-combat-layer.md)):
+ * a hero file now declares `combat` — the five attributes `GDD` §6.2 names — and `role`,
+ * both required, and **no longer declares `capability.grade` at all**. `grade` became a
+ * derivative of the combat layer and equipment, which `DEC-013` §Проверка made an
+ * obligation rather than an option: while the constant sat beside the attributes there were
+ * two independently editable truths about how strong a hero is, both schema-valid, and
+ * nothing caught them drifting apart.
+ *
+ * The move is of the strongest kind — a version 4 file is not a legal version 5 file and
+ * the reverse is also false, because `heroCapabilityFileSchema` is a `strictObject` and
+ * refuses the retired key by name.
  */
-export const SUPPORTED_CONTENT_SCHEMA_VERSION = 4;
+export const SUPPORTED_CONTENT_SCHEMA_VERSION = 5;
 
 /** The locale file format, versioned separately because it evolves separately. */
 export const SUPPORTED_LOCALE_SCHEMA_VERSION = 2;
@@ -83,5 +95,12 @@ export const SUPPORTED_LOCALE_SCHEMA_VERSION = 2;
  * build — and this is also the change that first *produces* such a history, because
  * `resolveContract` arrives with it. §2.8: the fields and the events of one change are
  * versioned together, and this is that change.
+ *
+ * **6, moved by Milestone 2's first segment (`DEC-016` §3).** `HeroState` gained `combat`
+ * and `role`, both required keys of a `strictObject`, and the codec stopped writing
+ * `capability.grade`: a number derived from `combat` and also stored beside it would be a
+ * third truth about a hero's strength, and the save is exactly where the three would first
+ * disagree — an old save loaded into a new build would carry a grade its own attributes no
+ * longer produce.
  */
-export const SAVE_SCHEMA_VERSION = 5;
+export const SAVE_SCHEMA_VERSION = 6;

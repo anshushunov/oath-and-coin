@@ -96,20 +96,22 @@ afterEach(() => {
 });
 
 const HERO = {
-  schema_version: 4,
+  schema_version: 5,
   id: 'core:bram',
   display_name_key: 'hero.core.bram.name',
   greed: 60,
   caution: 30,
   pride: 45,
   trust_in_guild: 50,
-  capability: { grade: 50, expertise: { frontline: 50, wilderness: 50 } },
+  capability: { expertise: { frontline: 50, wilderness: 50 } },
+  combat: { might: 50, guard: 50, aim: 50, focus: 50, care: 50 },
+  role: 'vanguard',
   traits: [] as unknown[],
   relationships: [] as unknown[]
 };
 
 const CONTRACT = {
-  schema_version: 4,
+  schema_version: 5,
   id: 'core:cleanse_the_crypt',
   display_name_key: 'contract.core.cleanse_the_crypt.name',
   patron_fee: 70,
@@ -120,7 +122,7 @@ const CONTRACT = {
 };
 
 const TRAIT = {
-  schema_version: 4,
+  schema_version: 5,
   id: 'core:hates_the_cult',
   display_name_key: 'trait.core.hates_the_cult.name',
   kind: 'inclination',
@@ -210,11 +212,14 @@ describe('loadContentSet over the shipped tree', () => {
     // a principle matching one of its three tags), fixed by
     // `required_crew: 2 → 1` (`content/contracts/collect_the_debt.json`) rather than by
     // touching the tags or any hero. The resolution engine's Task 2 moved it an eighth
-    // time, to `cd159cbb2363d417`, raising every file to `schema_version: 4` and
+    // time, to `cd159cbb2363d417`, raising every file to `schema_version: 5` and
     // authoring the two fields `RESOLUTION_SPEC` §2.2 and §2.3 add. The contract-loop UI
     // plan's task 9 moved it a ninth time, to `94470ae66b2a1061`, with the playtest's
     // second counterbalanced pair (`RESOLUTION_SPEC` §8).
-    expect(content.contentVersion).toBe('94470ae66b2a1061');
+    // The Combat Lab's first segment moved it a tenth time, to `c02e365478576dd7`
+    // (`DEC-016`): every hero file lost `capability.grade` and gained `combat` and `role`,
+    // and the content format went 4 → 5 with them.
+    expect(content.contentVersion).toBe('c02e365478576dd7');
   });
 
   it('keys heroes, contracts and traits in content-id order', () => {
@@ -251,7 +256,13 @@ describe('loadContentSet over the shipped tree', () => {
       caution: 30,
       pride: 45,
       trustInGuild: 50,
+      // `grade` is 65 because his five attributes average 65, not because a file says so
+      // (`DEC-016` §3). Written out here rather than as `expect.any(Number)` for the
+      // reason the record exists: this is the assertion that would redden if a hero's
+      // stated strength and his attributes ever parted company.
       capability: { grade: 65, expertise: expect.anything() },
+      combat: { might: 78, guard: 80, aim: 55, focus: 55, care: 57 },
+      role: 'vanguard',
       traits: ['core:will_not_strike_a_temple', 'core:hates_the_cult'],
       relationships: [{ hero: 'core:zara', weight: -8 }]
     });
@@ -418,7 +429,9 @@ describe('the two fields RESOLUTION_SPEC adds, through the loader rather than th
     // difference if the loader flattens it here. A `.filter(([, w]) => w !== 0)` in
     // `toNeedMap` passes every other test in this file.
     const root = treeWith({
-      heroes: [{ ...HERO, capability: { grade: 40, expertise: { frontline: 0 } } }]
+      heroes: [{ ...HERO, capability: { expertise: { frontline: 0 } },
+  combat: { might: 40, guard: 40, aim: 40, focus: 40, care: 40 },
+  role: 'vanguard' }]
     });
 
     const expertise = loadContentSet(root).heroes.get(parseContentId('core:bram'))!.capability
@@ -476,7 +489,7 @@ describe('loadContentSet over a tree built for this test', () => {
     const root = treeWith({
       contracts: [
         {
-          schema_version: 4,
+          schema_version: 5,
           id: 'core:cleanse_the_crypt',
           display_name_key: 'contract.core.cleanse_the_crypt.name',
           patron_fee: 55,

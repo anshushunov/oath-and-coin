@@ -87,7 +87,7 @@ function ran(scenario: string, seed = 7n): RanResult {
 }
 
 describe('the artifact says which shape it is', () => {
-  it('declares version 7 — bumped again for the sixth command and the events it raises', () => {
+  it('declares version 8 — bumped for the combat layer a hero now carries', () => {
     // The frozen corpus was recorded under 3; `ADR-013` retired byte parity with it as a
     // property this port owes, so a shape version disagreeing with a frozen recording is
     // not, on its own, a determinism failure. Five came with the resolution engine's Task
@@ -95,9 +95,9 @@ describe('the artifact says which shape it is', () => {
     // command's own `invited_indexes`); six with Task 7's `counted` on every contributor
     // (`RESOLUTION_SPEC` §4.3, `DEC-014`). See `ARTIFACT_VERSION`'s own comment for why
     // the second of those moved the number although no shipped scenario fills the branch.
-    expect(ARTIFACT_VERSION).toBe(7);
+    expect(ARTIFACT_VERSION).toBe(8);
     expect(JSON.parse(toCanonicalJson(ran('gate0').outcome))).toMatchObject({
-      artifact_version: 7,
+      artifact_version: 8,
       rng_algorithm: 'splitmix64-composed/1',
       ruleset_version: 'm1-resolution/3'
     });
