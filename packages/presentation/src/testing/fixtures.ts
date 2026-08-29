@@ -99,6 +99,7 @@ export function aHero(overrides: Partial<HeroState> = {}): HeroState {
     combat: AVERAGE_COMBAT,
     role: CombatRole.Vanguard,
     wounds: 0,
+    retreats: 0,
     traits: [],
     relationships: SortedMap.empty<ContentId, number>(compareContentIds),
     believesGuildPromises: true,
@@ -149,6 +150,7 @@ export function aContract(overrides: Partial<ContractState> = {}): ContractState
     ]),
     tags: SortedSet.from(compareContentIds, [ids.merchants]),
     status: ContractStatus.Offered,
+    battle: null,
     offer: anOffer(),
     moodOrdinals: SortedMap.empty<HeroId, bigint>(compareHeroIds),
     resolution: null,
@@ -358,7 +360,8 @@ export function aResolvedCampaign(options: {
     const result = resolveContract(state, {
       commandId: index + 1,
       contractId: contract.id,
-      expectedStateVersion: state.metadata.stateVersion
+      expectedStateVersion: state.metadata.stateVersion,
+      retreatAtRound: null
     });
 
     if (!result.applied) {

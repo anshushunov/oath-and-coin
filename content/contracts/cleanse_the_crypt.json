@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "id": "core:cleanse_the_crypt",
   "display_name_key": "contract.core.cleanse_the_crypt.name",
   "patron_fee": 70,

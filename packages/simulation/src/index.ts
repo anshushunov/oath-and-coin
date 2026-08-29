@@ -46,6 +46,13 @@ export {
   type HeroCombatLayer
 } from './domain/combat-attributes.ts';
 export { COMBAT_ROLES, CombatRole, compareCombatRoles } from './domain/combat-role.ts';
+export {
+  BATTLE_OBJECTIVE_KINDS,
+  BattleObjectiveKind,
+  type BattleObjective
+} from './domain/battle-objective.ts';
+export type { AuthoredCombatant, ContractBattlePlan } from './domain/contract-battle-plan.ts';
+export { RETREAT_THRESHOLD_MAX, type CrewDeployment } from './domain/crew-deployment.ts';
 export { EQUIPMENT_GRADE_NONE, gradeFrom } from './combat/grade.ts';
 
 // The combat core (`COMBAT_SPEC`). Exported as a whole because the battle resolver, the
@@ -58,6 +65,7 @@ export {
   OBSTRUCTION_STEP,
   ROWS,
   blockersBetween,
+  cellKey,
   effectPercent,
   isAdjacent,
   isColumnClearThrough,
@@ -116,13 +124,17 @@ export {
   type TargetReason
 } from './combat/targeting.ts';
 export {
+  BATTLE_OUTCOMES,
+  BLOCK_REASONS,
   BattleOutcome,
   BlockReasons,
   COMBAT_ACTIONS,
   CombatAction,
+  MOTIVE_REASONS,
   MotiveReasons,
   unitNamedBy,
   type BattleEvent,
+  type BattleEventKind,
   type BlockReason,
   type MotiveReason
 } from './combat/events.ts';
@@ -136,6 +148,7 @@ export {
   BOND_STRONG,
   HELP_THRESHOLD,
   availableActions,
+  bondedAllyInTrouble,
   decideCombatAction,
   friendInTrouble,
   type CombatDecision
@@ -146,7 +159,8 @@ export {
   runRound,
   startBattle,
   type BattleRecord,
-  type BattleState
+  type BattleState,
+  type RetreatOrder
 } from './combat/battle.ts';
 export {
   ConsequenceKind,
@@ -167,6 +181,12 @@ export {
   OutcomeReasonCodes,
   type OutcomeReasonCode
 } from './domain/outcome-reason-codes.ts';
+export {
+  FORECAST_REASON_CODES,
+  ForecastReasonCodes,
+  type ForecastReasonCode
+} from './domain/forecast-reason-codes.ts';
+export type { Deployment } from './domain/deployment.ts';
 
 /**
  * The coverage arithmetic (`RESOLUTION_SPEC` §4.1–§4.3). Exported because the shipped
@@ -240,6 +260,26 @@ export {
   type ResolutionInput
 } from './resolution/contract-resolver.ts';
 
+/**
+ * The battle half of the same boundary (`ADR-016`): the resolver a contract with a plan is
+ * settled by, the routing rule that chooses between the two, and the forecast that reads a
+ * formation so that neither resolver has to.
+ */
+export {
+  DEPLOYMENT_REQUIRED,
+  RETREAT_MAGNITUDE,
+  WOUND_DOWNED,
+  battleResolver
+} from './resolution/battle-resolver.ts';
+export { goesToBattle, resolverFor } from './resolution/routing.ts';
+export {
+  forecastReadiness,
+  type ForecastObjective,
+  type ForecastReason,
+  type ReadinessForecast
+} from './resolution/forecast.ts';
+export { objectiveCoverage, type ObjectiveCoverageInput } from './resolution/battle-coverage.ts';
+
 export {
   createDecisionResult,
   type CausalTrace,
@@ -268,6 +308,7 @@ export {
 export {
   composeOffer,
   lockOffer,
+  placeCrew,
   pollCrew,
   proposeContractToHero,
   resolveContract,
@@ -337,6 +378,7 @@ export {
 } from './commands/command-result.ts';
 export type { ComposeOffer } from './commands/compose-offer.ts';
 export type { LockOffer } from './commands/lock-offer.ts';
+export type { PlaceCrew } from './commands/place-crew.ts';
 export type { PollCrew } from './commands/poll-crew.ts';
 export type { ProposeContractToHero } from './commands/propose-contract-to-hero.ts';
 export type { ResolveContract } from './commands/resolve-contract.ts';

@@ -1,3 +1,5 @@
+import { TARGET_REASONS, TargetReasons, type TargetReason } from '../domain/battle-reasons.ts';
+
 import {
   COLUMNS,
   ROWS,
@@ -20,39 +22,8 @@ import type { BattleUnit } from './unit.ts';
  * not tell them apart would be showing the player a move without its cause.
  */
 
-/** Why a target is the target. Artifact-safe, and a localization key. */
-export const TargetReasons = Object.freeze({
-  /** The enemy's front cell of that column was occupied — the ordinary case. */
-  FrontOfTheColumn: 'combat.reason.front_of_the_column',
-  /** Their front cell was empty, so the blow landed deeper in the same column. */
-  ReachedThroughTheOpenColumn: 'combat.reason.reached_through_the_open_column',
-  /** Their whole column was empty, so the blow went round into the next one. */
-  WalkedAroundTheEmptyColumn: 'combat.reason.walked_around_the_empty_column',
-  /** A short weapon over one's own front rank: depth one, own column, nothing further. */
-  OverTheFrontRank: 'combat.reason.over_the_front_rank',
-  /** A shot chosen for landing hardest once the formation had taken its share. */
-  ClearestShot: 'combat.reason.clearest_shot',
-  /** The ally with the least of his health left. */
-  TheWorstHurt: 'combat.reason.the_worst_hurt',
-  /** The enemy hardest to knock off his row is the one worth freezing. */
-  TheHardestToMove: 'combat.reason.the_hardest_to_move',
-  /** The enemy least able to keep his footing. */
-  TheEasiestToMove: 'combat.reason.the_easiest_to_move',
-  /** Back to the row he belongs in, because his own actions live there (§4.1). */
-  BackToHisRow: 'combat.reason.back_to_his_row',
-  /**
-   * Nothing worth doing from where he stands, so he braced instead.
-   *
-   * Its own reason and not a missing one: `COMBAT_SPEC` §4.1 asks that "nothing to do"
-   * never be a turn that disappears, and a screen printing an empty cause is a turn that
-   * disappeared with a line of text over it.
-   */
-  HeldHisGround: 'combat.reason.held_his_ground'
-});
-
-export type TargetReason = (typeof TargetReasons)[keyof typeof TargetReasons];
-
-export const TARGET_REASONS: readonly TargetReason[] = Object.freeze(Object.values(TargetReasons));
+export { TARGET_REASONS, TargetReasons };
+export type { TargetReason };
 
 export interface Aim {
   readonly target: BattleUnit;

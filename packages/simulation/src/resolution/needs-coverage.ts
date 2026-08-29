@@ -78,11 +78,7 @@ function coverOneNeed(
   crew: readonly CoverageParticipant[],
   context: CoverageContext
 ): NeedCoverage {
-  // §4.2. Risk raises the bar; it is never subtracted from the margin afterwards. The
-  // difference is not cosmetic: subtracted in the same units, a fully-staffed crew would
-  // lose every dangerous contract, because the surplus a good crew can earn is bounded
-  // by `SURPLUS_CAP_PERCENT` and could never catch a subtrahend that is not.
-  const required = divideTowardZero(multiplyInt32(weight, 100 + context.risk), 100);
+  const required = requiredFor(weight, context.risk);
 
   // Everyone *answerable* for this need, whatever they are worth at it — including at
   // zero (`RESOLUTION_SPEC` §2.2). A hero the need is no business of does not appear,
@@ -139,6 +135,24 @@ function coverOneNeed(
   };
 }
 
+/**
+ * What one need asks for, once the contract's risk has raised the bar
+ * (`RESOLUTION_SPEC` §4.2).
+ *
+ * Risk raises the bar; it is never subtracted from the margin afterwards. The difference is
+ * not cosmetic: subtracted in the same units, a fully-staffed crew would lose every
+ * dangerous contract, because the surplus a good crew can earn is bounded by
+ * {@link SURPLUS_CAP_PERCENT} and could never catch a subtrahend that is not.
+ *
+ * Exported because the battle produces the same `required` for the same need
+ * (`COMBAT_SPEC` §6.2: "второго определения требования не заводится"). A battle restating
+ * this line would be a second definition of what a contract asks for, and the two would
+ * part company the first time either was tuned.
+ */
+export function requiredFor(weight: number, risk: number): number {
+  return divideTowardZero(multiplyInt32(weight, 100 + risk), 100);
+}
+
 /** §4.1. An absent key is `0` — the hero was never answerable for this need. */
 function contributionOf(member: CoverageParticipant, need: NeedId): number {
   const expertise = member.capability.expertise.get(need) ?? 0;
@@ -152,8 +166,13 @@ function contributionOf(member: CoverageParticipant, need: NeedId): number {
  * `supplied / required >= 0.6` in integers is either a division that truncates the
  * answer away or a float, and the whole arithmetic of this system is integral (`TDD`
  * §7.4).
+ *
+ * Exported for the same reason {@link requiredFor} is: a battle produces `supplied` and
+ * reads its verdict **with this function** (`COMBAT_SPEC` §6.2 — "та же тройка и та же
+ * функция"). A battle with three words of its own would give the debrief screen two scales
+ * to reconcile, and §6.2 exists to say there is one.
  */
-function verdictFor(supplied: number, required: number): CoverageVerdict {
+export function verdictFor(supplied: number, required: number): CoverageVerdict {
   if (supplied >= required) {
     return CoverageVerdict.Closed;
   }

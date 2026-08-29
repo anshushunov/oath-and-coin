@@ -430,7 +430,7 @@ function apply(
       command === 'pollCrew'
         ? controller.pollCrew({ contractId: contract })
         : command === 'resolveContract'
-          ? controller.resolveContract({ contractId: contract })
+          ? controller.resolveContract({ retreatAtRound: null, contractId: contract })
           : controller.settleContract({ contractId: contract, pay: true });
 
     if (!result.applied) {

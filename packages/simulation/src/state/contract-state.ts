@@ -1,6 +1,8 @@
 import type { SortedMap } from '../collections/sorted-map.ts';
 import type { SortedSet } from '../collections/sorted-set.ts';
 import type { CommitmentState } from '../domain/commitment.ts';
+import type { ContractBattlePlan } from '../domain/contract-battle-plan.ts';
+import type { CrewDeployment } from '../domain/crew-deployment.ts';
 import type { NeedId } from '../domain/need-id.ts';
 import type { ContractResolution } from '../domain/outcome.ts';
 import type { ContentId } from '../ids/content-id.ts';
@@ -81,6 +83,16 @@ export interface OfferState {
    * commitment is a fact about the package that was answered.
    */
   readonly commitments: SortedMap<HeroId, CommitmentState>;
+  /**
+   * Where the crew stands, under which doctrine, and when it pulls out
+   * (`COMBAT_SPEC` §2, §3.7). `null` until `placeCrew` records it, and on every contract
+   * that never goes to a battle at all.
+   *
+   * Part of the package for the reason `commitments` is: it is a decision about *this*
+   * version of the offer, and a revision that changed who is going has a formation that
+   * refers to people who are not. Cleared with `respondedBy` on every revision.
+   */
+  readonly deployment: CrewDeployment | null;
 }
 
 /**
@@ -150,6 +162,16 @@ export interface ContractState {
    */
   readonly negotiableTags?: SortedSet<ContentId>;
   readonly status: ContractStatus;
+  /**
+   * What its author says about the fight this contract leads to, or `null` for one that
+   * never goes to a battle (`ADR-016` §1, `COMBAT_SPEC` §6.2).
+   *
+   * **This field is the routing rule.** `ADR-014` §1 requires a contract to know before it
+   * is sent which resolver settles it, and a plan is what says so: with one, the battle
+   * resolver; without, the abstract one. Authored content, carried through unchanged and
+   * never moved by any command.
+   */
+  readonly battle: ContractBattlePlan | null;
   /**
    * This contract's current negotiation package and its lifecycle
    * (`NEGOTIATION_SPEC` §2.1). `respondedBy`/`acceptedBy` live inside it, not beside

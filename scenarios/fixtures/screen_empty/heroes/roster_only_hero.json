@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "id": "core:roster_only_hero",
   "display_name_key": "hero.core.roster_only_hero.name",
   "greed": 50,

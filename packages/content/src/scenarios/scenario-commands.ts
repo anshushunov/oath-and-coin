@@ -1,9 +1,16 @@
 import {
+  COLUMNS,
   CONTENT_ID_PATTERN,
+  DOCTRINE_IDS,
   HERO_ID_MAX,
   HERO_ID_MIN,
+  RETREAT_THRESHOLD_MAX,
+  ROWS,
   parseContentId,
-  type ContentId
+  type Column,
+  type ContentId,
+  type DoctrineId,
+  type Row
 } from '@oath-and-coin/simulation';
 import { z } from 'zod';
 
@@ -28,6 +35,7 @@ export const ScenarioCommandKind = Object.freeze({
   ProposeContractToHero: 'propose_contract_to_hero',
   LockOffer: 'lock_offer',
   PollCrew: 'poll_crew',
+  PlaceCrew: 'place_crew',
   ResolveContract: 'resolve_contract',
   SettleContract: 'settle_contract'
 });
@@ -92,11 +100,31 @@ export interface LockOfferScenarioCommand extends ScenarioCommandBase {
  */
 export interface ResolveContractScenarioCommand extends ScenarioCommandBase {
   readonly kind: typeof ScenarioCommandKind.ResolveContract;
+  /** The round the retreat signal was given at, or `null` if it never was (`DEC-005`). */
+  readonly retreatAtRound: number | null;
 }
 
 /** The rest of the roster answers the locked package, once each (`NEGOTIATION_SPEC` §3.1). */
 export interface PollCrewScenarioCommand extends ScenarioCommandBase {
   readonly kind: typeof ScenarioCommandKind.PollCrew;
+}
+
+/**
+ * The whole battle plan, set at once (`COMBAT_SPEC` §3.7).
+ *
+ * A scenario names heroes by index, like every other step here, and the runner turns the
+ * index into a `HeroId` — a scenario file that named a hero id would be a file that has to
+ * know how the loader assigns them.
+ */
+export interface PlaceCrewScenarioCommand extends ScenarioCommandBase {
+  readonly kind: typeof ScenarioCommandKind.PlaceCrew;
+  readonly placement: readonly {
+    readonly heroIndex: number;
+    readonly row: Row;
+    readonly column: Column;
+  }[];
+  readonly doctrine: DoctrineId;
+  readonly retreatBelowPercent: number;
 }
 
 /**
@@ -143,6 +171,7 @@ export type ScenarioCommand =
   | ProposeContractScenarioCommand
   | LockOfferScenarioCommand
   | PollCrewScenarioCommand
+  | PlaceCrewScenarioCommand
   | ResolveContractScenarioCommand
   | SettleContractScenarioCommand;
 
@@ -211,9 +240,30 @@ const pollCrewFileSchema = z.strictObject({
   ...commandBaseFields
 });
 
+const placeCrewFileSchema = z.strictObject({
+  command: z.literal(ScenarioCommandKind.PlaceCrew),
+  ...commandBaseFields,
+  placement: z
+    .array(
+      z.strictObject({
+        hero_index: z.int().min(HERO_ID_MIN).max(HERO_ID_MAX),
+        row: z.union(ROWS.map((row) => z.literal(row))),
+        column: z.union(COLUMNS.map((column) => z.literal(column)))
+      })
+    )
+    .min(1),
+  doctrine: z.enum(DOCTRINE_IDS),
+  retreat_below_percent: z.int().min(0).max(RETREAT_THRESHOLD_MAX)
+});
+
 const resolveContractFileSchema = z.strictObject({
   command: z.literal(ScenarioCommandKind.ResolveContract),
-  ...commandBaseFields
+  ...commandBaseFields,
+  // The player's one lever, as a scenario states it (`DEC-005`). Optional and absent on
+  // every scenario that does not pull it — which is all of them until a scenario is written
+  // about pulling it, and that is what "absent means he never touched it" has to look like
+  // in a file.
+  retreat_at_round: z.int().min(1).optional()
 });
 
 const settleContractFileSchema = z.strictObject({
@@ -231,6 +281,7 @@ const commandFileSchema = z.discriminatedUnion('command', [
   proposeFileSchema,
   lockOfferFileSchema,
   pollCrewFileSchema,
+  placeCrewFileSchema,
   resolveContractFileSchema,
   settleContractFileSchema
 ]);
@@ -269,8 +320,24 @@ function toCommand(command: CommandFile): ScenarioCommand {
       return { kind: ScenarioCommandKind.LockOffer, ...base };
     case ScenarioCommandKind.PollCrew:
       return { kind: ScenarioCommandKind.PollCrew, ...base };
+    case ScenarioCommandKind.PlaceCrew:
+      return {
+        kind: ScenarioCommandKind.PlaceCrew,
+        ...base,
+        placement: command.placement.map((entry) => ({
+          heroIndex: entry.hero_index,
+          row: entry.row,
+          column: entry.column
+        })),
+        doctrine: command.doctrine,
+        retreatBelowPercent: command.retreat_below_percent
+      };
     case ScenarioCommandKind.ResolveContract:
-      return { kind: ScenarioCommandKind.ResolveContract, ...base };
+      return {
+        kind: ScenarioCommandKind.ResolveContract,
+        ...base,
+        retreatAtRound: command.retreat_at_round ?? null
+      };
     case ScenarioCommandKind.SettleContract:
       return { kind: ScenarioCommandKind.SettleContract, ...base, pay: command.pay };
   }

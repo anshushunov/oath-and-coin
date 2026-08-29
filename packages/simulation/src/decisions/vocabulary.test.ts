@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { isArtifactSafeText } from '../canonical/artifact-domain.ts';
+import { FORECAST_REASON_CODES } from '../domain/forecast-reason-codes.ts';
 import { OUTCOME_REASON_CODES } from '../domain/outcome-reason-codes.ts';
 
 import { ACTIONS, Actions } from './actions.ts';
@@ -86,6 +87,18 @@ describe('the vocabulary split by the role a code plays in a trace', () => {
       shared,
       `declared as both a decision code and an outcome code: ${shared.join(', ')}`
     ).toEqual([]);
+  });
+
+  it('shares no code with the forecast vocabulary either, and now there are three', () => {
+    // A third dictionary arrived with the Combat Lab (`COMBAT_SPEC` §10.1): why a *person*
+    // answered, what *happened*, and what a plan is **risking**. The third is the one
+    // `DEC-006` is strictest about — it is a claim about the future — and a string shared
+    // with either of the other two would let a screen print a forecast as a fact.
+    const forecastCodes: readonly string[] = FORECAST_REASON_CODES;
+    const outcomeCodes: readonly string[] = OUTCOME_REASON_CODES;
+
+    expect(REASON_CODES.filter((code) => forecastCodes.includes(code))).toEqual([]);
+    expect(outcomeCodes.filter((code) => forecastCodes.includes(code))).toEqual([]);
   });
 
   it('gives each code exactly one role, which is what the split is for', () => {

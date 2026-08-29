@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "id": "fixture:forbids_deception",
   "display_name_key": "trait.fixture.forbids_deception.name",
   "kind": "principle",

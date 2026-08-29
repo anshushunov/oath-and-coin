@@ -32,7 +32,7 @@ import { buildSave, readSave } from './envelope.ts';
  */
 
 const KEY_HERO_FILE = {
-  schema_version: 5,
+  schema_version: 6,
   id: 'core:bram',
   display_name_key: 'hero.core.bram.name',
   greed: 60,
@@ -47,7 +47,7 @@ const KEY_HERO_FILE = {
 };
 
 const OTHER_HERO_FILE = {
-  schema_version: 5,
+  schema_version: 6,
   id: 'core:doran',
   display_name_key: 'hero.core.doran.name',
   greed: 60,
@@ -62,7 +62,7 @@ const OTHER_HERO_FILE = {
 };
 
 const THIRD_HERO_FILE = {
-  schema_version: 5,
+  schema_version: 6,
   id: 'core:zara',
   display_name_key: 'hero.core.zara.name',
   greed: 60,
@@ -77,7 +77,7 @@ const THIRD_HERO_FILE = {
 };
 
 const CONTRACT_FILE = {
-  schema_version: 5,
+  schema_version: 6,
   id: 'core:cleanse_the_crypt',
   display_name_key: 'contract.core.cleanse_the_crypt.name',
   patron_fee: 70,
@@ -92,7 +92,7 @@ const CONTRACT_FILE = {
 
 /** Unused by any hero here — `loadContentSet` still requires a `traits/` directory. */
 const UNUSED_TRAIT_FILE = {
-  schema_version: 5,
+  schema_version: 6,
   id: 'core:greedy',
   display_name_key: 'trait.core.greedy.name',
   kind: 'inclination',

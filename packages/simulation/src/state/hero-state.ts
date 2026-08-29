@@ -66,6 +66,20 @@ export interface HeroState {
    */
   readonly wounds: number;
   /**
+   * How many times this hero has walked away from a fight (`COMBAT_SPEC` §6.5, `DEC-005`).
+   *
+   * `0` at campaign start; a `Retreat` consequence adds its magnitude. Its own field beside
+   * {@link wounds} and not folded into it: a retreat costs everybody who moved, a wound
+   * costs the one man who was on the point, and a single counter would make "he has been
+   * hurt three times" and "he has been pulled out three times" the same sentence.
+   *
+   * **No domain ceiling, and nothing reads it** — the same declared boundary `wounds`
+   * carries, for the same reason. `DEC-005` is decided by what the lab measures about the
+   * lever (`MVP_PLAN` §6.4), and a cost invented here would be a balance decision taken
+   * inside an implementation.
+   */
+  readonly retreats: number;
+  /**
    * Trait ids the hero carries, in the order content authored them. Identifiers, not
    * trait definitions: state must stay serializable and must never pull the content it
    * was built from along with it (`TDD` §11.1).

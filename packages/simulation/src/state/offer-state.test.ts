@@ -28,7 +28,11 @@ describe('initialOffer', () => {
       invited: SortedSet.empty<HeroId>(compareHeroIds),
       respondedBy: SortedSet.empty<HeroId>(compareHeroIds),
       acceptedBy: SortedSet.empty<HeroId>(compareHeroIds),
-      commitments: SortedMap.empty<HeroId, CommitmentState>(compareHeroIds)
+      commitments: SortedMap.empty<HeroId, CommitmentState>(compareHeroIds),
+      // `null` and not an empty placement: "nobody has been placed" and "everybody was
+      // placed nowhere" are different claims, and only the first is true of a package
+      // nobody has composed (`COMBAT_SPEC` §3.7).
+      deployment: null
     });
   });
 });

@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "id": "fixture:captain",
   "display_name_key": "hero.fixture.captain.name",
   "greed": 80,

@@ -96,7 +96,7 @@ afterEach(() => {
 });
 
 const HERO = {
-  schema_version: 5,
+  schema_version: 6,
   id: 'core:bram',
   display_name_key: 'hero.core.bram.name',
   greed: 60,
@@ -111,7 +111,7 @@ const HERO = {
 };
 
 const CONTRACT = {
-  schema_version: 5,
+  schema_version: 6,
   id: 'core:cleanse_the_crypt',
   display_name_key: 'contract.core.cleanse_the_crypt.name',
   patron_fee: 70,
@@ -122,7 +122,7 @@ const CONTRACT = {
 };
 
 const TRAIT = {
-  schema_version: 5,
+  schema_version: 6,
   id: 'core:hates_the_cult',
   display_name_key: 'trait.core.hates_the_cult.name',
   kind: 'inclination',
@@ -189,7 +189,7 @@ describe('loadContentSet over the shipped tree', () => {
 
   it('reads every authored entity', () => {
     expect(content.heroes.size).toBe(6);
-    expect(content.contracts.size).toBe(6);
+    expect(content.contracts.size).toBe(8);
     expect(content.traits.size).toBe(9);
   });
 
@@ -219,7 +219,7 @@ describe('loadContentSet over the shipped tree', () => {
     // The Combat Lab's first segment moved it a tenth time, to `c02e365478576dd7`
     // (`DEC-016`): every hero file lost `capability.grade` and gained `combat` and `role`,
     // and the content format went 4 → 5 with them.
-    expect(content.contentVersion).toBe('c02e365478576dd7');
+    expect(content.contentVersion).toBe('38628f6fb08d4de3');
   });
 
   it('keys heroes, contracts and traits in content-id order', () => {
@@ -234,10 +234,12 @@ describe('loadContentSet over the shipped tree', () => {
       'core:zara'
     ]);
     expect(content.contracts.keys()).toEqual([
+      'core:break_the_siege_camp',
       'core:burn_the_plague_barrow',
       'core:cleanse_the_crypt',
       'core:collect_the_debt',
       'core:escort_the_caravan',
+      'core:escort_the_relic',
       'core:hold_the_river_ford',
       'core:silence_the_cult'
     ]);
@@ -303,7 +305,9 @@ describe('loadContentSet over the shipped tree', () => {
       requiredCrew: 4,
       needs: expect.anything(),
       tags: ['target:undead', 'method:public_contract'],
-      negotiableTags: []
+      negotiableTags: [],
+      // No authored fight: the crypt is settled by the abstract resolver (`ADR-014` §1).
+      battle: null
     });
     expect(crypt.needs.entries()).toEqual([
       ['frontline', 30],
@@ -489,7 +493,7 @@ describe('loadContentSet over a tree built for this test', () => {
     const root = treeWith({
       contracts: [
         {
-          schema_version: 5,
+          schema_version: 6,
           id: 'core:cleanse_the_crypt',
           display_name_key: 'contract.core.cleanse_the_crypt.name',
           patron_fee: 55,

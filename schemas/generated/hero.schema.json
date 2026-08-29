@@ -7,7 +7,7 @@
   "properties": {
     "schema_version": {
       "type": "number",
-      "const": 5
+      "const": 6
     },
     "id": {
       "type": "string",

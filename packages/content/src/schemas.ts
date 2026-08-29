@@ -1,4 +1,11 @@
-import { COMBAT_ROLES, CONTENT_ID_PATTERN, NEED_IDS } from '@oath-and-coin/simulation';
+import {
+  BattleObjectiveKind,
+  COLUMNS,
+  COMBAT_ROLES,
+  CONTENT_ID_PATTERN,
+  NEED_IDS,
+  ROWS
+} from '@oath-and-coin/simulation';
 import { z } from 'zod';
 
 import {
@@ -23,7 +30,11 @@ import {
 } from './bounds.ts';
 import {
   MAX_ARTIFACT_SAFE_TEXT_LENGTH,
+  MAX_BATTLE_ROUNDS_ASKED,
+  MAX_FOES_PER_CONTRACT,
   MAX_NEEDS_PER_CONTRACT,
+  MAX_WARDS_PER_CONTRACT,
+  MIN_FOES_PER_CONTRACT,
   MAX_RELATIONSHIPS_PER_HERO,
   MAX_TAGS_PER_CONTRACT,
   MAX_TRAITS_PER_HERO,
@@ -177,6 +188,62 @@ export const heroFileSchema = z.strictObject({
   relationships: z.array(relationshipFileSchema).max(MAX_RELATIONSHIPS_PER_HERO)
 });
 
+
+/**
+ * A key a contract's author gives one of its own combatants — a foe or a ward.
+ *
+ * Its own shape rather than a `ContentId`, and deliberately short: the loader prefixes it
+ * with `foe:` or `ward:` to build the battle id, so a file naming `wight` cannot name
+ * `crew:bram` and cannot collide with the crew's own ids by accident.
+ */
+const combatantKey = z.string().regex(/^[a-z][a-z0-9_]*$/u).max(MAX_ARTIFACT_SAFE_TEXT_LENGTH);
+
+const cellFileSchema = z.strictObject({
+  row: z.union(ROWS.map((row) => z.literal(row))),
+  column: z.union(COLUMNS.map((column) => z.literal(column)))
+});
+
+const combatantFileSchema = z.strictObject({
+  key: combatantKey,
+  role: z.enum(COMBAT_ROLES),
+  cell: cellFileSchema,
+  combat: heroCombatFileSchema
+});
+
+/**
+ * What one of the contract's needs becomes in a fight (`COMBAT_SPEC` §6.2, `ADR-016` §1).
+ *
+ * **Authored, never inferred from the need's name.** A discriminated union rather than one
+ * object with three optional fields, for the reason the trait contract is one: a rule the
+ * type does not hold is a rule only the code holds, and `strictObject` refuses a `subdue`
+ * that names a ward by name.
+ */
+const objectiveFileSchema = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal(BattleObjectiveKind.Subdue),
+    targets: z.array(combatantKey).min(1).max(MAX_FOES_PER_CONTRACT)
+  }),
+  z.strictObject({ kind: z.literal(BattleObjectiveKind.Protect), ward: combatantKey }),
+  z.strictObject({
+    kind: z.literal(BattleObjectiveKind.Hold),
+    rounds: z.int().min(1).max(MAX_BATTLE_ROUNDS_ASKED)
+  })
+]);
+
+/**
+ * The fight a contract leads to, if it leads to one (`ADR-016` §1).
+ *
+ * **Optional, and that is the routing rule rather than a convenience.** `ADR-014` §1 keeps
+ * the abstract resolver as the real one for a delegated contract — a job the player never
+ * watches — and a contract without this block is exactly that. With it, the battle resolver
+ * settles the contract; without it, the abstract one does, and the file is what says which.
+ */
+export const contractBattleFileSchema = z.strictObject({
+  objectives: z.partialRecord(z.enum(NEED_IDS), objectiveFileSchema),
+  foes: z.array(combatantFileSchema).min(MIN_FOES_PER_CONTRACT).max(MAX_FOES_PER_CONTRACT),
+  wards: z.array(combatantFileSchema).max(MAX_WARDS_PER_CONTRACT)
+});
+
 /**
  * `negotiable_tags`: the pair of mutually exclusive method tags a contract offers
  * the player a choice between (`NEGOTIATION_SPEC` §2.4). Optional — most contracts
@@ -210,7 +277,8 @@ export const contractFileSchema = z
     required_crew: z.int().min(REQUIRED_CREW_MIN).max(REQUIRED_CREW_MAX),
     needs: needKeyedMap(z.int().min(NEED_WEIGHT_MIN).max(NEED_WEIGHT_MAX)),
     tags: z.array(contentIdString).max(MAX_TAGS_PER_CONTRACT),
-    negotiable_tags: z.array(contentIdString).optional()
+    negotiable_tags: z.array(contentIdString).optional(),
+    battle: contractBattleFileSchema.optional()
   })
   .superRefine((file, ctx) => {
     // How many needs, checked here rather than on the field: `partialRecord` states
@@ -231,6 +299,8 @@ export const contractFileSchema = z
           'is the kill-criterion the coverage model exists to avoid (RESOLUTION_SPEC §2.3).'
       });
     }
+
+    requireCoherentBattlePlan(file, ctx);
 
     const negotiableTags = file.negotiable_tags;
     if (negotiableTags === undefined) {
@@ -354,6 +424,7 @@ export const localeFileSchema = z.strictObject({
   entries: z.record(localizationKey, z.string().min(1))
 });
 
+export type ContractBattleFile = z.infer<typeof contractBattleFileSchema>;
 export type HeroFile = z.infer<typeof heroFileSchema>;
 export type ContractFile = z.infer<typeof contractFileSchema>;
 export type TraitFile = z.infer<typeof traitFileSchema>;
@@ -384,3 +455,115 @@ export const SCHEMA_FILE_NAMES = {
 } as const;
 
 export type ContentDirectory = keyof typeof CONTENT_DIRECTORIES;
+
+/**
+ * The four things a battle plan has to agree with, and none of them is a shape a schema can
+ * state (`COMBAT_SPEC` §6.2, §11).
+ *
+ * All four are content-authoring defects the loader can see before play ever reaches them,
+ * which is where they belong: a `subdue` naming a foe the pattern does not hold is an
+ * objective nothing can ever close, and a player would meet it as a contract that cannot be
+ * completed rather than as a message naming the file.
+ */
+function requireCoherentBattlePlan(
+  file: {
+    readonly id: string;
+    readonly needs: Partial<Record<string, number>>;
+    readonly battle?: ContractBattleFile | undefined;
+  },
+  ctx: z.RefinementCtx
+): void {
+  const battle = file.battle;
+
+  if (battle === undefined) {
+    return;
+  }
+
+  const needs = Object.keys(file.needs).sort();
+  const objectives = Object.keys(battle.objectives).sort();
+
+  // Exactly the contract's own needs, as sets. `ADR-016` §1 makes every need a battle
+  // objective, so a need without one is a row of the debrief the battle cannot fill, and an
+  // objective without a need is progress toward nothing.
+  if (needs.join(',') !== objectives.join(',')) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['battle', 'objectives'],
+      message:
+        `Contract '${file.id}' maps [${objectives.join(', ')}] to battle objectives, but asks ` +
+        `for [${needs.join(', ')}]; every need becomes exactly one objective and nothing else ` +
+        'does (ADR-016 §1).'
+    });
+  }
+
+  const foeKeys = new Set(battle.foes.map((foe) => foe.key));
+  const wardKeys = new Set(battle.wards.map((ward) => ward.key));
+
+  for (const [need, objective] of Object.entries(battle.objectives)) {
+    if (objective === undefined) {
+      continue;
+    }
+
+    if (objective.kind === 'subdue') {
+      for (const target of objective.targets) {
+        if (!foeKeys.has(target)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['battle', 'objectives', need],
+            message:
+              `Contract '${file.id}' asks for '${target}' to be subdued, but its pattern holds ` +
+              'no such foe; an objective naming somebody who is not on the board can never be ' +
+              'closed.'
+          });
+        }
+      }
+    }
+
+    if (objective.kind === 'protect' && !wardKeys.has(objective.ward)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['battle', 'objectives', need],
+        message:
+          `Contract '${file.id}' asks for '${objective.ward}' to be protected, but declares no ` +
+          'such ward; there is nobody for the crew to keep alive.'
+      });
+    }
+  }
+
+  requireDistinct(file.id, 'foes', battle.foes, ctx);
+  requireDistinct(file.id, 'wards', battle.wards, ctx);
+}
+
+/** One key per unit and one unit per cell, within one side of the board (§3.1). */
+function requireDistinct(
+  contractId: string,
+  field: 'foes' | 'wards',
+  units: readonly { readonly key: string; readonly cell: { readonly row: number; readonly column: number } }[],
+  ctx: z.RefinementCtx
+): void {
+  const keys = new Set<string>();
+  const cells = new Set<string>();
+
+  for (const unit of units) {
+    if (keys.has(unit.key)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['battle', field],
+        message: `Contract '${contractId}' names '${unit.key}' twice among its ${field}.`
+      });
+    }
+    keys.add(unit.key);
+
+    const cell = `${String(unit.cell.row)}:${String(unit.cell.column)}`;
+    if (cells.has(cell)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['battle', field],
+        message:
+          `Contract '${contractId}' puts two of its ${field} on cell ${cell}; a cell holds at ` +
+          'most one unit (COMBAT_SPEC §3.1).'
+      });
+    }
+    cells.add(cell);
+  }
+}

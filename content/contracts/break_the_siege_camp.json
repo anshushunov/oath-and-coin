@@ -1,0 +1,49 @@
+{
+  "schema_version": 6,
+  "id": "core:break_the_siege_camp",
+  "display_name_key": "contract.core.break_the_siege_camp.name",
+  "patron_fee": 65,
+  "risk": 40,
+  "required_crew": 4,
+  "needs": {
+    "frontline": 40,
+    "wilderness": 30
+  },
+  "tags": [
+    "patron:merchant_guild",
+    "target:bandits"
+  ],
+  "battle": {
+    "objectives": {
+      "frontline": { "kind": "subdue", "targets": ["captain", "brute"] },
+      "wilderness": { "kind": "hold", "rounds": 6 }
+    },
+    "foes": [
+      {
+        "key": "brute",
+        "role": "vanguard",
+        "cell": { "row": 1, "column": 1 },
+        "combat": { "might": 75, "guard": 70, "aim": 30, "focus": 45, "care": 10 }
+      },
+      {
+        "key": "captain",
+        "role": "vanguard",
+        "cell": { "row": 1, "column": 2 },
+        "combat": { "might": 70, "guard": 78, "aim": 35, "focus": 60, "care": 20 }
+      },
+      {
+        "key": "houndmaster",
+        "role": "breaker",
+        "cell": { "row": 2, "column": 2 },
+        "combat": { "might": 72, "guard": 60, "aim": 40, "focus": 55, "care": 10 }
+      },
+      {
+        "key": "slinger",
+        "role": "rear",
+        "cell": { "row": 3, "column": 2 },
+        "combat": { "might": 30, "guard": 45, "aim": 70, "focus": 65, "care": 15 }
+      }
+    ],
+    "wards": []
+  }
+}

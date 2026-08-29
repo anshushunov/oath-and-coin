@@ -8,6 +8,7 @@ import {
   ConsequenceKind,
   ContractStatus,
   CoverageVerdict,
+  DOCTRINE_IDS,
   DeficitKind,
   FACTOR_REASON_CODES,
   GRIEVANCE_MAX,
@@ -80,6 +81,17 @@ import {
   WOUNDS_CEILING
 } from '../limits.ts';
 
+import {
+  battleRecordSchema,
+  contractBattlePlanSchema,
+  crewDeploymentSchema,
+  encodeBattlePlan,
+  encodeBattleRecord,
+  encodeCrewDeployment,
+  toBattlePlan,
+  toBattleRecord,
+  toCrewDeployment
+} from './battle-codec.ts';
 import { SaveErrorCodes, SaveReadError, type SaveErrorCode } from './save-error-codes.ts';
 
 /**
@@ -274,7 +286,10 @@ const heroValueSchema = z.strictObject({
   // ceiling on wounds (`R-08`). What this bound is for is the same thing every other
   // ceiling in this file is for: a tampered save must not be able to claim a number the
   // arithmetic downstream cannot carry (`TDD` §18).
-  wounds: z.int().min(0).max(WOUNDS_CEILING)
+  wounds: z.int().min(0).max(WOUNDS_CEILING),
+  // The same read-path ceiling, for the same reason: `COMBAT_SPEC` §6.5 gives retreats no
+  // domain cap either, and a save is external data (`TDD` §18).
+  retreats: z.int().min(0).max(WOUNDS_CEILING)
 });
 
 const commitmentStateSchema = z.enum([
@@ -317,7 +332,8 @@ const outcomeGradeSchema = z.enum([
 const consequenceKindSchema = z.enum([
   ConsequenceKind.Wound,
   ConsequenceKind.Grudge,
-  ConsequenceKind.TrustLost
+  ConsequenceKind.TrustLost,
+  ConsequenceKind.Retreat
 ]);
 
 const needCoverageSchema = z.strictObject({
@@ -379,7 +395,16 @@ const resolutionValueSchema = z.strictObject({
         magnitude
       })
     )
-    .max(MAX_HEROES_PER_CONTRACT)
+    .max(MAX_HEROES_PER_CONTRACT),
+  /**
+   * The battle that produced this, or `null` (`COMBAT_SPEC` §6.4 п.3).
+   *
+   * In the save although it is not in the canonical artifact, and the asymmetry is
+   * `ADR-016` §6: the artifact is read by a person checking a run and eighty events per
+   * contract makes it unreadable, while a save is read by the game — and `RESOLUTION_SPEC`
+   * §6.4 routes a loaded resolved campaign straight to the debrief, whose feed this is.
+   */
+  battle: battleRecordSchema.nullable()
 });
 
 const contractStatusSchema = z.union([
@@ -433,7 +458,12 @@ const offerValueSchema = z.strictObject({
   invited: z.array(heroIdSchema).max(MAX_HEROES_PER_CONTRACT),
   respondedBy: z.array(heroIdSchema).max(MAX_HEROES_PER_CONTRACT),
   acceptedBy: z.array(heroIdSchema).max(MAX_HEROES_PER_CONTRACT),
-  commitments: entries(heroIdSchema, commitmentStateSchema).max(MAX_HEROES_PER_CONTRACT)
+  commitments: entries(heroIdSchema, commitmentStateSchema).max(MAX_HEROES_PER_CONTRACT),
+  // Where the crew stands, under which doctrine, and when it pulls out
+  // (`COMBAT_SPEC` §2, §3.7). `null` until `placeCrew` records it. Its relationships to
+  // `acceptedBy` — every accepted hero placed, nobody else, no two on a cell — are not
+  // shapes a schema can state and are refused by `requireConsistentContract`.
+  deployment: crewDeploymentSchema.nullable()
 });
 
 const contractValueSchema = z.strictObject({
@@ -452,6 +482,10 @@ const contractValueSchema = z.strictObject({
     MIN_NEEDS_PER_CONTRACT
   ),
   tags: z.array(contentId).max(MAX_TAGS_PER_CONTRACT),
+  // What the contract's author says about the fight it leads to, and therefore which
+  // resolver settles it (`ADR-014` §1). A save that dropped it would restore a battle
+  // contract as a delegated one.
+  battle: contractBattlePlanSchema.nullable(),
   // Optional, not `ContractState.negotiableTags`'s own default made required: this key
   // is new (`DEC-008` Task 10), and declaring it optional rather than required keeps a
   // save this exact schema version already accepts still accepting — the field is
@@ -589,6 +623,17 @@ const domainEventSchema = z.discriminatedUnion('kind', [
     logicalTime: z.int().min(0),
     causalTraceId: z.int().min(0).nullable(),
     contractId: contentId
+  }),
+  // The doctrine and no formation: the formation is a field of the package this same file
+  // already round-trips, and an event carrying a second copy would be a second place it
+  // could drift (`COMBAT_SPEC` §3.7).
+  z.strictObject({
+    kind: z.literal('crew_placed'),
+    eventId: z.int().min(0),
+    logicalTime: z.int().min(0),
+    causalTraceId: z.int().min(0).nullable(),
+    contractId: contentId,
+    doctrine: z.enum(DOCTRINE_IDS)
   }),
   // No `heroId`, same shape and same reason as `offer_revised`/`offer_locked`:
   // settling a contract is the player's own act (`domain-event.ts`'s
@@ -790,7 +835,8 @@ export function encodeSnapshot(state: GameState): unknown {
         },
         combat: value.combat,
         role: value.role,
-        wounds: value.wounds
+        wounds: value.wounds,
+        retreats: value.retreats
       }
     })),
     contracts: state.contracts.entries().map(([key, value]) => ({
@@ -803,6 +849,7 @@ export function encodeSnapshot(state: GameState): unknown {
         needs: value.needs.entries().map(([need, weight]) => ({ key: need, value: weight })),
         tags: value.tags.values(),
         negotiableTags: value.negotiableTags?.values(),
+        battle: value.battle === null ? null : encodeBattlePlan(value.battle),
         status: value.status,
         offer: {
           version: value.offer.version,
@@ -816,7 +863,9 @@ export function encodeSnapshot(state: GameState): unknown {
           acceptedBy: value.offer.acceptedBy.values(),
           commitments: value.offer.commitments
             .entries()
-            .map(([heroKey, commitment]) => ({ key: heroKey, value: commitment }))
+            .map(([heroKey, commitment]) => ({ key: heroKey, value: commitment })),
+          deployment:
+            value.offer.deployment === null ? null : encodeCrewDeployment(value.offer.deployment)
         },
         moodOrdinals: value.moodOrdinals
           .entries()
@@ -892,7 +941,8 @@ export function decodeSnapshot(value: unknown): GameState {
       },
       combat: raw.combat,
       role: raw.role,
-      wounds: raw.wounds
+      wounds: raw.wounds,
+      retreats: raw.retreats
     }),
     'heroes'
   );
@@ -934,6 +984,7 @@ export function decodeSnapshot(value: unknown): GameState {
           compareContentIds,
           (raw.negotiableTags ?? []).map((tag) => parseContentId(tag))
         ),
+        battle: raw.battle === null ? null : toBattlePlan(raw.battle),
         status: raw.status,
         offer: {
           version: raw.offer.version,
@@ -953,7 +1004,9 @@ export function decodeSnapshot(value: unknown): GameState {
             raw.offer.commitments.map(
               (entry) => [heroId(entry.key), entry.value] as readonly [HeroId, CommitmentState]
             )
-          )
+          ),
+          deployment:
+            raw.offer.deployment === null ? null : toCrewDeployment(raw.offer.deployment)
         },
         moodOrdinals: buildMoodOrdinals(raw.moodOrdinals),
         resolution: raw.resolution === null ? null : toResolution(raw.resolution)
@@ -1161,7 +1214,8 @@ function toResolution(raw: z.infer<typeof resolutionValueSchema>): ContractResol
       kind: consequence.kind,
       reason: consequence.reason,
       magnitude: consequence.magnitude
-    }))
+    })),
+    battle: raw.battle === null ? null : toBattleRecord(raw.battle)
   };
 }
 
@@ -1175,7 +1229,8 @@ function encodeResolution(resolution: ContractResolution): unknown {
       .map(([hero, contribution]) => ({ key: hero, value: contribution })),
     deficits: resolution.deficits,
     dominant: resolution.dominant,
-    consequences: resolution.consequences
+    consequences: resolution.consequences,
+    battle: resolution.battle === null ? null : encodeBattleRecord(resolution.battle)
   };
 }
 
@@ -1282,6 +1337,9 @@ function toDomainEvent(domainEvent: RawDomainEvent): DomainEvent {
     case 'contract_settled_promise_kept':
     case 'contract_settled_promise_broken':
       return { ...base, kind: domainEvent.kind };
+
+    case 'crew_placed':
+      return { ...base, kind: 'crew_placed', doctrine: domainEvent.doctrine };
 
     case 'need_covered':
       return { ...base, kind: 'need_covered', need: domainEvent.need, verdict: domainEvent.verdict };

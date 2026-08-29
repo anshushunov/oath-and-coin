@@ -345,7 +345,7 @@ function press(
     case OfferAction.Poll:
       return refusalOf(controller.pollCrew({ contractId }));
     case OfferAction.Resolve:
-      return refusalOf(controller.resolveContract({ contractId }));
+      return refusalOf(controller.resolveContract({ retreatAtRound: null, contractId }));
     case OfferAction.Settle:
       controller.show(ScreenKind.AfterAction);
 

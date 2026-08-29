@@ -162,9 +162,15 @@ const content = loadContentSet(shippedContent);
  * The Combat Lab's first segment moved it a tenth time, to `c02e365478576dd7` (`DEC-016`):
  * every hero file lost `capability.grade` and gained `combat` and `role`. The key count did
  * not move — the change is fields of a hero, not a text.
+ *
+ * Its segment C moved it an eleventh time, to `38628f6fb08d4de3` (`ADR-016` §1): every file
+ * rose to `schema_version: 6`, and two contracts arrived carrying a `battle` block — the
+ * first two contracts in this game that go to a fight. **Two keys and exactly two**, for the
+ * reason the eighth move states: a contract's name is content's to author, and a third key
+ * in a change like this would be interface text arriving under cover of a content addition.
  */
-const FROZEN_CONTENT_VERSION = 'c02e365478576dd7';
-const FROZEN_CONTENT_KEY_COUNT = 100;
+const FROZEN_CONTENT_VERSION = '38628f6fb08d4de3';
+const FROZEN_CONTENT_KEY_COUNT = 102;
 
 /** Every key the presentation layer can produce for the shipped content tree. */
 function everyKeyTheScreenCanShow(): readonly string[] {

@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "id": "fixture:tiny_victim",
   "display_name_key": "hero.fixture.tiny_victim.name",
   "greed": 100,

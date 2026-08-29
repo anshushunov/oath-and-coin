@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "id": "core:hungry_for_renown",
   "display_name_key": "trait.core.hungry_for_renown.name",
   "kind": "inclination",

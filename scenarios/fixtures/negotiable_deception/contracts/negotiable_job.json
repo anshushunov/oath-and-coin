@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "id": "fixture:negotiable_job",
   "display_name_key": "contract.fixture.negotiable_job.name",
   "patron_fee": 50,

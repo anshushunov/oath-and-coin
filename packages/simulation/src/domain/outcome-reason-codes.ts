@@ -48,7 +48,29 @@ export const OutcomeReasonCodes = Object.freeze({
   GrudgeAfterFaltering: 'outcome.grudge_after_faltering',
 
   /** The key hero's trust in the guild did not survive a disaster. */
-  TrustLostInDisaster: 'outcome.trust_lost_in_disaster'
+  TrustLostInDisaster: 'outcome.trust_lost_in_disaster',
+
+  /**
+   * The three codes a battle adds, and the reason `DeficitKind` does **not** grow a fourth
+   * member beside them (`COMBAT_SPEC` §6.4 п.2, `ADR-016` §4).
+   *
+   * "They stood in the wrong places" is a *cause* on a need that came up short, not a
+   * fourth diagnosis to be ranked against the other three: `Deficit.magnitude` is
+   * counterfactual and measured in points of margin, and what obstruction ate is measured
+   * in points of effect. Ranking the two together would be ranking the incommensurable,
+   * so geometry speaks through a reason code and the three diagnoses stay three.
+   *
+   * Selective, not causal, like every aggregate the battle prints (§8.3): "the formation
+   * took its share of this" rather than "the formation is why you lost", which only a
+   * counterfactual model could say and there is none.
+   */
+  BlockedByOwnFormation: 'outcome.blocked_by_own_formation',
+
+  /** Their front cell was open, and the blow that mattered went through it. */
+  ReachedThroughTheOpenColumn: 'outcome.reached_through_the_open_column',
+
+  /** The line was held for as long as it was asked to be. */
+  HeldTheLine: 'outcome.held_the_line'
 });
 
 export type OutcomeReasonCode = (typeof OutcomeReasonCodes)[keyof typeof OutcomeReasonCodes];

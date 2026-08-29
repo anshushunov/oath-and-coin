@@ -153,3 +153,61 @@ export const WOUNDS_CEILING = 10_000;
  * guard against a tampered file belongs.
  */
 export const MAX_RESOLUTION_MAGNITUDE = 1_000_000;
+
+/**
+ * Most combatants a stored battle record may name.
+ *
+ * The rules allow a crew of six, a ward or two the contract authored, and a pattern of at
+ * most six foes on a 3×3 board — sixteen leaves headroom over every one of those without
+ * approaching a number a file could use to make a load expensive (`TDD` §18).
+ */
+export const MAX_BATTLE_UNITS = 16;
+
+/**
+ * Most events a stored battle record may carry.
+ *
+ * The spike measured **82** events for a five-a-side battle of five rounds
+ * (`SPIKE_2026-08-29`), and `MAX_ROUNDS` is 12. Four thousand is two orders of magnitude
+ * above what the rules can produce and still small enough that a tampered file cannot use
+ * this array to make a load expensive — the same kind of guard, and the same argument, as
+ * {@link WOUNDS_CEILING}.
+ */
+export const MAX_BATTLE_EVENTS = 4_096;
+
+/**
+ * Most provenance steps one number may carry (`COMBAT_SPEC` §8.2).
+ *
+ * The pipeline of §3.6 has four: perk and equipment, the actor's chill, obstruction, and
+ * the target's shield. Doubled, for the same headroom reason every other ceiling here is.
+ */
+export const MAX_PROVENANCE_STEPS = 8;
+
+/**
+ * The enemy pattern a contract may author (`COMBAT_SPEC` §4.7, `MVP_PLAN` §6.2).
+ *
+ * Two is the floor because a single foe is not a formation and the geometry it is meant to
+ * exercise has nothing to say about it; six is the ceiling because the board is 3×3 and a
+ * side that fills more than six of nine cells has no empty cell left for §4.5's decision to
+ * be about.
+ */
+export const MIN_FOES_PER_CONTRACT = 2;
+export const MAX_FOES_PER_CONTRACT = 6;
+
+/**
+ * Most wards one contract may put on the crew's own board.
+ *
+ * Every ward takes one of the nine cells the crew stands in, so two is already a crew of at
+ * most seven on a board of nine. A third would leave a crew of six nowhere legal to stand.
+ */
+export const MAX_WARDS_PER_CONTRACT = 2;
+
+/**
+ * Most rounds a `hold` objective may ask for.
+ *
+ * `MAX_ROUNDS` is 12 (`COMBAT_SPEC` §6.1), so an objective asking for more than that could
+ * never be closed by any battle this build can run — a requirement nothing can satisfy is a
+ * content defect, and this is the loader catching it rather than a player discovering it.
+ * Stated here rather than imported from the simulation because `limits.ts` is where content's
+ * own ceilings live; `battle-plan.test.ts` holds the two numbers to each other.
+ */
+export const MAX_BATTLE_ROUNDS_ASKED = 12;

@@ -1,6 +1,5 @@
-import { byDeclarationOrder, type Comparator } from '../collections/comparator.ts';
-
-import { CombatAction } from './actions.ts';
+import { CombatAction } from '../domain/combat-action.ts';
+import { DOCTRINE_IDS, DoctrineId, compareDoctrineIds } from '../domain/doctrine-id.ts';
 
 /**
  * The one group order a player gives before a battle (`COMBAT_SPEC` §7.2, `MVP_PLAN` §6.2).
@@ -11,18 +10,13 @@ import { CombatAction } from './actions.ts';
  * that "moves the ranking" can actually be: a hero takes the first thing on his doctrine's
  * list that is available to him, and the personality reaction is the one thing that reaches
  * past the list entirely.
+ *
+ * The **name** of a doctrine lives in `domain/doctrine-id.ts`: the one a player chose is
+ * stored on the contract's package and has to survive a save. The order it implies is a
+ * rule, and it is here.
  */
-export const DoctrineId = Object.freeze({
-  HoldTheLine: 'hold_the_line',
-  BreakThemFirst: 'break_them_first',
-  SpareThePeople: 'spare_the_people'
-});
 
-export type DoctrineId = (typeof DoctrineId)[keyof typeof DoctrineId];
-
-export const DOCTRINE_IDS: readonly DoctrineId[] = Object.freeze(Object.values(DoctrineId));
-
-export const compareDoctrineIds: Comparator<DoctrineId> = byDeclarationOrder(DOCTRINE_IDS);
+export { DOCTRINE_IDS, DoctrineId, compareDoctrineIds };
 
 /**
  * What each doctrine reaches for first (`COMBAT_SPEC` §5.1).

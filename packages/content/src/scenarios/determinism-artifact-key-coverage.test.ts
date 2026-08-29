@@ -1,5 +1,12 @@
 import {
+  BattleOutcome,
+  CombatAction,
   CombatRole,
+  compareStrings,
+  DoctrineId,
+  StatusId,
+  TargetReasons,
+  compareNeedIds,
   CommitmentState,
   compareContentIds,
   compareHeroIds,
@@ -13,7 +20,12 @@ import {
   parseContentId,
   SortedMap,
   SortedSet,
+  type BattleObjective,
+  type BattleRecord,
+  type BattleUnitId,
   type ContractResolution,
+  type StatusInstance,
+  type TargetReason,
   type ContractState,
   type GameState,
   type HeroContribution,
@@ -80,7 +92,8 @@ function aResolution(): ContractResolution {
         reason: OutcomeReasonCodes.WoundOnThePoint,
         magnitude: 1
       }
-    ]
+    ],
+    battle: null
   };
 }
 
@@ -265,11 +278,12 @@ describe('describeHero reads every field of HeroState', () => {
       ...h,
       role: h.role === CombatRole.Vanguard ? CombatRole.Rear : CombatRole.Vanguard
     }),
-    wounds: (h) => ({ ...h, wounds: h.wounds + 1 })
+    wounds: (h) => ({ ...h, wounds: h.wounds + 1 }),
+    retreats: (h) => ({ ...h, retreats: h.retreats + 1 })
   };
 
   const fields = Object.keys(base) as (keyof HeroState)[];
-  expect(fields).toHaveLength(15);
+  expect(fields).toHaveLength(16);
 
   it.each(fields.filter((f) => !EXCEPTIONS.includes(f)))('perturbing %s changes the projection', (field) => {
     const perturb = perturbations[field];
@@ -308,11 +322,30 @@ describe('describeContract reads every field of ContractState except the declare
     // that wrote a bare `grade` and dropped everything under it would still differ from
     // "not resolved" and pass. The two resolutions below differ only in a *coverage*
     // number, so this case fails unless the whole structure is written.
-    resolution: (c) => ({ ...c, resolution: aResolution() })
+    resolution: (c) => ({ ...c, resolution: aResolution() }),
+    // From "no fight" to a fight: the routing rule itself (`ADR-014` §1), and a projection
+    // blind to it would call a delegated contract and a battle contract the same campaign.
+    battle: (c) => ({
+      ...c,
+      battle: {
+        objectives: SortedMap.from<NeedId, BattleObjective>(compareNeedIds, [
+          [NeedId.Frontline, { kind: 'hold', rounds: 4 }]
+        ]),
+        foes: [
+          {
+            id: 'foe:a',
+            role: CombatRole.Vanguard,
+            cell: { row: 1, column: 1 },
+            combat: { might: 50, guard: 50, aim: 50, focus: 50, care: 50 }
+          }
+        ],
+        wards: []
+      }
+    })
   };
 
   const fields = (Object.keys(base) as (keyof ContractState)[]).filter((f) => !EXCEPTIONS.includes(f));
-  expect(fields).toHaveLength(10);
+  expect(fields).toHaveLength(11);
 
   it.each(NESTED_RESOLUTION_PERTURBATIONS)(
     'writes a resolution deeply: perturbing %s changes the projection',
@@ -400,5 +433,80 @@ describe('describeState reads every top-level field of GameState', () => {
     }
 
     expect(jsonOf(describeState(perturb(base)))).not.toBe(jsonOf(describeState(base)));
+  });
+});
+
+/**
+ * The half of a battle the artifact keeps, and the one external review found missing.
+ *
+ * `ADR-016` §6 keeps the log itself out — eighty events per contract makes the snapshot a
+ * person checks unreadable — and the first edition stopped there. That lost something real:
+ * two outcomes agreeing on grade, coverage, contributions and consequences and differing in
+ * *why* a blow landed where it did produced identical bytes, which is a determinism artifact
+ * calling two different runs the same run. A digest is what closes it without volume.
+ */
+describe('a battle is distinguishable in the artifact without being printed into it', () => {
+  const unit = {
+    id: 'crew:0',
+    side: 'crew' as const,
+    hero: heroId(0),
+    role: CombatRole.Vanguard,
+    cell: { row: 1, column: 1 } as const,
+    health: 20,
+    maxHealth: 20,
+    stability: 50,
+    combat: { might: 50, guard: 50, aim: 50, focus: 50, care: 50 },
+    statuses: SortedMap.empty<StatusId, StatusInstance>(compareStrings),
+    spent: false,
+    brokeDoctrine: false,
+    bonds: SortedMap.empty<BattleUnitId, number>(compareStrings),
+    standing: true
+  };
+
+  const battleWith = (reason: string): BattleRecord => {
+    const state = {
+      round: 1,
+      units: [unit],
+      doctrine: DoctrineId.HoldTheLine,
+      outcome: BattleOutcome.CrewStanding
+    };
+
+    return {
+      initial: { ...state, round: 0, outcome: null },
+      final: state,
+      events: [
+        {
+          kind: 'intent_declared',
+          actor: 'crew:0',
+          action: CombatAction.Strike,
+          target: 'foe:a',
+          reason: reason as TargetReason,
+          contraryTo: null
+        },
+        { kind: 'battle_ended', outcome: BattleOutcome.CrewStanding }
+      ],
+      rounds: 1,
+      outcome: BattleOutcome.CrewStanding,
+      retreatSignalledAtRound: null
+    };
+  };
+
+  const projected = (record: BattleRecord | null) =>
+    jsonOf(
+      describeContract({
+        ...aContract(),
+        battle: null,
+        resolution: { ...aResolution(), battle: record }
+      })
+    );
+
+  it('says a battle happened at all', () => {
+    expect(projected(battleWith(TargetReasons.FrontOfTheColumn))).not.toBe(projected(null));
+  });
+
+  it('differs when one event’s reason does, which the grade and the coverage cannot see', () => {
+    expect(projected(battleWith(TargetReasons.FrontOfTheColumn))).not.toBe(
+      projected(battleWith(TargetReasons.ReachedThroughTheOpenColumn))
+    );
   });
 });

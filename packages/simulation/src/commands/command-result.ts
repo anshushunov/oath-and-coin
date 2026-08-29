@@ -148,7 +148,52 @@ export const RejectionCodes = Object.freeze({
    * the same contract, and telling a player "the crew is not filled" about the second
    * would name the wrong one.
    */
-  NotResolved: 'rejected.not_resolved'
+  NotResolved: 'rejected.not_resolved',
+
+  /**
+   * `placeCrew` on a contract whose author wrote no battle plan (`ADR-014` §1).
+   *
+   * A contract without one is settled by the abstract resolver and never sees a board, so
+   * a formation on it is a decision about a fight that will not happen. Refused rather
+   * than accepted and ignored: silently storing it would put a screen in front of the
+   * player showing a plan nothing reads.
+   */
+  NotABattleContract: 'rejected.not_a_battle_contract',
+
+  /**
+   * Two heroes on one cell, or a hero on a cell the contract's own ward stands in
+   * (`COMBAT_SPEC` §3.7, §11).
+   */
+  CellTaken: 'rejected.cell_taken',
+
+  /**
+   * A hero who accepted and was given no cell, or a cell given to somebody who is not in
+   * the crew (`COMBAT_SPEC` §3.7, §11).
+   *
+   * One code for both directions, because both are the same defect from the two ends: the
+   * formation and the crew disagree about who is going.
+   */
+  UnplacedHero: 'rejected.unplaced_hero',
+
+  /**
+   * `resolveContract` on a battle contract nobody has placed a crew on (`COMBAT_SPEC` §6.3).
+   *
+   * The command-level half of `deployment_required`: the resolver refuses the same state by
+   * throwing, because a battle without a formation would mean inventing where the crew
+   * stood, and this is the refusal a player sees instead.
+   */
+  CrewNotPlaced: 'rejected.crew_not_placed',
+
+  /**
+   * A retreat signal that cannot have been given (`DEC-005`, `COMBAT_SPEC` §7.4).
+   *
+   * Three shapes, one code, because all three are the same defect from different sides: a
+   * round below one — a signal given before the battle began — a round that is not a whole
+   * number, and a signal on a contract that never goes to a fight. The first two produce a
+   * `BattleRecord` this build's own save codec refuses; the third is a lever with nothing
+   * behind it.
+   */
+  RetreatSignalNotPossible: 'rejected.retreat_signal_not_possible'
 });
 
 export type RejectionCode = (typeof RejectionCodes)[keyof typeof RejectionCodes];

@@ -60,6 +60,11 @@
     "rejected.already_settled": "По контракту уже рассчитались.",
     "rejected.already_resolved": "Отряд уже сходил и вернулся.",
     "rejected.not_resolved": "Отряд ещё не отправлен — считать нечего.",
+    "rejected.not_a_battle_contract": "Этот контракт разрешается без боя — строить некого и негде.",
+    "rejected.cell_taken": "На эту клетку уже кто-то встал.",
+    "rejected.unplaced_hero": "Не всем в отряде нашлось место на поле.",
+    "rejected.crew_not_placed": "Отряд ещё не расставлен — построй его перед отправкой.",
+    "rejected.retreat_signal_not_possible": "Такого сигнала отступления быть не могло.",
 
     "field.offer.version": "Версия пакета:",
     "field.offer.advance": "Аванс:",
@@ -157,6 +162,7 @@
     "outcome.consequence.wound": "Рана",
     "outcome.consequence.grudge": "Обида",
     "outcome.consequence.trust_lost": "Потеряно доверие к гильдии",
+    "outcome.consequence.retreat": "Отход",
 
     "outcome.need_closed": "участок закрыли",
     "outcome.need_weak": "участок держали едва",
@@ -167,6 +173,9 @@
     "outcome.wound_on_the_point": "был на острие",
     "outcome.grudge_after_faltering": "затаил обиду после того, как отступил",
     "outcome.trust_lost_in_disaster": "после катастрофы перестал верить слову гильдии",
+    "outcome.blocked_by_own_formation": "свой же строй съел часть удара",
+    "outcome.reached_through_the_open_column": "к нам прошли по открытой колонке",
+    "outcome.held_the_line": "рубеж выстояли",
 
     "need.frontline": "Строй",
     "need.undead_knowledge": "Знание нежити",

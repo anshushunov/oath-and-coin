@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "id": "core:works_in_the_open",
   "display_name_key": "trait.core.works_in_the_open.name",
   "kind": "inclination",

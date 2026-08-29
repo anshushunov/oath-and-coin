@@ -83,4 +83,30 @@ export function requireStoredResolutionConsistency(contract: ContractState): voi
       );
     }
   }
+
+  // **The route and the result have to agree** (`ADR-014` §1, `ADR-016` §5). A contract
+  // knows before the crew is sent which resolver settles it, and exactly one of them
+  // produces a battle log — so a stored result either has one and the contract has a plan,
+  // or it has neither. Neither half is a shape the schema can state, and both are reachable
+  // through a save: `snapshot-codec.ts` decodes `battle`, `deployment` and
+  // `resolution.battle` as three independent nullable fields, so an edited file can claim a
+  // fight was settled by the abstract resolver, or that a delegated job produced a battle.
+  if ((resolution.battle !== null) !== (contract.battle !== null)) {
+    throw new Error(
+      `Contract '${contract.id}' ${contract.battle === null ? 'has no battle plan' : 'goes to a battle'}, ` +
+        `but its stored result ${resolution.battle === null ? 'carries no battle' : 'carries one'}; ` +
+        'exactly one resolver settles a contract and it is chosen before the crew is sent ' +
+        '(ADR-014 §1).'
+    );
+  }
+
+  // And a fight that happened was fought from somewhere. The formation is what the debrief
+  // reads beside the log and what a replay is built from; a result carrying one without the
+  // other is a battle nobody can put back on a board.
+  if (resolution.battle !== null && offer.deployment === null) {
+    throw new Error(
+      `Contract '${contract.id}' stores a battle and no formation; the crew stood somewhere, ` +
+        'and a record without it cannot be replayed or explained (COMBAT_SPEC §3.7, §9).'
+    );
+  }
 }

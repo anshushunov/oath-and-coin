@@ -106,7 +106,8 @@ function resolvedFrom(state: GameState, contractId: ContentId): GameState {
   const resolved = resolveContract(state, {
     commandId: 100,
     contractId,
-    expectedStateVersion: state.metadata.stateVersion
+    expectedStateVersion: state.metadata.stateVersion,
+        retreatAtRound: null
   });
 
   if (!resolved.applied) {
@@ -234,7 +235,8 @@ function aFullResolution(hero: HeroId): ContractResolution {
         reason: OutcomeReasonCodes.WoundOnThePoint,
         magnitude: 1
       }
-    ]
+    ],
+    battle: null
   };
 }
 

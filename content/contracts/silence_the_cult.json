@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "id": "core:silence_the_cult",
   "display_name_key": "contract.core.silence_the_cult.name",
   "patron_fee": 55,
