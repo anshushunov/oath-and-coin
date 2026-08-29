@@ -182,7 +182,18 @@ export const RejectionCodes = Object.freeze({
    * throwing, because a battle without a formation would mean inventing where the crew
    * stood, and this is the refusal a player sees instead.
    */
-  CrewNotPlaced: 'rejected.crew_not_placed'
+  CrewNotPlaced: 'rejected.crew_not_placed',
+
+  /**
+   * A retreat signal that cannot have been given (`DEC-005`, `COMBAT_SPEC` §7.4).
+   *
+   * Three shapes, one code, because all three are the same defect from different sides: a
+   * round below one — a signal given before the battle began — a round that is not a whole
+   * number, and a signal on a contract that never goes to a fight. The first two produce a
+   * `BattleRecord` this build's own save codec refuses; the third is a lever with nothing
+   * behind it.
+   */
+  RetreatSignalNotPossible: 'rejected.retreat_signal_not_possible'
 });
 
 export type RejectionCode = (typeof RejectionCodes)[keyof typeof RejectionCodes];

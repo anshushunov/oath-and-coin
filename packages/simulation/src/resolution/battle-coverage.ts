@@ -235,20 +235,28 @@ function protect(record: BattleRecord, ward: BattleUnitId, required: number, led
   // `core:escort_the_relic`, which was unwinnable by every crew and every formation. Same
   // rule, one truncation instead of two.
   const total = divideTowardZero(multiplyInt32(required, final.health), final.maxHealth);
-  const given = new Map<HeroId, number>();
+  // Keyed by hero, and by `null` for a helper who is not one of them — a second ward, or
+  // the protectee patching itself up. Dropping those instead was a live defect external
+  // review found: `heroOf(...) === null` meant both "not a hero" and "nobody helped", so a
+  // ward doing all the healing read as nobody healing, and the whole objective was split
+  // between the men standing over him. The share stays where the rule says it goes: an
+  // increment nobody in the crew earned lands on the lowest-numbered hero, like every other
+  // one (§6.2.1).
+  const given = new Map<HeroId | null, number>();
 
   for (const event of record.events) {
-    const helper =
-      event.kind === 'healing_done' && event.target === ward
-        ? heroOf(record, event.actor)
-        : event.kind === 'damage_absorbed' && event.target === ward
-          ? heroOf(record, event.by)
-          : null;
-
-    if (helper !== null && (event.kind === 'healing_done' || event.kind === 'damage_absorbed')) {
-      ledger.raw(helper, event.amount);
-      given.set(helper, toInt32((given.get(helper) ?? 0) + event.amount));
+    if (event.kind !== 'healing_done' && event.kind !== 'damage_absorbed') {
+      continue;
     }
+
+    if (event.target !== ward) {
+      continue;
+    }
+
+    const helper = heroOf(record, event.kind === 'healing_done' ? event.actor : event.by);
+
+    ledger.raw(helper, event.amount);
+    given.set(helper, toInt32((given.get(helper) ?? 0) + event.amount));
   }
 
   const helped = [...given.values()].reduce((sum, value) => toInt32(sum + value), 0);
@@ -268,9 +276,13 @@ function protect(record: BattleRecord, ward: BattleUnitId, required: number, led
   const proportional = divideTowardZero(total, 2);
   let handed = 0;
 
-  for (const [hero, amount] of [...given.entries()].sort(([left], [right]) =>
-    compareHeroIds(left, right)
-  )) {
+  // In hero order, with the non-hero share last, so the answer never depends on the order
+  // events happened to arrive in.
+  const shares = [...given.entries()].sort(([left], [right]) =>
+    left === null ? 1 : right === null ? -1 : compareHeroIds(left, right)
+  );
+
+  for (const [hero, amount] of shares) {
     const share = divideTowardZero(multiplyInt32(proportional, amount), helped);
     ledger.credit(hero, share);
     handed = toInt32(handed + share);

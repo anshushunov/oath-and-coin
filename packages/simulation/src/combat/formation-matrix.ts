@@ -5,6 +5,8 @@ import { runBattle, startBattle, type BattleRecord } from './battle.ts';
 import { DoctrineId } from './doctrine.ts';
 import { BattleOutcome } from './events.ts';
 import type { Column, Row } from './field.ts';
+import { heroId } from '../ids/hero-id.ts';
+
 import { unitFrom, type BattleUnit } from './unit.ts';
 
 /**
@@ -206,7 +208,7 @@ export function runMatrixBattle(formation: string, pattern: string): BattleRecor
     throw new Error(`No such matrix cell: '${formation}' against '${pattern}'.`);
   }
 
-  const crew: BattleUnit[] = MATRIX_ROSTER.map((fighter) => {
+  const crew: BattleUnit[] = MATRIX_ROSTER.map((fighter, index) => {
     const cell = placement[fighter.key];
 
     if (cell === undefined) {
@@ -219,7 +221,12 @@ export function runMatrixBattle(formation: string, pattern: string): BattleRecor
     return unitFrom({
       id: `crew:${fighter.key}`,
       side: 'crew',
-      hero: null,
+      // A `HeroId` and not `null`, although this roster is synthetic: the crew's side is
+      // counted by its heroes (`COMBAT_SPEC` §6.1, §7.4 — a ward is not a man holding the
+      // line), and a matrix whose crew were all wards would end every battle before the
+      // first round. The number itself reaches no rule but the tie-break every comparison
+      // here already states.
+      hero: heroId(index),
       role: fighter.role,
       cell: { row: cell[0], column: cell[1] },
       combat: fighter.combat

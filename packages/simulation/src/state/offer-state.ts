@@ -318,6 +318,17 @@ function requireDeploymentConsistency(contract: ContractState): void {
     return;
   }
 
+  // A formation on a contract that never fights (`ADR-014` §1). `placeCrew` refuses it with
+  // a named code; this is the same refusal from the side a save arrives on, and without it
+  // a decoded campaign can carry a plan nothing will ever read.
+  if (contract.battle === null) {
+    throw new Error(
+      `Contract '${contract.id}' carries a formation and no battle plan; a contract without a ` +
+        'plan is settled by the abstract resolver and never sees a board ' +
+        '(COMBAT_SPEC §3.7: not_a_battle_contract).'
+    );
+  }
+
   const placed = deployment.placement.keys();
 
   if (placed.length !== acceptedBy.size) {
@@ -362,6 +373,7 @@ function requireDeploymentConsistency(contract: ContractState): void {
   }
 
   if (
+    !Number.isInteger(deployment.retreatBelowPercent) ||
     deployment.retreatBelowPercent < 0 ||
     deployment.retreatBelowPercent > RETREAT_THRESHOLD_MAX
   ) {

@@ -8,6 +8,8 @@ import {
   type ContractResolution,
   type AuthoredCombatant,
   type BattleObjective,
+  type BattleRecord,
+  type BattleState,
   type ContractBattlePlan,
   type ContractState,
   type DomainEvent,
@@ -107,11 +109,16 @@ import type { ScenarioOutcome, StepDecision, StepOutcome } from './scenario-runn
  * an omission.** `ContractResolution.battle` — the full battle log — stays out.
  * `ADR-016` §6 gives the reason in the terms this artifact exists in: it is read by a
  * person checking a run against a snapshot, the spike measured eighty events for one small
- * battle, and a snapshot nobody can read is a check nobody performs. What the artifact
- * carries instead is everything the battle *produced* — the coverage it supplied, the
- * grade it derived, the consequences it cost — so two runs whose battles differed in any
- * way that mattered still differ here. Two runs whose battles differed only in the order
- * of two irrelevant events do not, and that is the trade being made.
+ * battle, and a snapshot nobody can read is a check nobody performs.
+ *
+ * **The first edition stopped there, and that was wrong.** It argued that everything the
+ * battle *produced* — the coverage, the grade, the consequences — was enough to tell two
+ * runs apart. External review reproduced the counterexample: two outcomes agreeing on all
+ * of those and differing in *why* a blow landed where it did wrote identical bytes, which
+ * is a determinism artifact calling two different runs the same run. So the projection
+ * carries five facts about the battle and a **digest** of the whole record: it moves with
+ * any event, in any position, and costs one line of the snapshot. The version number does
+ * not move a second time — this is the same unreleased change that took it to 9.
  */
 export const ARTIFACT_VERSION = 9;
 
@@ -446,6 +453,14 @@ function describeResolution(resolution: ContractResolution | null): CanonicalVal
       heroes: deficit.heroes
     })),
     dominant: resolution.dominant ?? undefined,
+    // **Five facts and a digest, never the log itself** (`ADR-016` §6). The log stays out
+    // because eighty events per contract makes the snapshot a person checks unreadable —
+    // and a projection that stopped there would lose something real, which external review
+    // was right about: two outcomes agreeing on grade, coverage, contributions and
+    // consequences but differing in *why* a blow landed where it did produced identical
+    // bytes. The digest restores that: it moves with any event, in any position, and costs
+    // one line of the snapshot.
+    battle: resolution.battle === null ? undefined : describeBattle(resolution.battle),
     consequences: resolution.consequences.map((consequence) => ({
       hero: consequence.hero,
       kind: consequence.kind,
@@ -487,6 +502,77 @@ function describeOffer(offer: OfferState): CanonicalValue {
             doctrine: offer.deployment.doctrine,
             retreat_below_percent: offer.deployment.retreatBelowPercent
           }
+  };
+}
+
+/**
+ * What a battle looked like from outside, and one number that stands for the whole of it.
+ *
+ * The digest is over the same canonical machinery everything else here uses, so it is a
+ * function of the record and of nothing about the machine that computed it. What it buys is
+ * distinguishability without volume: a snapshot a person can still read, that nonetheless
+ * differs the moment any event does.
+ */
+function describeBattle(record: BattleRecord): CanonicalValue {
+  return {
+    rounds: record.rounds,
+    outcome: record.outcome,
+    retreat_signalled_at_round: record.retreatSignalledAtRound ?? undefined,
+    events: record.events.length,
+    digest: canonicalSha256(describeBattleRecord(record))
+  };
+}
+
+/** The whole record as canonical data — hashed, never written out (`ADR-016` §6). */
+function describeBattleRecord(record: BattleRecord): CanonicalValue {
+  return {
+    initial: describeBattleState(record.initial),
+    final: describeBattleState(record.final),
+    // Written through `structuredClone`'s honest equivalent — a walk that turns every event
+    // into plain data — rather than handed over as-is: every `BattleEvent` is already plain
+    // JSON by construction (`domain/battle-event.ts`), and this cast is the one place that
+    // relies on it, so it is stated rather than assumed.
+    events: record.events as unknown as CanonicalValue,
+    rounds: record.rounds,
+    outcome: record.outcome,
+    retreat_signalled_at_round: record.retreatSignalledAtRound
+  };
+}
+
+function describeBattleState(state: BattleState): CanonicalValue {
+  return {
+    round: state.round,
+    doctrine: state.doctrine,
+    outcome: state.outcome,
+    units: state.units.map((unit) => ({
+      id: unit.id,
+      side: unit.side,
+      hero: unit.hero,
+      role: unit.role,
+      cell: { row: unit.cell.row, column: unit.cell.column },
+      health: unit.health,
+      max_health: unit.maxHealth,
+      stability: unit.stability,
+      combat: {
+        might: unit.combat.might,
+        guard: unit.combat.guard,
+        aim: unit.combat.aim,
+        focus: unit.combat.focus,
+        care: unit.combat.care
+      },
+      statuses: Object.fromEntries(
+        unit.statuses
+          .entries()
+          .map(([status, instance]) => [
+            status,
+            { remaining_rounds: instance.remainingRounds, source: instance.source }
+          ])
+      ),
+      spent: unit.spent,
+      broke_doctrine: unit.brokeDoctrine,
+      bonds: Object.fromEntries(unit.bonds.entries()),
+      standing: unit.standing
+    }))
   };
 }
 

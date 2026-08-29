@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { SortedMap } from '../collections/sorted-map.ts';
 import { compareStrings } from '../collections/comparator.ts';
 import { CombatRole } from '../domain/combat-role.ts';
+import { heroId, type HeroId } from '../ids/hero-id.ts';
 
 import { MAX_ROUNDS, runBattle, runRound, startBattle } from './battle.ts';
 import { BOND_STRONG } from './decision.ts';
@@ -17,6 +18,29 @@ import { StatusId, unitFrom, type BattleUnit, type BattleUnitId } from './unit.t
 
 const AVERAGE = { might: 50, guard: 50, aim: 50, focus: 50, care: 50 };
 
+/**
+ * A stable, distinct `HeroId` per unit id.
+ *
+ * Crew units carry one and foes do not, and the distinction is load-bearing rather than
+ * decorative since the retreat arrived: §7.4's threshold is a share of the *heroes*, and a
+ * contract's own ward stands on the crew's side of the board without being one. A fixture
+ * whose crew was all `hero: null` would make every retreat rule vacuous.
+ */
+const assignedHeroIds = new Map<string, HeroId>();
+
+function heroFor(id: string): HeroId {
+  const known = assignedHeroIds.get(id);
+
+  if (known !== undefined) {
+    return known;
+  }
+
+  const assigned = heroId(assignedHeroIds.size);
+  assignedHeroIds.set(id, assigned);
+
+  return assigned;
+}
+
 function unit(
   id: string,
   side: BattleSide,
@@ -28,13 +52,23 @@ function unit(
     ...unitFrom({
       id,
       side,
-      hero: null,
+      hero: side === 'crew' ? heroFor(id) : null,
       role: CombatRole.Vanguard,
       cell: { row, column },
       combat: AVERAGE
     }),
     ...overrides
   };
+}
+
+/** A unit the contract put on the crew's side to be kept alive — not one of the crew. */
+function ward(
+  id: string,
+  row: Row,
+  column: Column,
+  overrides: Partial<BattleUnit> = {}
+): BattleUnit {
+  return { ...unit(id, 'crew', row, column, overrides), hero: null };
 }
 
 const bonds = (entries: readonly (readonly [BattleUnitId, number])[]): SortedMap<string, number> =>
@@ -407,6 +441,40 @@ describe('the one lever the player has, and the man who refuses it (DEC-005, §7
     expect(record.retreatSignalledAtRound).toBeNull();
     expect(kinds(record.events)).not.toContain('retreat_signalled');
     expect(kinds(record.events)).toContain('retreat_obeyed');
+  });
+
+  it('leaves the contract’s own ward where it stands, and does not count it as a man', () => {
+    // Two heroes and a ward. The ward is what the crew was hired to keep alive
+    // (`COMBAT_SPEC` §6.2), so it neither takes the order nor pads the share the threshold
+    // is a share **of** — and marching it off the field intact would close a `protect`
+    // objective at full marks the moment the player pulled the lever.
+    const cart = ward('ward:cart', 3, 3);
+    const record = runBattle(
+      startBattle([...crew.slice(0, 2), cart, ...foes], DoctrineId.HoldTheLine),
+      { belowPercent: 0, signalledAtRound: 1 }
+    );
+
+    expect(record.events.filter((event) => event.kind === 'retreat_obeyed')).toHaveLength(2);
+    expect(record.events).not.toContainEqual({ kind: 'retreat_obeyed', unit: 'ward:cart' });
+    expect(record.final.units.find((one) => one.id === 'ward:cart')?.standing).toBe(true);
+  });
+
+  it('measures the threshold against the heroes, not against whatever stands beside them', () => {
+    // One hero of two down is half the crew, which is below sixty per cent. With a ward
+    // counted as a man it reads two of three, and the withdrawal that should begin now
+    // waits for the cart to fall — reproduced by external review before this was fixed.
+    const doomed = [unit('crew:a', 'crew', 1, 1, { health: 1 }), unit('crew:b', 'crew', 1, 2)];
+    const killer = unit('foe:a', 'foe', 1, 1, {
+      combat: { ...AVERAGE, might: 100, focus: 100 }
+    });
+
+    const record = runBattle(
+      startBattle([...doomed, ward('ward:cart', 3, 3), killer], DoctrineId.HoldTheLine),
+      { belowPercent: 60, signalledAtRound: null }
+    );
+
+    expect(record.outcome).toBe(BattleOutcome.Retreated);
+    expect(record.rounds).toBe(2);
   });
 
   it('changes nothing at all when neither path is armed', () => {

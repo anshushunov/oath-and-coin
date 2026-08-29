@@ -64,6 +64,7 @@
     "rejected.cell_taken": "На эту клетку уже кто-то встал.",
     "rejected.unplaced_hero": "Не всем в отряде нашлось место на поле.",
     "rejected.crew_not_placed": "Отряд ещё не расставлен — построй его перед отправкой.",
+    "rejected.retreat_signal_not_possible": "Такого сигнала отступления быть не могло.",
 
     "field.offer.version": "Версия пакета:",
     "field.offer.advance": "Аванс:",

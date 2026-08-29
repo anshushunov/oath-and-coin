@@ -291,6 +291,43 @@ describe('what each kind supplies, by the way the battle ended (§6.2.2)', () =>
     expect(row?.verdict).toBe(CoverageVerdict.Uncovered);
   });
 
+  it('protect: help from somebody who is not a hero still lands on a hero’s line', () => {
+    // A second ward doing the healing. `heroOf(...) === null` used to mean both "not a hero"
+    // and "nobody helped", so this case fell through to the equal split — and the debrief
+    // credited two heroes with keeping a cart alive that a medic had kept alive. The share
+    // goes where §6.2.1 puts every increment nobody in the crew earned: the lowest id.
+    const half = { ...wardUnit, health: 10 };
+    const second = crewman('crew:b', 1, 1, 2);
+    const record = recordOf(
+      BattleOutcome.TimedOut,
+      3,
+      [alive, second, half],
+      [
+        {
+          kind: 'healing_done',
+          actor: 'ward:medic',
+          target: 'ward:cart',
+          amount: 6,
+          provenance: { base: 6, steps: [], final: 6 }
+        }
+      ]
+    );
+
+    const [row] = objectiveCoverage({
+      record,
+      needs: needs([[NeedId.Frontline, 100]]),
+      objectives: objectives([[NeedId.Frontline, { kind: 'protect', ward: 'ward:cart' }]]),
+      risk: 0
+    });
+
+    // Fifty of a hundred: half of it proportional to help nobody in the crew gave, and half
+    // split between the two who were standing. 25 + 25/2 each, and the leftover on the
+    // lowest id — 38 and 12 rather than the 25/25 an equal split would produce.
+    expect(row?.supplied).toBe(50);
+    expect(row?.contributors.map((one) => one.counted)).toEqual([38, 12]);
+    expect(row?.contributors.reduce((sum, one) => sum + one.counted, 0)).toBe(row?.supplied);
+  });
+
   it('subdue: only the targets that went down count, whoever else fell', () => {
     const record = recordOf(
       BattleOutcome.TimedOut,

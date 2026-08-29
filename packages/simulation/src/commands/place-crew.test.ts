@@ -240,10 +240,19 @@ describe('the three refusals of its own (COMBAT_SPEC §3.7, §11)', () => {
     expect(placeCrew(state, command(state)).rejectionCode).toBe(RejectionCodes.NotABattleContract);
   });
 
-  it('refuses a threshold outside the share it is', () => {
+  it('refuses a threshold outside the share it is, and one that is not a whole share', () => {
     const state = campaign();
 
     expect(placeCrew(state, command(state, { retreatBelowPercent: 101 })).rejectionCode).toBe(
+      RejectionCodes.OfferTermsOutOfBounds
+    );
+    expect(placeCrew(state, command(state, { retreatBelowPercent: -1 })).rejectionCode).toBe(
+      RejectionCodes.OfferTermsOutOfBounds
+    );
+    // A fraction is not fussiness: `TDD` §7.4 makes this arithmetic integral and the save
+    // codec holds the field to `z.int()`, so 40.5 accepted here is a campaign this build can
+    // produce and then refuse to read back. Found by external review.
+    expect(placeCrew(state, command(state, { retreatBelowPercent: 40.5 })).rejectionCode).toBe(
       RejectionCodes.OfferTermsOutOfBounds
     );
   });

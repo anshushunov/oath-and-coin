@@ -11,11 +11,16 @@ import { DoctrineId } from '../domain/doctrine-id.ts';
 import { NeedId, compareNeedIds } from '../domain/need-id.ts';
 import { ConsequenceKind, OutcomeIntentKind } from '../domain/outcome.ts';
 import { OutcomeReasonCodes } from '../domain/outcome-reason-codes.ts';
+import { compareContentIds } from '../ids/content-id.ts';
 import { compareHeroIds, heroId, type HeroId } from '../ids/hero-id.ts';
 import type { Cell } from '../domain/battle-cell.ts';
 import { ContractStatus } from '../state/contract-state.ts';
 import { OfferPhase, createContractState } from '../state/offer-state.ts';
-import { aContract, aHero, anOffer } from '../testing/fixtures.ts';
+import { placeCrew, resolveContract } from '../engine.ts';
+import type { GameState } from '../state/game-state.ts';
+import { aContract, aHero, anOffer, aState } from '../testing/fixtures.ts';
+
+import { RejectionCodes } from '../commands/command-result.ts';
 
 import { DEPLOYMENT_REQUIRED, WOUND_DOWNED, battleResolver } from './battle-resolver.ts';
 import { draftResolution, type ResolutionInput } from './contract-resolver.ts';
@@ -123,6 +128,49 @@ function input(overrides: Partial<ResolutionInput> = {}): ResolutionInput {
   };
 }
 
+/** The campaign a `resolveContract` is applied to: this contract, this crew, placed. */
+function campaignOf(subject: ReturnType<typeof contract>): GameState {
+  const heroes = SortedMap.from(compareHeroIds, [
+    [KEY, aHero({ id: KEY, role: CombatRole.Vanguard, combat: STRONG })],
+    [SECOND, aHero({ id: SECOND, role: CombatRole.Rear, combat: STRONG })]
+  ]);
+
+  const state = aState({
+    heroes,
+    contracts: SortedMap.from(compareContentIds, [[subject.id, subject]])
+  });
+
+  if (subject.battle === null) {
+    return state;
+  }
+
+  const placed = placeCrew(state, {
+    commandId: 1,
+    contractId: subject.id,
+    expectedStateVersion: state.metadata.stateVersion,
+    placement: [
+      { hero: KEY, cell: { row: 1, column: 1 } },
+      { hero: SECOND, cell: { row: 3, column: 2 } }
+    ],
+    doctrine: DoctrineId.HoldTheLine,
+    retreatBelowPercent: 0
+  });
+
+  if (placed.rejectionCode !== null) {
+    throw new Error(`placeCrew was refused: ${placed.rejectionCode}`);
+  }
+
+  return placed.state;
+}
+
+const resolveWith = (state: GameState, retreatAtRound: number | null) =>
+  resolveContract(state, {
+    commandId: 9,
+    contractId: aContract().id,
+    expectedStateVersion: state.metadata.stateVersion,
+    retreatAtRound
+  });
+
 describe('the battle resolver refuses what it cannot honestly answer', () => {
   it('names deployment_required rather than inventing a formation', () => {
     const { deployment: _dropped, ...withoutDeployment } = input();
@@ -223,6 +271,33 @@ describe('what a battle answers with (ADR-016 §1, §4)', () => {
   });
 });
 
+describe('the lever is checked before it reaches the battle (COMBAT_SPEC §11)', () => {
+  it('refuses a round below one — a signal given before the fight began', () => {
+    const state = campaignOf(contract());
+
+    // `0` is not "the first round". Taken as one, the record comes back carrying
+    // `retreatSignalledAtRound: 0`, which this build's own save codec refuses (`min(1)`) —
+    // an engine producing a campaign it cannot store. Found by external review.
+    expect(resolveWith(state, 0).rejectionCode).toBe(RejectionCodes.RetreatSignalNotPossible);
+    expect(resolveWith(state, 1.5).rejectionCode).toBe(RejectionCodes.RetreatSignalNotPossible);
+  });
+
+  it('refuses a signal on a contract that never goes to a fight', () => {
+    const state = campaignOf(contract(null));
+
+    expect(resolveWith(state, 2).rejectionCode).toBe(RejectionCodes.RetreatSignalNotPossible);
+    // And accepts the absence of one on the same contract, so the refusal above is about
+    // the signal rather than about the contract.
+    expect(resolveWith(state, null).rejectionCode).toBeNull();
+  });
+
+  it('changes nothing at all when it refuses', () => {
+    const state = campaignOf(contract());
+
+    expect(Object.is(resolveWith(state, 0).state, state)).toBe(true);
+  });
+});
+
 describe('the two properties that keep the resolvers out of each other’s way', () => {
   it('the abstract resolver does not read `deployment` at all (§12.1 п.8)', () => {
     // **Weights of 100 and not the fixture's 40 and 30**, and a live mutant is why. A
@@ -230,7 +305,7 @@ describe('the two properties that keep the resolvers out of each other’s way',
     // numbers the coverage arithmetic already takes; at a weight of 40 a nudge of one point
     // to `risk` truncates away in `weight × (100 + risk) / 100` and the check stayed green
     // over a resolver that was reading the formation. At a hundred, a point is a point.
-    const sensitive = (): ResolutionInput => ({
+    const sensitive = (over: Partial<Deployment> = {}): ResolutionInput => ({
       ...input(),
       contract: {
         ...contract(),
@@ -238,15 +313,38 @@ describe('the two properties that keep the resolvers out of each other’s way',
           [NeedId.Frontline, 100],
           [NeedId.Wilderness, 100]
         ])
-      }
+      },
+      deployment: deployment(over)
     });
     const { deployment: _dropped, ...bare } = sensitive();
+    const answer = JSON.stringify(draftResolution(bare));
 
-    // Byte for byte the same answer, with and without a formation on the input — the whole
-    // draft, not only its intents: the resolution carries the coverage.
-    expect(JSON.stringify(draftResolution(sensitive()))).toBe(
-      JSON.stringify(draftResolution(bare))
-    );
+    // **Several formations, each moving one thing**, and a second live mutant is why. The
+    // first version compared one formation against none, and every field of that formation
+    // happened to be nought or a default — so `risk + (deployment?.crew.retreatBelowPercent
+    // ?? 0)` read the formation, added nothing on both inputs, and survived. Each entry
+    // below moves one field a resolver could plausibly reach for.
+    const varied: readonly Partial<Deployment>[] = [
+      {},
+      { crew: { ...deployment().crew, retreatBelowPercent: 1 } },
+      { crew: { ...deployment().crew, doctrine: DoctrineId.BreakThemFirst } },
+      {
+        crew: {
+          ...deployment().crew,
+          placement: placement([
+            [KEY, { row: 2, column: 3 }],
+            [SECOND, { row: 1, column: 1 }]
+          ])
+        }
+      },
+      { retreatSignalledAtRound: 1 },
+      { plan: { ...plan(), foes: plan().foes.slice(0, 1) } }
+    ];
+
+    for (const over of varied) {
+      expect(JSON.stringify(draftResolution(sensitive(over))), JSON.stringify(over)).toBe(answer);
+    }
+
     expect(draftResolution(sensitive()).resolution.battle).toBeNull();
   });
 

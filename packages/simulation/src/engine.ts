@@ -848,7 +848,16 @@ export function placeCrew(state: GameState, command: PlaceCrew): CommandResult {
     return rejected(state, RejectionCodes.NotABattleContract);
   }
 
-  if (command.retreatBelowPercent < 0 || command.retreatBelowPercent > RETREAT_THRESHOLD_MAX) {
+  // Whole per cent, and the integrality is not fussiness: `TDD` §7.4 makes the whole of this
+  // arithmetic integral, and the save codec holds this field to `z.int()`. A fraction
+  // accepted here is a campaign this build can produce and then refuse to read back — the
+  // circle `MAX_ARTIFACT_SAFE_TEXT_LENGTH` was once found on the wrong side of. Found by
+  // external review.
+  if (
+    !Number.isInteger(command.retreatBelowPercent) ||
+    command.retreatBelowPercent < 0 ||
+    command.retreatBelowPercent > RETREAT_THRESHOLD_MAX
+  ) {
     return rejected(state, RejectionCodes.OfferTermsOutOfBounds);
   }
 
@@ -985,6 +994,21 @@ export function resolveContract(state: GameState, command: ResolveContract): Com
   // `withEvent` on it.
   if (contract.battle !== null && contract.offer.deployment === null) {
     return rejected(state, RejectionCodes.CrewNotPlaced);
+  }
+
+  // The lever, checked before it reaches the battle (`COMBAT_SPEC` §11: a refusal is always
+  // a named code and always before the first event). A round of `0` is not "the first
+  // round" — it is a signal given before the battle began, and the record that came back
+  // carrying it is one the save codec refuses, so the engine would be producing a campaign
+  // it cannot store. A signal on a contract that never fights is a lever with nothing
+  // behind it.
+  if (
+    command.retreatAtRound !== null &&
+    (contract.battle === null ||
+      !Number.isInteger(command.retreatAtRound) ||
+      command.retreatAtRound < 1)
+  ) {
+    return rejected(state, RejectionCodes.RetreatSignalNotPossible);
   }
 
   const draft = resolverFor(contract)({

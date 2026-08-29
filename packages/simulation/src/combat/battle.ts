@@ -107,7 +107,11 @@ export function runBattle(initial: BattleState, retreat: RetreatOrder = NO_RETRE
     }
   ];
 
-  const setOut = initial.units.filter((unit) => unit.side === 'crew').length;
+  // **Heroes, not everyone standing on the crew's side.** §7.4 says the threshold is a share
+  // of the *heroes*, and the contract's own wards stand on that side too: a cart counted as
+  // a man makes the crew look less worn down than it is, and external review reproduced a
+  // withdrawal that began three rounds late for exactly that reason.
+  const setOut = initial.units.filter(isCrewHero).length;
   let state = initial;
   let withdrew = false;
 
@@ -115,7 +119,15 @@ export function runBattle(initial: BattleState, retreat: RetreatOrder = NO_RETRE
     const step = runRound(state, withdrawalOf(state, setOut, retreat));
     state = step.state;
     events.push(...step.events);
-    withdrew = withdrew || step.withdrawing;
+
+    if (step.withdrawing) {
+      // One round and then it is over. The men who obeyed have left the field and the ones
+      // who refused fought the round they refused it in — which is the whole of the drama
+      // `DEC-005` asks the lever to produce, and a second round of it would be a battle
+      // fought by whoever happens to have a friend on the ground.
+      withdrew = true;
+      break;
+    }
   }
 
   // A withdrawal outranks whatever the board looks like afterwards, and it has to: a crew
@@ -155,13 +167,18 @@ function withdrawalOf(
     return { signalled: true };
   }
 
-  const standing = state.units.filter((unit) => unit.side === 'crew' && unit.standing).length;
+  const standing = state.units.filter((unit) => isCrewHero(unit) && unit.standing).length;
 
   // Cross-multiplied rather than divided, like every other comparison of a share in this
   // package: an integer division would put the boundary on the wrong side of itself.
   return retreat.belowPercent > 0 && standing * 100 < setOut * retreat.belowPercent
     ? { signalled: false }
     : null;
+}
+
+/** A hero of the crew, as against a ward the contract put on the same side of the board. */
+function isCrewHero(unit: BattleUnit): boolean {
+  return unit.side === 'crew' && unit.hero !== null;
 }
 
 interface Withdrawal {
@@ -203,7 +220,7 @@ export function runRound(
       ? []
       : units
           .filter(
-            (one) => one.side === 'crew' && one.standing && bondedAllyInTrouble(one, units) !== null
+            (one) => isCrewHero(one) && one.standing && bondedAllyInTrouble(one, units) !== null
           )
           .map((one) => one.id)
   );
@@ -213,7 +230,10 @@ export function runRound(
     .map((unit) => unit.id);
 
   for (const actorId of order) {
-    if (standingOn(units, 'crew').length === 0 || standingOn(units, 'foe').length === 0) {
+    if (
+      units.filter((one) => isCrewHero(one) && one.standing).length === 0 ||
+      standingOn(units, 'foe').length === 0
+    ) {
       break;
     }
 
@@ -223,13 +243,17 @@ export function runRound(
       continue;
     }
 
-    if (withdrawal !== null && actor.side === 'crew' && !refusing.has(actor.id)) {
+    // **Only the heroes leave.** A ward is what the crew was hired to keep alive
+    // (`COMBAT_SPEC` §6.2), not somebody who takes an order — and marching it off the field
+    // intact would close a `protect` objective at full marks the moment the player pulled
+    // the lever, which is a lever that wins the contract rather than costing it.
+    if (withdrawal !== null && isCrewHero(actor) && !refusing.has(actor.id)) {
       units = replace(units, { ...actor, standing: false });
       events.push({ kind: 'retreat_obeyed', unit: actor.id });
       continue;
     }
 
-    if (withdrawal !== null && actor.side === 'crew') {
+    if (withdrawal !== null && isCrewHero(actor)) {
       events.push({
         kind: 'retreat_refused',
         unit: actor.id,
@@ -653,8 +677,16 @@ function hurt(
   return replace(units, { ...target, health, standing });
 }
 
+/**
+ * Who is left, and therefore whether it is over (`COMBAT_SPEC` §6.1).
+ *
+ * **The crew's side is counted by its heroes.** A ward is what the crew was hired to keep
+ * alive, not somebody holding the line: a fight where every hero is down and the cart is
+ * still upright is a fight the crew lost, and counting the cart would leave it running until
+ * the round ceiling with nobody on one side able to act.
+ */
 function outcomeOf(units: readonly BattleUnit[]): BattleOutcome | null {
-  const crew = standingOn(units, 'crew').length;
+  const crew = units.filter((unit) => isCrewHero(unit) && unit.standing).length;
   const foes = standingOn(units, 'foe').length;
 
   if (foes === 0) {
