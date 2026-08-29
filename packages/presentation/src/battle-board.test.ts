@@ -217,6 +217,103 @@ describe('what the board carries for the screen', () => {
     expect(marked.every((one) => STATUSES.includes(one.status))).toBe(true);
     expect(marked.every((one) => one.source.length > 0)).toBe(true);
   });
+
+  it('counts a status down to nought exactly as the engine reaches its own expiry', () => {
+    // The comparison against `record.final` cannot see this: every status these battles apply
+    // has expired by the last event, so the closing board's lists are empty and a fold that
+    // never counted anything down passes it. What the countdown has to agree with is the
+    // engine's *silence* — the rounds tick away inside the round loop with nothing raised —
+    // and the one place the two can be compared is the instant before `status_expired`.
+    let checked = 0;
+
+    for (const { name, record } of battles()) {
+      record.events.forEach((event, index) => {
+        if (event.kind !== 'status_expired') {
+          return;
+        }
+
+        const before = boardAfter(record, index);
+        const held = before.units
+          .find((unit) => unit.unit === event.target)
+          ?.statuses.find((one) => one.status === event.status);
+
+        expect(held, `${name}: ${event.target} had no ${event.status} to lose`).toBeDefined();
+        // One, not nought: the engine expires a status the round it would have counted down
+        // to nothing (`remainingRounds <= 1`), so a status on the board always has at least
+        // one round left. A fold that reached nought would be showing a state the engine
+        // never has.
+        expect(
+          held?.remainingRounds,
+          `${name}: ${event.target}'s ${event.status} expired on a board that had it at ${String(held?.remainingRounds)}`
+        ).toBe(1);
+        checked += 1;
+      });
+    }
+
+    expect(checked, 'no shipped fixture let a status run out').toBeGreaterThan(0);
+  });
+
+  it('shows a status with fewer rounds left than it was applied with, once a round has passed', () => {
+    // Built from events rather than fished out of a battle, and the reason is a finding
+    // rather than a convenience: **no action in the shipped build applies a status that
+    // lasts more than one round.** `COMBAT_SPEC` §3.5 declares four statuses and gives
+    // `bleeding` two rounds; `battle.ts` applies `chilled`, `guarded` and `pinned`, each
+    // with `rounds: 1` written out, and nothing anywhere applies `bleeding` — it is only
+    // ever read, at the end of a round, by a branch no battle reaches. So the countdown
+    // this asserts is real code on an event the vocabulary allows and the current rules
+    // never raise, and asking a real battle for it would be asking for silence.
+    const base = battles()[0]!.record;
+    const target = base.initial.units[0]!;
+    const twoRounds: BattleRecord = {
+      ...base,
+      events: [
+        {
+          kind: 'status_applied',
+          target: target.id,
+          status: StatusId.Bleeding,
+          source: base.initial.units[1]!.id,
+          rounds: 2,
+          refreshed: false
+        },
+        { kind: 'round_ended', round: 1 }
+      ]
+    };
+
+    const held = (applied: number) =>
+      boardAfter(twoRounds, applied)
+        .units.find((unit) => unit.unit === target.id)
+        ?.statuses.find((one) => one.status === StatusId.Bleeding);
+
+    expect(held(1)?.remainingRounds).toBe(2);
+    expect(held(2)?.remainingRounds).toBe(1);
+  });
+
+  it('moves both men when one event swaps two of them', () => {
+    // No battle in this file produces a swap — every `unit_shifted` in all five has a `null`
+    // partner — so the case is built from the event rather than fished for. That is the
+    // honest shape for it: what is being asserted is what the *vocabulary* means, and a fold
+    // that ignored `partner` would leave two tokens on one cell with every real battle green.
+    const record = battles()[0]!.record;
+    const [left, right] = record.initial.units;
+    const swapped: BattleRecord = {
+      ...record,
+      events: [
+        {
+          kind: 'unit_shifted',
+          unit: left!.id,
+          from: left!.cell,
+          to: right!.cell,
+          forced: false,
+          partner: right!.id
+        }
+      ]
+    };
+
+    const board = boardAfter(swapped, 1);
+
+    expect(board.units.find((unit) => unit.unit === left!.id)?.cell).toEqual(right!.cell);
+    expect(board.units.find((unit) => unit.unit === right!.id)?.cell).toEqual(left!.cell);
+  });
 });
 
 const STATUSES: readonly StatusId[] = Object.values(StatusId);
