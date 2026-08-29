@@ -321,6 +321,106 @@ describe('the personality reaction, which is what the lab is for', () => {
   });
 });
 
+describe('the one lever the player has, and the man who refuses it (DEC-005, §7.4)', () => {
+  const crew = [
+    unit('crew:a', 'crew', 1, 1),
+    unit('crew:b', 'crew', 1, 2),
+    unit('crew:c', 'crew', 1, 3)
+  ];
+  const foes = [unit('foe:a', 'foe', 1, 1), unit('foe:b', 'foe', 1, 2)];
+
+  it('ends the battle as a retreat, and names the round the signal was given', () => {
+    const record = runBattle(startBattle([...crew, ...foes], DoctrineId.HoldTheLine), {
+      belowPercent: 0,
+      signalledAtRound: 2
+    });
+
+    expect(record.outcome).toBe(BattleOutcome.Retreated);
+    expect(record.retreatSignalledAtRound).toBe(2);
+    expect(record.rounds).toBe(2);
+    expect(record.events).toContainEqual({ kind: 'retreat_signalled', round: 2 });
+    expect(record.events.filter((event) => event.kind === 'retreat_obeyed')).toHaveLength(3);
+  });
+
+  it('outranks the board it leaves behind — an empty field is not a defeat', () => {
+    // Everybody walked off, so nobody on the crew's side is standing. Read off the board
+    // alone that is `foes_standing`, which is the debrief telling a player he was wiped out
+    // by the men he walked away from.
+    const record = runBattle(startBattle([...crew, ...foes], DoctrineId.HoldTheLine), {
+      belowPercent: 0,
+      signalledAtRound: 1
+    });
+
+    expect(record.final.units.filter((one) => one.side === 'crew' && one.standing)).toHaveLength(0);
+    expect(record.outcome).toBe(BattleOutcome.Retreated);
+    // Off the field, not down on it: a `Wound` follows being knocked down and must not
+    // follow a man who left on his feet (`COMBAT_SPEC` §6.5).
+    expect(kinds(record.events)).not.toContain('unit_downed');
+  });
+
+  it('is not an order: the man with a friend on the ground refuses it and fights on', () => {
+    const hurt = unit('crew:friend', 'crew', 1, 2, { health: 5, maxHealth: 35 });
+    const loyal = unit('crew:loyal', 'crew', 2, 2, {
+      role: CombatRole.Support,
+      bonds: bonds([['crew:friend', BOND_STRONG]])
+    });
+    const other = unit('crew:other', 'crew', 1, 1);
+
+    const record = runBattle(
+      startBattle([hurt, loyal, other, unit('foe:a', 'foe', 1, 2)], DoctrineId.HoldTheLine),
+      { belowPercent: 0, signalledAtRound: 1 }
+    );
+
+    expect(record.events).toContainEqual({
+      kind: 'retreat_refused',
+      unit: 'crew:loyal',
+      motive: 'combat.motive.stood_by_a_friend'
+    });
+    // And he did something with the turn he kept, rather than standing there refusing.
+    expect(record.events).toContainEqual(
+      expect.objectContaining({ kind: 'intent_declared', actor: 'crew:loyal' })
+    );
+    // The others left. A refusal that made everybody stay would be no refusal at all.
+    expect(record.events).toContainEqual({ kind: 'retreat_obeyed', unit: 'crew:other' });
+  });
+
+  it('withdraws on the threshold the player set, and does not claim he pulled the lever', () => {
+    // Two of three down puts the standing share at 33%, below a threshold of 50. The
+    // threshold is the main path (`DEC-005`); the signal is the emergency one, and only the
+    // second raises `retreat_signalled`.
+    const doomed = [
+      unit('crew:a', 'crew', 1, 1, { health: 1 }),
+      unit('crew:b', 'crew', 1, 2, { health: 1 }),
+      unit('crew:c', 'crew', 1, 3)
+    ];
+    const killers = [
+      unit('foe:a', 'foe', 1, 1, { combat: { ...AVERAGE, might: 100, focus: 100 } }),
+      unit('foe:b', 'foe', 1, 2, { combat: { ...AVERAGE, might: 100, focus: 100 } })
+    ];
+
+    const record = runBattle(startBattle([...doomed, ...killers], DoctrineId.HoldTheLine), {
+      belowPercent: 50,
+      signalledAtRound: null
+    });
+
+    expect(record.outcome).toBe(BattleOutcome.Retreated);
+    expect(record.retreatSignalledAtRound).toBeNull();
+    expect(kinds(record.events)).not.toContain('retreat_signalled');
+    expect(kinds(record.events)).toContain('retreat_obeyed');
+  });
+
+  it('changes nothing at all when neither path is armed', () => {
+    const armed = runBattle(startBattle([...crew, ...foes], DoctrineId.HoldTheLine), {
+      belowPercent: 0,
+      signalledAtRound: null
+    });
+    const bare = runBattle(startBattle([...crew, ...foes], DoctrineId.HoldTheLine));
+
+    expect(JSON.stringify(armed.events)).toBe(JSON.stringify(bare.events));
+    expect(armed.outcome).not.toBe(BattleOutcome.Retreated);
+  });
+});
+
 describe('statuses expire, and bleeding names who caused it', () => {
   it('takes a status off after its rounds and says so', () => {
     const caster = unit('crew:c', 'crew', 3, 2, { role: CombatRole.Rear });

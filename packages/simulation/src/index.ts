@@ -58,6 +58,7 @@ export {
   OBSTRUCTION_STEP,
   ROWS,
   blockersBetween,
+  cellKey,
   effectPercent,
   isAdjacent,
   isColumnClearThrough,
@@ -116,13 +117,17 @@ export {
   type TargetReason
 } from './combat/targeting.ts';
 export {
+  BATTLE_OUTCOMES,
+  BLOCK_REASONS,
   BattleOutcome,
   BlockReasons,
   COMBAT_ACTIONS,
   CombatAction,
+  MOTIVE_REASONS,
   MotiveReasons,
   unitNamedBy,
   type BattleEvent,
+  type BattleEventKind,
   type BlockReason,
   type MotiveReason
 } from './combat/events.ts';
@@ -136,6 +141,7 @@ export {
   BOND_STRONG,
   HELP_THRESHOLD,
   availableActions,
+  bondedAllyInTrouble,
   decideCombatAction,
   friendInTrouble,
   type CombatDecision
@@ -146,7 +152,8 @@ export {
   runRound,
   startBattle,
   type BattleRecord,
-  type BattleState
+  type BattleState,
+  type RetreatOrder
 } from './combat/battle.ts';
 export {
   ConsequenceKind,

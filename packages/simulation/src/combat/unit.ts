@@ -1,5 +1,8 @@
 import { SortedMap } from '../collections/sorted-map.ts';
 import { compareStrings } from '../collections/comparator.ts';
+import { STATUS_IDS, StatusId, type StatusInstance } from '../domain/battle-status.ts';
+import { compareBattleUnitIds, type BattleUnitId } from '../domain/battle-unit-id.ts';
+import type { BattleUnit } from '../domain/battle-unit.ts';
 import type { HeroCombatLayer } from '../domain/combat-attributes.ts';
 import { CombatRole } from '../domain/combat-role.ts';
 import type { HeroId } from '../ids/hero-id.ts';
@@ -8,75 +11,22 @@ import { divideTowardZero, multiplyInt32 } from '../integer-division.ts';
 import type { BattleSide, Cell } from './field.ts';
 
 /**
- * One combatant, and every number about him that is not authored (`COMBAT_SPEC` §3.2,
- * §3.6).
+ * Every number about a combatant that is not authored (`COMBAT_SPEC` §3.6), and the one
+ * way to put a unit on the board.
  *
  * `maxHealth` and `stability` are derived here for the reason `grade` is derived in
  * `grade.ts`: a second authored number beside the attributes is a second truth about how
  * tough a hero is, and the two part company on the first content edit with both sides
  * schema-valid (`DEC-013` §Проверка, `DEC-016` §3).
- */
-
-/** A combatant's identity inside one battle. Stable for its length and no longer. */
-export type BattleUnitId = string;
-
-export const compareBattleUnitIds = compareStrings;
-
-/** The four statuses of `COMBAT_SPEC` §3.5. */
-export const StatusId = Object.freeze({
-  Chilled: 'chilled',
-  Bleeding: 'bleeding',
-  Guarded: 'guarded',
-  Pinned: 'pinned'
-});
-
-export type StatusId = (typeof StatusId)[keyof typeof StatusId];
-
-export const STATUS_IDS: readonly StatusId[] = Object.freeze(Object.values(StatusId));
-
-/**
- * A status on a unit, **with the unit that put it there**.
  *
- * The source is in the state and not only in the event that applied it, and that is a
- * repair rather than a flourish: `bleeding` deals damage at the end of a round, and the
- * event for that damage has to name an `actor`; `guarded` absorbs a blow, and the
- * absorption has to name a `by`. Both facts are gone by then unless the state remembers
- * them — external review found the hole, and §8.3 could not have built a single aggregate
- * without it.
+ * The **shape** of a unit and of a status lives in `domain/` (`battle-unit.ts`,
+ * `battle-status.ts`), because a battle record is stored on the contract's resolution
+ * (`COMBAT_SPEC` §6.4) and `state/` may only reach `domain/`. What is here is the
+ * arithmetic, which nothing outside the combat core needs.
  */
-export interface StatusInstance {
-  readonly remainingRounds: number;
-  readonly source: BattleUnitId;
-}
 
-export interface BattleUnit {
-  readonly id: BattleUnitId;
-  readonly side: BattleSide;
-  /** The hero this unit is, or `null` for a foe (`COMBAT_SPEC` §3.2). */
-  readonly hero: HeroId | null;
-  readonly role: CombatRole;
-  readonly cell: Cell;
-  readonly health: number;
-  readonly maxHealth: number;
-  readonly stability: number;
-  readonly combat: HeroCombatLayer;
-  readonly statuses: SortedMap<StatusId, StatusInstance>;
-  /** Whether the next action has already been spent — by a swap, or by `pinned`. */
-  readonly spent: boolean;
-  /** Whether the personality reaction has already fired (`COMBAT_SPEC` §7.3: once). */
-  readonly brokeDoctrine: boolean;
-  /**
-   * What this unit thinks of the others, keyed by their battle id (`GDD` §6.4).
-   *
-   * Resolved once when the battle is set up, from the hero's `relationships`, so the combat
-   * core never has to know what a `ContentId` is. It is the **one** thing here that is not
-   * the combat layer, and it reaches exactly one rule — the personality reaction of
-   * `COMBAT_SPEC` §7.3, which changes which action is chosen and no number
-   * (`DEC-016` §4).
-   */
-  readonly bonds: SortedMap<BattleUnitId, number>;
-  readonly standing: boolean;
-}
+export { STATUS_IDS, StatusId, compareBattleUnitIds };
+export type { BattleUnit, BattleUnitId, StatusInstance };
 
 /** §3.5's durations, fixed constants and nothing computed from `focus`. */
 export const STATUS_ROUNDS: Readonly<Record<StatusId, number>> = Object.freeze({

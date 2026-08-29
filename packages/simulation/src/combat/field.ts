@@ -1,3 +1,14 @@
+import {
+  COLUMNS,
+  ROWS,
+  cellKey,
+  opposing,
+  type BattleSide,
+  type Cell,
+  type Column,
+  type Row
+} from '../domain/battle-cell.ts';
+
 /**
  * The board and the one quantity every rule of the geometry is expressed through
  * (`COMBAT_SPEC` §3.1, §4.3).
@@ -5,26 +16,16 @@
  * `DEC-011` accepted a 3×3 field and a crew of 4–6 and explicitly accepted no geometry;
  * §4 of the spec is that geometry, and this module is the half of it that is pure
  * arithmetic over positions. Nothing here knows what an action is or what damage means.
+ *
+ * The **shape** of a cell is not here but in `domain/battle-cell.ts`, and the split is the
+ * one `RESOLUTION_SPEC` §2.7 already draws: a player's formation is stored on the
+ * contract's package (`COMBAT_SPEC` §3.7), so `state/` has to be able to name a cell, and
+ * `state/` may only reach `domain/`. The rules below stay here, where nothing outside the
+ * combat core needs them.
  */
 
-export type Row = 1 | 2 | 3;
-export type Column = 1 | 2 | 3;
-
-/** Rows nearest the enemy first: `1` столкновение, `2` опора, `3` тыл. */
-export const ROWS: readonly Row[] = Object.freeze([1, 2, 3]);
-export const COLUMNS: readonly Column[] = Object.freeze([1, 2, 3]);
-
-export interface Cell {
-  readonly row: Row;
-  readonly column: Column;
-}
-
-export type BattleSide = 'crew' | 'foe';
-
-/** The two sides, so a reader can name "the other one" without an `if`. */
-export function opposing(side: BattleSide): BattleSide {
-  return side === 'crew' ? 'foe' : 'crew';
-}
+export { COLUMNS, ROWS, cellKey, opposing };
+export type { BattleSide, Cell, Column, Row };
 
 /** What the geometry needs to know about a unit, and nothing else. */
 export interface Positioned {

@@ -1,7 +1,14 @@
+import {
+  MODIFIER_CODES,
+  ModifierCodes,
+  type AmountProvenance,
+  type ModifierCode,
+  type ProvenanceStep
+} from '../domain/battle-provenance.ts';
+import type { BattleUnitId } from '../domain/battle-unit-id.ts';
 import { divideTowardZero, multiplyInt32 } from '../integer-division.ts';
 
 import { effectPercent } from './field.ts';
-import type { BattleUnitId, StatusId } from './unit.ts';
 
 /**
  * How a base number becomes the number that happened, and the record of every step
@@ -11,34 +18,14 @@ import type { BattleUnitId, StatusId } from './unit.ts';
  * `DIRECTION_2026-08` §4.7 records what the debrief screen costs without it: the claim
  * "the data is already in the engine" was false, and provenance is the part that has to be
  * designed rather than exported.
+ *
+ * The **shape** of that record lives in `domain/battle-provenance.ts`, because a
+ * `damage_dealt` carries it and the stored resolution carries the events (§6.4). The
+ * pipeline that fills it is here.
  */
 
-/** Why a number moved. A closed vocabulary, artifact-safe, and a localization key. */
-export const ModifierCodes = Object.freeze({
-  /** The actor is chilled, so everything he does lands lighter (§3.5). */
-  Chilled: 'combat.modifier.chilled',
-  /** Cells stood in the way — his own as readily as theirs (§4.3). */
-  Obstruction: 'combat.modifier.obstruction',
-  /** The target was guarded, and a shield took the first of it (§3.5). */
-  Guarded: 'combat.modifier.guarded'
-});
-
-export type ModifierCode = (typeof ModifierCodes)[keyof typeof ModifierCodes];
-
-export const MODIFIER_CODES: readonly ModifierCode[] = Object.freeze(Object.values(ModifierCodes));
-
-export interface ProvenanceStep {
-  readonly code: ModifierCode;
-  readonly source: BattleUnitId | StatusId;
-  /** Signed: what this step did to the number. */
-  readonly delta: number;
-}
-
-export interface AmountProvenance {
-  readonly base: number;
-  readonly steps: readonly ProvenanceStep[];
-  readonly final: number;
-}
+export { MODIFIER_CODES, ModifierCodes };
+export type { AmountProvenance, ModifierCode, ProvenanceStep };
 
 export interface EffectInput {
   readonly base: number;

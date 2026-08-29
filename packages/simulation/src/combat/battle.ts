@@ -1,8 +1,9 @@
 import { compareStrings } from '../collections/comparator.ts';
 import { SortedMap } from '../collections/sorted-map.ts';
+import type { BattleRecord, BattleState } from '../domain/battle-record.ts';
 import { CombatRole } from '../domain/combat-role.ts';
 
-import { decideCombatAction } from './decision.ts';
+import { bondedAllyInTrouble, decideCombatAction } from './decision.ts';
 import type { DoctrineId } from './doctrine.ts';
 import { absorbedBy, applyEffect } from './effect.ts';
 import { BattleOutcome, CombatAction, type BattleEvent } from './events.ts';
@@ -39,20 +40,31 @@ import {
 /** Beyond this the battle ends undecided (`COMBAT_SPEC` §6.1). */
 export const MAX_ROUNDS = 12;
 
-export interface BattleState {
-  readonly round: number;
-  readonly units: readonly BattleUnit[];
-  readonly doctrine: DoctrineId;
-  readonly outcome: BattleOutcome | null;
+export type { BattleRecord, BattleState };
+
+/**
+ * The two ways a crew leaves a fight it has not won (`DEC-005`, `COMBAT_SPEC` §7.4).
+ *
+ * Both are set **before** the battle is computed, and that is what keeps the whole thing a
+ * function of its input: `belowPercent` is the threshold the player wrote into the plan —
+ * the main path — and `signalledAtRound` is the emergency lever he reached for while
+ * watching. The lever looks like an interruption and is not one: the presentation runs the
+ * battle once, and pressing the button re-runs it with the round filled in. Everything
+ * before that round is identical by determinism (§9), so what the player watched is a
+ * prefix of what he then gets, rather than two different battles stitched together.
+ */
+export interface RetreatOrder {
+  /**
+   * Share of the crew that must still be standing, in per cent of how many set out. Below
+   * it the crew withdraws on its own. `0` — the default — is "never on its own".
+   */
+  readonly belowPercent: number;
+
+  /** The round the player's signal takes effect from, or `null` if he never gave it. */
+  readonly signalledAtRound: number | null;
 }
 
-export interface BattleRecord {
-  readonly initial: BattleState;
-  readonly final: BattleState;
-  readonly events: readonly BattleEvent[];
-  readonly rounds: number;
-  readonly outcome: BattleOutcome;
-}
+const NO_RETREAT: RetreatOrder = Object.freeze({ belowPercent: 0, signalledAtRound: null });
 
 /** Sets a battle up. Refuses two units on one cell before the first event (§11). */
 export function startBattle(units: readonly BattleUnit[], doctrine: DoctrineId): BattleState {
@@ -75,8 +87,13 @@ export function startBattle(units: readonly BattleUnit[], doctrine: DoctrineId):
   return { round: 0, units, doctrine, outcome: null };
 }
 
-/** Plays a battle to its end and returns everything it produced. */
-export function runBattle(initial: BattleState): BattleRecord {
+/**
+ * Plays a battle to its end and returns everything it produced.
+ *
+ * `retreat` is an input like the formation and the doctrine are inputs: the same board,
+ * the same order and the same signal give the same events, byte for byte (§12.1 п.2).
+ */
+export function runBattle(initial: BattleState, retreat: RetreatOrder = NO_RETREAT): BattleRecord {
   const events: BattleEvent[] = [
     {
       kind: 'battle_started',
@@ -90,15 +107,23 @@ export function runBattle(initial: BattleState): BattleRecord {
     }
   ];
 
+  const setOut = initial.units.filter((unit) => unit.side === 'crew').length;
   let state = initial;
+  let withdrew = false;
 
   while (state.outcome === null && state.round < MAX_ROUNDS) {
-    const step = runRound(state);
+    const step = runRound(state, withdrawalOf(state, setOut, retreat));
     state = step.state;
     events.push(...step.events);
+    withdrew = withdrew || step.withdrawing;
   }
 
-  const outcome = state.outcome ?? BattleOutcome.TimedOut;
+  // A withdrawal outranks whatever the board looks like afterwards, and it has to: a crew
+  // that walked off leaves nobody standing, and `outcomeOf` alone would report the same
+  // board as a defeat. What happened is the thing the debrief has to be able to say
+  // (§6.2.2 gives `retreat` its own column), and it is also the measurement `MVP_PLAN`
+  // §6.4 settles `DEC-005` with.
+  const outcome = withdrew ? BattleOutcome.Retreated : (state.outcome ?? BattleOutcome.TimedOut);
   events.push({ kind: 'battle_ended', outcome });
 
   return {
@@ -106,8 +131,42 @@ export function runBattle(initial: BattleState): BattleRecord {
     final: { ...state, outcome },
     events,
     rounds: state.round,
-    outcome
+    outcome,
+    retreatSignalledAtRound: retreat.signalledAtRound
   };
+}
+
+/**
+ * Whether this round is the crew's last one, and why (`COMBAT_SPEC` §7.4).
+ *
+ * Two paths and they are not the same fact: the threshold is a standing order the player
+ * wrote into the plan before anybody drew a weapon, and the signal is a thing he did while
+ * watching. Only the second raises `retreat_signalled` — an event claiming the player
+ * pulled a lever he never touched would be the debrief inventing a decision.
+ */
+function withdrawalOf(
+  state: BattleState,
+  setOut: number,
+  retreat: RetreatOrder
+): Withdrawal | null {
+  const nextRound = state.round + 1;
+
+  if (retreat.signalledAtRound !== null && nextRound >= retreat.signalledAtRound) {
+    return { signalled: true };
+  }
+
+  const standing = state.units.filter((unit) => unit.side === 'crew' && unit.standing).length;
+
+  // Cross-multiplied rather than divided, like every other comparison of a share in this
+  // package: an integer division would put the boundary on the wrong side of itself.
+  return retreat.belowPercent > 0 && standing * 100 < setOut * retreat.belowPercent
+    ? { signalled: false }
+    : null;
+}
+
+interface Withdrawal {
+  /** `true` when the player's own signal is what ended it, `false` for the threshold. */
+  readonly signalled: boolean;
 }
 
 /**
@@ -119,13 +178,35 @@ export function runBattle(initial: BattleState): BattleRecord {
  * simultaneity: each action resolves fully before the next begins, which `DEC-011` §4 makes
  * the only option by declining to define a conflict-resolution order.
  */
-export function runRound(state: BattleState): {
+export function runRound(
+  state: BattleState,
+  withdrawal: Withdrawal | null = null
+): {
   readonly state: BattleState;
   readonly events: readonly BattleEvent[];
+  readonly withdrawing: boolean;
 } {
   const round = state.round + 1;
   const events: BattleEvent[] = [{ kind: 'round_started', round }];
   let units = state.units;
+
+  if (withdrawal?.signalled === true) {
+    events.push({ kind: 'retreat_signalled', round });
+  }
+
+  // Decided once, against the board as the order found it — not as each man comes to
+  // answer. Asked one at a time, the first to walk off stops being "on the ground", and the
+  // friend who would not have left him obeys because by his turn there is nobody left to
+  // stay for. Found by the test that expected a refusal and got three obedient men.
+  const refusing = new Set(
+    withdrawal === null
+      ? []
+      : units
+          .filter(
+            (one) => one.side === 'crew' && one.standing && bondedAllyInTrouble(one, units) !== null
+          )
+          .map((one) => one.id)
+  );
 
   const order = [...units]
     .sort((left, right) => right.combat.focus - left.combat.focus || (left.id < right.id ? -1 : 1))
@@ -140,6 +221,20 @@ export function runRound(state: BattleState): {
 
     if (actor === null || !actor.standing) {
       continue;
+    }
+
+    if (withdrawal !== null && actor.side === 'crew' && !refusing.has(actor.id)) {
+      units = replace(units, { ...actor, standing: false });
+      events.push({ kind: 'retreat_obeyed', unit: actor.id });
+      continue;
+    }
+
+    if (withdrawal !== null && actor.side === 'crew') {
+      events.push({
+        kind: 'retreat_refused',
+        unit: actor.id,
+        motive: 'combat.motive.stood_by_a_friend'
+      });
     }
 
     if (actor.spent) {
@@ -159,7 +254,11 @@ export function runRound(state: BattleState): {
 
   events.push({ kind: 'round_ended', round });
 
-  return { state: { ...state, round, units, outcome: outcomeOf(units) }, events };
+  return {
+    state: { ...state, round, units, outcome: outcomeOf(units) },
+    events,
+    withdrawing: withdrawal !== null
+  };
 }
 
 function takeTurn(

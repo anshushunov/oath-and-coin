@@ -1,7 +1,8 @@
 import { CombatRole } from '../domain/combat-role.ts';
 
+import { CombatAction } from '../domain/combat-action.ts';
+
 import { DOCTRINE_PREFERENCE, type DoctrineId } from './doctrine.ts';
-import { CombatAction } from './actions.ts';
 import { MotiveReasons, type MotiveReason } from './events.ts';
 import { effectPercent, type Row } from './field.ts';
 import {
@@ -131,10 +132,25 @@ export function friendInTrouble(
   actor: BattleUnit,
   units: readonly BattleUnit[]
 ): BattleUnit | null {
-  if (actor.brokeDoctrine) {
-    return null;
-  }
+  return actor.brokeDoctrine ? null : bondedAllyInTrouble(actor, units);
+}
 
+/**
+ * The same question without the once-a-battle gate: **is somebody he holds dear on the
+ * ground right now.**
+ *
+ * Two callers and two different rules on purpose. Breaking the doctrine happens once per
+ * battle (§7.3), because a second breach would make the measured share of battles with a
+ * breach uninterpretable. Refusing the retreat signal (§7.4) is not that rule and must not
+ * inherit its counter: a man who stepped out for a friend an hour ago and would still not
+ * leave him is answering the same question, and a spent flag would have him walk off the
+ * field with the friend still down — the one thing `DEC-005` says the signal cannot make
+ * him do.
+ */
+export function bondedAllyInTrouble(
+  actor: BattleUnit,
+  units: readonly BattleUnit[]
+): BattleUnit | null {
   const candidates = units.filter(
     (unit) =>
       unit.standing &&
