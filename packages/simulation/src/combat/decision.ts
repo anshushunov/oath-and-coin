@@ -189,7 +189,7 @@ export function decideCombatAction(
   const friend = friendInTrouble(actor, units);
 
   if (friend !== null) {
-    const helping = helpFor(friend, available);
+    const helping = helpFor(friend, available, actor);
 
     if (helping !== null && helping.action !== byDoctrine.action) {
       return {
@@ -225,7 +225,11 @@ function reasonForTargetless(action: CombatAction): TargetReason {
  * can. Nothing else counts as help: striking somebody at random because a friend is hurt is
  * a mood, not a decision, and it would make the breach unreadable on the screen.
  */
-function helpFor(friend: BattleUnit, available: readonly Available[]): Available | null {
+function helpFor(
+  friend: BattleUnit,
+  available: readonly Available[],
+  actor: BattleUnit
+): Available | null {
   const support = available.find(
     (option) => option.action === CombatAction.Support && option.aim?.target.id === friend.id
   );
@@ -234,7 +238,24 @@ function helpFor(friend: BattleUnit, available: readonly Available[]): Available
     return support;
   }
 
-  return available.find((option) => option.action === CombatAction.Reposition) ?? null;
+  // **A step toward him, and it does not have to be a step home.** §7.3 gives the reaction
+  // "поддержку или перестановку к нему", and `availableActions` only offers a reposition to
+  // somebody already out of his row — so a vanguard standing exactly where he belongs had no
+  // way to react at all, and the measured share of battles with a breach was 2% against a
+  // declared corridor of 10–25% (`COMBAT_SPEC` §12.5). The reaction is the control
+  // `DIRECTION_2026-08` §4.8 calls the most important thing the lab has to prove, and a rule
+  // only a `Support` in row 2 can ever fire is that control switched off for five roles out
+  // of six.
+  //
+  // It is not a hole in the doctrine's own ranking either: `Reposition` stays gated on being
+  // out of position for every *doctrine* choice, and this is the one place a motive reaches
+  // past the ranking (§5.1 п.2).
+  return actor.cell.row === friend.cell.row && actor.cell.column === friend.cell.column
+    ? null
+    : {
+        action: CombatAction.Reposition,
+        aim: { target: friend, reason: TargetReasons.TheWorstHurt }
+      };
 }
 
 function firstPreferred(available: readonly Available[], doctrine: DoctrineId): Available {

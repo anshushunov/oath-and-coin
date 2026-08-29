@@ -219,7 +219,7 @@ describe('loadContentSet over the shipped tree', () => {
     // The Combat Lab's first segment moved it a tenth time, to `c02e365478576dd7`
     // (`DEC-016`): every hero file lost `capability.grade` and gained `combat` and `role`,
     // and the content format went 4 → 5 with them.
-    expect(content.contentVersion).toBe('38628f6fb08d4de3');
+    expect(content.contentVersion).toBe('f6118be65f3cf228');
   });
 
   it('keys heroes, contracts and traits in content-id order', () => {

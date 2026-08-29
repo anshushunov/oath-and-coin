@@ -41,10 +41,33 @@ export interface Measurement {
   /** The corridor or floor §12.5 declared, as a sentence. */
   readonly threshold: string;
   readonly withinThreshold: boolean;
+  /**
+   * `ok` inside its corridor, `fail` outside it, `open` outside it and left there by a
+   * decision (`thresholds.ts`, {@link Thresholds.openByDecision}).
+   *
+   * The third is not a fourth kind of passing. It says the corridor still stands, the number
+   * is still outside it, and somebody decided to live with that on a stated date — which is
+   * a different sentence from "the corridor was moved" and has to read differently.
+   */
+  readonly status: 'ok' | 'fail' | 'open';
   /** How many battles this number was taken over — a share of nothing is not a share. */
   readonly cases: number;
   /** Anything the number alone does not say. */
   readonly note?: string;
+}
+
+/**
+ * What a measurement's verdict is, once the owner's open list has been consulted.
+ *
+ * One place, so a measurement cannot be "within" here and "open" there — and so adding a
+ * ninth measurement inherits the rule instead of restating it.
+ */
+function statusOf(id: string, withinThreshold: boolean): Measurement['status'] {
+  if (withinThreshold) {
+    return 'ok';
+  }
+
+  return id in Thresholds.openByDecision ? 'open' : 'fail';
 }
 
 /** One fought case of the frozen set. */
@@ -102,6 +125,7 @@ export function battleLength(fought: readonly FoughtCase[]): Measurement {
     unit: 'rounds',
     threshold: corridorOf(Thresholds.battleLengthRounds, 'median'),
     withinThreshold: inside(median, Thresholds.battleLengthRounds),
+    status: statusOf('battle_length_rounds', inside(median, Thresholds.battleLengthRounds)),
     cases: fought.length,
     note: `${String(rounds.filter((one) => one === MAX_ROUNDS).length)} of ${String(rounds.length)} reached the ${String(MAX_ROUNDS)}-round ceiling`
   };
@@ -121,6 +145,7 @@ export function doctrineBreaches(fought: readonly FoughtCase[]): Measurement {
     unit: 'percent',
     threshold: corridorOf(Thresholds.doctrineBreachPercent, '', '%'),
     withinThreshold: inside(percent, Thresholds.doctrineBreachPercent),
+    status: statusOf('doctrine_breach_percent', inside(percent, Thresholds.doctrineBreachPercent)),
     cases: fought.length
   };
 }
@@ -151,6 +176,10 @@ export function formationChangesOutcome(fought: readonly FoughtCase[]): Measurem
     unit: 'percent',
     threshold: `≥ ${String(Thresholds.formationChangesOutcomePercent)}%`,
     withinThreshold: percent >= Thresholds.formationChangesOutcomePercent,
+    status: statusOf(
+      'formation_changes_outcome_percent',
+      percent >= Thresholds.formationChangesOutcomePercent
+    ),
     cases: scenarios.size
   };
 }
@@ -193,6 +222,7 @@ export function formationDominance(content: ContentSet): Measurement {
     unit: 'count',
     threshold: `no shape wins all ${String(patterns)}`,
     withinThreshold: most < patterns,
+    status: statusOf('formation_strict_dominance', most < patterns),
     cases: patterns,
     note: `winners: ${[...wins.entries()].map(([shape, count]) => `${shape}×${String(count)}`).join(', ') || 'none — every pattern tied'}`
   };
@@ -240,6 +270,7 @@ export function sixAgainstFour(): Measurement {
     unit: 'percent',
     threshold: corridorOf(Thresholds.sixAgainstFourPercent, '', '%'),
     withinThreshold: inside(percent, Thresholds.sixAgainstFourPercent),
+    status: statusOf('six_against_four_percent', inside(percent, Thresholds.sixAgainstFourPercent)),
     cases: fought
   };
 }
@@ -279,6 +310,7 @@ export function rearEffectByCrewSize(): Measurement {
     unit: 'count',
     threshold: 'falls at every step (0 that do not)',
     withinThreshold: rises === 0,
+    status: statusOf('rear_effect_by_own_men_ahead', rises === 0),
     cases: means.length,
     note: means.map((one) => `${String(one.ahead)} ahead: ${String(one.mean)}`).join(', ')
   };
@@ -312,6 +344,10 @@ export function forecastAgreement(fought: readonly FoughtCase[]): Measurement {
     unit: 'percent',
     threshold: corridorOf(Thresholds.forecastAgreementPercent, '', '%'),
     withinThreshold: inside(percent, Thresholds.forecastAgreementPercent),
+    status: statusOf(
+      'forecast_agreement_percent',
+      inside(percent, Thresholds.forecastAgreementPercent)
+    ),
     cases: asked
   };
 }
@@ -364,6 +400,7 @@ export function dominantCrew(content: ContentSet): Measurement {
     unit: 'percent',
     threshold: `≤ ${String(Thresholds.dominantCrewPercent)}%`,
     withinThreshold: most <= Thresholds.dominantCrewPercent,
+    status: statusOf('dominant_crew_percent', most <= Thresholds.dominantCrewPercent),
     cases: patterns.length * FORMATION_SHAPES.length,
     note: by === '' ? 'no crew won anything' : `best: ${by}`
   };

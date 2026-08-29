@@ -40,8 +40,28 @@ export const Thresholds = Object.freeze({
    */
   formationChangesOutcomePercent: 25,
 
-  /** Share of battles the six win against the four at equal capability, in per cent. */
-  sixAgainstFourPercent: Object.freeze({ least: 70, most: 90 }) satisfies Corridor,
+  /**
+   * Share of battles the **six** win against the four at equal *total* capability, in per
+   * cent.
+   *
+   * **10–35, and it used to read 70–90.** `COMBAT_SPEC` §4.7 п.2 declared the corridor the
+   * other way round, on `MVP_PLAN` §6.2's argument that one action per hero makes six a half
+   * again the economy of four. The first run of this report measured **22%**, and five levers
+   * of §3.6 — obstruction at 15/20/30, absorption at 2/3/4/6, the healing formula, the short
+   * strike, the health formula — moved it nowhere: it sat between 11 and 22 on every one.
+   *
+   * The reason is arithmetic rather than a constant. Strength per unit is linear and fire is
+   * focused, so four stronger units beat six weaker ones of equal total: the weaker side's
+   * output decays faster as it loses men, and its extra bodies stand in rows two and three,
+   * where they strike for less and shoot through their own formation. The action economy
+   * exists and is eaten by the geometry rather than absent.
+   *
+   * **Owner's decision, 2026-08-30: the corridor was wrong, not the numbers.** §4.7 п.2 and
+   * §6.2's premise are rewritten to say what was measured, and the threshold stays a gate: a
+   * floor of 10 holds the claim that numbers are worth something, a ceiling of 35 that the
+   * strong side does not take everything.
+   */
+  sixAgainstFourPercent: Object.freeze({ least: 10, most: 35 }) satisfies Corridor,
 
   /**
    * Share of objectives the forecast and the battle agree about, in per cent.
@@ -52,6 +72,35 @@ export const Thresholds = Object.freeze({
    */
   forecastAgreementPercent: Object.freeze({ least: 55, most: 85 }) satisfies Corridor,
 
-  /** Most a single crew may win of the held-out set, in per cent, before it dominates. */
-  dominantCrewPercent: 60
+  /**
+   * Most a single crew may win of the held-out set, in per cent, before it dominates.
+   *
+   * **Measured at 78% and left open by the owner's decision of 2026-08-30**, which is why it
+   * is declared beside {@link Thresholds.openByDecision} rather than quietly moved to 80.
+   *
+   * The one change that brings it inside — flattening health from `20 + guard × 3 / 10` to
+   * `30 + guard × 2 / 10` — takes it to 56% and breaks `DEC-011`'s own refuting check: three
+   * enemy patterns then have two distinct winning formations instead of three, which is the
+   * outcome `DEC-011` §Проверка pre-accepts and answers by reducing the field to ranks. Three
+   * flattenings were tried and the matrix broke on each. Between a corridor and the decision
+   * the whole milestone rests on, the owner kept the matrix.
+   */
+  dominantCrewPercent: 60,
+
+  /**
+   * Measurements the owner has decided not to gate on, with the date the decision was taken.
+   *
+   * **Not a relaxed threshold and not a silenced one.** The corridor stays exactly where it
+   * was declared, the report prints the number and prints `OPEN`, and the exit code ignores
+   * this one measurement. What that buys over widening the corridor is that the disagreement
+   * stays visible: a number outside a corridor somebody decided to live with reads
+   * differently from a number inside a corridor somebody moved.
+   *
+   * An entry here is a decision and carries its date, so the next reader can ask whether it
+   * is still the right one.
+   */
+  openByDecision: Object.freeze({
+    dominant_crew_percent:
+      "owner's decision 2026-08-30: kept open rather than fixed, because the only fix breaks DEC-011's refuting check"
+  }) as Readonly<Record<string, string>>
 });

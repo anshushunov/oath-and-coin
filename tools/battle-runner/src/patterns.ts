@@ -108,26 +108,29 @@ export const CORE_PATTERNS: Readonly<Record<string, readonly AuthoredCombatant[]
  */
 export const HELD_OUT_PATTERNS: Readonly<Record<string, readonly AuthoredCombatant[]>> =
   Object.freeze({
-    /** A single very hard thing, and two who keep it standing. */
+    /** A single very hard thing, and the men who keep it standing. */
     champion: Object.freeze([
       foe('v1', CombatRole.Vanguard, 1, 2, attributes({ might: 100, guard: 100 })),
-      foe('s1', CombatRole.Support, 2, 2, attributes({ care: 100, guard: 70 })),
-      foe('s2', CombatRole.Support, 2, 1, attributes({ care: 100, guard: 70 }))
+      foe('v2', CombatRole.Vanguard, 1, 1, attributes({ might: 80, guard: 85 })),
+      foe('s1', CombatRole.Support, 2, 2, attributes({ care: 90, guard: 70 })),
+      foe('r1', CombatRole.Rear, 3, 2, attributes({ aim: 80, guard: 60 }))
     ]),
 
-    /** Many weak ones spread wide: no column is open and none of them is worth a shot. */
+    /** Many of them, spread wide: no column is open and none of them is worth a shot. */
     swarm: Object.freeze([
-      foe('v1', CombatRole.Vanguard, 1, 1, attributes({ might: 55, guard: 45 })),
-      foe('v2', CombatRole.Vanguard, 1, 2, attributes({ might: 55, guard: 45 })),
-      foe('v3', CombatRole.Vanguard, 1, 3, attributes({ might: 55, guard: 45 })),
-      foe('v4', CombatRole.Vanguard, 2, 1, attributes({ might: 55, guard: 45 })),
-      foe('v5', CombatRole.Vanguard, 2, 3, attributes({ might: 55, guard: 45 }))
+      foe('v1', CombatRole.Vanguard, 1, 1, attributes({ might: 70, guard: 65 })),
+      foe('v2', CombatRole.Vanguard, 1, 2, attributes({ might: 70, guard: 65 })),
+      foe('v3', CombatRole.Vanguard, 1, 3, attributes({ might: 70, guard: 65 })),
+      foe('v4', CombatRole.Vanguard, 2, 1, attributes({ might: 70, guard: 65 })),
+      foe('v5', CombatRole.Vanguard, 2, 3, attributes({ might: 70, guard: 65 })),
+      foe('s1', CombatRole.Support, 2, 2, attributes({ care: 90, guard: 65 }))
     ]),
 
     /** Nothing at the front at all: their whole strength is behind an empty rank. */
     ambush: Object.freeze([
-      foe('r1', CombatRole.Rear, 3, 1, attributes({ aim: 90, guard: 60 })),
-      foe('r2', CombatRole.Rear, 3, 3, attributes({ aim: 90, guard: 60 })),
-      foe('b1', CombatRole.Breaker, 2, 2, attributes({ might: 90, guard: 60 }))
+      foe('r1', CombatRole.Rear, 3, 1, attributes({ aim: 95, guard: 70 })),
+      foe('r2', CombatRole.Rear, 3, 3, attributes({ aim: 95, guard: 70 })),
+      foe('r3', CombatRole.Rear, 3, 2, attributes({ aim: 95, guard: 70 })),
+      foe('b1', CombatRole.Breaker, 2, 2, attributes({ might: 95, guard: 70 }))
     ])
   });

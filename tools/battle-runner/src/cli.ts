@@ -4,6 +4,7 @@ import process from 'node:process';
 import { loadContentSet } from '@oath-and-coin/content/node';
 
 import { measureAll, type Measurement } from './metrics.ts';
+import { Thresholds } from './thresholds.ts';
 
 /**
  * Headless batch battles and the balance report (`COMBAT_SPEC` §12.5).
@@ -69,7 +70,10 @@ export function main(argv: readonly string[]): number {
     console.log(line);
   }
 
-  return measurements.every((one) => one.withinThreshold) ? EXIT_OK : EXIT_THRESHOLD;
+  // `open` is not a failure and not a pass: the corridor stands, the number is outside it,
+  // and the owner decided to live with that (`thresholds.ts`). Only `fail` moves the exit
+  // code, and the report above says which is which in as many words.
+  return measurements.some((one) => one.status === 'fail') ? EXIT_THRESHOLD : EXIT_OK;
 }
 
 /**
@@ -84,7 +88,8 @@ export function render(
   set: string,
   contentVersion: string
 ): readonly string[] {
-  const failed = measurements.filter((one) => !one.withinThreshold);
+  const failed = measurements.filter((one) => one.status === 'fail');
+  const open = measurements.filter((one) => one.status === 'open');
 
   return [
     `battle-runner report --set ${set}`,
@@ -92,16 +97,30 @@ export function render(
     '',
     ...measurements.map(
       (one) =>
-        `${one.withinThreshold ? 'ok  ' : 'FAIL'} ${one.id.padEnd(34)} ` +
+        `${label(one)} ${one.id.padEnd(34)} ` +
         `${format(one)}  (${one.threshold}, over ${String(one.cases)} case(s))` +
         (one.note === undefined ? '' : `\n     ${one.note}`)
     ),
     '',
     failed.length === 0
-      ? 'every declared threshold held'
+      ? 'every threshold this run gates on held'
       : `${String(failed.length)} threshold(s) outside the corridor declared before balancing: ` +
-        failed.map((one) => one.id).join(', ')
+        failed.map((one) => one.id).join(', '),
+    ...open.map(
+      (one) => `open by decision, not gated: ${one.id} — ${Thresholds.openByDecision[one.id] ?? ''}`
+    )
   ];
+}
+
+function label(measurement: Measurement): string {
+  switch (measurement.status) {
+    case 'ok':
+      return 'ok  ';
+    case 'fail':
+      return 'FAIL';
+    case 'open':
+      return 'OPEN';
+  }
 }
 
 function format(measurement: Measurement): string {

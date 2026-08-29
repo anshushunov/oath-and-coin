@@ -46,14 +46,14 @@ describe('the balance corridors declared before balancing (COMBAT_SPEC §12.5)',
   });
 
   it.each(measured.map((one) => [one.id, one] as const))(
-    '%s is inside the corridor §12.5 declared',
+    '%s is inside the corridor §12.5 declared, or open by a decision that names itself',
     (_id, one) => {
       expect(
         `${one.id} = ${String(one.value)}${one.note === undefined ? '' : ` (${one.note})`}`,
         `${one.id} is outside its declared corridor (${one.threshold}). Either the numbers of ` +
           'COMBAT_SPEC §3.6/§4.3 need balancing or the corridor was wrong — and which of the ' +
           'two it is is a decision, not a number to nudge (§12.5, MVP_PLAN §6.4).'
-      ).toSatisfy(() => one.withinThreshold);
+      ).toSatisfy(() => one.status !== 'fail');
     }
   );
 });

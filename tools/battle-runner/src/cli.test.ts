@@ -16,12 +16,13 @@ import type { Measurement } from './metrics.ts';
  * one flag it will never accept.
  */
 
-const measurement = (id: string, withinThreshold: boolean): Measurement => ({
+const measurement = (id: string, status: Measurement['status'] = 'ok'): Measurement => ({
   id,
   value: 1,
   unit: 'count',
   threshold: 'a corridor',
-  withinThreshold,
+  withinThreshold: status === 'ok',
+  status,
   cases: 10
 });
 
@@ -51,7 +52,7 @@ describe('what the command refuses', () => {
 describe('the report says what it measured, and the verdict follows the same numbers', () => {
   it('names every measurement, its threshold and how many cases it was taken over', () => {
     const text = render(
-      [measurement('battle_length_rounds', true), measurement('doctrine_breach_percent', false)],
+      [measurement('battle_length_rounds'), measurement('doctrine_breach_percent', 'fail')],
       'core',
       'abcdef0123456789'
     ).join('\n');
@@ -63,13 +64,11 @@ describe('the report says what it measured, and the verdict follows the same num
   });
 
   it('says plainly when every threshold held, and names the ones that did not', () => {
-    expect(render([measurement('a', true)], 'core', 'x').join('\n')).toContain(
-      'every declared threshold held'
+    expect(render([measurement('a')], 'core', 'x').join('\n')).toContain(
+      'every threshold this run gates on held'
     );
 
-    const failed = render([measurement('a', true), measurement('b', false)], 'core', 'x').join(
-      '\n'
-    );
+    const failed = render([measurement('a'), measurement('b', 'fail')], 'core', 'x').join('\n');
 
     expect(failed).toContain('1 threshold(s) outside the corridor declared before balancing');
     expect(failed).toContain('b');
