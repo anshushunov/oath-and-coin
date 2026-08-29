@@ -59,7 +59,7 @@ import {
  */
 
 const BRAM = {
-  schema_version: 5,
+  schema_version: 6,
   id: 'core:bram',
   display_name_key: 'hero.core.bram.name',
   greed: 60,
@@ -75,7 +75,7 @@ const BRAM = {
 
 /** Sorts before `core:escort`, and is deliberately never the contract anyone answers. */
 const ARCHIVE_RUN = {
-  schema_version: 5,
+  schema_version: 6,
   id: 'core:archive_run',
   display_name_key: 'contract.core.archive_run.name',
   patron_fee: 30,
@@ -86,7 +86,7 @@ const ARCHIVE_RUN = {
 };
 
 const ESCORT = {
-  schema_version: 5,
+  schema_version: 6,
   id: 'core:escort',
   display_name_key: 'contract.core.escort.name',
   patron_fee: 70,
@@ -97,7 +97,7 @@ const ESCORT = {
 };
 
 const GREEDY = {
-  schema_version: 5,
+  schema_version: 6,
   id: 'core:greedy',
   display_name_key: 'trait.core.greedy.name',
   kind: 'inclination',
@@ -134,7 +134,7 @@ const ZARA = { ...BRAM, id: 'core:zara', display_name_key: 'hero.core.zara.name'
  * produced" needs more than one decision to be a claim about a list.
  */
 const CRYPT = {
-  schema_version: 5,
+  schema_version: 6,
   id: 'core:cleanse_the_crypt',
   display_name_key: 'contract.core.cleanse_the_crypt.name',
   patron_fee: 70,
@@ -1592,7 +1592,9 @@ describe('moving the session between screens and contracts', () => {
     await controller.start();
     controller.show(ScreenKind.ContractBoard);
 
-    expect(controller.resolveContract({ contractId: escort }).applied).toBe(true);
+    expect(controller.resolveContract({ retreatAtRound: null, contractId: escort }).applied).toBe(
+      true
+    );
     expect(controller.store.snapshot().screen.screen).toBe(ScreenKind.AfterAction);
 
     expect(controller.settleContract({ contractId: escort, pay: true }).applied).toBe(true);
@@ -1664,7 +1666,9 @@ describe('where the campaign puts the player', () => {
     await controller.start();
     expect(controller.store.snapshot().screen.screen).toBe(ScreenKind.ContractOffer);
 
-    expect(controller.resolveContract({ contractId: escort }).applied).toBe(true);
+    expect(controller.resolveContract({ retreatAtRound: null, contractId: escort }).applied).toBe(
+      true
+    );
 
     expect(controller.store.snapshot().screen.screen).toBe(ScreenKind.AfterAction);
   });
@@ -1677,7 +1681,7 @@ describe('where the campaign puts the player', () => {
     await controller.start();
     const before = controller.store.snapshot();
 
-    const refused = controller.resolveContract({ contractId: archive });
+    const refused = controller.resolveContract({ retreatAtRound: null, contractId: archive });
 
     expect(refused.applied).toBe(false);
     expect(refused.rejectionCode).toBe(RejectionCodes.OfferNotLocked);
@@ -1910,7 +1914,7 @@ describe('dispatching the six negotiation commands', () => {
     // The sixth command, and not optional: a settlement pays against an outcome, so a
     // contract that has not been resolved is refused (`RESOLUTION_SPEC` §2.5). It also
     // spends an id of its own, which is what makes it part of what this test measures.
-    const resolved = controller.resolveContract({ contractId: escort });
+    const resolved = controller.resolveContract({ retreatAtRound: null, contractId: escort });
     expect(resolved.applied).toBe(true);
 
     const settled = controller.settleContract({ contractId: escort, pay: true });

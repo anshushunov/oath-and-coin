@@ -87,7 +87,7 @@ function ran(scenario: string, seed = 7n): RanResult {
 }
 
 describe('the artifact says which shape it is', () => {
-  it('declares version 8 — bumped for the combat layer a hero now carries', () => {
+  it('declares version 9 — bumped for what a player decides before a fight', () => {
     // The frozen corpus was recorded under 3; `ADR-013` retired byte parity with it as a
     // property this port owes, so a shape version disagreeing with a frozen recording is
     // not, on its own, a determinism failure. Five came with the resolution engine's Task
@@ -95,9 +95,18 @@ describe('the artifact says which shape it is', () => {
     // command's own `invited_indexes`); six with Task 7's `counted` on every contributor
     // (`RESOLUTION_SPEC` §4.3, `DEC-014`). See `ARTIFACT_VERSION`'s own comment for why
     // the second of those moved the number although no shipped scenario fills the branch.
-    expect(ARTIFACT_VERSION).toBe(8);
+    // Eight came with `DEC-016`'s combat layer; nine with segment C — `retreats` on a hero,
+    // the authored battle plan on a contract, and the formation, doctrine and threshold on
+    // its package (`COMBAT_SPEC` §3.7).
+    //
+    // **`ruleset_version` deliberately does not move with it.** `RESOLUTION_SPEC` §2.8 ties
+    // that number to *answers*, not to shapes: nothing here changes what an old triple of
+    // `(ruleset, content, seed)` produces — the battle branches are unreachable on a
+    // contract with no plan, and no such contract existed before this segment's content.
+    // What refuses an older save is `SAVE_SCHEMA_VERSION`, which did move.
+    expect(ARTIFACT_VERSION).toBe(9);
     expect(JSON.parse(toCanonicalJson(ran('gate0').outcome))).toMatchObject({
-      artifact_version: 8,
+      artifact_version: 9,
       rng_algorithm: 'splitmix64-composed/1',
       ruleset_version: 'm1-resolution/3'
     });

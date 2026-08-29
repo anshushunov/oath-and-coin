@@ -10,6 +10,7 @@ import {
 } from './commands/command-result.ts';
 import type { ComposeOffer } from './commands/compose-offer.ts';
 import type { LockOffer } from './commands/lock-offer.ts';
+import type { PlaceCrew } from './commands/place-crew.ts';
 import type { PollCrew } from './commands/poll-crew.ts';
 import type { ProposeContractToHero } from './commands/propose-contract-to-hero.ts';
 import type { ResolveContract } from './commands/resolve-contract.ts';
@@ -20,7 +21,9 @@ import { decide, type HeroDecision } from './decisions/contract-decision-rule.ts
 import type { DecisionContext } from './decisions/context.ts';
 import type { HeldTrait } from './decisions/held-trait.ts';
 import { freezeDeep } from './freeze.ts';
+import { cellKey, type Cell } from './domain/battle-cell.ts';
 import type { CommitmentState } from './domain/commitment.ts';
+import { RETREAT_THRESHOLD_MAX } from './domain/crew-deployment.ts';
 import {
   ConsequenceKind,
   OutcomeIntentKind,
@@ -35,7 +38,7 @@ import { canCover } from './negotiation/commitments.ts';
 import { GRIEVANCE_MAX, grievanceForBrokenPromise } from './negotiation/grievance.ts';
 import { divideTowardZero, multiplyInt32 } from './integer-division.ts';
 import { commitmentFor } from './resolution/commitment.ts';
-import { draftResolution } from './resolution/contract-resolver.ts';
+import { resolverFor } from './resolution/routing.ts';
 import { termsOf } from './resolution/outcome-grade.ts';
 import type { ContractState } from './state/contract-state.ts';
 import { ContractStatus } from './state/contract-state.ts';
@@ -471,7 +474,10 @@ export function composeOffer(state: GameState, command: ComposeOffer): CommandRe
     // Emptied with the answers, and for the same reason: a commitment is computed
     // against the package that was answered (`RESOLUTION_SPEC` §2.4), so it cannot
     // outlive that package any more than the answer itself can.
-    commitments: SortedMap.empty<HeroId, CommitmentState>(compareHeroIds)
+    commitments: SortedMap.empty<HeroId, CommitmentState>(compareHeroIds),
+    // Cleared with the answers, and for the third time the same reason: a formation names
+    // the people who are going (`COMBAT_SPEC` §3.7), and a revision names different ones.
+    deployment: null
   };
 
   // Clearing every answer empties `acceptedBy` too, so the contract can never still
@@ -791,6 +797,121 @@ export function pollCrew(state: GameState, command: PollCrew): CommandResult {
 }
 
 /**
+ * Sets the whole battle plan on a package (`COMBAT_SPEC` §3.7, the seventh command).
+ *
+ * The same seven preconditions `resolveContract` checks and in the same order — §3.7 says
+ * so, and the reason is that both commands act on a package that is finished being
+ * negotiated and has not gone out yet. Three more of its own follow, each with a named
+ * code, and all three are checked **before** the first event (§11).
+ *
+ * **Applying it again replaces the plan rather than adding to it.** A second `placeCrew` is
+ * a player who moved somebody, which is exactly what the screen lets him do until he sends
+ * the crew; the `commandId` guard is what stops the *same* command applying twice.
+ */
+export function placeCrew(state: GameState, command: PlaceCrew): CommandResult {
+  if (command.expectedStateVersion !== state.metadata.stateVersion) {
+    return rejected(state, RejectionCodes.StaleState);
+  }
+
+  if (state.appliedCommandIds.has(command.commandId)) {
+    return rejected(state, RejectionCodes.DuplicateCommand);
+  }
+
+  const contract = state.contracts.get(command.contractId);
+  if (contract === undefined) {
+    return rejected(state, RejectionCodes.UnknownContract);
+  }
+
+  if (contract.offer.phase !== OfferPhase.Locked) {
+    return rejected(state, RejectionCodes.OfferNotLocked);
+  }
+
+  if (contract.status !== ContractStatus.Crewed) {
+    return rejected(state, RejectionCodes.CrewNotFilled);
+  }
+
+  const { invited, acceptedBy } = contract.offer;
+  if (
+    invited.size !== acceptedBy.size ||
+    !invited.values().every((heroId) => acceptedBy.has(heroId))
+  ) {
+    return rejected(state, RejectionCodes.CrewNotFilled);
+  }
+
+  if (contract.resolution !== null) {
+    return rejected(state, RejectionCodes.AlreadyResolved);
+  }
+
+  // The routing rule read as a precondition (`ADR-014` §1): a contract with no authored
+  // plan is settled without a board, so there is nowhere to stand.
+  if (contract.battle === null) {
+    return rejected(state, RejectionCodes.NotABattleContract);
+  }
+
+  if (command.retreatBelowPercent < 0 || command.retreatBelowPercent > RETREAT_THRESHOLD_MAX) {
+    return rejected(state, RejectionCodes.OfferTermsOutOfBounds);
+  }
+
+  // Exactly the crew, one cell each. Checked as two directions and not as one size
+  // comparison: a formation that named the same hero twice would have the right length and
+  // leave somebody standing nowhere.
+  const placed = new Set(command.placement.map((entry) => entry.hero));
+  if (
+    placed.size !== command.placement.length ||
+    placed.size !== acceptedBy.size ||
+    !acceptedBy.values().every((heroId) => placed.has(heroId))
+  ) {
+    return rejected(state, RejectionCodes.UnplacedHero);
+  }
+
+  const taken = new Set(command.placement.map((entry) => cellKey(entry.cell)));
+  const wardCells = contract.battle.wards.map((ward) => cellKey(ward.cell));
+  if (taken.size !== command.placement.length || wardCells.some((cell) => taken.has(cell))) {
+    return rejected(state, RejectionCodes.CellTaken);
+  }
+
+  const placedContract = createContractState({
+    ...contract,
+    offer: {
+      ...contract.offer,
+      deployment: {
+        // Keyed here rather than trusted in the order a screen built its controls in: the
+        // enumeration order reaches the artifact, and a screen's layout must not.
+        placement: SortedMap.from<HeroId, Cell>(
+          compareHeroIds,
+          command.placement.map((entry) => [entry.hero, entry.cell] as const)
+        ),
+        doctrine: command.doctrine,
+        retreatBelowPercent: command.retreatBelowPercent
+      }
+    }
+  });
+
+  const domainEvent: DomainEvent = {
+    kind: 'crew_placed',
+    eventId: state.metadata.nextEventId,
+    logicalTime: state.metadata.logicalTime,
+    // Not a hero's decision: the player placed them (`ADR-007`).
+    causalTraceId: null,
+    contractId: command.contractId,
+    doctrine: command.doctrine
+  };
+
+  return fromEvent(
+    freezeDeep({
+      ...withEvent(
+        { ...state, contracts: state.contracts.set(placedContract.id, placedContract) },
+        domainEvent,
+        null,
+        0n
+      ),
+      appliedCommandIds: state.appliedCommandIds.add(command.commandId)
+    }),
+    domainEvent
+  );
+}
+
+/**
  * Sends the crew out and records what came back (`RESOLUTION_SPEC` §3, the sixth command).
  *
  * Checks run in §3.2's order, and the order is part of the answer: two broken
@@ -859,8 +980,24 @@ export function resolveContract(state: GameState, command: ResolveContract): Com
     return rejected(state, RejectionCodes.AlreadyResolved);
   }
 
-  const draft = draftResolution({
+  // The routing rule, read once (`ADR-014` §1, `ADR-016` §5): a contract with an authored
+  // plan is settled by the battle, and the abstract resolver produces nothing that reaches
+  // `withEvent` on it.
+  if (contract.battle !== null && contract.offer.deployment === null) {
+    return rejected(state, RejectionCodes.CrewNotPlaced);
+  }
+
+  const draft = resolverFor(contract)({
     contract,
+    ...(contract.battle === null || contract.offer.deployment === null
+      ? {}
+      : {
+          deployment: {
+            plan: contract.battle,
+            crew: contract.offer.deployment,
+            retreatSignalledAtRound: command.retreatAtRound
+          }
+        }),
     // In `acceptedBy`'s own hero-id order. `commitments.keys() === acceptedBy` is an
     // invariant of every `ContractState` this package can build, so the lookup cannot
     // miss — and if it ever did, the resolver would have to invent a state for a man who
@@ -997,6 +1134,12 @@ function suffered(hero: HeroState, intent: OutcomeIntent): HeroState {
       return { ...hero, grievance: Math.min(hero.grievance + intent.magnitude, GRIEVANCE_MAX) };
     case ConsequenceKind.TrustLost:
       return { ...hero, trustInGuild: Math.max(hero.trustInGuild - intent.magnitude, 0) };
+    case ConsequenceKind.Retreat:
+      // Bounded on neither side, like `wounds`, and for the same declared reason
+      // (`COMBAT_SPEC` §6.5): pulling out is visible and accumulates, and what it should
+      // eventually cost is what the lab measures rather than what an implementation
+      // decides.
+      return { ...hero, retreats: hero.retreats + intent.magnitude };
     case null:
       throw new Error(
         `A consequence_suffered intent for hero#${String(hero.id)} names no consequence; the ` +

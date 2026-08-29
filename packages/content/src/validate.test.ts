@@ -31,7 +31,7 @@ function writeTree(files: Readonly<Record<string, string>>): string {
 }
 
 const VALID_HERO = JSON.stringify({
-  schema_version: 5,
+  schema_version: 6,
   id: 'core:bram',
   display_name_key: 'hero.core.bram.name',
   greed: 60,
@@ -73,7 +73,7 @@ describe('validateContentTree', () => {
     const violations = validateContentTree(
       writeTree({
         'heroes/a.json': JSON.stringify({
-          schema_version: 5,
+          schema_version: 6,
           id: 'core:bram',
           display_name_key: 'hero.core.bram.name',
           greed: 60,

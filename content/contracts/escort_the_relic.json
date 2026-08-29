@@ -1,0 +1,50 @@
+{
+  "schema_version": 6,
+  "id": "core:escort_the_relic",
+  "display_name_key": "contract.core.escort_the_relic.name",
+  "patron_fee": 75,
+  "risk": 55,
+  "required_crew": 4,
+  "needs": {
+    "frontline": 30,
+    "undead_knowledge": 35
+  },
+  "tags": [
+    "target:temple",
+    "target:undead"
+  ],
+  "battle": {
+    "objectives": {
+      "frontline": { "kind": "protect", "ward": "reliquary" },
+      "undead_knowledge": { "kind": "subdue", "targets": ["shade", "wight"] }
+    },
+    "foes": [
+      {
+        "key": "shade",
+        "role": "breaker",
+        "cell": { "row": 1, "column": 1 },
+        "combat": { "might": 80, "guard": 55, "aim": 30, "focus": 70, "care": 0 }
+      },
+      {
+        "key": "wight",
+        "role": "vanguard",
+        "cell": { "row": 1, "column": 2 },
+        "combat": { "might": 72, "guard": 76, "aim": 25, "focus": 50, "care": 0 }
+      },
+      {
+        "key": "chanter",
+        "role": "rear",
+        "cell": { "row": 3, "column": 2 },
+        "combat": { "might": 20, "guard": 50, "aim": 78, "focus": 72, "care": 30 }
+      }
+    ],
+    "wards": [
+      {
+        "key": "reliquary",
+        "role": "support",
+        "cell": { "row": 3, "column": 2 },
+        "combat": { "might": 0, "guard": 20, "aim": 0, "focus": 10, "care": 0 }
+      }
+    ]
+  }
+}

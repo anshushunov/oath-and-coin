@@ -6,6 +6,9 @@ import {
   type CanonicalValue,
   type CausalTrace,
   type ContractResolution,
+  type AuthoredCombatant,
+  type BattleObjective,
+  type ContractBattlePlan,
   type ContractState,
   type DomainEvent,
   type GameState,
@@ -93,8 +96,24 @@ import type { ScenarioOutcome, StepDecision, StepOutcome } from './scenario-runn
  * differ in their attributes and agree on `grade`, and an artifact blind to that would call
  * two different campaigns the same run — which is the one thing a determinism artifact
  * exists not to do.
+ *
+ * **9, moved by Milestone 2's segment C (`COMBAT_SPEC` §6.4, `ADR-016` §4).** A hero now
+ * carries `retreats` — what pulling out of a fight cost him — and a contract's package
+ * carries the formation, the doctrine and the retreat threshold the player set before
+ * sending the crew. All four are things a player decided, so two runs that differ only in
+ * them are two different runs.
+ *
+ * **What this projection deliberately does not gain, and why it is a decision rather than
+ * an omission.** `ContractResolution.battle` — the full battle log — stays out.
+ * `ADR-016` §6 gives the reason in the terms this artifact exists in: it is read by a
+ * person checking a run against a snapshot, the spike measured eighty events for one small
+ * battle, and a snapshot nobody can read is a check nobody performs. What the artifact
+ * carries instead is everything the battle *produced* — the coverage it supplied, the
+ * grade it derived, the consequences it cost — so two runs whose battles differed in any
+ * way that mattered still differ here. Two runs whose battles differed only in the order
+ * of two irrelevant events do not, and that is the trade being made.
  */
-export const ARTIFACT_VERSION = 8;
+export const ARTIFACT_VERSION = 9;
 
 /** The canonical text of a whole run. */
 export function toCanonicalJson(outcome: ScenarioOutcome): string {
@@ -190,9 +209,24 @@ function describeCommand(command: ScenarioCommand): CanonicalValue {
       return { ...base, hero_index: command.heroIndex };
     case ScenarioCommandKind.LockOffer:
     case ScenarioCommandKind.PollCrew:
-    case ScenarioCommandKind.ResolveContract:
       // No fields of its own: everything a resolution reads already lives on the package.
       return base;
+    case ScenarioCommandKind.ResolveContract:
+      // One field, and it is the exception that proves the rule above: the retreat signal
+      // is the only thing about a resolution decided *after* the package was sealed
+      // (`DEC-005`, `COMBAT_SPEC` §7.4), so it has nowhere else to be stated.
+      return { ...base, retreat_at_round: command.retreatAtRound };
+    case ScenarioCommandKind.PlaceCrew:
+      return {
+        ...base,
+        placement: command.placement.map((entry) => ({
+          hero_index: entry.heroIndex,
+          row: entry.row,
+          column: entry.column
+        })),
+        doctrine: command.doctrine,
+        retreat_below_percent: command.retreatBelowPercent
+      };
     case ScenarioCommandKind.SettleContract:
       return { ...base, pay: command.pay };
   }
@@ -306,7 +340,11 @@ export function describeHero(hero: HeroState): CanonicalValue {
       care: hero.combat.care
     },
     role: hero.role,
-    wounds: hero.wounds
+    wounds: hero.wounds,
+    // `COMBAT_SPEC` §6.5, and written for exactly the reason `wounds` above is: the
+    // command that moves it arrives in this same segment, and a field this projection does
+    // not read is a state change a determinism check cannot see.
+    retreats: hero.retreats
   };
 }
 
@@ -344,7 +382,18 @@ export function describeContract(contract: ContractState): CanonicalValue {
     // an undefined key, which is what every other absent-by-nature field here already
     // does (`key_hero` on an uncomposed offer). The distinction `method_tag` draws does
     // not arise: there is no "resolved to nothing" outcome, only "not resolved yet".
-    resolution: describeResolution(contract.resolution)
+    resolution: describeResolution(contract.resolution),
+    // Authored, immutable for the life of a campaign, and projected anyway — the same
+    // standing `needs` and `tags` above already have. `content_version` does pin every one
+    // of these bytes, and that is an argument for writing none of them; the reason to write
+    // them is the one this whole projection exists for: a reader checking a run should not
+    // have to open the content tree to find out what the coverage rows in the resolution
+    // *mean* (`ADR-016` §1: the mapping from a need to an objective is authored).
+    //
+    // The battle **log** is the thing that stays out, and it stays out for the opposite
+    // reason: it is not small, it is not authored, and eighty events per contract makes a
+    // snapshot unreadable (`ADR-016` §6).
+    battle: contract.battle === null ? undefined : describeBattlePlan(contract.battle)
   };
 }
 
@@ -422,7 +471,66 @@ function describeOffer(offer: OfferState): CanonicalValue {
     invited: offer.invited.values(),
     commitments: Object.fromEntries(offer.commitments.entries()),
     responded_by: offer.respondedBy.values(),
-    accepted_by: offer.acceptedBy.values()
+    accepted_by: offer.acceptedBy.values(),
+    // What the player decided before sending the crew (`COMBAT_SPEC` §2, §3.7). Three
+    // decisions, so two runs differing only in where a hero stood are two different runs —
+    // which is the whole claim `MVP_PLAN` §6.4 measures the lab against.
+    deployment:
+      offer.deployment === null
+        ? undefined
+        : {
+            placement: Object.fromEntries(
+              offer.deployment.placement
+                .entries()
+                .map(([hero, cell]) => [String(hero), { row: cell.row, column: cell.column }])
+            ),
+            doctrine: offer.deployment.doctrine,
+            retreat_below_percent: offer.deployment.retreatBelowPercent
+          }
+  };
+}
+
+/**
+ * The contract's authored fight (`ADR-016` §1) — objectives, pattern and wards.
+ *
+ * Written out field by field rather than handed to the canonicalizer whole, for the reason
+ * every projection in this file is: a shape that reached the artifact by structural
+ * accident would change the day somebody added a field to the domain type, and the version
+ * number beside it would not move.
+ */
+function describeBattlePlan(plan: ContractBattlePlan): CanonicalValue {
+  return {
+    objectives: Object.fromEntries(
+      plan.objectives.entries().map(([need, objective]) => [need, describeObjective(objective)])
+    ),
+    foes: plan.foes.map(describeCombatant),
+    wards: plan.wards.map(describeCombatant)
+  };
+}
+
+function describeObjective(objective: BattleObjective): CanonicalValue {
+  switch (objective.kind) {
+    case 'subdue':
+      return { kind: objective.kind, targets: objective.targets };
+    case 'protect':
+      return { kind: objective.kind, ward: objective.ward };
+    case 'hold':
+      return { kind: objective.kind, rounds: objective.rounds };
+  }
+}
+
+function describeCombatant(unit: AuthoredCombatant): CanonicalValue {
+  return {
+    id: unit.id,
+    role: unit.role,
+    cell: { row: unit.cell.row, column: unit.cell.column },
+    combat: {
+      might: unit.combat.might,
+      guard: unit.combat.guard,
+      aim: unit.combat.aim,
+      focus: unit.combat.focus,
+      care: unit.combat.care
+    }
   };
 }
 
@@ -480,6 +588,12 @@ function describeEvent(domainEvent: DomainEvent): CanonicalValue {
     case 'contract_settled_promise_kept':
     case 'contract_settled_promise_broken':
       return { ...base, contract_id: domainEvent.contractId };
+
+    // The doctrine and no formation: the formation is written onto the package, which this
+    // same artifact projects (`describeOffer`), and an event carrying a second copy of it
+    // would be a second place it could drift (`COMBAT_SPEC` §3.7).
+    case 'crew_placed':
+      return { ...base, contract_id: domainEvent.contractId, doctrine: domainEvent.doctrine };
 
     // The seven outcome events (`RESOLUTION_SPEC` §3.4). Each writes the fields it
     // actually carries and no others: a `need_covered` has no hero, and an artifact

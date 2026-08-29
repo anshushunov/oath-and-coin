@@ -623,10 +623,14 @@ function outcomeLineOf(
           ? OutcomeReasonCodes.ObjectiveTaken
           : OutcomeReasonCodes.ObjectiveLost
       };
+    // `crew_placed` is among these, and deliberately: placing the crew is a decision taken
+    // before the fight, not a line of what the fight cost. The debrief shows the formation
+    // in its own section (`COMBAT_SPEC` §10.3) rather than in the chronology of the outcome.
     case 'hero_accepted_contract':
     case 'hero_declined_contract':
     case 'offer_revised':
     case 'offer_locked':
+    case 'crew_placed':
     case 'contract_settled':
     case 'contract_settled_promise_kept':
     case 'contract_settled_promise_broken':

@@ -1,6 +1,7 @@
 import type { SortedMap } from '../collections/sorted-map.ts';
 import type { HeroId } from '../ids/hero-id.ts';
 
+import type { BattleRecord } from './battle-record.ts';
 import type { CommitmentState } from './commitment.ts';
 import type { NeedId } from './need-id.ts';
 import type { OutcomeReasonCode } from './outcome-reason-codes.ts';
@@ -87,11 +88,20 @@ export const DeficitKind = Object.freeze({
 
 export type DeficitKind = (typeof DeficitKind)[keyof typeof DeficitKind];
 
-/** What an outcome can cost a person (`RESOLUTION_SPEC` §2.6, §5.1). */
+/**
+ * What an outcome can cost a person (`RESOLUTION_SPEC` §2.6, §5.1).
+ *
+ * `Retreat` is the one of the four a battle adds (`COMBAT_SPEC` §6.4 п.1, `ADR-016` §4).
+ * It is a fourth kind rather than a reason on one of the three because pulling out has to
+ * cost **everybody who moved**, and none of the other three is that: a wound goes to the
+ * one man on the point, a grudge to the one who gave way, a lost trust to the key hero.
+ * Reusing any of them would put a personal accusation on a group decision.
+ */
 export const ConsequenceKind = Object.freeze({
   Wound: 'wound',
   Grudge: 'grudge',
-  TrustLost: 'trust_lost'
+  TrustLost: 'trust_lost',
+  Retreat: 'retreat'
 });
 
 export type ConsequenceKind = (typeof ConsequenceKind)[keyof typeof ConsequenceKind];
@@ -213,6 +223,18 @@ export interface ContractResolution {
   readonly dominant: DeficitKind | null;
 
   readonly consequences: readonly HeroConsequence[];
+
+  /**
+   * The battle that produced this, or `null` for a contract the abstract resolver settled
+   * (`COMBAT_SPEC` §6.4 п.3, `ADR-016` §4).
+   *
+   * The third and last of the three things a battle adds to this shape. It is here rather
+   * than in the campaign's `history` because a battle raises dozens of events per round,
+   * and `history` goes into the save **and** into the canonical artifact — eighty events per
+   * contract would make the snapshot a human checks unreadable (`ADR-016` §6). It is the
+   * whole record, because that is what a replay needs and what the debrief's feed reads.
+   */
+  readonly battle: BattleRecord | null;
 }
 
 /** What a resolver hands back: the events to raise, and the result to store. */

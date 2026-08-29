@@ -134,7 +134,8 @@ function resolved(state: GameState): GameState {
     resolveContract(current, {
       commandId: 1,
       contractId: ids.caravan,
-      expectedStateVersion: current.metadata.stateVersion
+      expectedStateVersion: current.metadata.stateVersion,
+      retreatAtRound: null
     })
   );
 }
@@ -396,7 +397,8 @@ describe('the engine agrees about every one of the six', () => {
           return resolveContract(state, {
             commandId,
             contractId: ids.caravan,
-            expectedStateVersion
+            expectedStateVersion,
+            retreatAtRound: null
           });
         case OfferAction.Settle:
           return settleContract(state, {

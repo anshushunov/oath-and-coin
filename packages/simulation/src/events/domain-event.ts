@@ -1,3 +1,4 @@
+import type { DoctrineId } from '../domain/doctrine-id.ts';
 import type { NeedId } from '../domain/need-id.ts';
 import type {
   ConsequenceKind,
@@ -170,6 +171,24 @@ export interface HeroSufferedConsequence extends DomainEventBase {
 }
 
 /**
+ * The crew was placed on the board, under a doctrine and a threshold (`COMBAT_SPEC` §3.7).
+ *
+ * A campaign event and not a battle one: this is a decision the *player* made before the
+ * fight, it changes the package the crew goes out on, and `history` is where the campaign's
+ * own chronology lives. What happens inside the battle stays in `ContractResolution.battle`
+ * (`ADR-016` §6).
+ *
+ * The formation itself is not on the event, and that is `RESOLUTION_SPEC` §3.3's rule about
+ * where a fact lives: it is written onto the package, the package is in the save and in the
+ * artifact, and an event carrying a second copy would be a second place it could drift.
+ */
+export interface CrewPlaced extends DomainEventBase {
+  readonly kind: 'crew_placed';
+  readonly contractId: ContentId;
+  readonly doctrine: DoctrineId;
+}
+
+/**
  * The contract came back, and on which step (`RESOLUTION_SPEC` §3.3). Always the last
  * event of a resolution, and its effect is what writes the result onto the contract —
  * inside the transition rather than after the last one.
@@ -214,6 +233,7 @@ export function heroNamedBy(domainEvent: DomainEvent): HeroId | null {
       return domainEvent.heroId;
     case 'offer_revised':
     case 'offer_locked':
+    case 'crew_placed':
     case 'need_covered':
     case 'need_short':
     case 'objective_taken':
@@ -246,6 +266,7 @@ export function isAnswerToAnOffer(
       return true;
     case 'offer_revised':
     case 'offer_locked':
+    case 'crew_placed':
     case 'need_covered':
     case 'need_short':
     case 'hero_faltered_early':
@@ -265,6 +286,7 @@ export type DomainEvent =
   | HeroDeclinedContract
   | OfferRevised
   | OfferLocked
+  | CrewPlaced
   | NeedCovered
   | NeedShort
   | HeroFalteredEarly

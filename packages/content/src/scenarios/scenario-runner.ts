@@ -2,6 +2,7 @@ import {
   composeOffer,
   heroId,
   lockOffer,
+  placeCrew,
   pollCrew,
   proposeContractToHero,
   resolveContract,
@@ -204,11 +205,24 @@ function apply(state: GameState, command: ScenarioCommand): CommandResult {
         contractId: command.contract,
         expectedStateVersion: command.expectedStateVersion
       });
+    case ScenarioCommandKind.PlaceCrew:
+      return placeCrew(state, {
+        commandId: command.commandId,
+        contractId: command.contract,
+        placement: command.placement.map((entry) => ({
+          hero: heroId(entry.heroIndex),
+          cell: { row: entry.row, column: entry.column }
+        })),
+        doctrine: command.doctrine,
+        retreatBelowPercent: command.retreatBelowPercent,
+        expectedStateVersion: command.expectedStateVersion
+      });
     case ScenarioCommandKind.ResolveContract:
       return resolveContract(state, {
         commandId: command.commandId,
         contractId: command.contract,
-        expectedStateVersion: command.expectedStateVersion
+        expectedStateVersion: command.expectedStateVersion,
+        retreatAtRound: command.retreatAtRound
       });
     case ScenarioCommandKind.SettleContract:
       return settleContract(state, {

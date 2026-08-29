@@ -22,4 +22,21 @@ export interface ResolveContract {
   readonly contractId: ContentId;
   /** The state version this command was composed against; see `ProposeContractToHero`. */
   readonly expectedStateVersion: number;
+  /**
+   * The round the player gave the retreat signal at, or `null` if he never did
+   * (`DEC-005`, `COMBAT_SPEC` §7.4).
+   *
+   * **The one field this command carries, and the exception proves the rule above.**
+   * Everything else the outcome is computed from was decided before this point and lives on
+   * the package. This one cannot: it is a decision taken *while the battle is being
+   * watched*, and there is no package to write it onto before the battle exists.
+   *
+   * It is not an interruption of a running simulation. The presentation runs the battle
+   * once with `null`, and pressing the button re-runs it with the round filled in;
+   * everything before that round is identical by determinism (§9), so what the player
+   * watched is a prefix of what he gets.
+   *
+   * `null` on a contract that never goes to a battle, where there is no lever to pull.
+   */
+  readonly retreatAtRound: number | null;
 }

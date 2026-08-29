@@ -23,6 +23,7 @@ function aResolution(overrides: Partial<ContractResolution> = {}): ContractResol
     deficits: [],
     dominant: null,
     consequences: [],
+    battle: null,
     ...overrides
   };
 }

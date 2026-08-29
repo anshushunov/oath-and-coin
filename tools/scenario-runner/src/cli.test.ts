@@ -110,7 +110,7 @@ describe('run', () => {
 
     const written = readFileSync(artifact, 'utf8');
     expect(output).toContain('canonical sha256:');
-    expect(JSON.parse(written)).toMatchObject({ artifact_version: 8 });
+    expect(JSON.parse(written)).toMatchObject({ artifact_version: 9 });
   });
 
   it('treats a scenario that fails on purpose as data, not as a tool failure', () => {

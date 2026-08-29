@@ -227,7 +227,9 @@ describe('the page when the campaign moves to the debrief', () => {
     // A live command, the way a player's own press sends one — §6.4's first row is "an
     // applied `resolveContract` → the debrief", and this is the page obeying it.
     act(() => {
-      expect(gated.controller.resolveContract({ contractId }).applied).toBe(true);
+      expect(gated.controller.resolveContract({ retreatAtRound: null, contractId }).applied).toBe(
+        true
+      );
     });
 
     expect(reportIn(container).campaign_screen).toBe(ScreenKind.AfterAction);

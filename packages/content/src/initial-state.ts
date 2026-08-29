@@ -91,6 +91,9 @@ export function createInitialState(
           // `RESOLUTION_SPEC` §2.6's starting value. Campaign state, not content: no
           // hero is authored wounded, and only a `Wound` consequence raises it.
           wounds: 0,
+          // `COMBAT_SPEC` §6.5's starting value, and campaign state like `wounds`: no hero
+          // is authored as having walked away from anything.
+          retreats: 0,
           traits: definition.traits,
           relationships: SortedMap.from(
             compareContentIds,
@@ -123,6 +126,10 @@ export function createInitialState(
         // simply not carried into simulation state until now. `composeOffer`
         // (`NEGOTIATION_SPEC` §3.3) is the first reader.
         negotiableTags: SortedSet.from(compareContentIds, definition.negotiableTags),
+        // The routing rule of `ADR-014` §1, carried straight from the file: a contract with
+        // an authored plan is settled by the battle resolver, one without by the abstract
+        // one, and this field is where the answer lives.
+        battle: definition.battle,
         status: ContractStatus.Offered,
         offer: initialOffer(),
         moodOrdinals: SortedMap.empty<HeroId, bigint>(compareHeroIds),

@@ -195,7 +195,13 @@ const mixedVerdicts = () =>
   });
 
 function aResolve(overrides: Partial<ResolveContract> = {}): ResolveContract {
-  return { commandId: 1, contractId: ids.crypt, expectedStateVersion: 0, ...overrides };
+  return {
+    commandId: 1,
+    contractId: ids.crypt,
+    expectedStateVersion: 0,
+    retreatAtRound: null,
+    ...overrides
+  };
 }
 
 const kindsOf = (state: GameState, command = aResolve()) =>

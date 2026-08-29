@@ -14,6 +14,7 @@ import { OutcomeReasonCodes } from '../domain/outcome-reason-codes.ts';
 import { compareHeroIds, type HeroId } from '../ids/hero-id.ts';
 import { toInt32 } from '../integer-division.ts';
 import type { ContractState } from '../state/contract-state.ts';
+import type { Deployment } from '../domain/deployment.ts';
 import type { HeroState } from '../state/hero-state.ts';
 
 import { consequencesFor } from './consequences.ts';
@@ -62,6 +63,21 @@ export interface ResolutionInput {
     /** How willingly he came, recorded when he answered and never recomputed (§2.4). */
     readonly commitment: CommitmentState;
   }[];
+  /**
+   * The formation, the doctrine and the enemy pattern — present exactly when this contract
+   * goes to a battle (`ADR-016` §3, `COMBAT_SPEC` §6.3).
+   *
+   * **Optional, so the signature does not move.** `ContractResolver` is a one-argument
+   * function, and a second argument would make the battle implementation unassignable to
+   * the type — which is what external review found wrong with the first edition of
+   * `ADR-016`. Every existing place that builds an input is untouched.
+   *
+   * **{@link draftResolution} does not read it, and that is a property rather than an
+   * agreement** (`COMBAT_SPEC` §12.1 п.8): its arithmetic is coverage, and coverage has no
+   * columns in it. The forecast is what reads a formation, and the forecast is a separate
+   * function for exactly that reason.
+   */
+  readonly deployment?: Deployment;
 }
 
 export type ContractResolver = (input: ResolutionInput) => ResolutionDraft;
@@ -124,7 +140,11 @@ export const draftResolution: ContractResolver = (input) => {
       contributions: contributionsOf(crew, coverage, intents),
       deficits: ranked,
       dominant,
-      consequences
+      consequences,
+      // No battle happened, and `null` says so definitely (`ADR-016` §4). This resolver is
+      // the one that answers without one — a delegated contract, and a readiness forecast
+      // before the crew is sent — so the field is not "not filled in yet".
+      battle: null
     } satisfies ContractResolution
   };
 };

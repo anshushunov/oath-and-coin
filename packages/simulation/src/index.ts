@@ -46,6 +46,13 @@ export {
   type HeroCombatLayer
 } from './domain/combat-attributes.ts';
 export { COMBAT_ROLES, CombatRole, compareCombatRoles } from './domain/combat-role.ts';
+export {
+  BATTLE_OBJECTIVE_KINDS,
+  BattleObjectiveKind,
+  type BattleObjective
+} from './domain/battle-objective.ts';
+export type { AuthoredCombatant, ContractBattlePlan } from './domain/contract-battle-plan.ts';
+export { RETREAT_THRESHOLD_MAX, type CrewDeployment } from './domain/crew-deployment.ts';
 export { EQUIPMENT_GRADE_NONE, gradeFrom } from './combat/grade.ts';
 
 // The combat core (`COMBAT_SPEC`). Exported as a whole because the battle resolver, the
@@ -275,6 +282,7 @@ export {
 export {
   composeOffer,
   lockOffer,
+  placeCrew,
   pollCrew,
   proposeContractToHero,
   resolveContract,
@@ -344,6 +352,7 @@ export {
 } from './commands/command-result.ts';
 export type { ComposeOffer } from './commands/compose-offer.ts';
 export type { LockOffer } from './commands/lock-offer.ts';
+export type { PlaceCrew } from './commands/place-crew.ts';
 export type { PollCrew } from './commands/poll-crew.ts';
 export type { ProposeContractToHero } from './commands/propose-contract-to-hero.ts';
 export type { ResolveContract } from './commands/resolve-contract.ts';

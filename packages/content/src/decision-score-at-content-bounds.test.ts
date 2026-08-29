@@ -205,7 +205,8 @@ function aHeroAt(scales: {
     },
     combat: SWEEP_COMBAT,
     role: CombatRole.Vanguard,
-    wounds: 0
+    wounds: 0,
+    retreats: 0
   };
 }
 
@@ -229,6 +230,7 @@ function aContractAt(risk: number, advance: number, promisedBonus: number): Cont
     resolution: null,
     tags: SortedSet.from(compareContentIds, TAG_IDS),
     status: ContractStatus.Offered,
+    battle: null,
     offer: {
       ...initialOffer(),
       keyHero: DECIDER,

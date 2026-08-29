@@ -1,5 +1,6 @@
 import {
   CombatRole,
+  compareNeedIds,
   CommitmentState,
   compareContentIds,
   compareHeroIds,
@@ -13,6 +14,7 @@ import {
   parseContentId,
   SortedMap,
   SortedSet,
+  type BattleObjective,
   type ContractResolution,
   type ContractState,
   type GameState,
@@ -80,7 +82,8 @@ function aResolution(): ContractResolution {
         reason: OutcomeReasonCodes.WoundOnThePoint,
         magnitude: 1
       }
-    ]
+    ],
+    battle: null
   };
 }
 
@@ -265,11 +268,12 @@ describe('describeHero reads every field of HeroState', () => {
       ...h,
       role: h.role === CombatRole.Vanguard ? CombatRole.Rear : CombatRole.Vanguard
     }),
-    wounds: (h) => ({ ...h, wounds: h.wounds + 1 })
+    wounds: (h) => ({ ...h, wounds: h.wounds + 1 }),
+    retreats: (h) => ({ ...h, retreats: h.retreats + 1 })
   };
 
   const fields = Object.keys(base) as (keyof HeroState)[];
-  expect(fields).toHaveLength(15);
+  expect(fields).toHaveLength(16);
 
   it.each(fields.filter((f) => !EXCEPTIONS.includes(f)))('perturbing %s changes the projection', (field) => {
     const perturb = perturbations[field];
@@ -308,11 +312,30 @@ describe('describeContract reads every field of ContractState except the declare
     // that wrote a bare `grade` and dropped everything under it would still differ from
     // "not resolved" and pass. The two resolutions below differ only in a *coverage*
     // number, so this case fails unless the whole structure is written.
-    resolution: (c) => ({ ...c, resolution: aResolution() })
+    resolution: (c) => ({ ...c, resolution: aResolution() }),
+    // From "no fight" to a fight: the routing rule itself (`ADR-014` §1), and a projection
+    // blind to it would call a delegated contract and a battle contract the same campaign.
+    battle: (c) => ({
+      ...c,
+      battle: {
+        objectives: SortedMap.from<NeedId, BattleObjective>(compareNeedIds, [
+          [NeedId.Frontline, { kind: 'hold', rounds: 4 }]
+        ]),
+        foes: [
+          {
+            id: 'foe:a',
+            role: CombatRole.Vanguard,
+            cell: { row: 1, column: 1 },
+            combat: { might: 50, guard: 50, aim: 50, focus: 50, care: 50 }
+          }
+        ],
+        wards: []
+      }
+    })
   };
 
   const fields = (Object.keys(base) as (keyof ContractState)[]).filter((f) => !EXCEPTIONS.includes(f));
-  expect(fields).toHaveLength(10);
+  expect(fields).toHaveLength(11);
 
   it.each(NESTED_RESOLUTION_PERTURBATIONS)(
     'writes a resolution deeply: perturbing %s changes the projection',

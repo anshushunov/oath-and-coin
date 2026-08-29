@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "id": "fixture:warded_principle",
   "display_name_key": "trait.fixture.warded_principle.name",
   "kind": "principle",

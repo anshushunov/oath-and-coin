@@ -68,7 +68,7 @@ const shippedContent = join(repoRoot, 'content');
  * purpose — neither file may own the other's claim — and Task 19 retires **both** when
  * the corpus stops being the oracle.
  */
-const RECORDED_CONTENT_VERSION = 'c02e365478576dd7';
+const RECORDED_CONTENT_VERSION = '38628f6fb08d4de3';
 
 /** Every file under `directory`, root-relative and POSIX, by this test's own walk. */
 function everyFileUnder(directory: string, prefix = ''): readonly string[] {

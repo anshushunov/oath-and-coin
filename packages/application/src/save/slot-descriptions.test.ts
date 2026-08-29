@@ -30,7 +30,7 @@ import { describeSaveSlots } from './slot-descriptions.ts';
  */
 
 const HERO = {
-  schema_version: 5,
+  schema_version: 6,
   id: 'core:bram',
   display_name_key: 'hero.core.bram.name',
   greed: 60,
@@ -45,7 +45,7 @@ const HERO = {
 };
 
 const CONTRACT = {
-  schema_version: 5,
+  schema_version: 6,
   id: 'core:escort',
   display_name_key: 'contract.core.escort.name',
   patron_fee: 70,
@@ -57,7 +57,7 @@ const CONTRACT = {
 
 /** Nobody holds it. A content root with no `traits/` directory is refused outright. */
 const TRAIT = {
-  schema_version: 5,
+  schema_version: 6,
   id: 'core:greedy',
   display_name_key: 'trait.core.greedy.name',
   kind: 'inclination',

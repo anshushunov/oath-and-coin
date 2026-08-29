@@ -1,4 +1,6 @@
 import { SortedMap } from '../collections/sorted-map.ts';
+import { cellKey } from '../domain/battle-cell.ts';
+import { RETREAT_THRESHOLD_MAX } from '../domain/crew-deployment.ts';
 import { SortedSet } from '../collections/sorted-set.ts';
 import type { CommitmentState } from '../domain/commitment.ts';
 import type { ContentId } from '../ids/content-id.ts';
@@ -59,7 +61,11 @@ export function initialOffer(): OfferState {
     invited: SortedSet.empty<HeroId>(compareHeroIds),
     respondedBy: SortedSet.empty<HeroId>(compareHeroIds),
     acceptedBy: SortedSet.empty<HeroId>(compareHeroIds),
-    commitments: SortedMap.empty<HeroId, CommitmentState>(compareHeroIds)
+    commitments: SortedMap.empty<HeroId, CommitmentState>(compareHeroIds),
+    // No formation until the crew exists to place (`COMBAT_SPEC` §3.7). `null` rather than
+    // an empty placement, because "nobody has been placed" and "everybody was placed
+    // nowhere" are different claims and only the first is true here.
+    deployment: null
   };
 }
 
@@ -290,7 +296,79 @@ export function createContractState(contract: ContractState): ContractState {
     }
   }
 
+  requireDeploymentConsistency(contract);
   requireStoredResolutionConsistency(contract);
 
   return contract;
+}
+
+/**
+ * `COMBAT_SPEC` §3.7's two refusals, as invariants of the package rather than as checks
+ * inside one command.
+ *
+ * A formation is only ever built by `placeCrew`, which refuses the same two shapes with
+ * named codes — but a save is external data and a hand-built state is a test's, and both
+ * reach this door. `cell_taken` and `unplaced_hero` are the codes the command answers with;
+ * here they are the reason a state cannot exist.
+ */
+function requireDeploymentConsistency(contract: ContractState): void {
+  const { deployment, acceptedBy } = { ...contract.offer, acceptedBy: contract.offer.acceptedBy };
+
+  if (deployment === null) {
+    return;
+  }
+
+  const placed = deployment.placement.keys();
+
+  if (placed.length !== acceptedBy.size) {
+    throw new Error(
+      `Contract '${contract.id}' places ${String(placed.length)} hero(es) of the ` +
+        `${String(acceptedBy.size)} who accepted; a formation names every one of them and ` +
+        'nobody else (COMBAT_SPEC §3.7: unplaced_hero).'
+    );
+  }
+
+  for (const heroId of placed) {
+    if (!acceptedBy.has(heroId)) {
+      throw new Error(
+        `Contract '${contract.id}' places hero#${String(heroId)}, who did not accept it; a ` +
+          'formation is a fact about the crew that is going (COMBAT_SPEC §3.7).'
+      );
+    }
+  }
+
+  const taken = new Set<string>();
+
+  for (const cell of deployment.placement.values()) {
+    const key = cellKey(cell);
+
+    if (taken.has(key)) {
+      throw new Error(
+        `Contract '${contract.id}' puts two heroes on cell ${key}; a cell holds at most one ` +
+          'unit (COMBAT_SPEC §3.1, §3.7: cell_taken).'
+      );
+    }
+
+    taken.add(key);
+  }
+
+  for (const ward of contract.battle?.wards ?? []) {
+    if (taken.has(cellKey(ward.cell))) {
+      throw new Error(
+        `Contract '${contract.id}' puts a hero on cell ${cellKey(ward.cell)}, where the ` +
+          `contract's own '${ward.id}' already stands (COMBAT_SPEC §3.7: cell_taken).`
+      );
+    }
+  }
+
+  if (
+    deployment.retreatBelowPercent < 0 ||
+    deployment.retreatBelowPercent > RETREAT_THRESHOLD_MAX
+  ) {
+    throw new Error(
+      `Contract '${contract.id}' sets a retreat threshold of ` +
+        `${String(deployment.retreatBelowPercent)}, outside 0..${String(RETREAT_THRESHOLD_MAX)}; ` +
+        'it is a share of the crew (COMBAT_SPEC §7.4).'
+    );
+  }
 }

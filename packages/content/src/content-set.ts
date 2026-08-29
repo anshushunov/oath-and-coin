@@ -7,8 +7,11 @@ import {
   compareNeedIds,
   gradeFrom,
   parseContentId,
+  type BattleObjective,
+  type BattleUnitId,
   type CombatRole,
   type ContentId,
+  type ContractBattlePlan,
   type HeroCapability,
   type HeroCombatLayer,
   type NeedId
@@ -20,6 +23,7 @@ import {
   contractFileSchema,
   heroFileSchema,
   traitFileSchema,
+  type ContractBattleFile,
   type ContractFile,
   type HeroFile,
   type TraitFile
@@ -121,6 +125,17 @@ export interface ContractDefinition {
    * only, and that is a definite fact about it, not an absent one.
    */
   readonly negotiableTags: readonly ContentId[];
+  /**
+   * The fight this contract leads to, or `null` for one that never goes to a battle
+   * (`ADR-016` §1, `COMBAT_SPEC` §6.2).
+   *
+   * `null`, never `undefined`, for the reason {@link negotiableTags} is `[]`: a contract
+   * the abstract resolver settles is a definite fact about it, not an absent one. The
+   * loader has already prefixed every combatant key with `foe:` or `ward:` and keyed the
+   * objectives by `compareNeedIds`, so nothing downstream has to know what a file looked
+   * like.
+   */
+  readonly battle: ContractBattlePlan | null;
 }
 
 export interface ContentSet {
@@ -241,8 +256,62 @@ function toContractDefinition(file: ContractFile): ContractDefinition {
     requiredCrew: file.required_crew,
     needs: toNeedMap(file.needs),
     tags: file.tags.map((tag) => parseContentId(tag)),
-    negotiableTags: (file.negotiable_tags ?? []).map((tag) => parseContentId(tag))
+    negotiableTags: (file.negotiable_tags ?? []).map((tag) => parseContentId(tag)),
+    battle: file.battle === undefined ? null : toBattlePlan(file.battle)
   };
+}
+
+/**
+ * A file's battle block as the engine reads it (`COMBAT_SPEC` §6.2).
+ *
+ * Two things happen here and nowhere else. Every combatant key gains its side's prefix, so
+ * a file naming `wight` cannot name `crew:bram` and the engine never sees an ambiguous id.
+ * And the objectives are keyed by `compareNeedIds` rather than by the order the author
+ * typed them, for the reason every map in this file is: enumeration order reaches the
+ * canonical artifact, and an artifact that was a function of authoring style would not be
+ * a function of the game.
+ */
+function toBattlePlan(file: ContractBattleFile): ContractBattlePlan {
+  const foeId = (key: string): BattleUnitId => `foe:${key}`;
+  const wardId = (key: string): BattleUnitId => `ward:${key}`;
+
+  return {
+    objectives: SortedMap.from<NeedId, BattleObjective>(
+      compareNeedIds,
+      Object.entries(file.objectives).flatMap(([need, objective]) =>
+        objective === undefined
+          ? []
+          : [[need as NeedId, toObjective(objective, foeId, wardId)] as const]
+      )
+    ),
+    foes: file.foes.map((foe) => ({
+      id: foeId(foe.key),
+      role: foe.role,
+      cell: foe.cell,
+      combat: foe.combat
+    })),
+    wards: file.wards.map((ward) => ({
+      id: wardId(ward.key),
+      role: ward.role,
+      cell: ward.cell,
+      combat: ward.combat
+    }))
+  };
+}
+
+function toObjective(
+  objective: ContractBattleFile['objectives'][NeedId] & object,
+  foeId: (key: string) => BattleUnitId,
+  wardId: (key: string) => BattleUnitId
+): BattleObjective {
+  switch (objective.kind) {
+    case 'subdue':
+      return { kind: 'subdue', targets: objective.targets.map(foeId) };
+    case 'protect':
+      return { kind: 'protect', ward: wardId(objective.ward) };
+    case 'hold':
+      return { kind: 'hold', rounds: objective.rounds };
+  }
 }
 
 /**

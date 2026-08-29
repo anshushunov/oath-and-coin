@@ -169,7 +169,7 @@ function aResolvedDebrief(
     const result =
       command === 'pollCrew'
         ? controller.pollCrew({ contractId })
-        : controller.resolveContract({ contractId });
+        : controller.resolveContract({ retreatAtRound: null, contractId });
 
     if (!result.applied) {
       throw new Error(

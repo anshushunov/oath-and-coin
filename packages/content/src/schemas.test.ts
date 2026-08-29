@@ -319,12 +319,15 @@ describe("a hero's combat layer", () => {
 });
 
 describe('the content format version', () => {
-  it('is 5, and a file still declaring 4 is refused', () => {
+  it('is 6, and a file still declaring an older one is refused', () => {
     // `combat` and `role` are *required* and `capability.grade` is *refused*, so a file
     // authored under 4 is not a legal file under 5 and the reverse is false as well —
     // the version has to move, and this is the assertion that says the two facts travel
-    // together (`RESOLUTION_SPEC` §2.8, `DEC-016` §Последствия).
-    expect(SUPPORTED_CONTENT_SCHEMA_VERSION).toBe(5);
+    // together (`RESOLUTION_SPEC` §2.8, `DEC-016` §Последствия). Six adds a contract's
+    // optional `battle` block, and the number moves for the reason `negotiable_tags` moved
+    // it: the field decides which resolver settles the contract (`ADR-014` §1), so a file
+    // checked against 5 was checked without knowing that question existed.
+    expect(SUPPORTED_CONTENT_SCHEMA_VERSION).toBe(6);
     expect(() => heroFileSchema.parse({ ...validHero, schema_version: 4 })).toThrow();
     expect(() => contractFileSchema.parse({ ...validContract, schema_version: 4 })).toThrow();
   });

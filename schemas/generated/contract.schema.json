@@ -7,7 +7,7 @@
   "properties": {
     "schema_version": {
       "type": "number",
-      "const": 5
+      "const": 6
     },
     "id": {
       "type": "string",
@@ -63,6 +63,315 @@
         "type": "string",
         "pattern": "^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$"
       }
+    },
+    "battle": {
+      "type": "object",
+      "properties": {
+        "objectives": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "enum": [
+              "frontline",
+              "undead_knowledge",
+              "wilderness"
+            ]
+          },
+          "additionalProperties": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "subdue"
+                  },
+                  "targets": {
+                    "minItems": 1,
+                    "maxItems": 6,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 256,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    }
+                  }
+                },
+                "required": [
+                  "kind",
+                  "targets"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "protect"
+                  },
+                  "ward": {
+                    "type": "string",
+                    "maxLength": 256,
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "ward"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "hold"
+                  },
+                  "rounds": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 12
+                  }
+                },
+                "required": [
+                  "kind",
+                  "rounds"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "foes": {
+          "minItems": 2,
+          "maxItems": 6,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "maxLength": 256,
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "vanguard",
+                  "support",
+                  "rear",
+                  "breaker"
+                ]
+              },
+              "cell": {
+                "type": "object",
+                "properties": {
+                  "row": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "const": 1
+                      },
+                      {
+                        "type": "number",
+                        "const": 2
+                      },
+                      {
+                        "type": "number",
+                        "const": 3
+                      }
+                    ]
+                  },
+                  "column": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "const": 1
+                      },
+                      {
+                        "type": "number",
+                        "const": 2
+                      },
+                      {
+                        "type": "number",
+                        "const": 3
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "row",
+                  "column"
+                ],
+                "additionalProperties": false
+              },
+              "combat": {
+                "type": "object",
+                "properties": {
+                  "might": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "guard": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "aim": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "focus": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "care": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100
+                  }
+                },
+                "required": [
+                  "might",
+                  "guard",
+                  "aim",
+                  "focus",
+                  "care"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "key",
+              "role",
+              "cell",
+              "combat"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "wards": {
+          "maxItems": 2,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "maxLength": 256,
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "vanguard",
+                  "support",
+                  "rear",
+                  "breaker"
+                ]
+              },
+              "cell": {
+                "type": "object",
+                "properties": {
+                  "row": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "const": 1
+                      },
+                      {
+                        "type": "number",
+                        "const": 2
+                      },
+                      {
+                        "type": "number",
+                        "const": 3
+                      }
+                    ]
+                  },
+                  "column": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "const": 1
+                      },
+                      {
+                        "type": "number",
+                        "const": 2
+                      },
+                      {
+                        "type": "number",
+                        "const": 3
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "row",
+                  "column"
+                ],
+                "additionalProperties": false
+              },
+              "combat": {
+                "type": "object",
+                "properties": {
+                  "might": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "guard": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "aim": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "focus": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "care": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100
+                  }
+                },
+                "required": [
+                  "might",
+                  "guard",
+                  "aim",
+                  "focus",
+                  "care"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "key",
+              "role",
+              "cell",
+              "combat"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "objectives",
+        "foes",
+        "wards"
+      ],
+      "additionalProperties": false
     }
   },
   "required": [

@@ -39,8 +39,19 @@
  * The move is of the strongest kind — a version 4 file is not a legal version 5 file and
  * the reverse is also false, because `heroCapabilityFileSchema` is a `strictObject` and
  * refuses the retired key by name.
+ *
+ * Raised to 6 by Milestone 2's segment C (`ADR-016` §1, `COMBAT_SPEC` §6.2): a contract file
+ * may now declare `battle` — the mapping from each of its needs to a battle objective, the
+ * enemy pattern, and whatever the crew is there to keep alive.
+ *
+ * **Optional, and the number moves anyway**, exactly as it did for `negotiable_tags`: a
+ * version 5 file lacking it is still a legal version 6 file, but a hand-authored version 5
+ * file is a statement about what its author checked it against, and that statement did not
+ * include the field that now decides *which resolver settles the contract*. That is a
+ * stronger reason than the tag pair had: the field is not extra detail, it is the routing
+ * rule (`ADR-014` §1).
  */
-export const SUPPORTED_CONTENT_SCHEMA_VERSION = 5;
+export const SUPPORTED_CONTENT_SCHEMA_VERSION = 6;
 
 /** The locale file format, versioned separately because it evolves separately. */
 export const SUPPORTED_LOCALE_SCHEMA_VERSION = 2;
@@ -102,5 +113,18 @@ export const SUPPORTED_LOCALE_SCHEMA_VERSION = 2;
  * third truth about a hero's strength, and the save is exactly where the three would first
  * disagree — an old save loaded into a new build would carry a grade its own attributes no
  * longer produce.
+ *
+ * **7, moved by Milestone 2's segment C (`COMBAT_SPEC` §3.7, §6.4, `ADR-016` §4).** Three
+ * required keys of `strictObject` schemas arrive together, and they arrive together because
+ * they are one change: `HeroState` gains `retreats`, `OfferState` gains the `deployment`
+ * the player set before sending the crew, and `ContractResolution` gains the `battle` that
+ * produced it. A version 6 save is not a legal version 7 save and the reverse is also
+ * false.
+ *
+ * The battle log is in the save although it is **not** in the canonical artifact, and the
+ * asymmetry is `ADR-016` §6 rather than an oversight: a save is read by the game and
+ * `RESOLUTION_SPEC` §6.4 routes a loaded resolved campaign straight to the debrief, whose
+ * feed this is; an artifact is read by a person, and eighty events per contract makes that
+ * unreadable.
  */
-export const SAVE_SCHEMA_VERSION = 6;
+export const SAVE_SCHEMA_VERSION = 7;
