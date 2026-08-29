@@ -57,6 +57,8 @@ export function BattlePlayback({
   contractId,
   port,
   onFinished,
+  onLeave,
+  leaveLabel,
   startPaused = false
 }: {
   readonly contractId: ContentId;
@@ -75,6 +77,17 @@ export function BattlePlayback({
    * signalled at — which is what the caller then commits `resolveContract` with.
    */
   onFinished?: (retreatAtRound: number | null) => void;
+  /**
+   * The control that leaves the fight, drawn *outside* the screen when there is one.
+   *
+   * Outside for the reason `nav` is outside every screen: the rendered-UI snapshot is
+   * collected from the screen element, and a control that navigates away from a screen would
+   * otherwise be part of that screen's own evidence. And drawn only once the fight has
+   * ended, because a battle nobody has watched has nothing to move on from.
+   */
+  onLeave?: () => void;
+  /** What that control says. A key, like every other player-facing string. */
+  leaveLabel?: string;
 }) {
   const [retreatAtRound, setRetreatAtRound] = useState<number | null>(null);
   const [record, setRecord] = useState(() => port.previewBattle(contractId, null));
@@ -174,5 +187,16 @@ export function BattlePlayback({
     return null;
   }
 
-  return <BattleScreen model={model} controls={controls} phase={phase} />;
+  const finished = events.length > 0 && feed.applied >= events.length;
+
+  return (
+    <>
+      <BattleScreen model={model} controls={controls} phase={phase} />
+      {finished && onLeave !== undefined ? (
+        <button type="button" data-testid="battle-leave" onClick={onLeave}>
+          {leaveLabel ?? ''}
+        </button>
+      ) : null}
+    </>
+  );
 }

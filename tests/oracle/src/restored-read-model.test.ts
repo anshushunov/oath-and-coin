@@ -134,8 +134,9 @@ describe('the screen a reloaded campaign draws', () => {
     // `screen_word_broken`); `screen_loading` and `screen_error` reach no state, leaving
     // 43 that run, at two seeds each.
     // 49 since the resolution engine's Task 9: four scenarios of `RESOLUTION_SPEC` §10.4.
-    // 50 since the combat lab's segment E: `battle_ready`, the crew on the board.
-    expect(SCENARIOS).toHaveLength(50);
+    // 50 since the combat lab's segment E: `battle_ready`, the crew on the board. 51 with
+    // `battle_lab`, which stops before its own command and applies nothing at all.
+    expect(SCENARIOS).toHaveLength(51);
 
     let ranCount = 0;
     let blockedSeen = 0;
@@ -241,7 +242,9 @@ describe('the screen a reloaded campaign draws', () => {
     // move with it too — its poll asks the three invited heroes the key hero did not
     // answer for, which is six scored decisions across two seeds and two polls holding
     // more than one apiece.
-    expect(ranCount).toBe(96);
+    // 98 with `battle_lab` at two seeds. It moves this counter and nothing else: it applies
+    // no command, so it scores no decision and holds no poll.
+    expect(ranCount).toBe(98);
     expect(blockedSeen).toBe(16);
     // 180, not 234, since the resolution engine's Task 3: `pollCrew` asks the crew the
     // package invited rather than the whole remaining roster (`DEC-012` as amended,

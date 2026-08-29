@@ -448,7 +448,15 @@ export const SAVES_TITLE_KEY = 'screen.saves.title';
  */
 export const ScreenLinkKeys = Object.freeze({
   OpenSaves: 'screen.saves.open',
-  OpenContractOffer: 'screen.contract_offer.open'
+  OpenContractOffer: 'screen.contract_offer.open',
+  /**
+   * Leaving a finished fight for its debrief (`COMBAT_SPEC` §10.2 → §10.3).
+   *
+   * A screen link rather than one of the battle screen's own controls, and for the reason
+   * every link is one: the rendered-UI snapshot is collected from the screen element, and a
+   * control that navigates *away* from a screen must not be part of that screen's evidence.
+   */
+  OpenAfterAction: 'screen.after_action.open'
 });
 
 export const SCREEN_LINK_KEYS: readonly string[] = Object.freeze(Object.values(ScreenLinkKeys));

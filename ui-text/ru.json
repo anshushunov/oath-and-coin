@@ -238,6 +238,7 @@
     "save.slot.status.empty": "пусто",
     "save.slot.status.occupied": "есть сохранение",
     "save.slot.status.unreadable": "не читается",
+    "screen.after_action.open": "К разбору",
     "screen.after_action.state.empty": "Разбирать нечего: отряд не отправляли",
     "screen.after_action.state.error": "Разбор не удалось собрать",
     "screen.after_action.state.incomplete": "Расчёт ещё не завершён",

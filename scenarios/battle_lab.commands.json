@@ -1,0 +1,20 @@
+{
+  "commands": [
+    {
+      "command": "compose_offer",
+      "command_id": 1,
+      "contract": "core:break_the_siege_camp",
+      "key_hero_index": 0,
+      "invited_indexes": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "advance": 60,
+      "method_tag": null,
+      "promised_bonus": 0,
+      "expected_state_version": 0
+    }
+  ]
+}

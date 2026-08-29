@@ -297,7 +297,38 @@ jobs:
             echo
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
-      # The fourth evidence directory, and the only one produced by a run that applies a
+      # The one run that walks the whole loop — a crew composed, placed, sent, watched and
+      # debriefed (`MVP_PLAN` §6.6's finish line). Every other list above photographs a
+      # screen a scenario replayed into place; this one is the only evidence that the three
+      # screens are *joined*, which no hash of any one of them can say.
+      - name: Summarise the combat-loop evidence
+        if: always() && steps.e2e.outcome != 'skipped'
+        shell: bash
+        run: |
+          root=artifacts/browser-evidence/combat_loop
+
+          missing=""
+          [ -f "$root/report.json" ] || missing="$missing report"
+          for frame in watching finished debrief; do
+            [ -f "$root/$frame.png" ] || missing="$missing $frame/frame"
+          done
+          [ -f "$root/events.jsonl" ] || missing="$missing events"
+
+          if [ -n "$missing" ]; then
+            echo "::error::The combat-loop run produced no evidence for:$missing"
+            exit 1
+          fi
+
+          {
+            echo "### combat-loop evidence"
+            echo
+            echo "| scenario | formation | outcome | events |"
+            echo "|---|---|---|---|"
+            jq -r '"| \(.scenario) | \(.formation | join(" ")) | \(.outcome) | \(.events) |"' "$root/report.json"
+            echo
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # The fifth evidence directory, and the only one produced by a run that applies a
       # game command. The save-slots run does press buttons, so what is new here is not the
       # click: it is that the campaign underneath the page *moves*, which is the transition
       # both lists above are blind to — they photograph a screen the scenario replayed into

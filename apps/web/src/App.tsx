@@ -167,9 +167,15 @@ export function App({ createController = browserSessionController }: AppProps = 
             contractId={watching}
             port={controller}
             onFinished={(retreatAtRound) => {
+              // The outcome is committed the moment the fight is over, and the player stays
+              // on it: what he has not read yet is how it ended, and a screen that left as
+              // the last event landed would take the one line the whole playback was for.
               controller.resolveContract({ contractId: watching, retreatAtRound });
+            }}
+            onLeave={() => {
               setWatching(null);
             }}
+            leaveLabel={catalogue.get(ScreenLinkKeys.OpenAfterAction) ?? ''}
           />
         )}
       </TextSource>
