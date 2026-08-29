@@ -87,8 +87,14 @@ import type { ScenarioOutcome, StepDecision, StepOutcome } from './scenario-runn
  * shapes (`need_covered`, `need_short`, `hero_faltered_early`, `hero_suffered_consequence`,
  * `contract_resolved`, plus the two objective kinds sharing the bare contract shape). Both
  * are shape changes, and both arrive in the same task as the command that produces them.
+ *
+ * **8, moved by Milestone 2's first segment (`DEC-016`).** A hero now carries `combat` and
+ * `role`, and this projection writes both. It has to: the mean is lossy, so two rosters can
+ * differ in their attributes and agree on `grade`, and an artifact blind to that would call
+ * two different campaigns the same run — which is the one thing a determinism artifact
+ * exists not to do.
  */
-export const ARTIFACT_VERSION = 7;
+export const ARTIFACT_VERSION = 8;
 
 /** The canonical text of a whole run. */
 export function toCanonicalJson(outcome: ScenarioOutcome): string {
@@ -282,9 +288,24 @@ export function describeHero(hero: HeroState): CanonicalValue {
     // command that will move it arrives two tasks from now, and a field this projection
     // does not read is a state change a determinism check cannot see.
     capability: {
+      // Written although it is derived (`DEC-016` §3), and *because* it is derived: this
+      // is the number the coverage arithmetic reads, so an artifact that showed only the
+      // attributes would leave a reader recomputing the rule to see what the run used.
       grade: hero.capability.grade,
       expertise: Object.fromEntries(hero.capability.expertise.entries())
     },
+    // The five attributes and the role (`DEC-016` §1, §5). Written beside the derived
+    // grade rather than instead of it: two campaigns can differ in `combat` without
+    // differing in `grade` — the mean is lossy — and a projection blind to that would
+    // call two different rosters the same run.
+    combat: {
+      might: hero.combat.might,
+      guard: hero.combat.guard,
+      aim: hero.combat.aim,
+      focus: hero.combat.focus,
+      care: hero.combat.care
+    },
+    role: hero.role,
     wounds: hero.wounds
   };
 }

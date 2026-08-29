@@ -1,11 +1,11 @@
-import { CONTENT_ID_PATTERN, NEED_IDS } from '@oath-and-coin/simulation';
+import { COMBAT_ROLES, CONTENT_ID_PATTERN, NEED_IDS } from '@oath-and-coin/simulation';
 import { z } from 'zod';
 
 import {
   CAPABILITY_EXPERTISE_MAX,
   CAPABILITY_EXPERTISE_MIN,
-  CAPABILITY_GRADE_MAX,
-  CAPABILITY_GRADE_MIN,
+  COMBAT_ATTRIBUTE_MAX,
+  COMBAT_ATTRIBUTE_MIN,
   INCLINATION_WEIGHT_MAX,
   INCLINATION_WEIGHT_MIN,
   NEED_WEIGHT_MAX,
@@ -90,6 +90,16 @@ const contentSchemaVersion = z.literal(SUPPORTED_CONTENT_SCHEMA_VERSION);
 /** A hero scale — greed, caution, pride, trust. One range, stated once (see `bounds.ts`). */
 const heroScale = z.int().min(TRAIT_MIN).max(TRAIT_MAX);
 
+/**
+ * One combat attribute (`DEC-016` §1).
+ *
+ * Its own bounds rather than `heroScale`'s, and the two are deliberately not the same
+ * declaration even though the numbers coincide: `BQ-013`'s instruction is that the combat
+ * layer must not be raisable by an edit aimed at a motivational scale, and sharing this
+ * line would make exactly that edit one keystroke.
+ */
+const combatAttribute = z.int().min(COMBAT_ATTRIBUTE_MIN).max(COMBAT_ATTRIBUTE_MAX);
+
 export const relationshipFileSchema = z.strictObject({
   hero: contentIdString,
   weight: z.int().min(RELATIONSHIP_WEIGHT_MIN).max(RELATIONSHIP_WEIGHT_MAX)
@@ -127,8 +137,25 @@ const needKeyedMap = (value: z.ZodType<number>): z.ZodType<Partial<Record<string
  * the number.
  */
 export const heroCapabilityFileSchema = z.strictObject({
-  grade: z.int().min(CAPABILITY_GRADE_MIN).max(CAPABILITY_GRADE_MAX),
   expertise: needKeyedMap(z.int().min(CAPABILITY_EXPERTISE_MIN).max(CAPABILITY_EXPERTISE_MAX))
+});
+
+/**
+ * What a hero is made of in a fight (`DEC-016` §1, `COMBAT_SPEC` §3.6) — five attributes,
+ * all required, all `0..100`.
+ *
+ * **`grade` left `capability` in the same change and is not here either.** It is now
+ * derived from these five plus equipment (`DEC-016` §3), and a file that still stated it
+ * would be the second, independently editable truth about a hero's strength that
+ * `DEC-013` §Проверка made it an obligation to remove. `strictObject` refuses it by name,
+ * which is what turns "should not be authored" into "cannot be".
+ */
+export const heroCombatFileSchema = z.strictObject({
+  might: combatAttribute,
+  guard: combatAttribute,
+  aim: combatAttribute,
+  focus: combatAttribute,
+  care: combatAttribute
 });
 
 export const heroFileSchema = z.strictObject({
@@ -140,6 +167,12 @@ export const heroFileSchema = z.strictObject({
   pride: heroScale,
   trust_in_guild: heroScale,
   capability: heroCapabilityFileSchema,
+  combat: heroCombatFileSchema,
+  /**
+   * Which of the four jobs he holds (`COMBAT_SPEC` §3.3). The vocabulary is the engine's,
+   * like `NEED_IDS`: content states a role, never invents one.
+   */
+  role: z.enum(COMBAT_ROLES),
   traits: z.array(contentIdString).max(MAX_TRAITS_PER_HERO),
   relationships: z.array(relationshipFileSchema).max(MAX_RELATIONSHIPS_PER_HERO)
 });

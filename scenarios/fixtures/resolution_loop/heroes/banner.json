@@ -1,5 +1,5 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "id": "fixture:banner",
   "display_name_key": "hero.fixture.banner.name",
   "greed": 100,
@@ -7,9 +7,18 @@
   "pride": 0,
   "trust_in_guild": 100,
   "capability": {
-    "grade": 90,
-    "expertise": { "frontline": 90 }
+    "expertise": {
+      "frontline": 90
+    }
   },
+  "combat": {
+    "might": 90,
+    "guard": 90,
+    "aim": 90,
+    "focus": 90,
+    "care": 90
+  },
+  "role": "vanguard",
   "traits": [],
   "relationships": []
 }

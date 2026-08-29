@@ -30,20 +30,22 @@ import { describeSaveSlots } from './slot-descriptions.ts';
  */
 
 const HERO = {
-  schema_version: 4,
+  schema_version: 5,
   id: 'core:bram',
   display_name_key: 'hero.core.bram.name',
   greed: 60,
   caution: 30,
   pride: 45,
   trust_in_guild: 50,
-  capability: { grade: 50, expertise: { frontline: 50, wilderness: 50 } },
+  capability: { expertise: { frontline: 50, wilderness: 50 } },
+  combat: { might: 50, guard: 50, aim: 50, focus: 50, care: 50 },
+  role: 'vanguard',
   traits: [],
   relationships: []
 };
 
 const CONTRACT = {
-  schema_version: 4,
+  schema_version: 5,
   id: 'core:escort',
   display_name_key: 'contract.core.escort.name',
   patron_fee: 70,
@@ -55,7 +57,7 @@ const CONTRACT = {
 
 /** Nobody holds it. A content root with no `traits/` directory is refused outright. */
 const TRAIT = {
-  schema_version: 4,
+  schema_version: 5,
   id: 'core:greedy',
   display_name_key: 'trait.core.greedy.name',
   kind: 'inclination',

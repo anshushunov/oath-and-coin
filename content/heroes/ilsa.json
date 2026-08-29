@@ -1,5 +1,5 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "id": "core:ilsa",
   "display_name_key": "hero.core.ilsa.name",
   "greed": 25,
@@ -7,13 +7,28 @@
   "pride": 70,
   "trust_in_guild": 65,
   "capability": {
-    "grade": 70,
-    "expertise": { "frontline": 20, "undead_knowledge": 75 }
+    "expertise": {
+      "frontline": 20,
+      "undead_knowledge": 75
+    }
   },
+  "combat": {
+    "might": 40,
+    "guard": 52,
+    "aim": 88,
+    "focus": 82,
+    "care": 88
+  },
+  "role": "rear",
   "traits": [
     "core:will_not_abandon_the_wounded",
     "core:will_not_strike_a_temple",
     "core:loyal_to_the_merchant_guild"
   ],
-  "relationships": [{ "hero": "core:kestrel", "weight": -12 }]
+  "relationships": [
+    {
+      "hero": "core:kestrel",
+      "weight": -12
+    }
+  ]
 }

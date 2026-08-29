@@ -1,7 +1,9 @@
 import {
   Actions,
+  CombatRole,
   CommitmentState,
   ContractStatus,
+  EQUIPMENT_GRADE_NONE,
   NeedId,
   OfferPhase,
   ReasonCodes,
@@ -13,6 +15,7 @@ import {
   compareNeedIds,
   compareNumbers,
   createDecisionResult,
+  gradeFrom,
   heroId,
   initialOffer,
   parseContentId,
@@ -23,6 +26,7 @@ import {
   type DecisionResult,
   type GameState,
   type HeldTrait,
+  type HeroCombatLayer,
   type HeroId,
   type HeroState,
   type OfferState,
@@ -61,6 +65,18 @@ export const ids = {
   methodDeception: parseContentId('method:deception')
 } as const;
 
+/**
+ * An unremarkable fighter: every attribute at the middle of its range, so the derived
+ * `grade` is 50 and a test that cares about strength states what it cares about.
+ */
+const AVERAGE_COMBAT: HeroCombatLayer = Object.freeze({
+  might: 50,
+  guard: 50,
+  aim: 50,
+  focus: 50,
+  care: 50
+});
+
 export function aHero(overrides: Partial<HeroState> = {}): HeroState {
   return {
     id: heroId(0),
@@ -71,12 +87,17 @@ export function aHero(overrides: Partial<HeroState> = {}): HeroState {
     pride: 45,
     trustInGuild: 50,
     capability: {
-      grade: 50,
+      // Derived from `combat` below, never stated beside it (`DEC-016` §3). A fixture
+      // that wrote its own grade would be the second truth the record exists to remove,
+      // and it would be the one place in the workspace where the two could disagree.
+      grade: gradeFrom(AVERAGE_COMBAT, EQUIPMENT_GRADE_NONE),
       expertise: SortedMap.from<NeedId, number>(compareNeedIds, [
         [NeedId.Frontline, 50],
         [NeedId.Wilderness, 50]
       ])
     },
+    combat: AVERAGE_COMBAT,
+    role: CombatRole.Vanguard,
     wounds: 0,
     traits: [],
     relationships: SortedMap.empty<ContentId, number>(compareContentIds),

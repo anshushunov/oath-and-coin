@@ -1,5 +1,5 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "id": "fixture:principle_beta",
   "display_name_key": "trait.fixture.principle_beta.name",
   "kind": "principle",

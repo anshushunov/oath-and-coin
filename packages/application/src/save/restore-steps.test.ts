@@ -41,20 +41,22 @@ const CRYPT = parseContentId('core:cleanse_the_crypt');
 const SEED = 424242n;
 
 const BRAM = {
-  schema_version: 4,
+  schema_version: 5,
   id: 'core:bram',
   display_name_key: 'hero.core.bram.name',
   greed: 60,
   caution: 30,
   pride: 45,
   trust_in_guild: 50,
-  capability: { grade: 50, expertise: { frontline: 50, wilderness: 50 } },
+  capability: { expertise: { frontline: 50, wilderness: 50 } },
+  combat: { might: 50, guard: 50, aim: 50, focus: 50, care: 50 },
+  role: 'vanguard',
   traits: ['core:greedy'],
   relationships: []
 };
 
 const GREEDY = {
-  schema_version: 4,
+  schema_version: 5,
   id: 'core:greedy',
   display_name_key: 'trait.core.greedy.name',
   kind: 'inclination',
@@ -63,7 +65,7 @@ const GREEDY = {
 };
 
 const CARAVAN_FILE = {
-  schema_version: 4,
+  schema_version: 5,
   id: 'core:escort_the_caravan',
   display_name_key: 'contract.core.escort_the_caravan.name',
   patron_fee: 70,
@@ -75,20 +77,22 @@ const CARAVAN_FILE = {
 
 /** A hero who will not go near the undead, and the job that asks her to. */
 const ZARA = {
-  schema_version: 4,
+  schema_version: 5,
   id: 'core:zara',
   display_name_key: 'hero.core.zara.name',
   greed: 60,
   caution: 30,
   pride: 45,
   trust_in_guild: 50,
-  capability: { grade: 50, expertise: { frontline: 50, wilderness: 50 } },
+  capability: { expertise: { frontline: 50, wilderness: 50 } },
+  combat: { might: 50, guard: 50, aim: 50, focus: 50, care: 50 },
+  role: 'vanguard',
   traits: ['core:fears_undeath'],
   relationships: []
 };
 
 const FEARS_UNDEATH = {
-  schema_version: 4,
+  schema_version: 5,
   id: 'core:fears_undeath',
   display_name_key: 'trait.core.fears_undeath.name',
   kind: 'principle',
@@ -96,7 +100,7 @@ const FEARS_UNDEATH = {
 };
 
 const CRYPT_FILE = {
-  schema_version: 4,
+  schema_version: 5,
   id: 'core:cleanse_the_crypt',
   display_name_key: 'contract.core.cleanse_the_crypt.name',
   patron_fee: 40,

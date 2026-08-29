@@ -1,5 +1,7 @@
 import type { SortedMap } from '../collections/sorted-map.ts';
 import type { HeroCapability } from '../domain/capability.ts';
+import type { HeroCombatLayer } from '../domain/combat-attributes.ts';
+import type { CombatRole } from '../domain/combat-role.ts';
 import type { ContentId } from '../ids/content-id.ts';
 import type { HeroId } from '../ids/hero-id.ts';
 
@@ -26,11 +28,33 @@ export interface HeroState {
    * beside the four scales above rather than among them. The scales say what he wants;
    * this says what he is good at, and no rule reads both.
    *
-   * Copied from the hero's definition at campaign start and never moved by any command
-   * in M1: `grade` becomes a derivative of attributes, skills and equipment when
-   * `BQ-013` closes, and nothing downstream has to change for that to happen.
+   * Copied from the hero's definition at campaign start and never moved by any command.
+   *
+   * **`capability.grade` is no longer copied — it is computed** (`DEC-016` §3, `BQ-013`
+   * closed). `gradeFrom({@link combat}, equipment)` is its single producer, and the promise
+   * `DEC-013` §1 made — that the substitution would change no consumer — is kept: the
+   * coverage arithmetic still reads `capability.grade` and knows nothing about where it
+   * came from.
    */
   readonly capability: HeroCapability;
+  /**
+   * What this hero is made of in a fight (`DEC-016` §1, `COMBAT_SPEC` §3.6).
+   *
+   * Its own field, beside the four scales above rather than among them, and no rule reads
+   * both: the scales say whether he goes, this says how he fights. `BQ-013`'s instruction
+   * — "не смешивать с мотивационными шкалами" — is held by `combat/vocabulary.test.ts`
+   * rather than by this comment.
+   *
+   * Authored by content and never moved by a command in M2: wounds and equipment are the
+   * two things that would move it, and neither is in this milestone's scope
+   * (`COMBAT_SPEC` §14, `BQ-007`).
+   */
+  readonly combat: HeroCombatLayer;
+  /**
+   * Which of the four jobs he holds (`COMBAT_SPEC` §3.3). Authored, like {@link combat},
+   * and never moved by a command in M2.
+   */
+  readonly role: CombatRole;
   /**
    * How many wounds this hero has taken (`RESOLUTION_SPEC` §2.6). `0` at campaign
    * start; a `Wound` consequence adds its magnitude.

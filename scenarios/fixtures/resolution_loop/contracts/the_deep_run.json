@@ -1,10 +1,13 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "id": "fixture:the_deep_run",
   "display_name_key": "contract.fixture.the_deep_run.name",
   "patron_fee": 100,
   "risk": 0,
   "required_crew": 3,
-  "needs": { "frontline": 40, "wilderness": 40 },
+  "needs": {
+    "frontline": 40,
+    "wilderness": 40
+  },
   "tags": []
 }

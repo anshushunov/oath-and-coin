@@ -83,6 +83,11 @@ export function createInitialState(
           // loader has already keyed `expertise` by `compareNeedIds`, so this is a copy
           // and not a rebuild — the artifact's need order is the vocabulary's either way.
           capability: definition.capability,
+          // The combat layer and the role, carried through unchanged (`DEC-016` §1, §5).
+          // Nothing in M2 moves either: wounds and equipment would, and both are outside
+          // this milestone (`COMBAT_SPEC` §14).
+          combat: definition.combat,
+          role: definition.role,
           // `RESOLUTION_SPEC` §2.6's starting value. Campaign state, not content: no
           // hero is authored wounded, and only a `Wound` consequence raises it.
           wounds: 0,

@@ -1,4 +1,5 @@
 import {
+  CombatRole,
   CommitmentState,
   compareContentIds,
   compareHeroIds,
@@ -252,11 +253,23 @@ describe('describeHero reads every field of HeroState', () => {
         expertise: h.capability.expertise.set(NeedId.UndeadKnowledge, 7)
       }
     }),
+    // Perturbs one attribute rather than the whole layer: a projection that wrote only
+    // the derived `grade` would pass a whole-layer perturbation (the mean would move) and
+    // fail this one, because two attributes can trade places without the mean moving at
+    // all — which is exactly the loss `ARTIFACT_VERSION` 8 exists to prevent.
+    combat: (h) => ({
+      ...h,
+      combat: { ...h.combat, aim: h.combat.aim + 1, care: h.combat.care - 1 }
+    }),
+    role: (h) => ({
+      ...h,
+      role: h.role === CombatRole.Vanguard ? CombatRole.Rear : CombatRole.Vanguard
+    }),
     wounds: (h) => ({ ...h, wounds: h.wounds + 1 })
   };
 
   const fields = Object.keys(base) as (keyof HeroState)[];
-  expect(fields).toHaveLength(13);
+  expect(fields).toHaveLength(15);
 
   it.each(fields.filter((f) => !EXCEPTIONS.includes(f)))('perturbing %s changes the projection', (field) => {
     const perturb = perturbations[field];

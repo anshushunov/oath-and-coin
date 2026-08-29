@@ -59,17 +59,17 @@ import {
  * any package on its first run and it was fixed by `required_crew: 2 → 1`
  * (`content/contracts/collect_the_debt.json`) rather than by touching a tag or a hero.
  * The contract-resolution engine's Task 2 moved it an eighth time, raising every file to
- * `schema_version: 4` and authoring `capability` on every hero and `needs` on every
+ * `schema_version: 5` and authoring `capability` on every hero and `needs` on every
  * contract (`RESOLUTION_SPEC` §2.2, §2.3).
  */
-const SHIPPED_CONTENT_VERSION = '94470ae66b2a1061';
+const SHIPPED_CONTENT_VERSION = 'd630e880dca41631';
 
 /**
  * The content version the corpus recorded for `screen_empty`'s own fixture root,
  * until `DEC-008` Task 4 raised its lone hero fixture's `schema_version` to stay
  * loadable under the new supported version — moving this digest on purpose, the same
  * way Task 3 moved `SHIPPED_CONTENT_VERSION`. The resolution engine's Task 2 moved it
- * again for the same reason and by the same hand: `schema_version: 4` and a `capability`
+ * again for the same reason and by the same hand: `schema_version: 5` and a `capability`
  * on that lone hero, or the fixture root stops loading at all.
  *
  * A second anchor, and not a decorative one: that root's `contracts/` and `traits/`
@@ -77,7 +77,7 @@ const SHIPPED_CONTENT_VERSION = '94470ae66b2a1061';
  * `exhaustive: true` silently skips dotfiles. This is the number that moves when it
  * does.
  */
-const SCREEN_EMPTY_CONTENT_VERSION = '648d1b9d490d77e5';
+const SCREEN_EMPTY_CONTENT_VERSION = 'c9b92949420cd59a';
 
 function requireRoot(root: string) {
   const source = openRepositoryRoot(root);

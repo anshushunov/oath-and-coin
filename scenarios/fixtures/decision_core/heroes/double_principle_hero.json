@@ -1,5 +1,5 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "id": "fixture:double_principle_hero",
   "display_name_key": "hero.fixture.double_principle_hero.name",
   "greed": 50,
@@ -7,12 +7,19 @@
   "pride": 50,
   "trust_in_guild": 50,
   "capability": {
-    "grade": 50,
     "expertise": {
       "frontline": 50,
       "wilderness": 50
     }
   },
+  "combat": {
+    "might": 50,
+    "guard": 50,
+    "aim": 50,
+    "focus": 50,
+    "care": 50
+  },
+  "role": "vanguard",
   "traits": [
     "fixture:principle_alpha",
     "fixture:principle_beta"

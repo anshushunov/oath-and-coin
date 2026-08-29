@@ -43,7 +43,7 @@ export const REQUIRED_CREW_MAX = 6;
  * What a hero can do, bounded on its own terms (`DEC-013`, `RESOLUTION_SPEC` §2.2).
  *
  * The numbers coincide with {@link TRAIT_MIN}/{@link TRAIT_MAX} and the constants
- * deliberately do not: `greed` and `grade` are different quantities that happen to
+ * deliberately do not: `greed` and `expertise` are different quantities that happen to
  * share a range today. `TRAIT_MAX` is derived from the simulation's `TRAIT_SCALE`
  * because the scoring function divides by that span — raising it there has to raise
  * it here, or every trait-weighted term quietly weakens. Nothing divides by the
@@ -51,15 +51,25 @@ export const REQUIRED_CREW_MAX = 6;
  * a hero may be to a change in how strong a crew is, which is the one coupling
  * `DEC-013` §2 exists to refuse.
  *
- * Both scales are read the same way and are still two constants each rather than one
- * pair: `grade` is how good a hero is at all, `expertise` how good he is at one
- * particular need, and a ceiling raised on one is not a statement about the other.
+ * **`CAPABILITY_GRADE_MIN`/`MAX` used to sit here and no longer do** (`DEC-016` §3).
+ * These constants are the ranges an *author* may write, and `grade` stopped being one
+ * of them the day it became a derivative: nothing in `content/` states it. The range it
+ * is clamped into is a property of the derivation and lives beside it, in
+ * `packages/simulation/src/domain/capability.ts`.
  */
-export const CAPABILITY_GRADE_MIN = 0;
-export const CAPABILITY_GRADE_MAX = 100;
-
 export const CAPABILITY_EXPERTISE_MIN = 0;
 export const CAPABILITY_EXPERTISE_MAX = 100;
+
+/**
+ * What a hero is made of in a fight (`DEC-016` §1, `COMBAT_SPEC` §3.6) — five attributes,
+ * every one of them `0..100`.
+ *
+ * Its own pair rather than `TRAIT_MIN`/`TRAIT_MAX` or the expertise pair, and the reason is
+ * the direct instruction of `BQ-013`: the combat layer must not be raisable by an edit
+ * aimed at a motivational scale. The numbers coincide today; the quantities never do.
+ */
+export const COMBAT_ATTRIBUTE_MIN = 0;
+export const COMBAT_ATTRIBUTE_MAX = 100;
 
 /**
  * The weight a contract puts on one need (`RESOLUTION_SPEC` §2.3).

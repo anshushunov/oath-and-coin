@@ -1,11 +1,11 @@
-import { NeedId } from '@oath-and-coin/simulation';
+import { COMBAT_ATTRIBUTES, COMBAT_ROLES, NeedId } from '@oath-and-coin/simulation';
 import { describe, expect, it } from 'vitest';
 
 import {
   CAPABILITY_EXPERTISE_MAX,
   CAPABILITY_EXPERTISE_MIN,
-  CAPABILITY_GRADE_MAX,
-  CAPABILITY_GRADE_MIN,
+  COMBAT_ATTRIBUTE_MAX,
+  COMBAT_ATTRIBUTE_MIN,
   NEED_WEIGHT_MAX,
   NEED_WEIGHT_MIN
 } from './bounds.ts';
@@ -32,7 +32,9 @@ const validHero = {
   caution: 30,
   pride: 45,
   trust_in_guild: 50,
-  capability: { grade: 65, expertise: { frontline: 70, wilderness: 40 } },
+  capability: { expertise: { frontline: 70, wilderness: 40 } },
+  combat: { might: 78, guard: 80, aim: 55, focus: 55, care: 57 },
+  role: 'vanguard',
   traits: [],
   relationships: []
 };
@@ -50,6 +52,9 @@ const validContract = {
 
 /** The hero above with `capability` replaced, so a case states only what it is about. */
 const heroWith = (capability: unknown): unknown => ({ ...validHero, capability });
+
+/** The same, for the combat layer `DEC-016` §1 added. */
+const heroFighting = (combat: unknown): unknown => ({ ...validHero, combat });
 
 /** The contract above with `needs` replaced, for the same reason. */
 const contractWith = (needs: unknown): unknown => ({ ...validContract, needs });
@@ -153,10 +158,10 @@ describe("a contract's needs", () => {
 });
 
 describe("a hero's capability", () => {
-  it('accepts a grade and expertise in one or more needs', () => {
+  it('accepts expertise in one or more needs', () => {
     expect(heroFileSchema.parse(validHero)).toEqual(
       expect.objectContaining({
-        capability: { grade: 65, expertise: { frontline: 70, wilderness: 40 } }
+        capability: { expertise: { frontline: 70, wilderness: 40 } }
       })
     );
   });
@@ -167,12 +172,18 @@ describe("a hero's capability", () => {
     expect(() => heroFileSchema.parse(withoutCapability)).toThrow();
   });
 
-  it('refuses a capability with no grade', () => {
-    expect(() => heroFileSchema.parse(heroWith({ expertise: { frontline: 70 } }))).toThrow();
+  it('refuses a capability that still states a grade', () => {
+    // `DEC-016` §3 retired the authored constant, and this is what turns "should not be
+    // authored" into "cannot be": a version 4 file carried `grade` here, and reading one
+    // under this format would leave a hero whose stated strength and whose attributes
+    // disagree — the second truth the record exists to remove.
+    expect(() =>
+      heroFileSchema.parse(heroWith({ grade: 65, expertise: { frontline: 70 } }))
+    ).toThrow(/grade/);
   });
 
   it('refuses a capability with no expertise', () => {
-    expect(() => heroFileSchema.parse(heroWith({ grade: 65 }))).toThrow();
+    expect(() => heroFileSchema.parse(heroWith({}))).toThrow();
   });
 
   it('keeps an explicit zero, which is not the same as a missing key', () => {
@@ -181,8 +192,8 @@ describe("a hero's capability", () => {
     // eligible for a wound. A contract that dropped zero-valued entries — or a loader
     // that treated the two forms alike — would erase a fact the arithmetic cannot
     // recover, because on coverage both contribute nothing.
-    expect(heroFileSchema.parse(heroWith({ grade: 65, expertise: { frontline: 0 } }))).toEqual(
-      expect.objectContaining({ capability: { grade: 65, expertise: { frontline: 0 } } })
+    expect(heroFileSchema.parse(heroWith({ expertise: { frontline: 0 } }))).toEqual(
+      expect.objectContaining({ capability: { expertise: { frontline: 0 } } })
     );
   });
 
@@ -191,26 +202,19 @@ describe("a hero's capability", () => {
     // with no expertise contributes nothing anywhere, which is a legal — if useless —
     // thing to author, and inventing a floor here would be deciding something the
     // spec does not.
-    expect(heroFileSchema.parse(heroWith({ grade: 40, expertise: {} }))).toBeTruthy();
+    expect(heroFileSchema.parse(heroWith({ expertise: {} }))).toBeTruthy();
   });
 
   it('refuses an unknown need in expertise', () => {
     expect(() =>
-      heroFileSchema.parse(heroWith({ grade: 65, expertise: { swimming: 70 } }))
+      heroFileSchema.parse(heroWith({ expertise: { swimming: 70 } }))
     ).toThrow(/swimming/);
   });
 
   it('refuses an unknown key inside capability', () => {
     expect(() =>
-      heroFileSchema.parse(heroWith({ grade: 65, expertise: {}, gradee: 10 }))
+      heroFileSchema.parse(heroWith({ expertise: {}, gradee: 10 }))
     ).toThrow(/gradee/);
-  });
-
-  it.each([
-    ['a grade below its floor', CAPABILITY_GRADE_MIN - 1],
-    ['a grade past its ceiling', CAPABILITY_GRADE_MAX + 1]
-  ])('refuses %s', (_name, grade) => {
-    expect(() => heroFileSchema.parse(heroWith({ grade, expertise: { frontline: 10 } }))).toThrow();
   });
 
   it.each([
@@ -218,13 +222,7 @@ describe("a hero's capability", () => {
     ['an expertise past its ceiling', CAPABILITY_EXPERTISE_MAX + 1]
   ])('refuses %s', (_name, expertise) => {
     expect(() =>
-      heroFileSchema.parse(heroWith({ grade: 50, expertise: { frontline: expertise } }))
-    ).toThrow();
-  });
-
-  it('refuses a fractional grade', () => {
-    expect(() =>
-      heroFileSchema.parse(heroWith({ grade: 50.5, expertise: { frontline: 10 } }))
+      heroFileSchema.parse(heroWith({ expertise: { frontline: expertise } }))
     ).toThrow();
   });
 
@@ -235,45 +233,99 @@ describe("a hero's capability", () => {
     // with it, so `schema:check` would agree and the whole gate would pass on a format
     // that admits a fractional expertise into the integer arithmetic of `TDD` §7.4.
     expect(() =>
-      heroFileSchema.parse(heroWith({ grade: 50, expertise: { frontline: 10.5 } }))
+      heroFileSchema.parse(heroWith({ expertise: { frontline: 10.5 } }))
     ).toThrow();
   });
 
   it('refuses an expertise that is not a map at all', () => {
-    expect(() => heroFileSchema.parse(heroWith({ grade: 50, expertise: 70 }))).toThrow();
+    expect(() => heroFileSchema.parse(heroWith({ expertise: 70 }))).toThrow();
     expect(() =>
-      heroFileSchema.parse(heroWith({ grade: 50, expertise: ['frontline'] }))
+      heroFileSchema.parse(heroWith({ expertise: ['frontline'] }))
     ).toThrow();
   });
 
   it('refuses an expertise weight that is not a number', () => {
     expect(() =>
-      heroFileSchema.parse(heroWith({ grade: 50, expertise: { frontline: '70' } }))
+      heroFileSchema.parse(heroWith({ expertise: { frontline: '70' } }))
     ).toThrow();
   });
 
-  it('accepts both extremes of both scales', () => {
+  it('accepts both extremes of the expertise scale', () => {
     expect(
       heroFileSchema.parse(
         heroWith({
-          grade: CAPABILITY_GRADE_MAX,
           expertise: { frontline: CAPABILITY_EXPERTISE_MIN, wilderness: CAPABILITY_EXPERTISE_MAX }
         })
       )
     ).toBeTruthy();
-    expect(
-      heroFileSchema.parse(heroWith({ grade: CAPABILITY_GRADE_MIN, expertise: {} }))
-    ).toBeTruthy();
+    expect(heroFileSchema.parse(heroWith({ expertise: {} }))).toBeTruthy();
+  });
+});
+
+describe("a hero's combat layer", () => {
+  it('requires all five attributes', () => {
+    const { combat: _dropped, ...withoutCombat } = validHero;
+
+    expect(() => heroFileSchema.parse(withoutCombat)).toThrow();
+
+    for (const attribute of COMBAT_ATTRIBUTES) {
+      const { [attribute]: _missing, ...rest } = validHero.combat;
+
+      expect(() => heroFileSchema.parse(heroFighting(rest)), attribute).toThrow(
+        new RegExp(attribute)
+      );
+    }
+  });
+
+  it('refuses an unknown attribute', () => {
+    expect(() => heroFileSchema.parse(heroFighting({ ...validHero.combat, cunning: 40 }))).toThrow(
+      /cunning/
+    );
+  });
+
+  it.each([
+    ['below its floor', COMBAT_ATTRIBUTE_MIN - 1],
+    ['past its ceiling', COMBAT_ATTRIBUTE_MAX + 1],
+    ['fractional', 50.5]
+  ])('refuses an attribute %s', (_name, value) => {
+    expect(() =>
+      heroFileSchema.parse(heroFighting({ ...validHero.combat, might: value }))
+    ).toThrow();
+  });
+
+  it('accepts both extremes', () => {
+    for (const value of [COMBAT_ATTRIBUTE_MIN, COMBAT_ATTRIBUTE_MAX]) {
+      expect(
+        heroFileSchema.parse(
+          heroFighting({ might: value, guard: value, aim: value, focus: value, care: value })
+        ),
+        String(value)
+      ).toBeTruthy();
+    }
+  });
+
+  it('refuses a role outside the engine vocabulary', () => {
+    // The vocabulary is the engine's, like `NEED_IDS`: content states a role, never
+    // invents one. A file naming `warlord` would otherwise reach the combat rules as a
+    // role no `switch` handles.
+    expect(() => heroFileSchema.parse({ ...validHero, role: 'warlord' })).toThrow(/role/);
+  });
+
+  it('accepts every role the engine declares', () => {
+    for (const role of COMBAT_ROLES) {
+      expect(heroFileSchema.parse({ ...validHero, role }), role).toBeTruthy();
+    }
   });
 });
 
 describe('the content format version', () => {
-  it('is 4, and a file still declaring 3 is refused', () => {
-    // `capability` and `needs` are *required*, so a file authored under 3 is not a
-    // legal file under 4 — the version has to move, and this is the assertion that
-    // says the two facts travel together (`RESOLUTION_SPEC` §2.8).
-    expect(SUPPORTED_CONTENT_SCHEMA_VERSION).toBe(4);
-    expect(() => heroFileSchema.parse({ ...validHero, schema_version: 3 })).toThrow();
-    expect(() => contractFileSchema.parse({ ...validContract, schema_version: 3 })).toThrow();
+  it('is 5, and a file still declaring 4 is refused', () => {
+    // `combat` and `role` are *required* and `capability.grade` is *refused*, so a file
+    // authored under 4 is not a legal file under 5 and the reverse is false as well —
+    // the version has to move, and this is the assertion that says the two facts travel
+    // together (`RESOLUTION_SPEC` §2.8, `DEC-016` §Последствия).
+    expect(SUPPORTED_CONTENT_SCHEMA_VERSION).toBe(5);
+    expect(() => heroFileSchema.parse({ ...validHero, schema_version: 4 })).toThrow();
+    expect(() => contractFileSchema.parse({ ...validContract, schema_version: 4 })).toThrow();
   });
 });

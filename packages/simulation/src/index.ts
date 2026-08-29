@@ -35,7 +35,18 @@ export { SortedSet } from './collections/sorted-set.ts';
  */
 export { NEED_IDS, NeedId, compareNeedIds } from './domain/need-id.ts';
 export { CommitmentState } from './domain/commitment.ts';
-export type { HeroCapability } from './domain/capability.ts';
+export {
+  CAPABILITY_GRADE_MAX,
+  CAPABILITY_GRADE_MIN,
+  type HeroCapability
+} from './domain/capability.ts';
+export {
+  COMBAT_ATTRIBUTES,
+  type CombatAttribute,
+  type HeroCombatLayer
+} from './domain/combat-attributes.ts';
+export { COMBAT_ROLES, CombatRole, compareCombatRoles } from './domain/combat-role.ts';
+export { EQUIPMENT_GRADE_NONE, gradeFrom } from './combat/grade.ts';
 export {
   ConsequenceKind,
   CoverageVerdict,

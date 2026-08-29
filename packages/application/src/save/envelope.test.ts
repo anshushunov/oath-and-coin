@@ -10,9 +10,11 @@ import {
 } from '@oath-and-coin/content';
 import {
   CommitmentState,
+  EQUIPMENT_GRADE_NONE,
   compareHeroIds,
   composeOffer,
   deepEqual,
+  gradeFrom,
   lockOffer,
   proposeContractToHero,
   resolveContract,
@@ -47,20 +49,22 @@ import {
  */
 
 const BRAM_FILE = {
-  schema_version: 4,
+  schema_version: 5,
   id: 'core:bram',
   display_name_key: 'hero.core.bram.name',
   greed: 60,
   caution: 30,
   pride: 45,
   trust_in_guild: 50,
-  capability: { grade: 50, expertise: { frontline: 50, wilderness: 50 } },
+  capability: { expertise: { frontline: 50, wilderness: 50 } },
+  combat: { might: 50, guard: 50, aim: 50, focus: 50, care: 50 },
+  role: 'vanguard',
   traits: [],
   relationships: []
 };
 
 const CRYPT_FILE = {
-  schema_version: 4,
+  schema_version: 5,
   id: 'core:cleanse_the_crypt',
   display_name_key: 'contract.core.cleanse_the_crypt.name',
   patron_fee: 70,
@@ -81,7 +85,7 @@ const CRYPT_FILE = {
  * 2: a nonexistent id is caught by referential integrity before the checksum is ever
  * asked, which proves nothing about checksum coverage). */
 const CARAVAN_FILE = {
-  schema_version: 4,
+  schema_version: 5,
   id: 'core:escort_the_caravan',
   display_name_key: 'contract.core.escort_the_caravan.name',
   patron_fee: 40,
@@ -93,7 +97,7 @@ const CARAVAN_FILE = {
 
 /** Unused by any hero here — `loadContentSet` still requires a `traits/` directory. */
 const GREEDY_FILE = {
-  schema_version: 4,
+  schema_version: 5,
   id: 'core:greedy',
   display_name_key: 'trait.core.greedy.name',
   kind: 'inclination',
@@ -229,12 +233,22 @@ function aSettledStateThatCostSomebody(): GameState {
 }
 
 function weakenEveryHero(state: GameState): GameState {
-  const heroes = state.heroes
-    .entries()
-    .reduce(
-      (all, [id, hero]) => all.set(id, { ...hero, capability: { ...hero.capability, grade: 1 } }),
-      state.heroes
-    );
+  const heroes = state.heroes.entries().reduce(
+    // Через боевой слой, а не через `grade` напрямую: с `DEC-016` §3 у оценки один
+    // производитель, и состояние, где `grade` расходится с `combat`, не переживает
+    // сохранение — кодек пересчитает его при загрузке. Ослабляем то, из чего оценка
+    // считается, и тогда round-trip сходится, а отряд по-прежнему слишком слаб.
+    (all, [id, hero]) => {
+      const combat = { might: 1, guard: 1, aim: 1, focus: 1, care: 1 };
+
+      return all.set(id, {
+        ...hero,
+        combat,
+        capability: { ...hero.capability, grade: gradeFrom(combat, EQUIPMENT_GRADE_NONE) }
+      });
+    },
+    state.heroes
+  );
 
   // И согласие, данное неохотно (`RESOLUTION_SPEC` §2.4) — это то, что заставляет исход
   // выпустить `hero_faltered_early`. Без него история несёт только последствия, и вторая

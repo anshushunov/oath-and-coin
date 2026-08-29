@@ -1,11 +1,20 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "id": "core:burn_the_plague_barrow",
   "display_name_key": "contract.core.burn_the_plague_barrow.name",
   "patron_fee": 45,
   "risk": 40,
   "required_crew": 3,
-  "needs": { "frontline": 20, "undead_knowledge": 40 },
-  "tags": ["target:cult", "target:undead"],
-  "negotiable_tags": ["method:open", "method:public_contract"]
+  "needs": {
+    "frontline": 20,
+    "undead_knowledge": 40
+  },
+  "tags": [
+    "target:cult",
+    "target:undead"
+  ],
+  "negotiable_tags": [
+    "method:open",
+    "method:public_contract"
+  ]
 }

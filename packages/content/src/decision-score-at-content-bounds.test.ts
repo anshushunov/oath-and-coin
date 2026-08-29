@@ -1,5 +1,7 @@
 import {
+  CombatRole,
   ContractStatus,
+  EQUIPMENT_GRADE_NONE,
   GRIEVANCE_MAX,
   NeedId,
   SortedMap,
@@ -8,6 +10,7 @@ import {
   compareHeroIds,
   compareNeedIds,
   decide,
+  gradeFrom,
   heroId,
   initialOffer,
   parseContentId,
@@ -22,7 +25,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   CAPABILITY_EXPERTISE_MAX,
-  CAPABILITY_GRADE_MAX,
+  COMBAT_ATTRIBUTE_MAX,
   NEED_WEIGHT_MAX
 } from './bounds.ts';
 
@@ -144,6 +147,23 @@ const CREW = SortedMap.from<HeroId, ContentId>(compareHeroIds, COMRADES);
  * mismatch this file is not asking about. */
 const DECIDER = heroId(0);
 
+/**
+ * The combat layer this sweep holds fixed, at the ceiling of every attribute.
+ *
+ * Fixed rather than swept for the reason the capability is: `DEC-016` §2 separates the
+ * combat layer from the four motivational scales, and no rule of the decision reads it. A
+ * sweep that varied it would be asking a question this file is not about — and if the
+ * answer ever moved, the layer separation would be broken, which `combat/vocabulary.test.ts`
+ * is the file that asks.
+ */
+const SWEEP_COMBAT = Object.freeze({
+  might: COMBAT_ATTRIBUTE_MAX,
+  guard: COMBAT_ATTRIBUTE_MAX,
+  aim: COMBAT_ATTRIBUTE_MAX,
+  focus: COMBAT_ATTRIBUTE_MAX,
+  care: COMBAT_ATTRIBUTE_MAX
+});
+
 function aHeroAt(scales: {
   readonly greed: number;
   readonly caution: number;
@@ -178,11 +198,13 @@ function aHeroAt(scales: {
     // the capability layer is separate from the four scales this sweep is about — so
     // both are held at a fixed, ordinary value rather than swept.
     capability: {
-      grade: CAPABILITY_GRADE_MAX,
+      grade: gradeFrom(SWEEP_COMBAT, EQUIPMENT_GRADE_NONE),
       expertise: SortedMap.from<NeedId, number>(compareNeedIds, [
         [NeedId.Frontline, CAPABILITY_EXPERTISE_MAX]
       ])
     },
+    combat: SWEEP_COMBAT,
+    role: CombatRole.Vanguard,
     wounds: 0
   };
 }

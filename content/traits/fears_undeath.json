@@ -1,5 +1,5 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "id": "core:fears_undeath",
   "display_name_key": "trait.core.fears_undeath.name",
   "kind": "inclination",

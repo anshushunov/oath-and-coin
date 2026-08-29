@@ -1,5 +1,5 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "id": "fixture:captain",
   "display_name_key": "hero.fixture.captain.name",
   "greed": 80,
@@ -7,12 +7,19 @@
   "pride": 0,
   "trust_in_guild": 50,
   "capability": {
-    "grade": 50,
     "expertise": {
       "frontline": 50,
       "wilderness": 50
     }
   },
+  "combat": {
+    "might": 50,
+    "guard": 50,
+    "aim": 50,
+    "focus": 50,
+    "care": 50
+  },
+  "role": "vanguard",
   "traits": [],
   "relationships": []
 }

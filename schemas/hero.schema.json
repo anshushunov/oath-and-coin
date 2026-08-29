@@ -14,13 +14,15 @@
     "pride",
     "trust_in_guild",
     "capability",
+    "combat",
+    "role",
     "traits",
     "relationships"
   ],
   "properties": {
     "schema_version": {
       "type": "integer",
-      "const": 4,
+      "const": 5,
       "description": "Version of this content format (TDD 11.1). Pinned by const so a file authored for a later format is refused by tooling, not read under today's assumptions; ContentSet.SupportedContentSchemaVersion states the same number and SchemaAgreementTests keeps the two equal."
     },
     "id": {
@@ -57,16 +59,9 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "grade",
         "expertise"
       ],
       "properties": {
-        "grade": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 100,
-          "description": "How good this hero is at all, on its own scale (DEC-013, RESOLUTION_SPEC 2.2). The range coincides with the hero scales above and the constants deliberately do not: nothing divides by this span, so raising the range of greed must not raise how strong a crew is."
-        },
         "expertise": {
           "type": "object",
           "propertyNames": {
@@ -86,6 +81,60 @@
         }
       },
       "description": "What this hero can do — the layer DEC-013 keeps apart from greed, caution, pride and trust_in_guild."
+    },
+    "combat": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "What this hero is made of in a fight (DEC-016 1, COMBAT_SPEC 3.6). The five attributes replace the authored capability.grade retired in the same change: grade is now derived from these plus equipment, so that a hero's stated strength and his attributes cannot disagree.",
+      "required": [
+        "might",
+        "guard",
+        "aim",
+        "focus",
+        "care"
+      ],
+      "properties": {
+        "might": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "One of the five combat attributes GDD 6.2 names (DEC-016 1). Its own range, not the hero scales' and not the expertise scale's: BQ-013 requires that the combat layer not be raisable by an edit aimed at a motivational scale."
+        },
+        "guard": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "One of the five combat attributes GDD 6.2 names (DEC-016 1). Its own range, not the hero scales' and not the expertise scale's: BQ-013 requires that the combat layer not be raisable by an edit aimed at a motivational scale."
+        },
+        "aim": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "One of the five combat attributes GDD 6.2 names (DEC-016 1). Its own range, not the hero scales' and not the expertise scale's: BQ-013 requires that the combat layer not be raisable by an edit aimed at a motivational scale."
+        },
+        "focus": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "One of the five combat attributes GDD 6.2 names (DEC-016 1). Its own range, not the hero scales' and not the expertise scale's: BQ-013 requires that the combat layer not be raisable by an edit aimed at a motivational scale."
+        },
+        "care": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "One of the five combat attributes GDD 6.2 names (DEC-016 1). Its own range, not the hero scales' and not the expertise scale's: BQ-013 requires that the combat layer not be raisable by an edit aimed at a motivational scale."
+        }
+      }
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "vanguard",
+        "support",
+        "rear",
+        "breaker"
+      ],
+      "description": "Which of the four jobs this hero holds in a fight (COMBAT_SPEC 3.3). A closed engine vocabulary, like the need ids: content states a role, never invents one."
     },
     "traits": {
       "type": "array",

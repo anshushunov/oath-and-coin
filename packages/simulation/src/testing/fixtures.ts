@@ -4,7 +4,10 @@ import { SortedSet } from '../collections/sorted-set.ts';
 import type { CausalTrace } from '../decisions/causal-trace.ts';
 import type { DecisionContext } from '../decisions/context.ts';
 import type { HeldTrait } from '../decisions/held-trait.ts';
+import { EQUIPMENT_GRADE_NONE, gradeFrom } from '../combat/grade.ts';
 import { CommitmentState } from '../domain/commitment.ts';
+import type { HeroCombatLayer } from '../domain/combat-attributes.ts';
+import { CombatRole } from '../domain/combat-role.ts';
 import { NeedId } from '../domain/need-id.ts';
 import { compareNeedIds } from '../domain/need-id.ts';
 import type { DomainEvent } from '../events/domain-event.ts';
@@ -131,6 +134,18 @@ function defaultCommitments(
   };
 }
 
+/**
+ * An unremarkable fighter: every attribute at the middle of its range, so the derived
+ * `grade` is 50 and a test that cares about strength states what it cares about.
+ */
+const AVERAGE_COMBAT: HeroCombatLayer = Object.freeze({
+  might: 50,
+  guard: 50,
+  aim: 50,
+  focus: 50,
+  care: 50
+});
+
 export function aHero(overrides: Partial<HeroState> = {}): HeroState {
   return {
     id: heroId(0),
@@ -141,12 +156,17 @@ export function aHero(overrides: Partial<HeroState> = {}): HeroState {
     pride: 45,
     trustInGuild: 50,
     capability: {
-      grade: 50,
+      // Derived from `combat` below, never stated beside it (`DEC-016` §3). A fixture
+      // that wrote its own grade would be the second truth the record exists to remove,
+      // and it would be the one place in the workspace where the two could disagree.
+      grade: gradeFrom(AVERAGE_COMBAT, EQUIPMENT_GRADE_NONE),
       expertise: SortedMap.from<NeedId, number>(compareNeedIds, [
         [NeedId.Frontline, 50],
         [NeedId.Wilderness, 50]
       ])
     },
+    combat: AVERAGE_COMBAT,
+    role: CombatRole.Vanguard,
     wounds: 0,
     traits: [],
     relationships: SortedMap.empty<ContentId, number>(compareContentIds),
