@@ -25,6 +25,7 @@ packages:
   - tests/e2e
   - tests/oracle
   - tools/scenario-runner
+  - tools/battle-runner
 
 # pnpm refuses to run a dependency's install script unless it is answered for
 # here. ADR-010 §123 asks for exactly that allowlist: npm widens the

@@ -28,6 +28,10 @@
     {
       "hero": "core:bram",
       "weight": -8
+    },
+    {
+      "hero": "core:ilsa",
+      "weight": 13
     }
   ]
 }

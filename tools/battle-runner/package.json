@@ -1,0 +1,19 @@
+{
+  "name": "@oath-and-coin/battle-runner",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Headless batch battles and the balance report — the eight measurements COMBAT_SPEC §12.5 declares, and the exit code that makes them a gate",
+  "main": "src/cli.ts",
+  "types": "src/cli.ts",
+  "scripts": {
+    "test": "vitest run --root ../.. tools/battle-runner"
+  },
+  "dependencies": {
+    "@oath-and-coin/content": "workspace:*",
+    "@oath-and-coin/simulation": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3"
+  }
+}

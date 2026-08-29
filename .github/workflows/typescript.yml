@@ -104,6 +104,23 @@ jobs:
           mkdir -p artifacts/checks
           pnpm test 2>&1 | tee artifacts/checks/test.log
 
+      # The balance report (`COMBAT_SPEC` §12.5). Its exit code is the gate — a report that
+      # prints a violated threshold and exits zero is not one — so this step needs no
+      # `grep` and no parsing: a corridor that stops holding fails the job here.
+      #
+      # `shell: bash` for the same reason the test step above states it: without `pipefail`
+      # the pipeline reports `tee`'s exit code and a red report would pass as green. That is
+      # the whole of what this step is for.
+      #
+      # Published either way (`if: always()` on the upload below), because the numbers a PR
+      # quotes have to come from the run that took them (`AGENTS.md` §11) — including the
+      # numbers of a run that failed.
+      - name: Balance report
+        shell: bash
+        run: |
+          mkdir -p artifacts/checks
+          node tools/battle-runner/src/cli.ts report --set core 2>&1 | tee artifacts/checks/balance-report.txt
+
       # Playwright's browsers are not in the lockfile — they are binaries the
       # tool downloads — so the version installed here is the one pinned by
       # @playwright/test, and only the browser this suite actually uses.

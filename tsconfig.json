@@ -26,6 +26,7 @@
     { "path": "tests/desktop" },
     { "path": "tests/e2e" },
     { "path": "tests/oracle" },
-    { "path": "tools/scenario-runner" }
+    { "path": "tools/scenario-runner" },
+    { "path": "tools/battle-runner" }
   ]
 }

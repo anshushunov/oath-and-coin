@@ -7,7 +7,7 @@ import { bondedAllyInTrouble, decideCombatAction } from './decision.ts';
 import type { DoctrineId } from './doctrine.ts';
 import { absorbedBy, applyEffect } from './effect.ts';
 import { BattleOutcome, CombatAction, type BattleEvent } from './events.ts';
-import { isAdjacent, occupantOf, opposing, type Cell, type Row } from './field.ts';
+import { isAdjacent, occupantOf, opposing, type Cell, type Column, type Row } from './field.ts';
 import { blockersBetween } from './field.ts';
 import {
   BLEED,
@@ -343,7 +343,7 @@ function resolve(
     case CombatAction.Shift:
       return shift(units, actor, target);
     case CombatAction.Reposition:
-      return reposition(units, actor);
+      return reposition(units, actor, target);
     case CombatAction.Steady:
       return {
         units: replace(units, {
@@ -549,15 +549,16 @@ function shift(
  */
 function reposition(
   units: readonly BattleUnit[],
-  actor: BattleUnit
+  actor: BattleUnit,
+  toward: BattleUnit | null
 ): { readonly units: readonly BattleUnit[]; readonly events: readonly BattleEvent[] } {
-  const home = HOME_ROW[actor.role];
-  const step: Cell = {
-    row: (actor.cell.row + (home < actor.cell.row ? -1 : 1)) as Row,
-    column: actor.cell.column
-  };
+  // Toward whoever the decision named, and toward his own row when it named nobody. The
+  // first is the personality reaction stepping to a friend (`COMBAT_SPEC` §7.3), the second
+  // is a man knocked out of the row his own actions live in going back to it (§4.1). One
+  // action, two reasons to take it, and the decision says which by naming a target or not.
+  const step = toward === null ? towardHome(actor) : towardCell(actor, toward.cell);
 
-  if (!isAdjacent(actor.cell, step)) {
+  if (step === null || !isAdjacent(actor.cell, step)) {
     return { units, events: [] };
   }
 
@@ -591,6 +592,41 @@ function reposition(
       }
     ]
   };
+}
+
+/** One orthogonal step toward the row this unit's own actions live in. */
+function towardHome(actor: BattleUnit): Cell {
+  const home = HOME_ROW[actor.role];
+
+  return {
+    row: (actor.cell.row + (home < actor.cell.row ? -1 : 1)) as Row,
+    column: actor.cell.column
+  };
+}
+
+/**
+ * One orthogonal step toward `target` — the row first, then the column.
+ *
+ * The row first because rows are what actions belong to (§4.1): standing beside a friend in
+ * the wrong row helps nobody, and closing the row is what puts a man where he can reach him.
+ * Diagonals do not exist (`DEC-011` §4), so a step is one or the other.
+ */
+function towardCell(actor: BattleUnit, target: Cell): Cell | null {
+  if (actor.cell.row !== target.row) {
+    return {
+      row: (actor.cell.row + (target.row < actor.cell.row ? -1 : 1)) as Row,
+      column: actor.cell.column
+    };
+  }
+
+  if (actor.cell.column !== target.column) {
+    return {
+      row: actor.cell.row,
+      column: (actor.cell.column + (target.column < actor.cell.column ? -1 : 1)) as Column
+    };
+  }
+
+  return null;
 }
 
 const HOME_ROW: Readonly<Record<CombatRole, Row>> = Object.freeze({

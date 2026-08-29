@@ -343,6 +343,61 @@ describe('the personality reaction, which is what the lab is for', () => {
     );
   });
 
+  it('steps toward a friend from the row it belongs in, not only when out of place', () => {
+    // The gap the balance run found: `availableActions` offers a reposition only to somebody
+    // already knocked out of his row, so a vanguard standing exactly where he belongs had no
+    // way to react at all — and the reaction is the control `DIRECTION_2026-08` §4.8 calls
+    // the most important thing the lab has to prove. Measured share of battles with a breach
+    // before this: 2%, against a declared corridor of 10–25%.
+    const hurt = unit('crew:friend', 'crew', 3, 1, {
+      role: CombatRole.Rear,
+      health: 5,
+      maxHealth: 35
+    });
+    const loyal = unit('crew:loyal', 'crew', 1, 3, {
+      bonds: bonds([['crew:friend', BOND_STRONG]])
+    });
+
+    const { events, state } = runRound(
+      startBattle([hurt, loyal, unit('foe:a', 'foe', 1, 3)], DoctrineId.HoldTheLine)
+    );
+
+    expect(kinds(events)).toContain('doctrine_broken');
+    // Toward him, and the row first: rows are what actions belong to (§4.1), so closing the
+    // row is what puts a man where he can reach a friend at all.
+    expect(state.units.find((one) => one.id === 'crew:loyal')?.cell).toEqual({
+      row: 2,
+      column: 3
+    });
+  });
+
+  it('breaks the doctrine when the same action would go the other way', () => {
+    // Both choices are a `Reposition`: the doctrine's goes home, the reaction's goes to the
+    // friend. Compared by the action alone the two are the same decision, so the reaction was
+    // discarded and the man walked away from the friend he was breaking formation for.
+    // Found by external review; the assertion is on the cell, because the event alone cannot
+    // tell the two steps apart either.
+    const shoved = unit('crew:shoved', 'crew', 3, 2, {
+      bonds: bonds([['crew:down', BOND_STRONG]])
+    });
+    const down = unit('crew:down', 'crew', 3, 1, {
+      role: CombatRole.Rear,
+      health: 5,
+      maxHealth: 35
+    });
+
+    const { events, state } = runRound(
+      startBattle([shoved, down, unit('foe:a', 'foe', 1, 2)], DoctrineId.HoldTheLine)
+    );
+
+    expect(kinds(events)).toContain('doctrine_broken');
+    // Sideways to him, not one row toward the front where his own actions live.
+    expect(state.units.find((one) => one.id === 'crew:shoved')?.cell).toEqual({
+      row: 3,
+      column: 1
+    });
+  });
+
   it('fires once in a battle and not again', () => {
     const loyal = unit('crew:loyal', 'crew', 2, 2, {
       role: CombatRole.Support,

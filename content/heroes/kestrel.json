@@ -24,5 +24,10 @@
     "core:will_not_serve_slavers",
     "core:hungry_for_renown"
   ],
-  "relationships": []
+  "relationships": [
+    {
+      "hero": "core:mira",
+      "weight": 13
+    }
+  ]
 }

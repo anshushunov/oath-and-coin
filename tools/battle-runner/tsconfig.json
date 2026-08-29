@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // A CLI: it reads argv, opens the content tree and writes a report, so it needs Node's
+    // types the same way the scenario runner beside it does.
+    "types": ["node"]
+  },
+  "include": ["src"]
+}
