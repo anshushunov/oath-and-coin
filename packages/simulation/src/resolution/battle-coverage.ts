@@ -227,8 +227,14 @@ function protect(record: BattleRecord, ward: BattleUnitId, required: number, led
     return;
   }
 
-  const perPoint = divideTowardZero(required, final.maxHealth);
-  const total = multiplyInt32(perPoint, final.health);
+  // `required × health / maxHealth`, in that order, and **not** `required / maxHealth`
+  // multiplied out. The spec states the increment per point of health, and taken literally
+  // that truncates the increment before it is multiplied: a ward of 26 health on a
+  // requirement of 46 gives one point each, so the objective tops out at 26 of 46 and can
+  // never close however well the crew guards him. Found by the shipped-content gate on
+  // `core:escort_the_relic`, which was unwinnable by every crew and every formation. Same
+  // rule, one truncation instead of two.
+  const total = divideTowardZero(multiplyInt32(required, final.health), final.maxHealth);
   const given = new Map<HeroId, number>();
 
   for (const event of record.events) {
