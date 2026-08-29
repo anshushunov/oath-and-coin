@@ -257,3 +257,15 @@ export {
 export { RNG_STREAM_NAMES, RngStream } from './random/rng-stream.ts';
 
 export { TRAIT_SCALE } from './decisions/trait-scale.ts';
+
+// THROWAWAY SPIKE (`MVP_PLAN` §6.6). Removed with the spike.
+export {
+  initialSpikeBattle,
+  runSpikeBattle,
+  runSpikeTick,
+  type SpikeAction,
+  type SpikeBattleEvent,
+  type SpikeBattleState,
+  type SpikeSide,
+  type SpikeUnit
+} from './spike-combat/battle.ts';

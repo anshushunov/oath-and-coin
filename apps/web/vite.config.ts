@@ -19,6 +19,8 @@ export default defineConfig({
     // ways that only appear after packaging.
     outDir: 'dist',
     emptyOutDir: true,
+    // THROWAWAY SPIKE: the second entry point, removed with the spike.
+    rollupOptions: { input: { index: 'index.html', spike: 'spike.html' } },
     // Bundles the exact sources; no eval-based sourcemaps that a strict CSP
     // in the packaged host would refuse to execute.
     sourcemap: true

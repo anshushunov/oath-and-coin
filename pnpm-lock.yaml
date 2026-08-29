@@ -69,6 +69,9 @@ importers:
       '@oath-and-coin/presentation':
         specifier: workspace:*
         version: link:../../packages/presentation
+      '@oath-and-coin/simulation':
+        specifier: workspace:*
+        version: link:../../packages/simulation
       pixi.js:
         specifier: 8.19.0
         version: 8.19.0
@@ -794,6 +797,7 @@ packages:
   '@xmldom/xmldom@0.8.14':
     resolution: {integrity: sha512-T4EDRUBVZYRldYApjEJiU0e1stYWaRAX7CuSnKzrpwdZKo53zGV8/pqfzV6FfwNl9YThD2OumQYvqtvjvgG7aQ==}
     engines: {node: '>=10.0.0'}
+    deprecated: this version has critical issues, please update to the latest version
 
   abbrev@4.0.0:
     resolution: {integrity: sha512-a1wflyaL0tHtJSmLSOVybYhy22vRih4eduhhrkcjgrWGnRfrZtovJ2FRjxuTtkkj47O/baf0R86QU5OuYpz8fA==}
