@@ -341,8 +341,39 @@ function contractOfferSnapshot(
     resolveSettlement(model.settlement, resolve, texts, heroDisplayNameKeyOf);
   }
 
+  if (model.deployment !== null) {
+    resolve(OfferFieldKeys.Formation);
+
+    for (const slot of model.deployment.crew) {
+      resolve(slot.displayNameKey);
+      resolve(slot.roleKey);
+
+      // A cell or the word for not having one. A man with no cell and nothing said about it
+      // would read as a man the screen forgot, which is the state `placeCrew` refuses by
+      // name (`unplaced_hero`) — and the player is the one who has to fix it.
+      if (slot.cell === null) {
+        resolve(OfferFieldKeys.Unplaced);
+      } else {
+        resolve(OfferFieldKeys.Cell);
+        texts.push(String(slot.cell.row));
+        texts.push(String(slot.cell.column));
+      }
+    }
+
+    resolve(OfferFieldKeys.Doctrine);
+
+    for (const option of model.deployment.doctrineLever.options) {
+      resolve(option.labelKey);
+    }
+
+    if (model.deployment.retreatBelowPercent !== null) {
+      resolve(OfferFieldKeys.RetreatBelow);
+      texts.push(String(model.deployment.retreatBelowPercent));
+    }
+  }
+
   // Last, because it is what a player does *after* reading everything above. Every one of
-  // the six, dark ones included, each followed by the refusal it would get — a control
+  // the seven, dark ones included, each followed by the refusal it would get — a control
   // that vanished would leave the player with no way to learn what to do instead, and a
   // dark one with no reason would leave them with no way to learn why not.
   for (const available of model.availableActions) {

@@ -1055,9 +1055,7 @@ export function resolveContract(state: GameState, command: ResolveContract): Com
     return rejected(state, RejectionCodes.RetreatSignalNotPossible);
   }
 
-  const draft = resolverFor(contract)(
-    resolutionInputFor(state, contract, command.retreatAtRound)
-  );
+  const draft = resolverFor(contract)(resolutionInputFor(state, contract, command.retreatAtRound));
 
   const frames = foldOutcome(state, draft, command.contractId);
   const settledState = frames.at(-1)?.state ?? state;

@@ -137,7 +137,7 @@ export {
  * the whole of what that needs: nothing runtime crosses, and no component ever *builds* an
  * id, it only carries one the model handed it.
  */
-export type { BattleRecord, ContentId } from '@oath-and-coin/simulation';
+export type { BattleRecord, Cell, ContentId, DoctrineId } from '@oath-and-coin/simulation';
 
 /**
  * The refusal vocabulary {@link AvailableAction.disabledReasonKey} is drawn from,
@@ -169,6 +169,8 @@ export {
   type ContractOfferScreenModel,
   type DecidedOutcome,
   type DecidedStep,
+  type DeploymentLine,
+  type DeploymentSlot,
   type HeroCard,
   type OfferLine,
   type PromiseTermsLine,

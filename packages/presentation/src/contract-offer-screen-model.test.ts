@@ -57,6 +57,7 @@ function aModel(overrides: Partial<ContractOfferScreenContent> = {}): ContractOf
     contract: aContractLine,
     roster: [aHeroCard],
     responses: [],
+    deployment: null,
     errorCode: null,
     errorDetail: null,
     treasury: 400,

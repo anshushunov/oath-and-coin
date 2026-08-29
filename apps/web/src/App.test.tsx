@@ -130,6 +130,7 @@ function gatedController(run: RunRequest): {
       start: () => started,
       save: (slot) => inner.save(slot),
       placeCrew: (input) => inner.placeCrew(input),
+      placeCrewFromDraft: (contractId, draft) => inner.placeCrewFromDraft(contractId, draft),
       previewBattle: (contractId, retreatAtRound) =>
         inner.previewBattle(contractId, retreatAtRound),
       battleOf: (contractId) => inner.battleOf(contractId),

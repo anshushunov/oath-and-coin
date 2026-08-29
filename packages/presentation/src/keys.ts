@@ -283,7 +283,16 @@ export const OfferFieldKeys = Object.freeze({
   MaxAdvance: 'field.offer.max_advance',
   MaxBonus: 'field.offer.max_bonus',
   Shortfall: 'field.offer.shortfall',
-  LockCommitment: 'field.offer.lock_commitment'
+  LockCommitment: 'field.offer.lock_commitment',
+  /**
+   * The formation block (`COMBAT_SPEC` §3.7), which lives on the package because it is
+   * decided before the crew leaves and not at the moment of sending.
+   */
+  Formation: 'field.offer.formation',
+  Cell: 'field.offer.cell',
+  Unplaced: 'field.offer.unplaced',
+  Doctrine: 'field.offer.doctrine',
+  RetreatBelow: 'field.offer.retreat_below'
 });
 
 export const OFFER_FIELD_KEYS: readonly string[] = Object.freeze(Object.values(OfferFieldKeys));

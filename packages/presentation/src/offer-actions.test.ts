@@ -9,6 +9,8 @@ import {
   lockOffer,
   pollCrew,
   proposeContractToHero,
+  DoctrineId,
+  placeCrew,
   resolveContract,
   settleContract,
   type CommandResult,
@@ -358,7 +360,7 @@ describe('which of the six commands the screen offers', () => {
  * everywhere and measure the probe rather than the screen. Every other command carries no
  * arguments of its own at all.
  */
-describe('the engine agrees about every one of the six', () => {
+describe('the engine agrees about every one of the seven', () => {
   function refusalOf(state: GameState, action: OfferAction): string | null {
     const contract = state.contracts.get(ids.caravan)!;
     const commandId = 999;
@@ -393,6 +395,24 @@ describe('the engine agrees about every one of the six', () => {
           return lockOffer(state, { commandId, contractId: ids.caravan, expectedStateVersion });
         case OfferAction.Poll:
           return pollCrew(state, { commandId, contractId: ids.caravan, expectedStateVersion });
+        case OfferAction.Place:
+          // The probe carries a legal formation — the crew down the first column, the
+          // default doctrine, no threshold — for the reason `composeOffer`'s does: "may I
+          // place them" is a question about the phase and the plan, not about which cells a
+          // player happens to have picked. Every fixture here is a contract with no battle,
+          // so the answer is `not_a_battle_contract` and the placement is never read; a
+          // deliberately broken one would measure the probe.
+          return placeCrew(state, {
+            commandId,
+            contractId: ids.caravan,
+            expectedStateVersion,
+            placement: invited.map((hero, index) => ({
+              hero,
+              cell: { row: ((index % 3) + 1) as 1 | 2 | 3, column: 1 }
+            })),
+            doctrine: DoctrineId.HoldTheLine,
+            retreatBelowPercent: 0
+          });
         case OfferAction.Resolve:
           return resolveContract(state, {
             commandId,
@@ -435,12 +455,13 @@ describe('the engine agrees about every one of the six', () => {
 });
 
 describe('the vocabulary itself', () => {
-  it('has six members, in the order the protocol runs', () => {
+  it('has seven members, in the order the protocol runs', () => {
     expect(OFFER_ACTIONS).toEqual([
       OfferAction.Compose,
       OfferAction.AskKeyHero,
       OfferAction.Lock,
       OfferAction.Poll,
+      OfferAction.Place,
       OfferAction.Resolve,
       OfferAction.Settle
     ]);

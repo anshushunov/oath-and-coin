@@ -1,7 +1,10 @@
 import {
   Actions,
+  COLUMNS,
   ContractStatus,
+  DOCTRINE_IDS,
   OfferPhase,
+  ROWS,
   ReasonCodes,
   commitmentOf,
   compareContentIds,
@@ -11,6 +14,7 @@ import {
   type CanonicalValue,
   type ContentId,
   type ContractState,
+  type DoctrineId,
   type GameState,
   type HeldTrait,
   type HeroId,
@@ -24,7 +28,9 @@ import {
   LeverDisabledKeys,
   PromiseTermsKeys,
   TITLE_KEY,
+  combatRoleKey,
   contractDisplayNameKey,
+  doctrineKey,
   tagKey,
   traitDisplayNameKey
 } from './keys.ts';
@@ -39,6 +45,8 @@ import {
   type HeroCard,
   type OfferLine,
   type PromiseTermsLine,
+  type DeploymentLine,
+  type DeploymentSlot,
   type ReasonLine,
   type ResponseLine,
   type SettlementLine
@@ -113,6 +121,7 @@ export const LOADING_SCREEN: ContractOfferScreenModel = createContractOfferScree
   treasuryForecast: 0,
   promiseTerms: null,
   settlement: null,
+  deployment: null,
   availableActions: []
 });
 
@@ -142,6 +151,7 @@ export function failedScreen(errorCode: string, errorDetail: string): ContractOf
     treasuryForecast: 0,
     promiseTerms: null,
     settlement: null,
+    deployment: null,
     availableActions: []
   });
 }
@@ -207,6 +217,7 @@ export function contractOfferScreenModel(
       treasuryForecast: state.treasury,
       promiseTerms: null,
       settlement: null,
+      deployment: null,
       availableActions: []
     });
   }
@@ -267,10 +278,75 @@ export function contractOfferScreenModel(
       contract.patronFee,
       heroDefinitionByHeroId
     ),
+    deployment: deploymentLineFor(contract, heroes, heroDefinitionByHeroId),
     // All six, always — the screen draws a dark control with a reason rather than deciding
     // which controls exist (`offer-actions.ts`).
     availableActions: availableActions(state, contract)
   });
+}
+
+/**
+ * The 3×3 and the two orders, or `null` when this contract will not be fought
+ * (`COMBAT_SPEC` §3.7).
+ *
+ * **Only once the package is locked**, which is the window §3.7 describes: the formation is
+ * a decision about a *known* crew, and a board offered before anybody has answered would be
+ * asking the player to place men who may not come.
+ *
+ * The cells are listed rather than left to a component's own loop: nine cells drawn from a
+ * screen's own arithmetic would be a second declaration of §3.1's field, and the two would
+ * disagree the day the field changes shape.
+ */
+function deploymentLineFor(
+  contract: ContractState,
+  heroes: readonly HeroState[],
+  heroDefinitionByHeroId: ReadonlyMap<HeroId, ContentId>
+): DeploymentLine | null {
+  if (contract.battle === null || contract.offer.phase !== OfferPhase.Locked) {
+    return null;
+  }
+
+  const standing = contract.offer.deployment;
+
+  const crew: readonly DeploymentSlot[] = contract.offer.acceptedBy.values().map((heroId) => {
+    const definition = heroDefinitionByHeroId.get(heroId);
+    const hero = heroes.find((one) => one.id === heroId);
+
+    if (definition === undefined || hero === undefined) {
+      throw new Error(
+        `The crew of '${contract.id}' names a hero the campaign does not carry. A screen ` +
+          'cannot draw a formation for somebody who is not in the roster, and inventing a ' +
+          'name for him is exactly the raw-identifier leak TDD §11.1 forbids.'
+      );
+    }
+
+    const cell = standing?.placement.get(heroId) ?? null;
+
+    return {
+      heroDefinition: definition,
+      displayNameKey: hero.displayNameKey,
+      roleKey: combatRoleKey(hero.role),
+      cell
+    };
+  });
+
+  return {
+    cells: ROWS.flatMap((row) => COLUMNS.map((column) => ({ row, column }))),
+    crew,
+    doctrineLever: {
+      chosen: standing?.doctrine ?? null,
+      options: DOCTRINE_IDS.map((doctrine) => ({
+        value: doctrine,
+        labelKey: doctrineKey(doctrine),
+        selected: standing?.doctrine === doctrine
+      })),
+      // Never dark: the three orders are always all three, and which one is right is the
+      // decision this block exists to put in front of the player.
+      disabledReasonKey: null
+    },
+    retreatBelowPercent: standing?.retreatBelowPercent ?? null,
+    placed: standing !== null
+  };
 }
 
 /**
@@ -807,6 +883,25 @@ export function describeContractOfferReadModel(model: ContractOfferScreenModel):
     promise_terms:
       validated.promiseTerms === null ? null : describePromiseTerms(validated.promiseTerms),
     settlement: validated.settlement === null ? null : describeSettlement(validated.settlement),
+    deployment:
+      validated.deployment === null
+        ? null
+        : {
+            cells: validated.deployment.cells.map((cell) => ({
+              row: cell.row,
+              column: cell.column
+            })),
+            crew: validated.deployment.crew.map((slot) => ({
+              hero_definition: slot.heroDefinition,
+              hero_display_name_key: slot.displayNameKey,
+              role_key: slot.roleKey,
+              row: slot.cell?.row ?? null,
+              column: slot.cell?.column ?? null
+            })),
+            doctrine_lever: describeChoiceLever(validated.deployment.doctrineLever),
+            retreat_below_percent: validated.deployment.retreatBelowPercent,
+            placed: validated.deployment.placed
+          },
     // Both halves of each entry. Which commands *exist* never changes, so a projection of
     // the actions alone would hash identically for a package waiting on its key hero and
     // one waiting on a settlement — and the whole content of this field is which of them
@@ -907,7 +1002,7 @@ function describeNumericLever(lever: NumericLever): CanonicalValue {
   };
 }
 
-function describeChoiceLever(lever: ChoiceLever<ContentId>): CanonicalValue {
+function describeChoiceLever(lever: ChoiceLever<ContentId | DoctrineId>): CanonicalValue {
   return {
     chosen: lever.chosen,
     options: lever.options.map(describeOption),
@@ -915,7 +1010,7 @@ function describeChoiceLever(lever: ChoiceLever<ContentId>): CanonicalValue {
   };
 }
 
-function describeOption(option: ChoiceOption<ContentId>): CanonicalValue {
+function describeOption(option: ChoiceOption<ContentId | DoctrineId>): CanonicalValue {
   return { value: option.value, label_key: option.labelKey, selected: option.selected };
 }
 

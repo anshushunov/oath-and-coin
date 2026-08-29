@@ -20,6 +20,8 @@ import {
   type HeroId,
   type LockOffer,
   type BattleRecord,
+  type Cell,
+  type DoctrineId,
   type PlaceCrew,
   type PollCrew,
   type ProposeContractToHero,
@@ -176,6 +178,19 @@ export interface OfferDraft {
   readonly invited: readonly ContentId[];
 }
 
+/**
+ * A formation as a screen holds it (`COMBAT_SPEC` §3.7), in content definitions.
+ *
+ * A man with no cell is simply absent from `placement` rather than carried with a `null`:
+ * `placeCrew` refuses a crew somebody is missing from by name (`unplaced_hero`), and a
+ * screen that filtered him out silently would be answering a question the engine asks.
+ */
+export interface DeploymentDraft {
+  readonly placement: readonly { readonly hero: ContentId; readonly cell: Cell }[];
+  readonly doctrine: DoctrineId;
+  readonly retreatBelowPercent: number;
+}
+
 export interface SessionController {
   /** The observable session. A screen subscribes here; nothing else publishes to it. */
   readonly store: Store<SessionState>;
@@ -266,6 +281,16 @@ export interface SessionController {
    * with nobody placed is refused by name (`rejected.crew_not_placed`).
    */
   placeCrew(input: NegotiationCommandInput<PlaceCrew>): CommandResult;
+  /**
+   * The same command, in the screen's own identifiers — the counterpart of
+   * {@link composeOfferFromDraft}, and for the identical reason.
+   *
+   * `placeCrew` takes `HeroId`s and the read model carries content definitions, so somebody
+   * has to turn one into the other; doing it here rather than in the screen means a
+   * definition this campaign does not carry becomes an id it does not carry, and the engine
+   * refuses it in its own order alongside every other fault the formation may have.
+   */
+  placeCrewFromDraft(contractId: ContentId, draft: DeploymentDraft): CommandResult;
   /**
    * Runs `contractId`'s battle **without committing anything**, so it can be watched before
    * it becomes the campaign's own past (`COMBAT_SPEC` §6.3).
@@ -546,6 +571,22 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
 
       return battleScreenModel(campaign, contractId, { applied, record });
     },
+    placeCrewFromDraft: (contractId, draft) =>
+      dispatchNegotiationCommand(store, contractId, (state, commandId, expectedStateVersion) => {
+        const resolve = heroIdResolver(state);
+
+        return applyPlaceCrew(state, {
+          commandId,
+          contractId,
+          expectedStateVersion,
+          placement: draft.placement.map((slot) => ({
+            hero: resolve(slot.hero),
+            cell: slot.cell
+          })),
+          doctrine: draft.doctrine,
+          retreatBelowPercent: draft.retreatBelowPercent
+        });
+      }),
     placeCrew: (input) =>
       dispatchNegotiationCommand(
         store,

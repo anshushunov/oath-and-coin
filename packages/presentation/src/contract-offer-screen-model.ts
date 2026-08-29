@@ -1,4 +1,10 @@
-import type { CausalTrace, ContentId, OfferPhase } from '@oath-and-coin/simulation';
+import type {
+  CausalTrace,
+  Cell,
+  ContentId,
+  DoctrineId,
+  OfferPhase
+} from '@oath-and-coin/simulation';
 
 import type { ChoiceLever, Lever, MultiChoiceLever, NumericLever, OfferBudget } from './lever.ts';
 import type { AvailableAction, OfferAction } from './offer-actions.ts';
@@ -240,6 +246,61 @@ export interface SettlementLine {
 }
 
 /**
+ * One man to place, and the cell he stands in once he has been placed.
+ *
+ * A role beside the name because a formation is a decision about *jobs* (`COMBAT_SPEC` §3.3,
+ * §4.1): what a man can do from a row is decided by the row, and a player choosing where to
+ * put somebody without being told what he is would be guessing.
+ */
+export interface DeploymentSlot {
+  readonly heroDefinition: ContentId;
+  readonly displayNameKey: string;
+  readonly roleKey: string;
+  /**
+   * Where he already stands, or `null` before the crew has been placed.
+   *
+   * The cell itself rather than a row and a column beside each other: the two are one fact
+   * (`COMBAT_SPEC` §3.1) and a screen holding them apart can carry half of one.
+   */
+  readonly cell: Cell | null;
+}
+
+/**
+ * The 3×3 and the two orders that go with it (`COMBAT_SPEC` §3.7).
+ *
+ * **`null` on a contract that never goes to a fight, and on one whose package is not locked
+ * yet.** The formation lives on the package rather than on the send (§3.7), so it is decided
+ * once the crew is known and before the crew leaves — which is exactly the window in which
+ * this block exists.
+ *
+ * **The board is data here rather than nine cells a component draws from a loop.** A screen
+ * that built its own grid would be a second declaration of §3.1's field, and the two would
+ * disagree the day the field changes shape.
+ */
+export interface DeploymentLine {
+  /** Every legal cell, in row-then-column order. */
+  readonly cells: readonly Cell[];
+  /** The accepted crew, in `acceptedBy`'s own order. */
+  readonly crew: readonly DeploymentSlot[];
+  /**
+   * The three orders a crew can go out under (`COMBAT_SPEC` §7.2), as a lever.
+   *
+   * A `ChoiceLever` rather than a list of keys, for the reason every other choice on this
+   * screen is one: `chosen` is the value the command is built from and `labelKey` is how the
+   * option is drawn, and a screen holding only the key would have to turn a label back into
+   * an identifier to send anything.
+   */
+  readonly doctrineLever: ChoiceLever<DoctrineId>;
+  /**
+   * The share of the crew that must be standing before they pull out on their own, in per
+   * cent — `0` for "never on their own" — or `null` before the crew has been placed.
+   */
+  readonly retreatBelowPercent: number | null;
+  /** Whether everybody has a cell, which is what `placeCrew` will and will not accept. */
+  readonly placed: boolean;
+}
+
+/**
  * Everything the interface needs to draw one of its five shapes, and nothing it would
  * have to guess at or compute itself.
  */
@@ -286,6 +347,8 @@ export interface ContractOfferScreenModel {
   readonly treasuryForecast: number;
   readonly promiseTerms: PromiseTermsLine | null;
   readonly settlement: SettlementLine | null;
+  /** The formation and the two orders, or `null` when there is no fight to prepare for. */
+  readonly deployment: DeploymentLine | null;
   /**
    * All six commands of the protocol, each with the refusal it would get or `null` when it
    * would be taken (`NEGOTIATION_SPEC` §3.1, `RESOLUTION_SPEC` §3.1).

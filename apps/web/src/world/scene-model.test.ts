@@ -150,7 +150,8 @@ function aModel(rosterDefinitions: readonly string[], responders: readonly strin
     // its six commands.
     availableActions: OFFER_ACTIONS.map((action) => ({ action, disabledReasonKey: null })),
     promiseTerms: null,
-    settlement: null
+    settlement: null,
+    deployment: null
   });
 }
 
