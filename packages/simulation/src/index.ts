@@ -181,6 +181,12 @@ export {
   OutcomeReasonCodes,
   type OutcomeReasonCode
 } from './domain/outcome-reason-codes.ts';
+export {
+  FORECAST_REASON_CODES,
+  ForecastReasonCodes,
+  type ForecastReasonCode
+} from './domain/forecast-reason-codes.ts';
+export type { Deployment } from './domain/deployment.ts';
 
 /**
  * The coverage arithmetic (`RESOLUTION_SPEC` §4.1–§4.3). Exported because the shipped
@@ -253,6 +259,26 @@ export {
   type ContractResolver,
   type ResolutionInput
 } from './resolution/contract-resolver.ts';
+
+/**
+ * The battle half of the same boundary (`ADR-016`): the resolver a contract with a plan is
+ * settled by, the routing rule that chooses between the two, and the forecast that reads a
+ * formation so that neither resolver has to.
+ */
+export {
+  DEPLOYMENT_REQUIRED,
+  RETREAT_MAGNITUDE,
+  WOUND_DOWNED,
+  battleResolver
+} from './resolution/battle-resolver.ts';
+export { goesToBattle, resolverFor } from './resolution/routing.ts';
+export {
+  forecastReadiness,
+  type ForecastObjective,
+  type ForecastReason,
+  type ReadinessForecast
+} from './resolution/forecast.ts';
+export { objectiveCoverage, type ObjectiveCoverageInput } from './resolution/battle-coverage.ts';
 
 export {
   createDecisionResult,
