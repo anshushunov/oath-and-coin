@@ -1085,6 +1085,7 @@
 | [DEC-013](../decisions/DEC-013-hero-capability-layer.md) | Слой способности героя: общая величина и экспертиза | accepted |
 | [DEC-014](../decisions/DEC-014-two-numbers-and-who-is-wounded.md) | Экран разбора: два числа у героя и кого ранит | accepted |
 | [DEC-015](../decisions/DEC-015-no-scene-behind-the-debrief-and-the-board.md) | За разбором и доской схематичного мира нет | accepted |
+| [DEC-016](../decisions/DEC-016-hero-combat-layer.md) | Боевой слой героя: пять атрибутов, роль, способности, перк, снаряжение | accepted |
 
 ---
 

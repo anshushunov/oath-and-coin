@@ -44,6 +44,7 @@ ADR-001-engine-and-language.md
 | [DEC-013](DEC-013-hero-capability-layer.md) | Слой способности героя: общая величина и экспертиза по потребностям | accepted |
 | [DEC-014](DEC-014-two-numbers-and-who-is-wounded.md) | Экран разбора: два числа у героя и кого ранит, когда участок держать было некому | accepted |
 | [DEC-015](DEC-015-no-scene-behind-the-debrief-and-the-board.md) | За разбором и доской схематичного мира нет | accepted |
+| [DEC-016](DEC-016-hero-combat-layer.md) | Боевой слой модели героя: пять атрибутов, роль, способности, перк, снаряжение | accepted |
 
 Технические решения:
 
@@ -64,6 +65,7 @@ ADR-001-engine-and-language.md
 | [ADR-013](ADR-013-retiring-corpus-parity.md) | Снятие паритета с корпусом миграции при первом изменении правил | accepted |
 | [ADR-014](ADR-014-contract-resolver-boundary.md) | Граница резолвера контракта: события первичны, авторитетна одна реализация | accepted |
 | [ADR-015](ADR-015-resolution-draft-shape.md) | Форма черновика разрешения: где живёт засчитанная доля и чем закрывается лента | accepted |
+| [ADR-016](ADR-016-battle-resolver-and-the-forecast.md) | Боевой резолвер — экзамен, абстрактный — прогноз, и один язык на двоих | accepted |
 
 **Cutover состоялся 2026-08-22** ([`FULL_TYPESCRIPT_MIGRATION`](../production/FULL_TYPESCRIPT_MIGRATION.md), Task 19): Godot/.NET-дерево удалено, действующее решение о движке и языке — `ADR-010`. `ADR-001` получил статус `superseded`, `ADR-008` — `superseded в части механизма`; у обоих сверху стоит датированная заметка cutover.
 
