@@ -75,15 +75,25 @@ export const Thresholds = Object.freeze({
   /**
    * Most a single crew may win of the held-out set, in per cent, before it dominates.
    *
-   * **Measured at 78% and left open by the owner's decision of 2026-08-30**, which is why it
+   * **Measured at 100% and left open by the owner's decision of 2026-08-30**, which is why it
    * is declared beside {@link Thresholds.openByDecision} rather than quietly moved to 80.
    *
-   * The one change that brings it inside — flattening health from `20 + guard × 3 / 10` to
-   * `30 + guard × 2 / 10` — takes it to 56% and breaks `DEC-011`'s own refuting check: three
-   * enemy patterns then have two distinct winning formations instead of three, which is the
-   * outcome `DEC-011` §Проверка pre-accepts and answers by reducing the field to ranks. Three
-   * flattenings were tried and the matrix broke on each. Between a corridor and the decision
-   * the whole milestone rests on, the owner kept the matrix.
+   * The decision was taken on 78%, which was that day's number under a denominator external
+   * review then found wrong: the share was divided by threats × formations, so it measured how
+   * forgiving a crew is of a bad formation rather than how many threats it can beat at all.
+   * Corrected — a threat counts as beaten if the crew beats it in any legal shape, which is the
+   * only version a player can act on — the best crew takes every held-out threat, and four of
+   * fifteen crews do. **The finding got worse, not different**, so the decision stands and the
+   * number it stands on is restated here rather than left at the friendlier figure.
+   *
+   * The one change tried that moved it — flattening health from `20 + guard × 3 / 10` to
+   * `30 + guard × 2 / 10` — breaks `DEC-011`'s own refuting check: three enemy patterns then
+   * have two distinct winning formations instead of three, which is the outcome `DEC-011`
+   * §Проверка pre-accepts and answers by reducing the field to ranks. Three flattenings were
+   * tried and the matrix broke on each. (Their effect on the share was measured under the old
+   * denominator and is not quoted here, because it is not comparable; what carried the decision
+   * was the matrix breaking, and that is unaffected.) Between a corridor and the decision the
+   * whole milestone rests on, the owner kept the matrix.
    */
   dominantCrewPercent: 60,
 

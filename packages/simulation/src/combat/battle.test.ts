@@ -371,6 +371,33 @@ describe('the personality reaction, which is what the lab is for', () => {
     });
   });
 
+  it('breaks the doctrine when the same action would go the other way', () => {
+    // Both choices are a `Reposition`: the doctrine's goes home, the reaction's goes to the
+    // friend. Compared by the action alone the two are the same decision, so the reaction was
+    // discarded and the man walked away from the friend he was breaking formation for.
+    // Found by external review; the assertion is on the cell, because the event alone cannot
+    // tell the two steps apart either.
+    const shoved = unit('crew:shoved', 'crew', 3, 2, {
+      bonds: bonds([['crew:down', BOND_STRONG]])
+    });
+    const down = unit('crew:down', 'crew', 3, 1, {
+      role: CombatRole.Rear,
+      health: 5,
+      maxHealth: 35
+    });
+
+    const { events, state } = runRound(
+      startBattle([shoved, down, unit('foe:a', 'foe', 1, 2)], DoctrineId.HoldTheLine)
+    );
+
+    expect(kinds(events)).toContain('doctrine_broken');
+    // Sideways to him, not one row toward the front where his own actions live.
+    expect(state.units.find((one) => one.id === 'crew:shoved')?.cell).toEqual({
+      row: 3,
+      column: 1
+    });
+  });
+
   it('fires once in a battle and not again', () => {
     const loyal = unit('crew:loyal', 'crew', 2, 2, {
       role: CombatRole.Support,

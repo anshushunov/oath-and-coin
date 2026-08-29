@@ -3,23 +3,26 @@ import {
   BattleOutcome,
   CombatRole,
   DoctrineId,
+  MATRIX_PATTERNS,
   MAX_ROUNDS,
   battleResolver,
   forecastReadiness,
+  heroId,
   runBattle,
   startBattle,
   unitFrom,
+  winnerAgainst,
   type BattleRecord,
   type BattleUnit,
   type Cell,
   type CoverageVerdict,
   type HeroCombatLayer,
-  heroId
+  type OutcomeGrade
 } from '@oath-and-coin/simulation';
 
 import { crewsOf, inputFor } from './campaign.ts';
 import { FORMATION_SHAPES, type FormationShape } from './formations.ts';
-import { CORE_PATTERNS, HELD_OUT_PATTERNS, subdueEverything } from './patterns.ts';
+import { HELD_OUT_PATTERNS, subdueEverything } from './patterns.ts';
 import { Thresholds, type Corridor } from './thresholds.ts';
 
 /**
@@ -27,15 +30,29 @@ import { Thresholds, type Corridor } from './thresholds.ts';
  * repository can re-fight, and each printed beside the command that took it (`AGENTS.md`
  * §11).
  *
- * **Every number here is a share or a median of the frozen set** — never of a sample, never
- * of whatever ran fastest. The set is enumerated in `patterns.ts` and built in
- * `campaign.ts`; what this file does is ask eight questions of it.
+ * **Every number is a share or a median of the frozen set** — never of a sample, never of
+ * whatever ran fastest. The set is enumerated in `patterns.ts` and built in `campaign.ts`;
+ * what this file does is ask eight questions of it.
+ *
+ * **Every verdict is taken on an exact ratio, and only the printed number is rounded.**
+ * External review found two false greens in that gap: a median of 5.5 rounds to 6 and passes
+ * a floor of 6, and six agreements out of eleven round to 55 and pass a floor of 55.
  */
+
+export interface Ratio {
+  readonly of: number;
+  readonly per: number;
+}
 
 export interface Measurement {
   readonly id: string;
-  /** What the measurement says, in the units §12.5 states it in. */
+  /**
+   * What the measurement says, in the units §12.5 states it in — **rounded for the report
+   * only**. The verdict is taken on {@link exact}.
+   */
   readonly value: number;
+  /** The same quantity as a ratio, which is what every corridor is checked against. */
+  readonly exact: Ratio;
   /** How the value should read on a report — per cent, rounds, a count. */
   readonly unit: 'percent' | 'rounds' | 'count';
   /** The corridor or floor §12.5 declared, as a sentence. */
@@ -43,24 +60,38 @@ export interface Measurement {
   readonly withinThreshold: boolean;
   /**
    * `ok` inside its corridor, `fail` outside it, `open` outside it and left there by a
-   * decision (`thresholds.ts`, {@link Thresholds.openByDecision}).
+   * decision (`thresholds.ts`).
    *
    * The third is not a fourth kind of passing. It says the corridor still stands, the number
-   * is still outside it, and somebody decided to live with that on a stated date — which is
-   * a different sentence from "the corridor was moved" and has to read differently.
+   * is still outside it, and somebody decided to live with that on a stated date.
    */
   readonly status: 'ok' | 'fail' | 'open';
-  /** How many battles this number was taken over — a share of nothing is not a share. */
+  /** How many cases this number was taken over — a share of nothing is not a share. */
   readonly cases: number;
   /** Anything the number alone does not say. */
   readonly note?: string;
 }
 
+const ratio = (of: number, per: number): Ratio => ({ of, per });
+
+/** Cross-multiplied, so no boundary is rounded onto the wrong side of itself (`TDD` §7.4). */
+const atLeast = (value: Ratio, least: number): boolean => value.of >= least * value.per;
+const atMost = (value: Ratio, most: number): boolean => value.of <= most * value.per;
+
+const insideExactly = (value: Ratio, corridor: Corridor): boolean =>
+  atLeast(value, corridor.least) && atMost(value, corridor.most);
+
+/** For the report only. Never for a verdict. */
+const rounded = (value: Ratio): number => (value.per === 0 ? 0 : Math.round(value.of / value.per));
+
+/** A share in per cent, exactly: `part` of `whole`, scaled by a hundred. */
+const percentOf = (part: number, whole: number): Ratio => ratio(part * 100, whole);
+
 /**
- * What a measurement's verdict is, once the owner's open list has been consulted.
+ * The verdict, once the owner's open list has been consulted.
  *
- * One place, so a measurement cannot be "within" here and "open" there — and so adding a
- * ninth measurement inherits the rule instead of restating it.
+ * One place, so a measurement cannot be "within" here and "open" there — and so a ninth
+ * measurement inherits the rule instead of restating it.
  */
 function statusOf(id: string, withinThreshold: boolean): Measurement['status'] {
   if (withinThreshold) {
@@ -70,12 +101,21 @@ function statusOf(id: string, withinThreshold: boolean): Measurement['status'] {
   return id in Thresholds.openByDecision ? 'open' : 'fail';
 }
 
+function measurement(spec: Omit<Measurement, 'value' | 'status'>): Measurement {
+  return {
+    ...spec,
+    value: rounded(spec.exact),
+    status: statusOf(spec.id, spec.withinThreshold)
+  };
+}
+
 /** One fought case of the frozen set. */
 export interface FoughtCase {
   readonly contract: string;
   readonly crew: string;
   readonly shape: FormationShape;
   readonly record: BattleRecord;
+  readonly grade: OutcomeGrade;
   readonly verdicts: readonly CoverageVerdict[];
   readonly forecast: readonly CoverageVerdict[];
 }
@@ -104,6 +144,7 @@ export function fightTheCoreSet(content: ContentSet): readonly FoughtCase[] {
           crew: crew.map((hero) => hero.id).join('+'),
           shape,
           record: draft.resolution.battle!,
+          grade: draft.resolution.grade,
           verdicts: draft.resolution.coverage.map((row) => row.verdict),
           forecast: forecastReadiness(input).objectives.map((one) => one.verdict)
         });
@@ -119,16 +160,15 @@ export function battleLength(fought: readonly FoughtCase[]): Measurement {
   const rounds = fought.map((one) => one.record.rounds).sort((left, right) => left - right);
   const median = medianOf(rounds);
 
-  return {
+  return measurement({
     id: 'battle_length_rounds',
-    value: median,
+    exact: median,
     unit: 'rounds',
     threshold: corridorOf(Thresholds.battleLengthRounds, 'median'),
-    withinThreshold: inside(median, Thresholds.battleLengthRounds),
-    status: statusOf('battle_length_rounds', inside(median, Thresholds.battleLengthRounds)),
+    withinThreshold: insideExactly(median, Thresholds.battleLengthRounds),
     cases: fought.length,
     note: `${String(rounds.filter((one) => one === MAX_ROUNDS).length)} of ${String(rounds.length)} reached the ${String(MAX_ROUNDS)}-round ceiling`
-  };
+  });
 }
 
 /** §12.5, row 2: the share of battles somebody broke the doctrine in. */
@@ -137,183 +177,182 @@ export function doctrineBreaches(fought: readonly FoughtCase[]): Measurement {
     one.record.events.some((event) => event.kind === 'doctrine_broken')
   ).length;
 
-  const percent = shareOf(broken, fought.length);
+  const share = percentOf(broken, fought.length);
 
-  return {
+  return measurement({
     id: 'doctrine_breach_percent',
-    value: percent,
+    exact: share,
     unit: 'percent',
     threshold: corridorOf(Thresholds.doctrineBreachPercent, '', '%'),
-    withinThreshold: inside(percent, Thresholds.doctrineBreachPercent),
-    status: statusOf('doctrine_breach_percent', inside(percent, Thresholds.doctrineBreachPercent)),
+    withinThreshold: insideExactly(share, Thresholds.doctrineBreachPercent),
     cases: fought.length
-  };
+  });
 }
 
 /**
  * §12.5, row 3: the share of scenarios where changing the formation changes the outcome.
  *
  * A *scenario* is a contract and a crew; the three shapes are what varies inside it. That is
- * the unit `MVP_PLAN` §6.4 names — "распределение побед при смене расстановки" — and
- * counting battles instead would let one badly-placed crew stand for three.
+ * the unit `MVP_PLAN` §6.4 names — "распределение побед при смене расстановки" — and counting
+ * battles instead would let one badly-placed crew stand for three.
+ *
+ * **The outcome is the grade, and the note says how often the battle's own ending moved.**
+ * The first edition keyed on the battle outcome *and* the objective verdicts together, which
+ * external review reproduced as the difference between 43% and 3%: the verdicts moved in
+ * thirteen of thirty scenarios and `BattleOutcome` in one. Both numbers are real and they
+ * answer different questions — the grade is what the player is judged on and what
+ * `RESOLUTION_SPEC` §4.6 calls the outcome, so it is what the threshold reads. How rarely the
+ * *battle* ends differently is printed beside it rather than folded into it: it is the weaker
+ * fact, and hiding it would be the report flattering itself.
  */
 export function formationChangesOutcome(fought: readonly FoughtCase[]): Measurement {
-  const scenarios = new Map<string, Set<string>>();
+  const grades = new Map<string, Set<string>>();
+  const endings = new Map<string, Set<string>>();
 
   for (const one of fought) {
     const key = `${one.contract}|${one.crew}`;
-    const seen = scenarios.get(key) ?? new Set<string>();
-    seen.add(`${one.record.outcome}:${one.verdicts.join(',')}`);
-    scenarios.set(key, seen);
+    grades.set(key, (grades.get(key) ?? new Set<string>()).add(one.grade));
+    endings.set(key, (endings.get(key) ?? new Set<string>()).add(one.record.outcome));
   }
 
-  const moved = [...scenarios.values()].filter((seen) => seen.size > 1).length;
-  const percent = shareOf(moved, scenarios.size);
+  const moved = [...grades.values()].filter((seen) => seen.size > 1).length;
+  const endingsMoved = [...endings.values()].filter((seen) => seen.size > 1).length;
+  const share = percentOf(moved, grades.size);
 
-  return {
+  return measurement({
     id: 'formation_changes_outcome_percent',
-    value: percent,
+    exact: share,
     unit: 'percent',
     threshold: `≥ ${String(Thresholds.formationChangesOutcomePercent)}%`,
-    withinThreshold: percent >= Thresholds.formationChangesOutcomePercent,
-    status: statusOf(
-      'formation_changes_outcome_percent',
-      percent >= Thresholds.formationChangesOutcomePercent
-    ),
-    cases: scenarios.size
-  };
+    withinThreshold: atLeast(share, Thresholds.formationChangesOutcomePercent),
+    cases: grades.size,
+    note:
+      `the grade moved in ${String(moved)} of ${String(grades.size)} scenarios; ` +
+      `the battle's own ending moved in ${String(endingsMoved)}`
+  });
 }
 
 /**
- * §12.5, row 4: no formation wins every pattern.
+ * §12.5, row 4: no formation wins all three patterns of §13.1.
  *
- * The value is the largest number of patterns any one shape wins; the threshold is that it
- * is below the number of patterns. Stated that way rather than as a boolean because a
- * report that prints `true` says nothing about how close it came.
+ * **The matrix of §13.1 and nothing else**, through the same `winnerAgainst` the refuting
+ * check itself uses. The first edition asked the question of four other patterns and a crew
+ * of shipped heroes, and printed "no shape wins all 4" — a sentence about a set the spec does
+ * not name. External review found the input on which the two disagree: one shape winning
+ * `ram`, `archers` and `breakers` but losing a fourth pattern passes `3 < 4` and violates the
+ * row.
  */
-export function formationDominance(content: ContentSet): Measurement {
-  const definition = firstBattleContract(content);
-  const crew = content.heroes.values().slice(0, definition.requiredCrew);
-  const wins = new Map<FormationShape, number>();
+export function formationDominance(): Measurement {
+  const patterns = Object.keys(MATRIX_PATTERNS);
 
-  for (const [name, foes] of Object.entries(CORE_PATTERNS)) {
-    void name;
-    const plan = subdueEverything(foes);
-    const scored = FORMATION_SHAPES.map((shape) => ({
-      shape,
-      score: scoreOf(
-        battleResolver(inputFor({ content, definition, crew, shape, plan })).resolution.battle!
-      )
-    })).sort((left, right) => right.score - left.score);
+  return dominanceOf(patterns.map((pattern) => ({ pattern, winner: winnerAgainst(pattern) })));
+}
 
-    const [best, second] = scored;
+/**
+ * The arithmetic of the row, apart from the matrix that feeds it.
+ *
+ * Separate so a case can hand it a sweep — the same shape winning all three — without having
+ * to balance the game into one. That case is the whole point of the row, and it is exactly
+ * the one the shipped matrix must never produce.
+ */
+export function dominanceOf(
+  results: readonly { readonly pattern: string; readonly winner: string | null }[]
+): Measurement {
+  const wins = new Map<string, number>();
 
-    if (best !== undefined && second !== undefined && best.score > second.score) {
-      wins.set(best.shape, (wins.get(best.shape) ?? 0) + 1);
+  for (const { winner } of results) {
+    if (winner !== null) {
+      wins.set(winner, (wins.get(winner) ?? 0) + 1);
     }
   }
 
-  const patterns = Object.keys(CORE_PATTERNS).length;
   const most = Math.max(0, ...wins.values());
 
-  return {
+  return measurement({
     id: 'formation_strict_dominance',
-    value: most,
+    exact: ratio(most, 1),
     unit: 'count',
-    threshold: `no shape wins all ${String(patterns)}`,
-    withinThreshold: most < patterns,
-    status: statusOf('formation_strict_dominance', most < patterns),
-    cases: patterns,
-    note: `winners: ${[...wins.entries()].map(([shape, count]) => `${shape}×${String(count)}`).join(', ') || 'none — every pattern tied'}`
-  };
+    threshold: `no formation wins all ${String(results.length)} of §13.1`,
+    withinThreshold: most < results.length,
+    cases: results.length,
+    note: `winners: ${results.map((one) => `${one.pattern}→${one.winner ?? 'tie'}`).join(', ')}`
+  });
 }
 
 /**
- * §12.5, row 5: what six do against four **at equal total capability** (`COMBAT_SPEC`
- * §4.7 п.2).
+ * §12.5, row 5: what six do against four **at equal total capability** (§4.7 п.2).
  *
  * **Six against four, not six-against-a-pattern compared with four-against-a-pattern.** The
- * first edition of this measurement did the second, and it answered 100% every time for a
- * reason that had nothing to do with geometry: six men leave more survivors than four
- * against the same enemy, always, so the comparison was of crew sizes rather than of a
- * fight between them.
+ * first edition did the second, and it answered 100% every time for a reason that had nothing
+ * to do with geometry: six men leave more survivors than four against the same enemy, always.
  *
- * "Equal capability" is the **total**, which is what makes the question about the economy of
- * actions rather than about strength: six at two thirds of the attributes against four at
+ * "Equal capability" is the **total**: six at two thirds of the attributes against four at
  * full. Fought directly rather than through a contract — no coverage is involved in "who was
- * left standing", and routing it through one would make the answer depend on what a
- * contract happened to ask for.
+ * left standing".
  */
+export function sixAgainstFourCases(): readonly {
+  readonly name: string;
+  readonly units: readonly BattleUnit[];
+}[] {
+  return FORMATION_SHAPES.flatMap((shape) =>
+    Object.keys(FOUR_LAYOUTS).map((layout) => ({
+      name: `${shape}/${layout}`,
+      units: [...sideOfSix(shape), ...sideOfFour(layout)]
+    }))
+  );
+}
+
 export function sixAgainstFour(): Measurement {
-  let won = 0;
-  let fought = 0;
+  const cases = sixAgainstFourCases();
+  const won = cases.filter(
+    (one) =>
+      runBattle(startBattle(one.units, DoctrineId.HoldTheLine)).outcome ===
+      BattleOutcome.CrewStanding
+  ).length;
 
-  for (const shape of FORMATION_SHAPES) {
-    for (const layout of Object.keys(FOUR_LAYOUTS)) {
-      const record = runBattle(
-        startBattle([...sideOfSix(shape), ...sideOfFour(layout)], DoctrineId.HoldTheLine)
-      );
+  const share = percentOf(won, cases.length);
 
-      fought += 1;
-
-      if (record.outcome === BattleOutcome.CrewStanding) {
-        won += 1;
-      }
-    }
-  }
-
-  const percent = shareOf(won, fought);
-
-  return {
+  return measurement({
     id: 'six_against_four_percent',
-    value: percent,
+    exact: share,
     unit: 'percent',
     threshold: corridorOf(Thresholds.sixAgainstFourPercent, '', '%'),
-    withinThreshold: inside(percent, Thresholds.sixAgainstFourPercent),
-    status: statusOf('six_against_four_percent', inside(percent, Thresholds.sixAgainstFourPercent)),
-    cases: fought
-  };
+    withinThreshold: insideExactly(share, Thresholds.sixAgainstFourPercent),
+    cases: cases.length
+  });
 }
 
 /**
- * §12.5, row 6: a rear unit's action lands for less as its own side crowds the board in
- * front of it (§4.7 п.3).
+ * §12.5, row 6: a rear unit's action lands for less as its own side crowds the board in front
+ * of it (§4.7 п.3).
  *
- * **One archer, and only the number of men in front of him varies.** The first edition took
- * a different crew for every size, so it was measuring rosters: at sizes 5 and 6 the crew
- * changed and the mean rose, which says nothing about obstruction. Here the archer is the
- * same man in the same cell every time, and what changes is how many of his own stand
- * between him and the enemy — which is the mechanism §4.7 declares and demands be measured
- * rather than asserted.
- *
- * The value is the number of steps where the mean did *not* fall; nought is the passing
- * answer.
+ * **One archer, and only the number of men in front of him varies.** The first edition took a
+ * different crew at every size, so it was measuring rosters. The value is the number of steps
+ * where the mean did *not* fall; nought is the passing answer.
  */
 export function rearEffectByCrewSize(): Measurement {
-  const means: { readonly ahead: number; readonly mean: number }[] = [];
-
-  for (const ahead of [0, 1, 2]) {
-    const record = runBattle(
-      startBattle([...archerBehind(ahead), ...sideOfFour('line')], DoctrineId.HoldTheLine)
-    );
-
-    means.push({ ahead, mean: meanRearEffect(record) });
-  }
+  const means = [0, 1, 2].map((ahead) => ({
+    ahead,
+    mean: meanRearEffect(
+      runBattle(
+        startBattle([...archerBehind(ahead), ...sideOfFour('line')], DoctrineId.HoldTheLine)
+      )
+    )
+  }));
 
   const rises = means.filter(
     (one, index) => index > 0 && one.mean >= (means[index - 1]?.mean ?? 0)
   ).length;
 
-  return {
+  return measurement({
     id: 'rear_effect_by_own_men_ahead',
-    value: rises,
+    exact: ratio(rises, 1),
     unit: 'count',
     threshold: 'falls at every step (0 that do not)',
     withinThreshold: rises === 0,
-    status: statusOf('rear_effect_by_own_men_ahead', rises === 0),
     cases: means.length,
     note: means.map((one) => `${String(one.ahead)} ahead: ${String(one.mean)}`).join(', ')
-  };
+  });
 }
 
 /**
@@ -336,93 +375,76 @@ export function forecastAgreement(fought: readonly FoughtCase[]): Measurement {
     });
   }
 
-  const percent = shareOf(agreed, asked);
+  const share = percentOf(agreed, asked);
 
-  return {
+  return measurement({
     id: 'forecast_agreement_percent',
-    value: percent,
+    exact: share,
     unit: 'percent',
     threshold: corridorOf(Thresholds.forecastAgreementPercent, '', '%'),
-    withinThreshold: inside(percent, Thresholds.forecastAgreementPercent),
-    status: statusOf(
-      'forecast_agreement_percent',
-      inside(percent, Thresholds.forecastAgreementPercent)
-    ),
+    withinThreshold: insideExactly(share, Thresholds.forecastAgreementPercent),
     cases: asked
-  };
+  });
 }
 
 /**
  * §12.5, row 8: no crew dominates the **held-out** set.
  *
- * Read off `HELD_OUT_PATTERNS` and nothing else. A dominance question asked on the set the
- * numbers were tuned against answers about the tuning.
+ * **A threat is beaten if the crew beats it in any legal formation.** The player chooses the
+ * formation, so averaging over all three measures how forgiving a crew is of a bad one — a
+ * different question, and the one the first edition accidentally answered: a crew that took
+ * every held-out threat in some shape printed as 78% rather than 100%. External review found
+ * it; the honest number is larger, and the finding it stays open on is correspondingly
+ * sharper.
  */
 export function dominantCrew(content: ContentSet): Measurement {
   const definition = firstBattleContract(content);
   const pool = content.heroes.values();
-  const patterns = Object.entries(HELD_OUT_PATTERNS);
-  let most = 0;
+  const patterns = Object.values(HELD_OUT_PATTERNS);
+  let best = 0;
   let by = '';
+  let sweeping = 0;
+  let crews = 0;
 
   for (const crew of crewsOf(pool, definition.requiredCrew)) {
-    let won = 0;
-    let asked = 0;
+    const won = patterns.filter((foes) =>
+      FORMATION_SHAPES.some(
+        (shape) =>
+          battleResolver(
+            inputFor({ content, definition, crew, shape, plan: subdueEverything(foes) })
+          ).resolution.battle!.outcome === BattleOutcome.CrewStanding
+      )
+    ).length;
 
-    for (const [, foes] of patterns) {
-      // Every shape, not one: a crew that wins a pattern only when placed exactly right is
-      // not a crew that dominates it, and asking with one shape would let the shape decide
-      // the answer to a question about crews.
-      for (const shape of FORMATION_SHAPES) {
-        const record = battleResolver(
-          inputFor({ content, definition, crew, shape, plan: subdueEverything(foes) })
-        ).resolution.battle!;
+    crews += 1;
 
-        asked += 1;
-
-        if (record.outcome === BattleOutcome.CrewStanding) {
-          won += 1;
-        }
-      }
+    if (won === patterns.length) {
+      sweeping += 1;
     }
 
-    const percent = shareOf(won, asked);
-
-    if (percent > most) {
-      most = percent;
+    if (won > best) {
+      best = won;
       by = crew.map((hero) => hero.id).join('+');
     }
   }
 
-  return {
+  const share = percentOf(best, patterns.length);
+
+  return measurement({
     id: 'dominant_crew_percent',
-    value: most,
+    exact: share,
     unit: 'percent',
     threshold: `≤ ${String(Thresholds.dominantCrewPercent)}%`,
-    withinThreshold: most <= Thresholds.dominantCrewPercent,
-    status: statusOf('dominant_crew_percent', most <= Thresholds.dominantCrewPercent),
-    cases: patterns.length * FORMATION_SHAPES.length,
-    note: by === '' ? 'no crew won anything' : `best: ${by}`
-  };
-}
-
-/** How well a battle went, as one comparable number: outcome, then who is left, then health. */
-function scoreOf(record: BattleRecord): number {
-  const rank: Readonly<Record<BattleOutcome, number>> = {
-    [BattleOutcome.CrewStanding]: 3,
-    [BattleOutcome.TimedOut]: 2,
-    [BattleOutcome.Retreated]: 1,
-    [BattleOutcome.FoesStanding]: 0
-  };
-
-  const crew = record.final.units.filter((unit) => unit.side === 'crew' && unit.hero !== null);
-  const standing = crew.filter((unit) => unit.standing).length;
-  const health = crew.reduce((total, unit) => total + unit.health, 0);
-
-  // Lexicographic, packed: the outcome outranks any number of survivors, and survivors
-  // outrank any amount of health. Written as one number so a sort needs no comparator, and
-  // the multipliers are far above what the terms below them can reach.
-  return rank[record.outcome] * 100_000 + standing * 1_000 + health;
+    withinThreshold: atMost(share, Thresholds.dominantCrewPercent),
+    cases: patterns.length,
+    // How many crews swept, not only that one did. One crew winning everything is a dominant
+    // crew; every crew winning everything is a held-out set nobody has to prepare for, and
+    // only the second is answered by making the fight harder.
+    note:
+      by === ''
+        ? 'no crew won anything'
+        : `best: ${by}; ${String(sweeping)} of ${String(crews)} crews took every threat`
+  });
 }
 
 /** The mean of what a rear unit's actions actually landed for, in this battle. */
@@ -445,12 +467,11 @@ function meanRearEffect(record: BattleRecord): number {
 }
 
 /**
- * The contract every geometry measurement is fought on.
+ * The contract the held-out question is asked on.
  *
- * One of them, and the *first* by content id rather than a hand-picked favourite: these six
- * rows are about the board and not about a job, and the plan they use is a synthetic one
- * anyway (`subdueEverything`). What the contract supplies is the risk, the needs and the
- * crew size — everything a `ResolutionInput` has to have.
+ * The *first* by content id rather than a hand-picked favourite, and the plan it is asked
+ * with is synthetic (`subdueEverything`): what the contract supplies is the risk, the needs
+ * and the crew size — everything a `ResolutionInput` has to have.
  */
 function firstBattleContract(content: ContentSet): ContractDefinition {
   const definition = content.contracts.values().find((one) => one.battle !== null);
@@ -466,61 +487,32 @@ function firstBattleContract(content: ContentSet): ContractDefinition {
   return definition;
 }
 
-/**
- * Whether a measurement landed inside its corridor, and how the corridor reads.
- *
- * Both from `thresholds.ts` and from nowhere else — the numbers in this file's prose are
- * commentary, and a corridor written out twice is a corridor that can disagree with itself
- * (`COMBAT_SPEC` §12.5 keeps them in one file for exactly that reason).
- */
-const inside = (value: number, corridor: Corridor): boolean =>
-  value >= corridor.least && value <= corridor.most;
-
-const corridorOf = (corridor: Corridor, prefix = '', suffix = ''): string =>
-  `${prefix === '' ? '' : `${prefix} `}${String(corridor.least)}–${String(corridor.most)}${suffix}`;
-
-const shareOf = (part: number, whole: number): number =>
-  whole === 0 ? 0 : Math.round((part * 100) / whole);
-
-function medianOf(sorted: readonly number[]): number {
+/** The median, exactly — `.5` stays `.5` rather than becoming the floor it would pass. */
+function medianOf(sorted: readonly number[]): Ratio {
   if (sorted.length === 0) {
-    return 0;
+    return ratio(0, 1);
   }
 
   const middle = Math.floor(sorted.length / 2);
 
   return sorted.length % 2 === 1
-    ? sorted[middle]!
-    : Math.round(((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2);
+    ? ratio(sorted[middle]!, 1)
+    : ratio((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0), 2);
 }
 
-/** Everything §12.5 asks for, in the order it asks for it. */
-export function measureAll(content: ContentSet): readonly Measurement[] {
-  const fought = fightTheCoreSet(content);
-
-  return [
-    battleLength(fought),
-    doctrineBreaches(fought),
-    formationChangesOutcome(fought),
-    formationDominance(content),
-    sixAgainstFour(),
-    rearEffectByCrewSize(),
-    forecastAgreement(fought),
-    dominantCrew(content)
-  ];
-}
+const corridorOf = (corridor: Corridor, prefix = '', suffix = ''): string =>
+  `${prefix === '' ? '' : `${prefix} `}${String(corridor.least)}–${String(corridor.most)}${suffix}`;
 
 /**
  * The two synthetic sides row 5 is fought between (`COMBAT_SPEC` §4.7 п.2).
  *
  * Equal totals: six at two thirds of each attribute against four at full. Written out rather
  * than derived from a ratio so the arithmetic is visible — `6 × 60 = 4 × 90` on every
- * attribute, and the reader can check it without running anything.
+ * attribute, and a reader can check it without running anything.
  */
 const SIX_ATTRIBUTES: HeroCombatLayer = { might: 60, guard: 60, aim: 60, focus: 60, care: 60 };
 const FOUR_ATTRIBUTES: HeroCombatLayer = { might: 90, guard: 90, aim: 90, focus: 90, care: 90 };
 
-/** The three shapes, as cells for a side of six on its own board. */
 const SIX_CELLS: Readonly<Record<FormationShape, readonly Cell[]>> = Object.freeze({
   stacked: [
     { row: 1, column: 2 },
@@ -607,13 +599,13 @@ function archerBehind(ahead: number): readonly BattleUnit[] {
     combat: { might: 40, guard: 60, aim: 90, focus: 90, care: 40 }
   });
 
-  const screen = [1, 2].slice(0, ahead).map((row, index) =>
+  const screen = ([1, 2] as const).slice(0, ahead).map((row, index) =>
     unitFrom({
       id: `crew:screen_${String(index)}`,
       side: 'crew',
       hero: heroId(index + 1),
-      role: roleForRow(row as 1 | 2 | 3),
-      cell: { row: row as 1 | 2 | 3, column: 2 },
+      role: roleForRow(row),
+      cell: { row, column: 2 },
       combat: { might: 60, guard: 80, aim: 40, focus: 40, care: 40 }
     })
   );
@@ -623,3 +615,19 @@ function archerBehind(ahead: number): readonly BattleUnit[] {
 
 const roleForRow = (row: 1 | 2 | 3): CombatRole =>
   row === 1 ? CombatRole.Vanguard : row === 2 ? CombatRole.Support : CombatRole.Rear;
+
+/** Everything §12.5 asks for, in the order it asks for it. */
+export function measureAll(content: ContentSet): readonly Measurement[] {
+  const fought = fightTheCoreSet(content);
+
+  return [
+    battleLength(fought),
+    doctrineBreaches(fought),
+    formationChangesOutcome(fought),
+    formationDominance(),
+    sixAgainstFour(),
+    rearEffectByCrewSize(),
+    forecastAgreement(fought),
+    dominantCrew(content)
+  ];
+}

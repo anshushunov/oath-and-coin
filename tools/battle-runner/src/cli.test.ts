@@ -19,6 +19,7 @@ import type { Measurement } from './metrics.ts';
 const measurement = (id: string, status: Measurement['status'] = 'ok'): Measurement => ({
   id,
   value: 1,
+  exact: { of: 1, per: 1 },
   unit: 'count',
   threshold: 'a corridor',
   withinThreshold: status === 'ok',

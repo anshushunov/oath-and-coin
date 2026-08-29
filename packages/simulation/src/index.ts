@@ -153,6 +153,24 @@ export {
   friendInTrouble,
   type CombatDecision
 } from './combat/decision.ts';
+/**
+ * The frozen set behind `DEC-011`'s refuting check (`COMBAT_SPEC` §13.1).
+ *
+ * Exported because the balance runner reads the same matrix the check does: §12.5's row
+ * about strict formation dominance is a statement about *these three patterns*, and a runner
+ * asking it of four other ones would be reporting on a set the spec does not name.
+ */
+export {
+  MATRIX_DOCTRINE,
+  MATRIX_FORMATIONS,
+  MATRIX_PATTERNS,
+  MATRIX_ROSTER,
+  compareScores,
+  runMatrixBattle,
+  scoreOf,
+  winnerAgainst,
+  type MatrixScore
+} from './combat/formation-matrix.ts';
 export {
   MAX_ROUNDS,
   runBattle,

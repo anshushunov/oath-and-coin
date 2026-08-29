@@ -191,7 +191,13 @@ export function decideCombatAction(
   if (friend !== null) {
     const helping = helpFor(friend, available, actor);
 
-    if (helping !== null && helping.action !== byDoctrine.action) {
+    // **Different action *or* different target**, and the second half is not pedantry: a
+    // `Vanguard` shoved into the rear takes `Reposition` under `hold_the_line` to go home,
+    // and the reaction takes `Reposition` to step to a friend. Compared by the enum alone the
+    // two are the same choice, so the reaction was discarded, no `doctrine_broken` was
+    // raised, and the man walked away from the friend he was breaking formation for. Found
+    // by external review.
+    if (helping !== null && differs(helping, byDoctrine)) {
       return {
         action: helping.action,
         target: helping.aim?.target ?? friend,
@@ -210,6 +216,20 @@ export function decideCombatAction(
     reason: byDoctrine.aim?.reason ?? reasonForTargetless(byDoctrine.action),
     contraryTo: null
   };
+}
+
+/**
+ * Whether the reaction actually chooses something else than the doctrine would.
+ *
+ * The action **and** what it is aimed at, because one action with two targets is two
+ * decisions — and a breach announced where nothing changed would put "вопреки доктрине" on a
+ * screen beside a hero doing exactly what he was told (`COMBAT_SPEC` §7.3).
+ */
+function differs(helping: Available, byDoctrine: Available): boolean {
+  return (
+    helping.action !== byDoctrine.action ||
+    (helping.aim?.target.id ?? null) !== (byDoctrine.aim?.target.id ?? null)
+  );
 }
 
 function reasonForTargetless(action: CombatAction): TargetReason {
