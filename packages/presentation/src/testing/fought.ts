@@ -43,8 +43,8 @@ import {
  * test is a dependency nothing declares.
  */
 
-const KEY: HeroId = heroId(0);
-const SECOND: HeroId = heroId(1);
+export const KEY: HeroId = heroId(0);
+export const SECOND: HeroId = heroId(1);
 
 const SOLID = { might: 80, guard: 70, aim: 80, focus: 60, care: 50 };
 const THIN = { might: 20, guard: 10, aim: 20, focus: 20, care: 0 };

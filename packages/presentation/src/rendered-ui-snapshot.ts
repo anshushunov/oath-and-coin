@@ -438,6 +438,43 @@ function afterActionSnapshot(
     for (const line of model.coverage) {
       resolve(line.needKey);
       resolve(line.verdictKey);
+
+      // The new column of §10.3, and it is captioned: "closed / weak" with nothing saying
+      // which of the two was the promise is the column a player cannot read, which is the
+      // failure external review found on the Godot screen and `Captioned` exists to prevent.
+      if (line.forecastVerdictKey !== null) {
+        resolve(AfterActionFieldKeys.Promised);
+        resolve(line.forecastVerdictKey);
+      }
+    }
+  }
+
+  if (model.battle !== null) {
+    resolve(AfterActionFieldKeys.Battle);
+    resolve(AfterActionFieldKeys.BattleOutcome);
+    resolve(model.battle.outcomeKey);
+    resolve(AfterActionFieldKeys.Rounds);
+    texts.push(String(model.battle.rounds));
+
+    if (model.battle.retreatSignalledAtRound !== null) {
+      resolve(AfterActionFieldKeys.RetreatSignalled);
+      texts.push(String(model.battle.retreatSignalledAtRound));
+    }
+
+    for (const line of model.battle.feed) {
+      resolve(line.key);
+
+      if (line.heroDisplayNameKey !== null) {
+        resolve(line.heroDisplayNameKey);
+      }
+
+      if (line.detailKey !== null) {
+        resolve(line.detailKey);
+      }
+
+      if (line.amount !== null) {
+        texts.push(String(line.amount));
+      }
     }
   }
 

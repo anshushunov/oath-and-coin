@@ -1,7 +1,6 @@
 import {
   MAX_ROUNDS,
   unitNamedBy,
-  type BattleEvent,
   type BattleRecord,
   type BattleSide,
   type BattleUnitId,
@@ -12,10 +11,10 @@ import {
 } from '@oath-and-coin/simulation';
 
 import { boardAfter, type BattleBoardUnit } from './battle-board.ts';
+import { battleAmount, battleDetailKey, battleEventKey } from './battle-journal.ts';
 import {
   BATTLE_TITLE_KEY,
   BattleControlKeys,
-  BattleEventKeys,
   battleOutcomeKey,
   battleStatusKey,
   battleStatusMarkKey,
@@ -514,133 +513,16 @@ function journalOf(
     const hero = unit === null ? null : record.initial.units.find((one) => one.id === unit)?.hero;
 
     lines.push({
-      key: journalKeyOf(event),
+      key: battleEventKey(event),
       unit,
       displayNameKey: hero === null || hero === undefined ? null : names.displayNameKeyOf(hero),
-      detailKey: detailKeyOf(event),
-      amount: amountOf(event),
+      detailKey: battleDetailKey(event),
+      amount: battleAmount(event),
       round
     });
   });
 
   return lines;
-}
-
-/**
- * One key per event kind, decided here and nowhere else.
- *
- * Exhaustive rather than a template over `event.kind`: the keys are a closed catalogue the
- * completeness check reads, and a template would let a nineteenth kind reach a screen with a
- * key no catalogue has a text for.
- */
-function journalKeyOf(event: BattleEvent): string {
-  switch (event.kind) {
-    case 'battle_started':
-      return BattleEventKeys.BattleStarted;
-    case 'round_started':
-      return BattleEventKeys.RoundStarted;
-    case 'intent_declared':
-      return BattleEventKeys.IntentDeclared;
-    case 'blocked':
-      return BattleEventKeys.Blocked;
-    case 'damage_dealt':
-      return BattleEventKeys.DamageDealt;
-    case 'healing_done':
-      return BattleEventKeys.HealingDone;
-    case 'damage_absorbed':
-      return BattleEventKeys.DamageAbsorbed;
-    case 'status_applied':
-      return BattleEventKeys.StatusApplied;
-    case 'status_expired':
-      return BattleEventKeys.StatusExpired;
-    case 'unit_shifted':
-      return BattleEventKeys.UnitShifted;
-    case 'shift_resisted':
-      return BattleEventKeys.ShiftResisted;
-    case 'unit_pinned':
-      return BattleEventKeys.UnitPinned;
-    case 'turn_spent':
-      return BattleEventKeys.TurnSpent;
-    case 'unit_downed':
-      return BattleEventKeys.UnitDowned;
-    case 'doctrine_broken':
-      return BattleEventKeys.DoctrineBroken;
-    case 'retreat_signalled':
-      return BattleEventKeys.RetreatSignalled;
-    case 'retreat_obeyed':
-      return BattleEventKeys.RetreatObeyed;
-    case 'retreat_refused':
-      return BattleEventKeys.RetreatRefused;
-    case 'round_ended':
-      return BattleEventKeys.RoundEnded;
-    case 'battle_ended':
-      return BattleEventKeys.BattleEnded;
-  }
-}
-
-/** Whatever the line needs beside the man's name, as a key. */
-function detailKeyOf(event: BattleEvent): string | null {
-  switch (event.kind) {
-    case 'intent_declared':
-      return combatActionKey(event.action);
-    case 'blocked':
-      return event.reason;
-    case 'status_applied':
-    case 'status_expired':
-      return battleStatusKey(event.status);
-    case 'doctrine_broken':
-      return event.motive;
-    case 'retreat_refused':
-      return event.motive;
-    case 'battle_started':
-      return doctrineKey(event.doctrine);
-    case 'battle_ended':
-      return battleOutcomeKey(event.outcome);
-    case 'round_started':
-    case 'round_ended':
-    case 'damage_dealt':
-    case 'healing_done':
-    case 'damage_absorbed':
-    case 'unit_shifted':
-    case 'shift_resisted':
-    case 'unit_pinned':
-    case 'turn_spent':
-    case 'unit_downed':
-    case 'retreat_signalled':
-    case 'retreat_obeyed':
-      return null;
-  }
-}
-
-/** What happened, as a number, on the three kinds that carry one (`DIRECTION` §4.7). */
-function amountOf(event: BattleEvent): number | null {
-  switch (event.kind) {
-    case 'damage_dealt':
-    case 'healing_done':
-    case 'damage_absorbed':
-      return event.amount;
-    // Written out rather than defaulted, for the reason every other switch over this union
-    // is: a nineteenth event kind that carried a number would otherwise reach the journal
-    // with the number silently dropped, and nothing anywhere would say so.
-    case 'battle_started':
-    case 'round_started':
-    case 'intent_declared':
-    case 'blocked':
-    case 'status_applied':
-    case 'status_expired':
-    case 'unit_shifted':
-    case 'shift_resisted':
-    case 'unit_pinned':
-    case 'turn_spent':
-    case 'unit_downed':
-    case 'doctrine_broken':
-    case 'retreat_signalled':
-    case 'retreat_obeyed':
-    case 'retreat_refused':
-    case 'round_ended':
-    case 'battle_ended':
-      return null;
-  }
 }
 
 /**

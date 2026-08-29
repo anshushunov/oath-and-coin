@@ -103,12 +103,53 @@ export function AfterActionScreen({
       )}
 
       {model.coverage.length === 0 ? null : (
-        <div className="coverage">
+        <div className="coverage" data-testid="after-action-coverage">
           <Label text={text(AfterActionFieldKeys.Coverage)} />
           {model.coverage.map((line) => (
             <div className="row" key={line.needKey}>
               <Label text={text(line.needKey)} />
               <Label text={text(line.verdictKey)} />
+              {/*
+                The new column of `COMBAT_SPEC` §10.3, captioned. What happened and what was
+                promised are two verdicts in the same three words, and a row showing both
+                with nothing saying which is which is the column external review found
+                unreadable on the Godot screen.
+              */}
+              {line.forecastVerdictKey === null ? null : (
+                <Captioned
+                  captionKey={AfterActionFieldKeys.Promised}
+                  value={text(line.forecastVerdictKey)}
+                />
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {model.battle === null ? null : (
+        <div className="battle-feed" data-testid="after-action-battle">
+          <Label text={text(AfterActionFieldKeys.Battle)} />
+          <Captioned
+            captionKey={AfterActionFieldKeys.BattleOutcome}
+            value={text(model.battle.outcomeKey)}
+          />
+          <Captioned captionKey={AfterActionFieldKeys.Rounds} value={String(model.battle.rounds)} />
+          {model.battle.retreatSignalledAtRound === null ? null : (
+            <Captioned
+              captionKey={AfterActionFieldKeys.RetreatSignalled}
+              value={String(model.battle.retreatSignalledAtRound)}
+            />
+          )}
+          {model.battle.feed.map((line, index) => (
+            // Keyed by position, for the reason the outcome feed above is: a battle line
+            // carries no identity of its own, and the list is rebuilt whole.
+            <div className="battle-line" key={index}>
+              <Label text={text(line.key)} />
+              {line.heroDisplayNameKey === null ? null : (
+                <Label text={text(line.heroDisplayNameKey)} />
+              )}
+              {line.detailKey === null ? null : <Label text={text(line.detailKey)} />}
+              {line.amount === null ? null : <Label text={String(line.amount)} />}
             </div>
           ))}
         </div>

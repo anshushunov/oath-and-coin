@@ -575,7 +575,14 @@ export const AfterActionFieldKeys = Object.freeze({
   Dominant: 'field.after_action.dominant',
   Consequences: 'field.after_action.consequences',
   ConsequenceMagnitude: 'field.after_action.consequence_magnitude',
-  PatronPays: 'field.after_action.patron_pays'
+  PatronPays: 'field.after_action.patron_pays',
+  /** The new column of `COMBAT_SPEC` §10.3: what the forecast said before the crew went. */
+  Promised: 'field.after_action.promised',
+  /** The new section of §10.3: the battle's own feed, and the two facts about the fight. */
+  Battle: 'field.after_action.battle',
+  BattleOutcome: 'field.after_action.battle_outcome',
+  Rounds: 'field.after_action.rounds',
+  RetreatSignalled: 'field.after_action.retreat_signalled'
 });
 
 export const AFTER_ACTION_FIELD_KEYS: readonly string[] = Object.freeze(

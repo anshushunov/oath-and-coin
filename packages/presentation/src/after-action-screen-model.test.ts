@@ -620,7 +620,14 @@ describe('coverage, deficits and consequences', () => {
   it('shows coverage qualitatively and never as a number', () => {
     const [first] = afterActionScreenModel(aTwoDeficitCampaign(), ids.crypt).coverage;
 
-    expect(first).toEqual({ needKey: 'need.frontline', verdictKey: 'outcome.verdict.uncovered' });
+    expect(first).toEqual({
+      needKey: 'need.frontline',
+      verdictKey: 'outcome.verdict.uncovered',
+      // No forecast column on a contract that never went to a fight: `forecastReadiness`
+      // without a formation is the abstract resolver's own answer, and printing it beside
+      // the abstract resolver's own answer would be one number in two columns (§10.3).
+      forecastVerdictKey: null
+    });
     expect(first).not.toHaveProperty('supplied');
     expect(first).not.toHaveProperty('required');
   });

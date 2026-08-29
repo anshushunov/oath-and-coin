@@ -1,8 +1,15 @@
+import {
+  DoctrineId,
+  forecastReadiness,
+  placeCrew,
+  resolutionInputFor
+} from '@oath-and-coin/simulation';
 import { describe, expect, it } from 'vitest';
 
 import { afterActionScreenModel } from './after-action-screen-model.ts';
 import { readModelHash } from './screen-model.ts';
-import { fought } from './testing/fought.ts';
+import { aContract } from './testing/fixtures.ts';
+import { KEY, SECOND, campaign, fought, resolvedWithoutBattle } from './testing/fought.ts';
 
 /**
  * `ADR-016` §Проверка, third bullet, as a compiling test rather than as a promise:
@@ -64,5 +71,77 @@ describe('a resolution a battle produced, read by the debrief screen’s own fac
     const model = afterActionScreenModel(state, contractId);
 
     expect(model.events.every((line) => !line.key.startsWith('battle.'))).toBe(true);
+  });
+});
+
+describe('the section and the column COMBAT_SPEC §10.3 adds', () => {
+  it('carries the battle’s own feed, in the order the fight raised it', () => {
+    const { state, contractId } = fought();
+    const model = afterActionScreenModel(state, contractId);
+    const record = state.contracts.get(contractId)?.resolution?.battle;
+
+    expect(model.battle).not.toBeNull();
+    expect(model.battle?.feed).toHaveLength(record?.events.length ?? -1);
+    expect(model.battle?.feed.at(0)?.key).toBe('battle.event.battle_started');
+    expect(model.battle?.feed.at(-1)?.key).toBe('battle.event.battle_ended');
+    expect(model.battle?.rounds).toBe(record?.rounds);
+    expect(model.battle?.outcomeKey).toBe(`battle.outcome.${String(record?.outcome)}`);
+  });
+
+  it('leaves the section off a contract that never went to a fight', () => {
+    const abstract = resolvedWithoutBattle();
+
+    expect(afterActionScreenModel(abstract.state, abstract.contractId).battle).toBeNull();
+  });
+
+  it('puts what the forecast promised beside every objective it forecast', () => {
+    const { state, contractId } = fought();
+    const model = afterActionScreenModel(state, contractId);
+
+    expect(model.coverage.length).toBeGreaterThan(0);
+    expect(model.coverage.every((row) => row.forecastVerdictKey !== null)).toBe(true);
+  });
+
+  it('promises the same thing after the fight that it promised before it', () => {
+    // **The claim that makes recomputing honest** (`ADR-016` §4 closes the result at three
+    // additions, and a stored forecast is not one of them). A forecast taken from the
+    // campaign as it stands after a battle is only the forecast the player saw if nothing
+    // the forecast reads has moved — and nothing has: `capability.grade` and `combat` are
+    // copied at campaign start and no command moves either, the commitment is recorded when
+    // a hero answers, and the formation is on the package. Wounds and retreats do move, and
+    // are read by nothing.
+    //
+    // A mutant that made a wound reach `capability.grade` reddens this, which is the whole
+    // point of asking it here rather than writing it in a comment.
+    const before = campaign();
+    const placed = placeCrew(before, {
+      commandId: 1,
+      contractId: aContract().id,
+      expectedStateVersion: before.metadata.stateVersion,
+      placement: [
+        { hero: KEY, cell: { row: 1, column: 1 } },
+        { hero: SECOND, cell: { row: 3, column: 2 } }
+      ],
+      doctrine: DoctrineId.HoldTheLine,
+      retreatBelowPercent: 0
+    });
+
+    const contractBefore = placed.state.contracts.get(aContract().id)!;
+    const promisedBefore = forecastReadiness(
+      resolutionInputFor(placed.state, contractBefore, null)
+    );
+
+    const { state, contractId } = fought();
+    const afterwards = afterActionScreenModel(state, contractId);
+
+    expect(afterwards.coverage.map((row) => row.forecastVerdictKey)).toEqual(
+      promisedBefore.objectives.map((one) => `outcome.verdict.${one.verdict}`)
+    );
+  });
+
+  it('says which round the player pulled them out at, and nothing when he did not', () => {
+    const { state, contractId } = fought();
+
+    expect(afterActionScreenModel(state, contractId).battle?.retreatSignalledAtRound).toBeNull();
   });
 });
