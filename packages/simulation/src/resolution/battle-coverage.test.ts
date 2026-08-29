@@ -88,7 +88,14 @@ describe('a battle produces supplied through increments, and the sum closes', ()
     expect(row).toBeDefined();
     expect(row?.required).toBe(100);
     expect(row?.contributors.reduce((sum, one) => sum + one.counted, 0)).toBe(row?.supplied);
-    expect(row?.supplied).toBeGreaterThan(0);
+    // Exactly the requirement, and that is the half a sum-closes assertion cannot see: a
+    // finished job that supplies 99 of 100 reads as short on the debrief for no reason a
+    // player could act on, and a check that only asked "the columns add up" is green on it.
+    // A live mutant found this — dropping the leftover left all eleven cases passing.
+    expect(row?.supplied).toBe(100);
+    // Two of the three fell to the first man and one to the second: 33 + 33 and 33, plus
+    // the leftover point on the lowest id.
+    expect(row?.contributors.map((one) => one.counted)).toEqual([67, 33]);
   });
 
   it('reads the verdict with the contract loop’s own threshold, not a scale of its own', () => {
