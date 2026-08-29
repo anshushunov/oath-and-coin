@@ -172,7 +172,8 @@ describe('the page while its session is still arriving', () => {
       checkpoint: null,
       seed: 424242n,
       locale: 'ru',
-      screen: 'contract-offer'
+      screen: 'contract-offer',
+      contract: null
     });
     const { container } = mount(<App createController={() => gated.controller} />);
 
@@ -185,7 +186,8 @@ describe('the page while its session is still arriving', () => {
       checkpoint: null,
       seed: 424242n,
       locale: 'ru',
-      screen: 'contract-offer'
+      screen: 'contract-offer',
+      contract: null
     });
     const { container } = mount(<App createController={() => gated.controller} />);
 
@@ -217,7 +219,8 @@ describe('the page when the campaign moves to the debrief', () => {
       checkpoint: null,
       seed: 424242n,
       locale: 'ru',
-      screen: 'contract-offer'
+      screen: 'contract-offer',
+      contract: null
     });
     const { container } = mount(<App createController={() => gated.controller} />);
 
@@ -258,7 +261,8 @@ describe('a page taken down while its session is still arriving', () => {
       checkpoint: null,
       seed: 424242n,
       locale: 'ru',
-      screen: 'contract-offer'
+      screen: 'contract-offer',
+      contract: null
     });
     const { container, unmount } = mount(<App createController={() => gated.controller} />);
     expect(gated.subscribers()).toBe(1);

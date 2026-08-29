@@ -33,6 +33,20 @@ export interface RunRequest {
    * no path and no navigation, only a run stating what it opened.
    */
   readonly screen: ScreenName;
+  /**
+   * Which contract the run opens focused on, or `null` for the campaign's own answer.
+   *
+   * The sixth input, and it exists because the playtest of `COMBAT_SPEC` §13.2 needs two
+   * battles in **either order**: a run that could only open on the campaign's first
+   * contract would let "the second battle" and "the harder battle" be the same fact, and
+   * the gate would be measuring fatigue (`2026-08-30-combat-lab-playtest-protocol.md`
+   * §3.0). It is not a router — no history entry, no path — only a run stating what it
+   * opened, the same claim `screen` makes.
+   *
+   * A contract the campaign does not carry is a refusal rather than a silent default: a
+   * facilitator who mistypes an id must be told, not handed the wrong fight.
+   */
+  readonly contract: string | null;
 }
 
 /** The two screens the page can open on. Anything else is a typo, not an extension. */
@@ -66,11 +80,19 @@ export const DEFAULT_RUN: RunRequest = {
   // The screen the page had before it had two. Every URL already written down — in the
   // corpus, in the browser evidence, in `ADR-008`'s examples — names no screen at all,
   // and each of them has to keep meaning what it meant.
-  screen: 'contract-offer'
+  screen: 'contract-offer',
+  contract: null
 };
 
 /** The parameters a run may declare. Anything else is a mistake, not an extension. */
-const KNOWN_PARAMETERS = ['scenario', 'checkpoint', 'seed', 'locale', 'screen'] as const;
+const KNOWN_PARAMETERS = [
+  'scenario',
+  'checkpoint',
+  'seed',
+  'locale',
+  'screen',
+  'contract'
+] as const;
 
 /**
  * Reads a run request out of `location.search`.
@@ -100,7 +122,8 @@ export function parseRunRequest(search: string): RunRequest {
     checkpoint: stated(parameters, 'checkpoint') ?? DEFAULT_RUN.checkpoint,
     seed: parseSeed(stated(parameters, 'seed')),
     locale: stated(parameters, 'locale') ?? DEFAULT_RUN.locale,
-    screen: parseScreen(stated(parameters, 'screen'))
+    screen: parseScreen(stated(parameters, 'screen')),
+    contract: stated(parameters, 'contract') ?? DEFAULT_RUN.contract
   };
 }
 

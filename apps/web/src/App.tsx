@@ -20,7 +20,7 @@ import {
   type SaveSlotsScreenModel,
   type ScreenModel
 } from '@oath-and-coin/presentation';
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 
 import {
   browserContentSource,
@@ -89,6 +89,11 @@ export function App({ createController = browserSessionController }: AppProps = 
   const [controller] = useState(() => createController(run));
   const session = useSyncExternalStore(controller.store.subscribe, controller.store.snapshot);
   const [screen, setScreen] = useState<ScreenName>(run.screen);
+  // The contract the run asked to open on, applied once the session has a campaign to
+  // focus it in. A run that named one the campaign does not carry is refused by
+  // `controller.focus`, which is the answer a mistyped id deserves — the alternative is a
+  // facilitator running a session on the wrong fight and not being told.
+  const focusRequested = useRef(false);
   /**
    * The contract whose battle the player is watching right now, or `null`.
    *
@@ -125,6 +130,19 @@ export function App({ createController = browserSessionController }: AppProps = 
     // for a late answer to be written into.
     void controller.start();
   }, [controller]);
+
+  useEffect(() => {
+    // Once, after the run has landed, and only when the URL asked for a contract. `focus`
+    // throws on a contract the campaign does not carry, which is the answer a mistyped id
+    // deserves — a facilitator handed the wrong fight without being told would run a
+    // session that measures the wrong thing (`§13.2`'s counterbalancing).
+    if (run.contract === null || focusRequested.current || session.state === null) {
+      return;
+    }
+
+    focusRequested.current = true;
+    controller.focus(parseContentIdLike(run.contract));
+  }, [controller, run.contract, session.state]);
 
   return (
     <main data-testid="app-root">
@@ -552,6 +570,17 @@ function describeNodeApiExposure(): 'absent' | 'present' {
 
   return reachable ? 'present' : 'absent';
 }
+
+/**
+ * A content id as the URL spelled it.
+ *
+ * `ContentId` is a branded string and nothing in `apps/web` may build one — the brand is
+ * the simulation's, and the page declares no dependency on it (`ADR-010`). What crosses
+ * here is a string a person typed, and the campaign is what decides whether it names
+ * anything: `controller.focus` throws on a contract it does not carry, which is exactly the
+ * check this cast would otherwise be pretending to make.
+ */
+const parseContentIdLike = (stated: string): ContentId => stated as ContentId;
 
 /**
  * The combat lab: one fight, opened from a scenario, paused at its first frame

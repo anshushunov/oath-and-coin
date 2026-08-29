@@ -14,16 +14,27 @@ describe('the inputs a run declares', () => {
     expect(parseRunRequest('?')).toEqual(DEFAULT_RUN);
   });
 
-  it('reads all five inputs', () => {
+  it('reads all six inputs', () => {
     expect(
-      parseRunRequest('?scenario=screen_error&checkpoint=final&seed=7&locale=ru&screen=saves')
+      parseRunRequest(
+        '?scenario=screen_error&checkpoint=final&seed=7&locale=ru&screen=saves' +
+          '&contract=core:escort_the_relic'
+      )
     ).toEqual({
       scenario: 'screen_error',
       checkpoint: 'final',
       seed: 7n,
       locale: 'ru',
-      screen: 'saves'
+      screen: 'saves',
+      contract: 'core:escort_the_relic'
     });
+  });
+
+  it('leaves the contract to the campaign when none is declared', () => {
+    // The sixth parameter arrived with the combat lab, so its absence has to keep meaning
+    // what it meant before there was one: the campaign's own answer, which is the contract
+    // the first applied step named or the lexicographically first (`focusedContractOf`).
+    expect(parseRunRequest('?scenario=screen_normal').contract).toBeNull();
   });
 
   it('opens the contract offer when no screen is declared', () => {

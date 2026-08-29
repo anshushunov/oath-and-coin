@@ -148,6 +148,18 @@ test('a crew is placed, the fight is watched, and the debrief reads back', async
   expect(events, 'the page must produce no error or failed request').toEqual([]);
 });
 
+test('the run can name which contract it opens on, which is what §13.2 counterbalances with', async ({
+  page
+}) => {
+  // Without this the lab always opens on the campaign's lexicographically first contract,
+  // and the playtest's "second battle" and "harder battle" would be one fact — the gate
+  // would be measuring fatigue (`2026-08-30-combat-lab-playtest-protocol.md` §3.0).
+  await page.goto(`${runUrl()}&contract=core:escort_the_relic`);
+
+  await expect(page.getByTestId('contract-offer-screen')).toBeVisible();
+  await expect(page.getByTestId('contract-offer-screen')).toContainText('реликвари');
+});
+
 /** Presses one control and refuses to continue if the engine turned it down. */
 async function press(page: Page, testId: string): Promise<void> {
   await page.getByTestId(testId).click();
