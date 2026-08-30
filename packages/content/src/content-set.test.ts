@@ -188,7 +188,10 @@ describe('loadContentSet over the shipped tree', () => {
   const content = loadContentSet(shippedContent);
 
   it('reads every authored entity', () => {
-    expect(content.heroes.size).toBe(6);
+    // Seven since `core:vela` (`COMBAT_SPEC` §16.3.1): the pair §13.2 asks for did not
+    // exist in the shipped roster, and without one the control of §4.8 measures a different
+    // person rather than a different bond.
+    expect(content.heroes.size).toBe(7);
     expect(content.contracts.size).toBe(8);
     expect(content.traits.size).toBe(9);
   });
@@ -219,7 +222,7 @@ describe('loadContentSet over the shipped tree', () => {
     // The Combat Lab's first segment moved it a tenth time, to `c02e365478576dd7`
     // (`DEC-016`): every hero file lost `capability.grade` and gained `combat` and `role`,
     // and the content format went 4 → 5 with them.
-    expect(content.contentVersion).toBe('f6118be65f3cf228');
+    expect(content.contentVersion).toBe('ec03d8819bdf9695');
   });
 
   it('keys heroes, contracts and traits in content-id order', () => {
@@ -231,6 +234,7 @@ describe('loadContentSet over the shipped tree', () => {
       'core:ilsa',
       'core:kestrel',
       'core:mira',
+      'core:vela',
       'core:zara'
     ]);
     expect(content.contracts.keys()).toEqual([
