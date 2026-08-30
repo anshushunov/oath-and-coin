@@ -41,7 +41,8 @@ describe('createInitialState', () => {
       [2, 'core:ilsa'],
       [3, 'core:kestrel'],
       [4, 'core:mira'],
-      [5, 'core:zara']
+      [5, 'core:vela'],
+      [6, 'core:zara']
     ]);
   });
 
@@ -55,7 +56,7 @@ describe('createInitialState', () => {
       // `required_crew: 2 → 1`, then `46416b20360bbedd` until the resolution engine's
       // Task 2 raised every file to `schema_version: 5` and authored `capability` and
       // `needs` (`content-set.test.ts` carries the same move's full history).
-      contentVersion: 'f6118be65f3cf228',
+      contentVersion: 'ec03d8819bdf9695',
       campaignSeed: 7n,
       stateVersion: 0,
       logicalTime: 0,

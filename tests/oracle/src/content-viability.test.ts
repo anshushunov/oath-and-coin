@@ -408,3 +408,62 @@ describe('the second counterbalanced pair', () => {
     expect(ford.patronFee).not.toBe(barrow.patronFee);
   });
 });
+
+describe('the mechanically comparable pair COMBAT_SPEC §13.2 asks for', () => {
+  /**
+   * **A pair that differs only by a relationship, held by a check rather than by intent.**
+   *
+   * §13.2's control is that knowing a *person* changes a player's preparation, and it is only
+   * a control if swapping the two changes nothing else: two heroes who also differ in
+   * attributes let a tester attribute the difference to strength and the gate would count it.
+   * The shipped roster had no such pair until `core:vela` — `core:ilsa` and `core:zara` share
+   * a role and nothing else, which the playtest material claimed otherwise (§16.3.1).
+   *
+   * Asserted field by field rather than by deep-equalling the two files: what may differ is
+   * exactly the id, the name and the relationships, and a check that compared everything
+   * would have to be edited into uselessness the day one of those three moves.
+   */
+  const mira = content.heroes.get(parseContentId('core:mira'))!;
+  const vela = content.heroes.get(parseContentId('core:vela'))!;
+
+  it('is equal in everything a battle reads', () => {
+    expect(vela.role).toBe(mira.role);
+    expect(vela.combat).toEqual(mira.combat);
+    expect([...vela.capability.expertise.entries()]).toEqual([
+      ...mira.capability.expertise.entries()
+    ]);
+    expect(vela.capability.grade).toBe(mira.capability.grade);
+  });
+
+  it('is equal in everything a decision reads, so the same crews answer the same way', () => {
+    // Otherwise the swap would change *who comes*, and the second preparation would differ
+    // for a reason that has nothing to do with the bond.
+    expect([vela.greed, vela.caution, vela.pride, vela.trustInGuild]).toEqual([
+      mira.greed,
+      mira.caution,
+      mira.pride,
+      mira.trustInGuild
+    ]);
+    expect([...vela.traits]).toEqual([...mira.traits]);
+  });
+
+  it('differs in exactly one thing, and it is a bond', () => {
+    expect([...vela.relationships]).toEqual([]);
+    expect(
+      mira.relationships.filter((bond) => bond.weight >= 12),
+      'the bonded half of the pair must hold somebody at or above the reaction threshold, or ' +
+        'the pair differs by nothing that fires (COMBAT_SPEC §7.3)'
+    ).not.toEqual([]);
+  });
+
+  it('holds somebody the same crew can carry, so the bond is reachable in a real fight', () => {
+    // A bond toward a man who never goes out with her changes nothing about any battle, and
+    // the pair would be comparable and pointless.
+    for (const bond of mira.relationships) {
+      expect(
+        content.heroes.get(bond.hero),
+        `${String(bond.hero)} is not in the roster`
+      ).toBeDefined();
+    }
+  });
+});

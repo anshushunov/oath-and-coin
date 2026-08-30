@@ -1,0 +1,29 @@
+{
+  "schema_version": 6,
+  "id": "core:vela",
+  "display_name_key": "hero.core.vela.name",
+  "greed": 40,
+  "caution": 80,
+  "pride": 50,
+  "trust_in_guild": 20,
+  "capability": {
+    "expertise": {
+      "undead_knowledge": 30,
+      "wilderness": 60
+    }
+  },
+  "combat": {
+    "might": 38,
+    "guard": 48,
+    "aim": 45,
+    "focus": 54,
+    "care": 65
+  },
+  "role": "support",
+  "traits": [
+    "core:refuses_deception",
+    "core:fears_undeath",
+    "core:hungry_for_renown"
+  ],
+  "relationships": []
+}

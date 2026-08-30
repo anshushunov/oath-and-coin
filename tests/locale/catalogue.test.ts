@@ -180,14 +180,29 @@ const content = loadContentSet(shippedContent);
  * every hero file lost `capability.grade` and gained `combat` and `role`. The key count did
  * not move — the change is fields of a hero, not a text.
  *
- * Its segment C moved it an eleventh time, to `f6118be65f3cf228` (`ADR-016` §1): every file
+ * Its segment C moved it an eleventh time, to `ec03d8819bdf9695` (`ADR-016` §1): every file
  * rose to `schema_version: 6`, and two contracts arrived carrying a `battle` block — the
  * first two contracts in this game that go to a fight. **Two keys and exactly two**, for the
  * reason the eighth move states: a contract's name is content's to author, and a third key
  * in a change like this would be interface text arriving under cover of a content addition.
  */
-const FROZEN_CONTENT_VERSION = 'f6118be65f3cf228';
-const FROZEN_CONTENT_KEY_COUNT = 102;
+/*
+ * **Moved once, deliberately, on 2026-08-30** — from `f6118be65f3cf228` / 102 to the pair
+ * below (`COMBAT_SPEC` §16.3.1, owner's decision).
+ *
+ * The freeze exists to catch interface text sneaking into `content/locale/ru.json`, and it
+ * did its job every day it stood. What moved it is not interface text: `COMBAT_SPEC` §13.2
+ * asks for two heroes who differ **only** by a relationship, the shipped roster had no such
+ * pair — `core:ilsa` and `core:zara` share a role and nothing else — and without one the
+ * control of `DIRECTION_2026-08` §4.8 measures a different *person* rather than a different
+ * *bond*. `core:vela` is `core:ilsa` with one relationship added and nothing else changed.
+ *
+ * A seventh hero is a real content addition and its cost is paid in full below: every
+ * canonical snapshot regenerated, and the eight balance corridors of §12.5 re-measured over
+ * a frozen set that grew from 15 crews to 35.
+ */
+const FROZEN_CONTENT_VERSION = 'ec03d8819bdf9695';
+const FROZEN_CONTENT_KEY_COUNT = 103;
 
 /** Every key the presentation layer can produce for the shipped content tree. */
 function everyKeyTheScreenCanShow(): readonly string[] {

@@ -11,7 +11,7 @@ import { DoctrineId } from '../domain/doctrine-id.ts';
 import { NeedId, compareNeedIds } from '../domain/need-id.ts';
 import { ConsequenceKind, OutcomeIntentKind } from '../domain/outcome.ts';
 import { OutcomeReasonCodes } from '../domain/outcome-reason-codes.ts';
-import { compareContentIds } from '../ids/content-id.ts';
+import { compareContentIds, parseContentId } from '../ids/content-id.ts';
 import { compareHeroIds, heroId, type HeroId } from '../ids/hero-id.ts';
 import type { Cell } from '../domain/battle-cell.ts';
 import { ContractStatus } from '../state/contract-state.ts';
@@ -25,6 +25,7 @@ import { RejectionCodes } from '../commands/command-result.ts';
 import { DEPLOYMENT_REQUIRED, WOUND_DOWNED, battleResolver } from './battle-resolver.ts';
 import { draftResolution, type ResolutionInput } from './contract-resolver.ts';
 import { goesToBattle, resolverFor } from './routing.ts';
+import { BOND_STRONG } from '../combat/decision.ts';
 
 /**
  * `ADR-016` — the second resolver: what it refuses, what it produces, and the two
@@ -362,5 +363,161 @@ describe('the two properties that keep the resolvers out of each other’s way',
     expect(JSON.stringify(forward.resolution.battle?.events)).toBe(
       JSON.stringify(backward.resolution.battle?.events)
     );
+  });
+});
+
+describe('COMBAT_SPEC §13.2 п.2: the bond changes an objective’s verdict', () => {
+  /**
+   * **The technical prerequisite the control could not be run without.** §13.2 asks for a
+   * mechanically comparable pair — one role, equal attributes, equal abilities — that
+   * differs only in what one of them thinks of a third man, and for a scenario in which
+   * that difference moves a *verdict*. Preconditions 1 and 3 were in place (the two runs
+   * differ, and the forecast names the bond before the send); this one was not, and the
+   * playtest material claimed it against a pair the shipped content does not actually make
+   * comparable.
+   *
+   * Built here rather than out of shipped heroes on purpose: what has to be true is a
+   * property of the *rules*, and shipped heroes differ in every attribute, so a verdict
+   * that moved between two of them would say nothing about the bond.
+   */
+  const THIRD: HeroId = heroId(2);
+
+  /** One frail man on the point, one man behind him, one foe. Nobody else. */
+  function trio(bondedToFriend: boolean): ResolutionInput {
+    const crew = SortedSet.from(compareHeroIds, [KEY, SECOND, THIRD]);
+    const battle: ContractBattlePlan = {
+      objectives: SortedMap.from<NeedId, BattleObjective>(compareNeedIds, [
+        [NeedId.Frontline, { kind: 'subdue', targets: ['foe:a', 'foe:b'] }]
+      ]),
+      // Two of them, and tough enough that the crew's action budget is tight. With one to
+      // spare the reaction costs nothing and the verdict cannot move, which is what the
+      // first version of this case measured: a bond that fired and changed nothing.
+      foes: [
+        {
+          id: 'foe:a',
+          role: CombatRole.Vanguard,
+          cell: { row: 1, column: 1 },
+          combat: { might: 45, guard: 60, aim: 20, focus: 30, care: 0 }
+        },
+        {
+          id: 'foe:b',
+          role: CombatRole.Vanguard,
+          cell: { row: 1, column: 2 },
+          combat: { might: 45, guard: 60, aim: 20, focus: 30, care: 0 }
+        }
+      ],
+      wards: []
+    };
+
+    return {
+      contract: createContractState(
+        aContract({
+          requiredCrew: 3,
+          risk: 0,
+          needs: SortedMap.from<NeedId, number>(compareNeedIds, [[NeedId.Frontline, 40]]),
+          battle,
+          status: ContractStatus.Crewed,
+          offer: anOffer({
+            keyHero: KEY,
+            phase: OfferPhase.Locked,
+            invited: crew,
+            respondedBy: crew,
+            acceptedBy: crew
+          })
+        })
+      ),
+      deployment: {
+        plan: battle,
+        crew: {
+          placement: placement([
+            [KEY, { row: 1, column: 1 }],
+            [SECOND, { row: 2, column: 1 }],
+            [THIRD, { row: 1, column: 2 }]
+          ]),
+          // The order the reaction has something to go against: `break_them_first` ranks a
+          // blow above help, so a man who helps instead has broken it.
+          doctrine: DoctrineId.BreakThemFirst,
+          retreatBelowPercent: 0
+        },
+        retreatSignalledAtRound: null
+      },
+      crew: [
+        {
+          // The friend on the point: frail enough to be in trouble by the second round.
+          hero: aHero({
+            id: KEY,
+            definition: parseContentId('core:friend'),
+            role: CombatRole.Vanguard,
+            combat: { might: 30, guard: 5, aim: 20, focus: 20, care: 10 },
+            capability: {
+              grade: 40,
+              expertise: SortedMap.from<NeedId, number>(compareNeedIds, [[NeedId.Frontline, 40]])
+            }
+          }),
+          commitment: CommitmentState.Committed
+        },
+        {
+          // The pair. Both versions are this man with these attributes, this role, this
+          // cell and this expertise; the only difference is one number in `relationships`.
+          hero: aHero({
+            id: SECOND,
+            definition: parseContentId('core:loyal'),
+            role: CombatRole.Support,
+            combat: { might: 70, guard: 50, aim: 60, focus: 55, care: 80 },
+            capability: {
+              grade: 60,
+              expertise: SortedMap.from<NeedId, number>(compareNeedIds, [[NeedId.Frontline, 60]])
+            },
+            relationships: SortedMap.from(
+              compareContentIds,
+              bondedToFriend ? [[parseContentId('core:friend'), BOND_STRONG]] : []
+            )
+          }),
+          commitment: CommitmentState.Committed
+        },
+        {
+          hero: aHero({
+            id: THIRD,
+            definition: parseContentId('core:third'),
+            role: CombatRole.Vanguard,
+            combat: { might: 35, guard: 40, aim: 20, focus: 25, care: 10 },
+            capability: {
+              grade: 40,
+              expertise: SortedMap.from<NeedId, number>(compareNeedIds, [[NeedId.Frontline, 40]])
+            }
+          }),
+          commitment: CommitmentState.Committed
+        }
+      ]
+    };
+  }
+
+  it('two crews identical but for one bond come back with different verdicts', () => {
+    const distant = battleResolver(trio(false)).resolution;
+    const loyal = battleResolver(trio(true)).resolution;
+
+    const verdictOf = (resolution: typeof distant) =>
+      resolution.coverage.map((row) => `${row.need}=${row.verdict}`).join(',');
+
+    // The difference starts with the reaction — precondition 1 — and reaches the verdict,
+    // which is precondition 2 and is the whole of what this case is for.
+    expect(
+      loyal.battle?.events.some((event) => event.kind === 'doctrine_broken'),
+      'the bonded man must break the doctrine, or nothing downstream is about the bond'
+    ).toBe(true);
+    expect(
+      distant.battle?.events.some((event) => event.kind === 'doctrine_broken'),
+      'the man who barely knows him must not'
+    ).toBe(false);
+
+    expect(verdictOf(loyal)).not.toBe(verdictOf(distant));
+
+    // **And the bond is what *saved* the run, not what cost it.** Worth stating, because the
+    // obvious reading of §7.3 is that a man who breaks formation is a man who stopped doing
+    // his job: here the healed friend stays on his feet and keeps fighting, and the crew
+    // takes both foes instead of losing the second. A control that only ever produced the
+    // pessimistic direction would teach the player a rule the rules do not have.
+    expect(verdictOf(loyal)).toBe('frontline=closed');
+    expect(verdictOf(distant)).not.toBe('frontline=closed');
   });
 });

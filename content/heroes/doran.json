@@ -28,7 +28,7 @@
   "relationships": [
     {
       "hero": "core:bram",
-      "weight": 10
+      "weight": 13
     }
   ]
 }
