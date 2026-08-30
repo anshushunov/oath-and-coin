@@ -9,7 +9,9 @@ import {
   SettlementFieldKeys,
   TreasuryFieldKeys,
   actionKey,
+  BattleFieldKeys,
   afterActionStateKey,
+  battleStateKey,
   contractAvailabilityKey,
   contractBoardStateKey,
   errorKey,
@@ -20,6 +22,7 @@ import {
   waveredKey
 } from './keys.ts';
 import { createAfterActionScreenModel } from './after-action-screen-model.ts';
+import { createBattleScreenModel } from './battle-screen-model.ts';
 import { createContractBoardScreenModel } from './contract-board-screen-model.ts';
 import {
   createContractOfferScreenModel,
@@ -30,6 +33,7 @@ import {
   type SettlementLine
 } from './contract-offer-screen-model.ts';
 import type { AfterActionScreenModel } from './after-action-screen-model.ts';
+import type { BattleScreenModel } from './battle-screen-model.ts';
 import type { ContractBoardScreenModel } from './contract-board-screen-model.ts';
 import { ScreenKind } from './screen-kind.ts';
 import type { ScreenModel } from './screen-model.ts';
@@ -95,7 +99,135 @@ export function expectedSnapshot(
       return afterActionSnapshot(model, catalogue);
     case ScreenKind.ContractBoard:
       return contractBoardSnapshot(model, catalogue);
+    case ScreenKind.Battle:
+      return battleSnapshot(model, catalogue);
   }
+}
+
+/**
+ * What a correctly bound battle screen puts on the page (`COMBAT_SPEC` §10.2).
+ *
+ * **The journal is in and the board is not.** A token's position is a picture and this list
+ * is a list of *texts*; what a screen owes a player who cannot read the picture is the
+ * journal, the intent line and every status by name — which is §10.2 п.5 and `GDD` §16.6, and
+ * is exactly what a snapshot can hold a screen to. Health is a number beside a caption for
+ * the same reason `DEC-014`'s two numbers are: "17" with nothing naming it is a figure a
+ * player cannot read.
+ */
+function battleSnapshot(
+  model: BattleScreenModel,
+  catalogue: ReadonlyMap<string, string>
+): readonly string[] {
+  createBattleScreenModel(model);
+
+  const texts: string[] = [];
+  const resolve = (key: string): void => {
+    texts.push(resolveText(catalogue, key));
+  };
+
+  resolve(model.titleKey);
+  resolve(battleStateKey(model.state));
+
+  if (model.errorCode !== null) {
+    resolve(errorKey(model.errorCode));
+  }
+
+  if (model.contractDisplayNameKey !== null) {
+    resolve(model.contractDisplayNameKey);
+  }
+
+  if (model.doctrineKey !== null) {
+    resolve(BattleFieldKeys.Doctrine);
+    resolve(model.doctrineKey);
+  }
+
+  if (model.units.length > 0) {
+    resolve(BattleFieldKeys.Round);
+    texts.push(String(model.round));
+
+    resolve(BattleFieldKeys.Board);
+
+    for (const unit of model.units) {
+      resolve(unit.side === 'crew' ? BattleFieldKeys.Crew : BattleFieldKeys.Foes);
+
+      if (unit.displayNameKey !== null) {
+        resolve(unit.displayNameKey);
+      }
+
+      resolve(unit.roleKey);
+      resolve(BattleFieldKeys.Health);
+      texts.push(String(unit.health));
+
+      if (unit.leftKey !== null) {
+        resolve(unit.leftKey);
+      }
+
+      for (const status of unit.statuses) {
+        resolve(status.key);
+        resolve(status.markKey);
+      }
+    }
+  }
+
+  if (model.intent !== null) {
+    resolve(BattleFieldKeys.Intent);
+
+    if (model.intent.displayNameKey !== null) {
+      resolve(model.intent.displayNameKey);
+    }
+
+    resolve(model.intent.actionKey);
+
+    if (model.intent.targetDisplayNameKey !== null) {
+      resolve(model.intent.targetDisplayNameKey);
+    }
+
+    resolve(model.intent.reasonKey);
+
+    if (model.intent.contraryToDoctrineKey !== null) {
+      resolve(model.intent.contraryToDoctrineKey);
+    }
+  }
+
+  if (model.journal.length > 0) {
+    resolve(BattleFieldKeys.Journal);
+
+    for (const line of model.journal) {
+      resolve(line.key);
+
+      if (line.displayNameKey !== null) {
+        resolve(line.displayNameKey);
+      }
+
+      if (line.detailKey !== null) {
+        resolve(line.detailKey);
+      }
+
+      if (line.amount !== null) {
+        texts.push(String(line.amount));
+      }
+    }
+  }
+
+  // Always, and in the order the screen draws them: a control that vanished would leave a
+  // player with no way to learn it existed, which is the same argument the offer screen's
+  // dark buttons make.
+  resolve(model.controls.pauseKey);
+  resolve(model.controls.speedKey);
+  resolve(model.controls.skipKey);
+  resolve(model.controls.replayKey);
+
+  if (model.retreat !== null) {
+    resolve(model.retreat.labelKey);
+    resolve(model.retreat.costKey);
+  }
+
+  if (model.outcomeKey !== null) {
+    resolve(BattleFieldKeys.Outcome);
+    resolve(model.outcomeKey);
+  }
+
+  return texts;
 }
 
 function contractOfferSnapshot(
@@ -219,8 +351,81 @@ function contractOfferSnapshot(
     resolveSettlement(model.settlement, resolve, texts, heroDisplayNameKeyOf);
   }
 
+  if (model.deployment !== null) {
+    resolve(OfferFieldKeys.Formation);
+
+    // The board itself, cell by cell. A cell is two numbers and the screen prints both:
+    // one of them alone is a row of three identical labels, which is the grid a player
+    // cannot aim at. Drawn bottom-up over there and listed row-then-column here — the
+    // order a *list of texts* is in is the model's, and where they land is layout.
+    for (const cell of model.deployment.cells) {
+      texts.push(String(cell.row));
+      texts.push(String(cell.column));
+    }
+
+    for (const slot of model.deployment.crew) {
+      resolve(slot.displayNameKey);
+      resolve(slot.roleKey);
+
+      // A cell or the word for not having one. A man with no cell and nothing said about it
+      // would read as a man the screen forgot, which is the state `placeCrew` refuses by
+      // name (`unplaced_hero`) — and the player is the one who has to fix it.
+      if (slot.cell === null) {
+        resolve(OfferFieldKeys.Unplaced);
+      } else {
+        resolve(OfferFieldKeys.Cell);
+        texts.push(String(slot.cell.row));
+        texts.push(String(slot.cell.column));
+      }
+    }
+
+    resolve(OfferFieldKeys.Doctrine);
+
+    for (const option of model.deployment.doctrineLever.options) {
+      resolve(option.labelKey);
+    }
+
+    if (model.deployment.retreatBelowPercent !== null) {
+      resolve(OfferFieldKeys.RetreatBelow);
+      texts.push(String(model.deployment.retreatBelowPercent));
+    }
+  }
+
+  if (model.forecast !== null) {
+    resolve(OfferFieldKeys.Forecast);
+    resolve(OfferFieldKeys.ForecastObjectives);
+
+    for (const objective of model.forecast.objectives) {
+      resolve(objective.needKey);
+      resolve(objective.verdictKey);
+    }
+
+    if (model.forecast.reasons.length > 0) {
+      resolve(OfferFieldKeys.ForecastReasons);
+
+      for (const reason of model.forecast.reasons) {
+        resolve(reason.key);
+
+        if (reason.needKey !== null) {
+          resolve(reason.needKey);
+        }
+
+        if (reason.heroDisplayNameKey !== null) {
+          resolve(reason.heroDisplayNameKey);
+        }
+
+        // A column is a place on the board, and a place is a number. Captioned, because
+        // "2" beside a sentence about an open column is a figure a player cannot read.
+        if (reason.column !== null) {
+          resolve(OfferFieldKeys.ForecastColumn);
+          texts.push(String(reason.column));
+        }
+      }
+    }
+  }
+
   // Last, because it is what a player does *after* reading everything above. Every one of
-  // the six, dark ones included, each followed by the refusal it would get — a control
+  // the seven, dark ones included, each followed by the refusal it would get — a control
   // that vanished would leave the player with no way to learn what to do instead, and a
   // dark one with no reason would leave them with no way to learn why not.
   for (const available of model.availableActions) {
@@ -316,6 +521,43 @@ function afterActionSnapshot(
     for (const line of model.coverage) {
       resolve(line.needKey);
       resolve(line.verdictKey);
+
+      // The new column of §10.3, and it is captioned: "closed / weak" with nothing saying
+      // which of the two was the promise is the column a player cannot read, which is the
+      // failure external review found on the Godot screen and `Captioned` exists to prevent.
+      if (line.forecastVerdictKey !== null) {
+        resolve(AfterActionFieldKeys.Promised);
+        resolve(line.forecastVerdictKey);
+      }
+    }
+  }
+
+  if (model.battle !== null) {
+    resolve(AfterActionFieldKeys.Battle);
+    resolve(AfterActionFieldKeys.BattleOutcome);
+    resolve(model.battle.outcomeKey);
+    resolve(AfterActionFieldKeys.Rounds);
+    texts.push(String(model.battle.rounds));
+
+    if (model.battle.retreatSignalledAtRound !== null) {
+      resolve(AfterActionFieldKeys.RetreatSignalled);
+      texts.push(String(model.battle.retreatSignalledAtRound));
+    }
+
+    for (const line of model.battle.feed) {
+      resolve(line.key);
+
+      if (line.heroDisplayNameKey !== null) {
+        resolve(line.heroDisplayNameKey);
+      }
+
+      if (line.detailKey !== null) {
+        resolve(line.detailKey);
+      }
+
+      if (line.amount !== null) {
+        texts.push(String(line.amount));
+      }
     }
   }
 

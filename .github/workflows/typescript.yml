@@ -247,7 +247,88 @@ jobs:
             echo
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
-      # The third evidence directory, and the only one produced by a run that applies a
+      # The third screen's five states (`COMBAT_SPEC` §10.2), listed here for the reason
+      # the two lists above are: a state whose run stops producing evidence has to fail a
+      # stage, and the only place that can be noticed is a list of what was expected.
+      #
+      # **This list is edited together with the matrix in `tests/e2e/battle.spec.ts`.** It
+      # is a deliberate second declaration of it, and it has already earned its keep once,
+      # one screen over — `screen_word_broken` left that file and the list here is what
+      # said so.
+      #
+      # Its own table because this screen reports something the other two do not: which
+      # position in the fight the frame was taken at. A battle screen is a *position* in a
+      # finished record, so "which state" and "how far in" are two different facts and a
+      # table with only the first would call the opening frame and the closing one the
+      # same evidence.
+      - name: Summarise the battle evidence
+        if: always() && steps.e2e.outcome != 'skipped'
+        shell: bash
+        run: |
+          root=artifacts/browser-evidence/battle
+          expected="loading empty error incomplete normal"
+
+          missing=""
+          for state in $expected; do
+            [ -f "$root/$state/report.json" ] || missing="$missing $state"
+            [ -f "$root/$state/screenshot.png" ] || missing="$missing $state/frame"
+            [ -f "$root/$state/events.jsonl" ] || missing="$missing $state/events"
+          done
+
+          if [ -n "$missing" ]; then
+            echo "::error::The battle run produced no evidence for:$missing"
+            exit 1
+          fi
+
+          {
+            echo "### battle evidence"
+            echo
+            echo "| state | scenario | texts | content | viewport | window | reachable | events |"
+            echo "|---|---|---|---|---|---|---|---|"
+            for state in $expected; do
+              jq -r '
+                "| \(.battle_screen_state) | \(.scenario) | \(.texts) "
+                + "| \(.layout.contentWidth)x\(.layout.contentHeight) "
+                + "| \(.layout.viewportWidth)x\(.layout.viewportHeight) "
+                + "| \(.layout.windowHeight) "
+                + "| \(.layout.reachableWidth)x\(.layout.reachableHeight) | \(.events) |"
+              ' "$root/$state/report.json"
+            done
+            echo
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # The one run that walks the whole loop — a crew composed, placed, sent, watched and
+      # debriefed (`MVP_PLAN` §6.6's finish line). Every other list above photographs a
+      # screen a scenario replayed into place; this one is the only evidence that the three
+      # screens are *joined*, which no hash of any one of them can say.
+      - name: Summarise the combat-loop evidence
+        if: always() && steps.e2e.outcome != 'skipped'
+        shell: bash
+        run: |
+          root=artifacts/browser-evidence/combat_loop
+
+          missing=""
+          [ -f "$root/report.json" ] || missing="$missing report"
+          for frame in watching finished debrief; do
+            [ -f "$root/$frame.png" ] || missing="$missing $frame/frame"
+          done
+          [ -f "$root/events.jsonl" ] || missing="$missing events"
+
+          if [ -n "$missing" ]; then
+            echo "::error::The combat-loop run produced no evidence for:$missing"
+            exit 1
+          fi
+
+          {
+            echo "### combat-loop evidence"
+            echo
+            echo "| scenario | formation | outcome | events |"
+            echo "|---|---|---|---|"
+            jq -r '"| \(.scenario) | \(.formation | join(" ")) | \(.outcome) | \(.events) |"' "$root/report.json"
+            echo
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # The fifth evidence directory, and the only one produced by a run that applies a
       # game command. The save-slots run does press buttons, so what is new here is not the
       # click: it is that the campaign underneath the page *moves*, which is the transition
       # both lists above are blind to — they photograph a screen the scenario replayed into

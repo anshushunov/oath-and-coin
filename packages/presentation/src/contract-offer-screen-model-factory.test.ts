@@ -833,7 +833,15 @@ describe('the read-model hash', () => {
       treasury_forecast: 0,
       promise_terms: null,
       settlement: null,
-      // Empty rather than six dark entries: a loading screen has no package behind it, so
+      // `null` rather than an empty board: a formation is a decision about a *known* crew
+      // and belongs to a locked package on a contract with a plan (`COMBAT_SPEC` §3.7), so
+      // a loading screen has no board to offer — which hashes differently from a board
+      // nobody has stood on, as it should.
+      deployment: null,
+      // `null` for the reason the board above is: a forecast of a crew nobody has answered
+      // for is a forecast of a guess (`COMBAT_SPEC` §10.1).
+      forecast: null,
+      // Empty rather than seven dark entries: a loading screen has no package behind it, so
       // there is no command to press against one — which is a different claim from "every
       // command is refused" and hashes differently, as it should.
       available_actions: []

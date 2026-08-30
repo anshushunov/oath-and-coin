@@ -8,6 +8,7 @@ import {
   LOADING_SCREEN,
   ScreenKind,
   afterActionScreenModel,
+  battleScreenModel,
   contractBoardScreenModel,
   contractOfferScreenModel,
   failedScreen,
@@ -230,6 +231,20 @@ export function screenKindFor(state: GameState, focusedContract: ContentId | nul
   return contract.resolution === null ? ScreenKind.ContractOffer : ScreenKind.AfterAction;
 }
 
+/*
+ * **The battle screen is deliberately not a row of this table** (`COMBAT_SPEC` §10.2, §6.3).
+ *
+ * A fight is watched *before* the campaign has it: the resolver runs the battle, the player
+ * watches it and may signal a withdrawal, and only then does `resolveContract` commit an
+ * outcome — which is the only arrangement in which the button can do anything, since a
+ * signal given about a battle that has already been applied would be a signal about the
+ * past. So "am I watching a fight" is a fact about the session's own moment, not about the
+ * campaign, and this function answers only the second.
+ *
+ * `show(ScreenKind.Battle)` reaches it afterwards, which is the replay: by then the record
+ * is stored and the same screen plays the battle that actually happened.
+ */
+
 /**
  * The screen `state` belongs on, built.
  *
@@ -266,6 +281,21 @@ export function campaignScreen(
       return afterActionScreenModel(state, focusedContract);
     case ScreenKind.ContractBoard:
       return contractBoardScreenModel(state);
+    case ScreenKind.Battle:
+      if (focusedContract === null) {
+        throw new Error(
+          'A battle screen was asked for with no contract focused. A battle belongs to one ' +
+            'contract, so a session with none to name has no fight to show — a defect in the ' +
+            'caller, not a campaign without a battle.'
+        );
+      }
+
+      // At the opening position, which is the campaign's own answer and the only one it
+      // has. A battle screen is a *position* in a record the resolver already ran
+      // (`COMBAT_SPEC` §10.2), and the position advances frame by frame in whatever is
+      // playing it back — so the session says "at the start", and the host that has a clock
+      // calls `battleScreenModel` with where it has actually got to.
+      return battleScreenModel(state, focusedContract, { applied: 0 });
   }
 }
 

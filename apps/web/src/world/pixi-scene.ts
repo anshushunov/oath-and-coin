@@ -1,4 +1,4 @@
-import { Application, Container, Graphics } from 'pixi.js';
+import { Application, Container, Graphics, Text } from 'pixi.js';
 // Confusingly named: this module is what a page uses when unsafe-eval is *not*
 // allowed. PixiJS compiles its shader and uniform sync functions with `new Function`
 // by default, and `index.html` declares `script-src 'self'` because `ADR-010` §80
@@ -16,6 +16,7 @@ import { Application, Container, Graphics } from 'pixi.js';
 // transform.
 import 'pixi.js/unsafe-eval';
 
+import type { BattlePopup } from './battle-scene-model.ts';
 import type { SceneDescription, SceneShape } from './scene-model.ts';
 
 /**
@@ -49,6 +50,32 @@ const MARKER_FILL = 0xc8a04a;
 /** A hero who has answered, and one still to. */
 const TOKEN_ANSWERED = 0x4a7fc8;
 const TOKEN_WAITING = 0x3a3f4b;
+
+/** The battle board: a cell, the two sides, a man who is down, a bar and a status mark. */
+const CELL_FILL = 0x1a1d26;
+const TOKEN_CREW = 0x4a7fc8;
+const TOKEN_FOE = 0xc85a4a;
+/*
+ * A man who is out of the fight. Far enough from the cell's own fill to read as a token
+ * rather than as an empty cell — found by looking at the frame, where the first value
+ * (`0x2a2d36`) was within a shade of `CELL_FILL` and four downed men looked like four
+ * cells nobody had ever stood in.
+ */
+const TOKEN_DOWNED = 0x5a4a52;
+const HEALTH_FILL = 0x6fbf73;
+const HEALTH_EMPTY = 0x3a2a2a;
+const STATUS_MARK = 0xd8c26a;
+
+/**
+ * The floating number and the outline under it (`COMBAT_SPEC` §10.2 п.4).
+ *
+ * The outline is near-black and three pixels wide, which is what makes the number readable
+ * on the white flash the spike measured it disappearing into.
+ */
+const POPUP_DAMAGE = 0xffd8d0;
+const POPUP_HEALING = 0xd0ffd8;
+const POPUP_OUTLINE = 0x0a0b0f;
+const POPUP_OUTLINE_WIDTH = 3;
 
 /** Drawn on every shape, so a token on the background still has an edge. */
 const OUTLINE = 0x8b93a7;
@@ -138,11 +165,15 @@ export async function mountPixiScene(
 }
 
 /** One shape, at the position and size the description states and at no other. */
-function draw(shape: SceneShape): Graphics {
-  const graphics = new Graphics();
-
+function draw(shape: SceneShape): Container {
   // The id, verbatim. Labelling the display object is what lets a browser-side check
   // find a shape in the rendered tree instead of counting children in draw order.
+  if (shape.kind === 'battle-popup') {
+    return drawPopup(shape);
+  }
+
+  const graphics = new Graphics();
+
   graphics.label = shape.id;
 
   graphics
@@ -150,13 +181,71 @@ function draw(shape: SceneShape): Graphics {
     .fill(fillFor(shape))
     .stroke({ color: OUTLINE, width: OUTLINE_WIDTH });
 
+  // A health bar is the one shape whose *width* is the fact it carries. Drawn full above
+  // like every other rectangle — that is the box — and then filled to the share that is
+  // left. Without this second rectangle a man with nothing left reads as a man at full
+  // health, which is what the frame of the finished battle showed: four downed foes with
+  // four full green bars under them, every hash green, because a canvas has no texts.
+  if (shape.kind === 'battle-health') {
+    graphics.rect(shape.x, shape.y, shape.width * shape.filled, shape.height).fill(HEALTH_FILL);
+  }
+
   return graphics;
 }
 
-function fillFor(shape: SceneShape): number {
-  if (shape.kind === 'contract-marker') {
-    return MARKER_FILL;
-  }
+/**
+ * The floating number, with the outline `COMBAT_SPEC` §10.2 п.4 makes a requirement.
+ *
+ * A `Text` rather than a rectangle, because it is the one shape that *is* a number, and a
+ * stroke on it is the whole reason the requirement exists: the spike drew a white number on
+ * a white flash and it disappeared. The stroke is drawn under the fill by Pixi, so the
+ * number reads on light and on dark alike without the scene having to know which it is on.
+ */
+function drawPopup(shape: BattlePopup): Container {
+  const text = new Text({
+    text: `${shape.healing ? '+' : '-'}${String(shape.amount)}`,
+    style: {
+      fontFamily: 'monospace',
+      fontSize: shape.height,
+      fill: shape.healing ? POPUP_HEALING : POPUP_DAMAGE,
+      stroke: { color: POPUP_OUTLINE, width: POPUP_OUTLINE_WIDTH, join: 'round' }
+    }
+  });
 
-  return shape.answered ? TOKEN_ANSWERED : TOKEN_WAITING;
+  text.label = shape.id;
+  text.x = shape.x;
+  text.y = shape.y;
+  // The second half of what `advance` reaches: the number rises and fades over the life of
+  // its own event. A scene without it would draw one frame per event, and the two inputs of
+  // §10.2 п.1 would be one input with a comment over it.
+  text.alpha = Math.max(0, 1 - shape.age);
+
+  return text;
+}
+
+function fillFor(shape: Exclude<SceneShape, BattlePopup>): number {
+  switch (shape.kind) {
+    case 'contract-marker':
+      return MARKER_FILL;
+    case 'hero-token':
+      return shape.answered ? TOKEN_ANSWERED : TOKEN_WAITING;
+    case 'battle-cell':
+      return CELL_FILL;
+    case 'battle-token':
+      // Side by colour, and standing by whether there is any colour left in it. The *shape*
+      // of a token is not this file's business: `battle-scene-model.ts` carries the role on
+      // it, and what draws a role differently is the polish `MVP_PLAN` §6.6 puts after the
+      // mechanics. What is here today is the one thing a schematic board must not get wrong
+      // — a man who is down is not a man who is fighting.
+      if (!shape.standing) {
+        return TOKEN_DOWNED;
+      }
+
+      return shape.side === 'crew' ? TOKEN_CREW : TOKEN_FOE;
+    case 'battle-health':
+      // The empty part of the bar. What is left is drawn over it in `draw`.
+      return HEALTH_EMPTY;
+    case 'battle-status-mark':
+      return STATUS_MARK;
+  }
 }

@@ -8,15 +8,19 @@ import {
 } from '@oath-and-coin/application';
 import { RULESET_VERSION } from '@oath-and-coin/content';
 import {
+  BATTLE_LOADING_SCREEN,
   SAVE_SLOTS_LOADING_SCREEN,
   ScreenKind,
+  battleFailedScreen,
   ScreenLinkKeys,
   readModelHash,
   saveSlotsScreenModel,
+  type ContentId,
+  type BattleScreenModel,
   type SaveSlotsScreenModel,
   type ScreenModel
 } from '@oath-and-coin/presentation';
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 
 import {
   browserContentSource,
@@ -27,6 +31,8 @@ import {
 import { parseRunRequest, type RunRequest, type ScreenName } from './run-request.ts';
 import { chooseSaveStore } from './save/choose-store.ts';
 import { AfterActionScreen } from './screens/after-action/after-action-screen.tsx';
+import { BattlePlayback } from './screens/battle/battle-playback.tsx';
+import { BattleScreen } from './screens/battle/battle-screen.tsx';
 import { ContractBoardScreen } from './screens/board/contract-board-screen.tsx';
 import { ContractOfferScreen } from './screens/contract-offer/contract-offer-screen.tsx';
 import { SavesScreen } from './screens/saves/saves-screen.tsx';
@@ -83,6 +89,37 @@ export function App({ createController = browserSessionController }: AppProps = 
   const [controller] = useState(() => createController(run));
   const session = useSyncExternalStore(controller.store.subscribe, controller.store.snapshot);
   const [screen, setScreen] = useState<ScreenName>(run.screen);
+  // The contract the run asked to open on, applied once the session has a campaign to
+  // focus it in. A run that named one the campaign does not carry is refused by
+  // `controller.focus`, which is the answer a mistyped id deserves — the alternative is a
+  // facilitator running a session on the wrong fight and not being told.
+  const focusRequested = useRef(false);
+  /**
+   * The contract whose battle the player is watching right now, or `null`.
+   *
+   * Its own state and deliberately not on the session: nothing about the campaign has
+   * happened yet. The fight is run by the resolver, watched, and only then committed
+   * (`COMBAT_SPEC` §6.3) — so "am I watching" is a fact about this moment in front of this
+   * person, and the campaign is exactly where it was when the crew was sent.
+   */
+  const [watching, setWatching] = useState<ContentId | null>(null);
+
+  /**
+   * Answers the offer screen's "does sending this crew start a fight I watch first".
+   *
+   * `previewBattle` is both the question and the answer: a contract with a plan and a
+   * placed crew produces a record, and a contract without one produces `null` and is sent
+   * the way every contract was sent before there were battles.
+   */
+  const watch = (contractId: ContentId): boolean => {
+    if (controller.previewBattle(contractId, null) === null) {
+      return false;
+    }
+
+    setWatching(contractId);
+
+    return true;
+  };
   const slots = useSaveSlots(controller, screen === 'saves');
 
   useEffect(() => {
@@ -93,6 +130,19 @@ export function App({ createController = browserSessionController }: AppProps = 
     // for a late answer to be written into.
     void controller.start();
   }, [controller]);
+
+  useEffect(() => {
+    // Once, after the run has landed, and only when the URL asked for a contract. `focus`
+    // throws on a contract the campaign does not carry, which is the answer a mistyped id
+    // deserves — a facilitator handed the wrong fight without being told would run a
+    // session that measures the wrong thing (`§13.2`'s counterbalancing).
+    if (run.contract === null || focusRequested.current || session.state === null) {
+      return;
+    }
+
+    focusRequested.current = true;
+    controller.focus(parseContentIdLike(run.contract));
+  }, [controller, run.contract, session.state]);
 
   return (
     <main data-testid="app-root">
@@ -119,8 +169,32 @@ export function App({ createController = browserSessionController }: AppProps = 
               );
             }}
           />
+        ) : screen === 'battle' ? (
+          <BattleLab session={session} controller={controller} />
+        ) : watching === null ? (
+          <CampaignScreen model={session.screen} controller={controller} onBattle={watch} />
         ) : (
-          <CampaignScreen model={session.screen} controller={controller} />
+          /*
+            The fight, before the campaign has it (`COMBAT_SPEC` §6.3). It is here rather
+            than in `CampaignScreen` because it is not a screen the campaign is *on*: the
+            outcome has not been committed, and it is committed at the end of the playback
+            with whatever the player decided about withdrawing. That is the only arrangement
+            in which the retreat button can do anything at all.
+          */
+          <BattlePlayback
+            contractId={watching}
+            port={controller}
+            onFinished={(retreatAtRound) => {
+              // The outcome is committed the moment the fight is over, and the player stays
+              // on it: what he has not read yet is how it ended, and a screen that left as
+              // the last event landed would take the one line the whole playback was for.
+              controller.resolveContract({ contractId: watching, retreatAtRound });
+            }}
+            onLeave={() => {
+              setWatching(null);
+            }}
+            leaveLabel={catalogue.get(ScreenLinkKeys.OpenAfterAction) ?? ''}
+          />
         )}
       </TextSource>
 
@@ -133,8 +207,14 @@ export function App({ createController = browserSessionController }: AppProps = 
         Drawn on both screens, and from the same model: it is the campaign behind the
         page rather than a decoration of one screen, and a canvas that blanked while the
         player looked at the slots would be claiming the campaign went away.
+
+        **Not while a battle is on screen.** The battle draws its own board, and this one
+        would be a second canvas showing the campaign's line-up under it — two pictures of
+        different things, one above the other, with nothing saying which is which. Found by
+        looking at the frame, and by nothing else: every hash was green on it, correctly,
+        because a canvas has no texts for either of them to see.
       */}
-      <WorldCanvas model={session.screen} />
+      {screen === 'battle' || watching !== null ? null : <WorldCanvas model={session.screen} />}
 
       {/*
         Not part of the screen, and deliberately after it: one fact worth reporting
@@ -165,20 +245,70 @@ export function App({ createController = browserSessionController }: AppProps = 
  */
 function CampaignScreen({
   model,
-  controller
+  controller,
+  onBattle
 }: {
   readonly model: ScreenModel;
   readonly controller: SessionController;
+  readonly onBattle: (contractId: ContentId) => boolean;
 }) {
   switch (model.screen) {
     case ScreenKind.ContractOffer:
-      return <ContractOfferScreen model={model} controller={controller} />;
+      return <ContractOfferScreen model={model} controller={controller} onBattle={onBattle} />;
     case ScreenKind.AfterAction:
       return <AfterActionScreen model={model} controller={controller} />;
     case ScreenKind.ContractBoard:
       return <ContractBoardScreen model={model} controller={controller} />;
+    case ScreenKind.Battle:
+      // The replay: by the time the campaign is *on* this screen the record is stored, so
+      // there is nothing left to decide and nothing to commit. The controls still work —
+      // pause, both speeds, skip, replay — and the retreat button is the one that does not,
+      // which the model already says by handing it no round to signal for.
+      return <StoredBattle model={model} controller={controller} />;
   }
 }
+
+/** The battle a resolved contract already carries, played back with no decision attached. */
+function StoredBattle({
+  model,
+  controller
+}: {
+  readonly model: BattleScreenModel;
+  readonly controller: SessionController;
+}) {
+  const stored =
+    model.contractDefinition === null ? null : controller.battleOf(model.contractDefinition);
+
+  if (model.contractDefinition === null || stored === null) {
+    return <BattleScreen model={model} controls={INERT_CONTROLS} />;
+  }
+
+  // The battle the campaign recorded, handed over as the record to play. Running the
+  // resolver again instead would be equal by §9's determinism *only* when the retreat round
+  // matches — so a fight that ended in a withdrawal would replay as a fight nobody pulled
+  // out of, which is a re-enactment rather than a replay.
+  return (
+    <BattlePlayback contractId={model.contractDefinition} port={controller} initial={stored} />
+  );
+}
+
+/**
+ * The controls of a battle screen with no battle behind it — the three states that carry
+ * none (§10.2's `Loading`, `Empty` and `Error`).
+ *
+ * Present rather than absent so those three draw the same frame as the other two with the
+ * buttons dead, which is what a player who arrived by a broken link should see: the screen he
+ * expected, saying it has nothing.
+ */
+const INERT_CONTROLS = {
+  paused: false,
+  speed: 1,
+  togglePause: () => undefined,
+  toggleSpeed: () => undefined,
+  skip: () => undefined,
+  replay: () => undefined,
+  retreat: () => undefined
+};
 
 export interface AppProps {
   /**
@@ -448,4 +578,67 @@ function describeNodeApiExposure(): 'absent' | 'present' {
   const reachable = 'require' in scope || 'process' in scope;
 
   return reachable ? 'present' : 'absent';
+}
+
+/**
+ * A content id as the URL spelled it.
+ *
+ * `ContentId` is a branded string and nothing in `apps/web` may build one — the brand is
+ * the simulation's, and the page declares no dependency on it (`ADR-010`). What crosses
+ * here is a string a person typed, and the campaign is what decides whether it names
+ * anything: `controller.focus` throws on a contract it does not carry, which is exactly the
+ * check this cast would otherwise be pretending to make.
+ */
+const parseContentIdLike = (stated: string): ContentId => stated as ContentId;
+
+/**
+ * The combat lab: one fight, opened from a scenario, paused at its first frame
+ * (`COMBAT_SPEC` §10.2, `DEC-007`).
+ *
+ * **The one place the battle screen's five states are all reachable.** Three of them are
+ * about the session rather than about a fight — no campaign yet, a run that failed, a
+ * contract that never goes to one — and the fourth and fifth are the feed inside a battle
+ * and at the end of it. A screen a player reaches only by finishing a negotiation could not
+ * show the first three at all, and `AGENTS.md` §7 asks for a frame of each.
+ *
+ * **Paused at the opening position.** A feed running on `requestAnimationFrame` is at a
+ * different place in every run, so a screenshot of one is a screenshot of the machine's
+ * timing rather than of the screen; pressing play is the player's own first click.
+ */
+function BattleLab({
+  session,
+  controller
+}: {
+  readonly session: SessionState;
+  readonly controller: SessionController;
+}) {
+  const errorCode = session.screen.errorCode;
+
+  if (errorCode !== null) {
+    return (
+      <BattleScreen
+        model={battleFailedScreen(errorCode, session.errorDetail ?? errorCode)}
+        controls={INERT_CONTROLS}
+      />
+    );
+  }
+
+  if (session.state === null || session.focusedContract === null) {
+    return <BattleScreen model={BATTLE_LOADING_SCREEN} controls={INERT_CONTROLS} />;
+  }
+
+  const contractId = session.focusedContract;
+
+  // A contract the abstract resolver answers, or one whose crew is not on the board yet:
+  // both are "there is no fight here", and the screen's own `Empty` says so.
+  if (controller.previewBattle(contractId, null) === null) {
+    return (
+      <BattleScreen
+        model={controller.battleScreen(contractId, null, 0) ?? BATTLE_LOADING_SCREEN}
+        controls={INERT_CONTROLS}
+      />
+    );
+  }
+
+  return <BattlePlayback contractId={contractId} port={controller} startPaused />;
 }

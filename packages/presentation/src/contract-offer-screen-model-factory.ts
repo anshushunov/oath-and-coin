@@ -1,16 +1,22 @@
 import {
   Actions,
+  COLUMNS,
   ContractStatus,
+  DOCTRINE_IDS,
   OfferPhase,
+  ROWS,
   ReasonCodes,
   commitmentOf,
   compareContentIds,
   compareStrings,
   divideTowardZero,
+  forecastReadiness,
+  resolutionInputFor,
   reservedCommitments,
   type CanonicalValue,
   type ContentId,
   type ContractState,
+  type DoctrineId,
   type GameState,
   type HeldTrait,
   type HeroId,
@@ -24,7 +30,11 @@ import {
   LeverDisabledKeys,
   PromiseTermsKeys,
   TITLE_KEY,
+  combatRoleKey,
   contractDisplayNameKey,
+  coverageVerdictKey,
+  needKey,
+  doctrineKey,
   tagKey,
   traitDisplayNameKey
 } from './keys.ts';
@@ -39,6 +49,9 @@ import {
   type HeroCard,
   type OfferLine,
   type PromiseTermsLine,
+  type DeploymentLine,
+  type DeploymentSlot,
+  type ForecastLine,
   type ReasonLine,
   type ResponseLine,
   type SettlementLine
@@ -113,6 +126,8 @@ export const LOADING_SCREEN: ContractOfferScreenModel = createContractOfferScree
   treasuryForecast: 0,
   promiseTerms: null,
   settlement: null,
+  deployment: null,
+  forecast: null,
   availableActions: []
 });
 
@@ -142,6 +157,8 @@ export function failedScreen(errorCode: string, errorDetail: string): ContractOf
     treasuryForecast: 0,
     promiseTerms: null,
     settlement: null,
+    deployment: null,
+    forecast: null,
     availableActions: []
   });
 }
@@ -207,6 +224,8 @@ export function contractOfferScreenModel(
       treasuryForecast: state.treasury,
       promiseTerms: null,
       settlement: null,
+      deployment: null,
+      forecast: null,
       availableActions: []
     });
   }
@@ -267,10 +286,125 @@ export function contractOfferScreenModel(
       contract.patronFee,
       heroDefinitionByHeroId
     ),
+    deployment: deploymentLineFor(contract, heroes, heroDefinitionByHeroId),
+    forecast: forecastLineFor(state, contract, heroes),
     // All six, always — the screen draws a dark control with a reason rather than deciding
     // which controls exist (`offer-actions.ts`).
     availableActions: availableActions(state, contract)
   });
+}
+
+/**
+ * The 3×3 and the two orders, or `null` when this contract will not be fought
+ * (`COMBAT_SPEC` §3.7).
+ *
+ * **Only once the package is locked**, which is the window §3.7 describes: the formation is
+ * a decision about a *known* crew, and a board offered before anybody has answered would be
+ * asking the player to place men who may not come.
+ *
+ * The cells are listed rather than left to a component's own loop: nine cells drawn from a
+ * screen's own arithmetic would be a second declaration of §3.1's field, and the two would
+ * disagree the day the field changes shape.
+ */
+function deploymentLineFor(
+  contract: ContractState,
+  heroes: readonly HeroState[],
+  heroDefinitionByHeroId: ReadonlyMap<HeroId, ContentId>
+): DeploymentLine | null {
+  if (contract.battle === null || contract.offer.phase !== OfferPhase.Locked) {
+    return null;
+  }
+
+  const standing = contract.offer.deployment;
+
+  const crew: readonly DeploymentSlot[] = contract.offer.acceptedBy.values().map((heroId) => {
+    const definition = heroDefinitionByHeroId.get(heroId);
+    const hero = heroes.find((one) => one.id === heroId);
+
+    if (definition === undefined || hero === undefined) {
+      throw new Error(
+        `The crew of '${contract.id}' names a hero the campaign does not carry. A screen ` +
+          'cannot draw a formation for somebody who is not in the roster, and inventing a ' +
+          'name for him is exactly the raw-identifier leak TDD §11.1 forbids.'
+      );
+    }
+
+    const cell = standing?.placement.get(heroId) ?? null;
+
+    return {
+      heroDefinition: definition,
+      displayNameKey: hero.displayNameKey,
+      roleKey: combatRoleKey(hero.role),
+      cell
+    };
+  });
+
+  return {
+    cells: ROWS.flatMap((row) => COLUMNS.map((column) => ({ row, column }))),
+    crew,
+    doctrineLever: {
+      chosen: standing?.doctrine ?? null,
+      options: DOCTRINE_IDS.map((doctrine) => ({
+        value: doctrine,
+        labelKey: doctrineKey(doctrine),
+        selected: standing?.doctrine === doctrine
+      })),
+      // Never dark: the three orders are always all three, and which one is right is the
+      // decision this block exists to put in front of the player.
+      disabledReasonKey: null
+    },
+    retreatBelowPercent: standing?.retreatBelowPercent ?? null,
+    placed: standing !== null
+  };
+}
+
+/**
+ * What the plan is risking, said before the crew is sent (`COMBAT_SPEC` §10.1).
+ *
+ * **Built here rather than in the debrief alone, and that is the whole point.** The debrief
+ * prints what the forecast promised beside what happened (§10.3), and until this existed the
+ * column named something no player had been shown — external review of segment E found it,
+ * and it was a hole in `DIRECTION_2026-08` §4.8 rather than a missing label: the control asks
+ * that knowledge of a person change a *preparation*, and a forecast that only appears
+ * afterwards cannot change one.
+ *
+ * **Only on a locked package of a contract that fights.** `forecastReadiness` answers for any
+ * input, but a forecast of a crew nobody has answered for is a forecast of a guess — and on a
+ * contract with no plan it is the abstract resolver's own coverage, which the offer screen
+ * already shows as needs.
+ *
+ * The formation reasons appear once the crew is placed and not before, which is
+ * `forecastReadiness`'s own rule: a plan whose formation does not exist has nothing to say
+ * about columns.
+ */
+function forecastLineFor(
+  state: GameState,
+  contract: ContractState,
+  heroes: readonly HeroState[]
+): ForecastLine | null {
+  if (contract.battle === null || contract.offer.phase !== OfferPhase.Locked) {
+    return null;
+  }
+
+  const forecast = forecastReadiness(
+    resolutionInputFor(state, contract, contract.offer.deployment?.retreatBelowPercent ?? null)
+  );
+
+  const displayNameKeyOf = (heroId: HeroId): string | null =>
+    heroes.find((hero) => hero.id === heroId)?.displayNameKey ?? null;
+
+  return {
+    objectives: forecast.objectives.map((one) => ({
+      needKey: needKey(one.need),
+      verdictKey: coverageVerdictKey(one.verdict)
+    })),
+    reasons: forecast.reasons.map((reason) => ({
+      key: reason.code,
+      needKey: reason.need === null ? null : needKey(reason.need),
+      heroDisplayNameKey: reason.hero === null ? null : displayNameKeyOf(reason.hero),
+      column: reason.column
+    }))
+  };
 }
 
 /**
@@ -807,6 +941,40 @@ export function describeContractOfferReadModel(model: ContractOfferScreenModel):
     promise_terms:
       validated.promiseTerms === null ? null : describePromiseTerms(validated.promiseTerms),
     settlement: validated.settlement === null ? null : describeSettlement(validated.settlement),
+    deployment:
+      validated.deployment === null
+        ? null
+        : {
+            cells: validated.deployment.cells.map((cell) => ({
+              row: cell.row,
+              column: cell.column
+            })),
+            crew: validated.deployment.crew.map((slot) => ({
+              hero_definition: slot.heroDefinition,
+              hero_display_name_key: slot.displayNameKey,
+              role_key: slot.roleKey,
+              row: slot.cell?.row ?? null,
+              column: slot.cell?.column ?? null
+            })),
+            doctrine_lever: describeChoiceLever(validated.deployment.doctrineLever),
+            retreat_below_percent: validated.deployment.retreatBelowPercent,
+            placed: validated.deployment.placed
+          },
+    forecast:
+      validated.forecast === null
+        ? null
+        : {
+            objectives: validated.forecast.objectives.map((one) => ({
+              need_key: one.needKey,
+              verdict_key: one.verdictKey
+            })),
+            reasons: validated.forecast.reasons.map((reason) => ({
+              key: reason.key,
+              need_key: reason.needKey,
+              hero_display_name_key: reason.heroDisplayNameKey,
+              column: reason.column
+            }))
+          },
     // Both halves of each entry. Which commands *exist* never changes, so a projection of
     // the actions alone would hash identically for a package waiting on its key hero and
     // one waiting on a settlement — and the whole content of this field is which of them
@@ -907,7 +1075,7 @@ function describeNumericLever(lever: NumericLever): CanonicalValue {
   };
 }
 
-function describeChoiceLever(lever: ChoiceLever<ContentId>): CanonicalValue {
+function describeChoiceLever(lever: ChoiceLever<ContentId | DoctrineId>): CanonicalValue {
   return {
     chosen: lever.chosen,
     options: lever.options.map(describeOption),
@@ -915,7 +1083,7 @@ function describeChoiceLever(lever: ChoiceLever<ContentId>): CanonicalValue {
   };
 }
 
-function describeOption(option: ChoiceOption<ContentId>): CanonicalValue {
+function describeOption(option: ChoiceOption<ContentId | DoctrineId>): CanonicalValue {
   return { value: option.value, label_key: option.labelKey, selected: option.selected };
 }
 

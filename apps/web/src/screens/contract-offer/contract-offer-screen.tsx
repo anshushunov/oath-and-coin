@@ -16,9 +16,12 @@ import {
   waveredKey,
   type AvailableAction,
   type ChoiceOption,
+  type Cell,
   type ContentId,
+  type DoctrineId,
   type ContractLine,
   type ContractOfferScreenModel,
+  type DeploymentLine,
   type HeroCard,
   type Lever,
   type NumericLever,
@@ -74,10 +77,20 @@ import { Captioned, KeyList, Label } from '../labels.tsx';
  */
 export function ContractOfferScreen({
   model,
-  controller
+  controller,
+  onBattle
 }: {
   readonly model: ContractOfferScreenModel;
   readonly controller: OfferScreenActions;
+  /**
+   * Whether sending this crew starts a fight the player watches before it is committed
+   * (`COMBAT_SPEC` §6.3), answered by the host.
+   *
+   * Here rather than on the read model, because the model carries no plan and giving it one
+   * so that a button could branch would put the enemy pattern on the negotiation screen —
+   * which is a thing the player is not told before he sends anybody.
+   */
+  readonly onBattle?: (contractId: ContentId) => boolean;
 }) {
   const text = useText();
   const [form, setForm] = useState(() => formFor(model));
@@ -183,12 +196,63 @@ export function ContractOfferScreen({
         />
       )}
 
+      {model.forecast === null ? null : (
+        <div className="forecast" data-testid="offer-forecast">
+          <Label text={text(OfferFieldKeys.Forecast)} />
+          <Label text={text(OfferFieldKeys.ForecastObjectives)} />
+          {model.forecast.objectives.map((objective) => (
+            <div className="row" key={objective.needKey}>
+              <Label text={text(objective.needKey)} />
+              <Label text={text(objective.verdictKey)} />
+            </div>
+          ))}
+          {model.forecast.reasons.length === 0 ? null : (
+            <>
+              <Label text={text(OfferFieldKeys.ForecastReasons)} />
+              {/*
+                In the model's own order, which is the ranking `DEC-006` asks for
+                (declaration order in `ForecastReasonCodes`). A screen that sorted them
+                would be choosing what to say first, which is the one thing this list is.
+              */}
+              {model.forecast.reasons.map((reason, index) => (
+                <div className="row" key={index}>
+                  <Label text={text(reason.key)} />
+                  {reason.needKey === null ? null : <Label text={text(reason.needKey)} />}
+                  {reason.heroDisplayNameKey === null ? null : (
+                    <Label text={text(reason.heroDisplayNameKey)} />
+                  )}
+                  {reason.column === null ? null : (
+                    <Captioned
+                      captionKey={OfferFieldKeys.ForecastColumn}
+                      value={String(reason.column)}
+                    />
+                  )}
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+
+      {model.deployment === null ? null : (
+        <FormationBlock
+          deployment={model.deployment}
+          draft={form.draft}
+          onChange={(draft) => {
+            setForm({ ...form, draft });
+          }}
+        />
+      )}
+
       <ActionsBlock
         actions={model.availableActions}
         canCompose={isSendable(form.draft, model)}
         rejectionKey={form.rejectionKey}
         onPress={(action) => {
-          setForm({ ...form, rejectionKey: press(controller, action, form.draft, model) });
+          setForm({
+            ...form,
+            rejectionKey: press(controller, action, form.draft, model, onBattle)
+          });
         }}
       />
     </section>
@@ -206,7 +270,13 @@ export function ContractOfferScreen({
  */
 export type OfferScreenActions = Pick<
   SessionController,
-  'composeOfferFromDraft' | 'askKeyHero' | 'lockOffer' | 'pollCrew' | 'resolveContract' | 'show'
+  | 'composeOfferFromDraft'
+  | 'askKeyHero'
+  | 'lockOffer'
+  | 'pollCrew'
+  | 'placeCrewFromDraft'
+  | 'resolveContract'
+  | 'show'
 >;
 
 /**
@@ -228,6 +298,47 @@ interface OfferForm {
   readonly methodTag: ContentId | null;
   readonly keyHero: ContentId | null;
   readonly invited: readonly ContentId[];
+  /**
+   * Where each man is to stand, keyed by his definition (`COMBAT_SPEC` §3.7).
+   *
+   * Part of the draft rather than of the model, for the reason the rest of this form is: it
+   * is what a player is *typing*, and until `placeCrew` takes it nothing about the campaign
+   * has moved. Once the command applies, the model carries the formation and this is rebuilt
+   * from it.
+   */
+  readonly placement: Readonly<Record<string, Cell>>;
+  readonly doctrine: DoctrineId | null;
+  readonly retreatBelowPercent: number;
+}
+
+/**
+ * The formation half of the draft, taken from the package when it already carries one.
+ *
+ * An applied `placeCrew` records the formation on the package, so starting again from the
+ * campaign is right — the same rule the rest of the draft follows. A contract that goes to no
+ * fight has no formation block at all, and the draft carries the empty one.
+ */
+function formationFor(
+  model: ContractOfferScreenModel
+): Pick<OfferForm, 'placement' | 'doctrine' | 'retreatBelowPercent'> {
+  const deployment = model.deployment;
+
+  if (deployment === null) {
+    return { placement: {}, doctrine: null, retreatBelowPercent: 0 };
+  }
+
+  return {
+    placement: Object.fromEntries(
+      deployment.crew.flatMap((slot) =>
+        slot.cell === null ? [] : [[slot.heroDefinition, slot.cell]]
+      )
+    ),
+    // A battle always has an order in force (`COMBAT_SPEC` §7.2) — "none" is not a state the
+    // rules have — so the draft starts on the first of the three rather than on nothing, and
+    // the player changes it or does not.
+    doctrine: deployment.doctrineLever.chosen ?? deployment.doctrineLever.options[0]?.value ?? null,
+    retreatBelowPercent: deployment.retreatBelowPercent ?? 0
+  };
 }
 
 interface FormState {
@@ -243,7 +354,10 @@ const EMPTY_FORM: OfferForm = {
   promisedBonus: 0,
   methodTag: null,
   keyHero: null,
-  invited: []
+  invited: [],
+  placement: {},
+  doctrine: null,
+  retreatBelowPercent: 0
 };
 
 /**
@@ -277,7 +391,8 @@ function formFor(model: ContractOfferScreenModel): FormState {
             promisedBonus: offer.bonusLever.value,
             methodTag: offer.methodLever.chosen,
             keyHero: offer.keyHeroLever.chosen,
-            invited: [...offer.crewLever.chosen]
+            invited: [...offer.crewLever.chosen],
+            ...formationFor(model)
           },
     rejectionKey: null
   };
@@ -314,7 +429,8 @@ function press(
   controller: OfferScreenActions,
   action: OfferAction,
   draft: OfferForm,
-  model: ContractOfferScreenModel
+  model: ContractOfferScreenModel,
+  onBattle?: (contractId: ContentId) => boolean
 ): string | null {
   const contractId = model.contract?.definition;
 
@@ -344,7 +460,36 @@ function press(
       return refusalOf(controller.lockOffer({ contractId }));
     case OfferAction.Poll:
       return refusalOf(controller.pollCrew({ contractId }));
+    case OfferAction.Place:
+      // Everything the draft holds, handed over as it stands. A man with no cell is sent
+      // without one and `placeCrew` refuses by name (`unplaced_hero`) — the screen does not
+      // pre-empt that, for the reason it pre-empts nothing else: the refusal the player
+      // reads is the engine's own, and a guard here would be a second set of rules.
+      return draft.doctrine === null
+        ? null
+        : refusalOf(
+            controller.placeCrewFromDraft(contractId, {
+              placement:
+                model.deployment?.crew.flatMap((slot) => {
+                  const cell = draft.placement[slot.heroDefinition];
+
+                  return cell === undefined ? [] : [{ hero: slot.heroDefinition, cell }];
+                }) ?? [],
+              doctrine: draft.doctrine,
+              retreatBelowPercent: draft.retreatBelowPercent
+            })
+          );
     case OfferAction.Resolve:
+      // A contract that goes to a fight is not resolved by pressing this: the fight is
+      // watched first, and the outcome is committed at the end of it with whatever the
+      // player decided about withdrawing (`COMBAT_SPEC` §6.3). `onBattle` answers whether
+      // this is such a contract, and it is the host's question rather than the screen's —
+      // the read model carries no plan, and giving it one so that a button could branch
+      // would put the enemy pattern on the negotiation screen.
+      if (onBattle?.(contractId) === true) {
+        return null;
+      }
+
       return refusalOf(controller.resolveContract({ retreatAtRound: null, contractId }));
     case OfferAction.Settle:
       controller.show(ScreenKind.AfterAction);
@@ -955,6 +1100,145 @@ function SettlementBlock({
           value={String(settlement.treasuryIfBroken)}
         />
       </div>
+    </div>
+  );
+}
+
+/**
+ * The 3×3, the order and the threshold (`COMBAT_SPEC` §3.7, §7.2, §7.4).
+ *
+ * **The board comes from the model.** Nine cells drawn from a loop written here would be a
+ * second declaration of §3.1's field, and the two would part company the day the field
+ * changes shape.
+ *
+ * **Nothing is decided here.** Pressing a cell moves a man in the *draft* and nothing else;
+ * a man already standing on that cell is turned out of it, because two men on one cell is
+ * what `placeCrew` refuses by name (`cell_taken`) and letting a player build that state and
+ * then telling him about it is the failure `NEGOTIATION_SPEC` §5.1's dark controls exist to
+ * avoid. Everything else the command can refuse — an unplaced hero, a contract with no plan
+ * — is left to the engine, whose refusal the player reads.
+ */
+function FormationBlock({
+  deployment,
+  draft,
+  onChange
+}: {
+  readonly deployment: DeploymentLine;
+  readonly draft: OfferForm;
+  readonly onChange: (draft: OfferForm) => void;
+}) {
+  const text = useText();
+  const [holding, setHolding] = useState<ContentId | null>(
+    deployment.crew[0]?.heroDefinition ?? null
+  );
+
+  const standingOn = (cell: Cell): ContentId | null =>
+    Object.entries(draft.placement).find(
+      ([, at]) => at.row === cell.row && at.column === cell.column
+    )?.[0] as ContentId | null;
+
+  return (
+    <div className="formation" data-testid="offer-formation">
+      <Label text={text(OfferFieldKeys.Formation)} />
+
+      <div className="formation-crew">
+        {deployment.crew.map((slot) => {
+          const cell = draft.placement[slot.heroDefinition];
+
+          return (
+            <button
+              key={slot.heroDefinition}
+              type="button"
+              data-testid={`formation-hero-${slot.heroDefinition}`}
+              aria-pressed={holding === slot.heroDefinition}
+              onClick={() => {
+                setHolding(slot.heroDefinition);
+              }}
+            >
+              <Label text={text(slot.displayNameKey)} />
+              <Label text={text(slot.roleKey)} />
+              {cell === undefined ? (
+                <Label text={text(OfferFieldKeys.Unplaced)} />
+              ) : (
+                <>
+                  <Label text={text(OfferFieldKeys.Cell)} />
+                  <Label text={String(cell.row)} />
+                  <Label text={String(cell.column)} />
+                </>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/*
+        Bottom-up, so row 1 is nearest the enemy on this board as it is on the battle
+        screen's (`battle-scene-model.ts` draws the crew's front rank at the bottom for the
+        same reason). A player who places a man "at the top" here and finds him at the bottom
+        there is being shown two different boards for one formation. The *order of the texts*
+        is the model's and is unchanged; where they land is layout, which is this component's.
+      */}
+      <div className="formation-board" data-testid="formation-board">
+        {[...deployment.cells]
+          // Rows reversed, columns left alone. Reversing the flat list turns the board
+          // inside out as well as upside down, and the frame showed exactly that: column 3
+          // on the left. Found by looking, and by nothing else — a grid of nine buttons is
+          // the right nine buttons in either order.
+          .sort((left, right) => right.row - left.row || left.column - right.column)
+          .map((cell) => (
+            <button
+              key={`${String(cell.row)}:${String(cell.column)}`}
+              type="button"
+              data-testid={`formation-cell-${String(cell.row)}-${String(cell.column)}`}
+              onClick={() => {
+                if (holding === null) {
+                  return;
+                }
+
+                const evicted = standingOn(cell);
+                const next = { ...draft.placement, [holding]: cell };
+
+                if (evicted !== null && evicted !== holding) {
+                  delete next[evicted];
+                }
+
+                onChange({ ...draft, placement: next });
+              }}
+            >
+              <Label text={String(cell.row)} />
+              <Label text={String(cell.column)} />
+            </button>
+          ))}
+      </div>
+
+      <div className="formation-doctrine">
+        <Label text={text(OfferFieldKeys.Doctrine)} />
+        {deployment.doctrineLever.options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            data-testid={`formation-doctrine-${option.value}`}
+            aria-pressed={draft.doctrine === option.value}
+            onClick={() => {
+              onChange({ ...draft, doctrine: option.value });
+            }}
+          >
+            {text(option.labelKey)}
+          </button>
+        ))}
+      </div>
+
+      <label className="formation-retreat">
+        <Label text={text(OfferFieldKeys.RetreatBelow)} />
+        <input
+          type="number"
+          data-testid="formation-retreat-below"
+          value={draft.retreatBelowPercent}
+          onChange={(event) => {
+            onChange({ ...draft, retreatBelowPercent: Number(event.target.value) });
+          }}
+        />
+      </label>
     </div>
   );
 }

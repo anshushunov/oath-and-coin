@@ -3,9 +3,12 @@ import { LOADING_SCREEN, ScreenKind } from '@oath-and-coin/presentation';
 import {
   composeOffer as applyComposeOffer,
   lockOffer as applyLockOffer,
+  placeCrew as applyPlaceCrew,
   pollCrew as applyPollCrew,
   proposeContractToHero as applyProposeContractToHero,
   resolveContract as applyResolveContract,
+  resolutionInputFor,
+  resolverFor,
   settleContract as applySettleContract,
   RejectionCodes,
   heroId,
@@ -16,11 +19,17 @@ import {
   type GameState,
   type HeroId,
   type LockOffer,
+  type BattleRecord,
+  type Cell,
+  type DoctrineId,
+  type PlaceCrew,
   type PollCrew,
   type ProposeContractToHero,
   type ResolveContract,
   type SettleContract
 } from '@oath-and-coin/simulation';
+
+import { battleScreenModel, type BattleScreenModel } from '@oath-and-coin/presentation';
 
 import type { SaveStorePort } from './ports.ts';
 import { buildSave, readSave, snapshotHash } from './save/envelope.ts';
@@ -169,6 +178,19 @@ export interface OfferDraft {
   readonly invited: readonly ContentId[];
 }
 
+/**
+ * A formation as a screen holds it (`COMBAT_SPEC` §3.7), in content definitions.
+ *
+ * A man with no cell is simply absent from `placement` rather than carried with a `null`:
+ * `placeCrew` refuses a crew somebody is missing from by name (`unplaced_hero`), and a
+ * screen that filtered him out silently would be answering a question the engine asks.
+ */
+export interface DeploymentDraft {
+  readonly placement: readonly { readonly hero: ContentId; readonly cell: Cell }[];
+  readonly doctrine: DoctrineId;
+  readonly retreatBelowPercent: number;
+}
+
 export interface SessionController {
   /** The observable session. A screen subscribes here; nothing else publishes to it. */
   readonly store: Store<SessionState>;
@@ -249,6 +271,74 @@ export interface SessionController {
    * does: an outcome is not anybody's choice, so there is nothing for a trace to explain
    * (`ADR-007`). A caller reading `decisions` will correctly find it empty.
    */
+  /**
+   * Puts the crew on the 3x3 and fixes the two orders it fights under (`COMBAT_SPEC` §3.7).
+   *
+   * The seventh command, and the one that makes a battle possible: the formation, the
+   * doctrine and the withdrawal threshold live on the *package*, not on the send, because
+   * they are decided before the crew leaves and a send that carried them would let a player
+   * change his mind after he had committed to it. `resolveContract` on a battle contract
+   * with nobody placed is refused by name (`rejected.crew_not_placed`).
+   */
+  placeCrew(input: NegotiationCommandInput<PlaceCrew>): CommandResult;
+  /**
+   * The same command, in the screen's own identifiers — the counterpart of
+   * {@link composeOfferFromDraft}, and for the identical reason.
+   *
+   * `placeCrew` takes `HeroId`s and the read model carries content definitions, so somebody
+   * has to turn one into the other; doing it here rather than in the screen means a
+   * definition this campaign does not carry becomes an id it does not carry, and the engine
+   * refuses it in its own order alongside every other fault the formation may have.
+   */
+  placeCrewFromDraft(contractId: ContentId, draft: DeploymentDraft): CommandResult;
+  /**
+   * Runs `contractId`'s battle **without committing anything**, so it can be watched before
+   * it becomes the campaign's own past (`COMBAT_SPEC` §6.3).
+   *
+   * This is how the retreat signal works at all. The feed plays the fight once with `null`;
+   * pressing the button re-runs it with the round filled in, and by §9's determinism every
+   * event before that round is identical — the player watched a prefix of what he is about
+   * to get. Neither run touches the store, and the command that finally does is dispatched
+   * with the same `retreatAtRound` the preview was built with.
+   *
+   * `null` when the contract carries no battle, when there is no campaign, or when the crew
+   * has not been placed: the same three absences the battle screen already reads as "there
+   * is nothing to watch".
+   */
+  previewBattle(contractId: ContentId, retreatAtRound: number | null): BattleRecord | null;
+  /**
+   * The battle this contract's stored resolution carries, or `null` when it carries none.
+   *
+   * What a replay plays. {@link previewBattle} would answer with a battle that is *equal* to
+   * it by §9's determinism, and equal is not the same claim: the record on the resolution is
+   * the fight the campaign is judged on, and a screen headed "watch it again" that ran the
+   * resolver a second time would be showing a re-enactment.
+   */
+  battleOf(contractId: ContentId): BattleRecord | null;
+  /**
+   * The battle screen for `record` at position `applied`, built and **not published**.
+   *
+   * A playback position changes sixty times a second and belongs to whatever is holding the
+   * clock; publishing each one would put an animation coordinate through the session store,
+   * the read-model hash and every subscriber. So this is a read: the host asks for the frame
+   * it is on, and the store keeps holding the screen the campaign is on.
+   */
+  battleScreen(
+    contractId: ContentId,
+    /**
+     * The battle to play, or `null` for whatever the contract already carries.
+     *
+     * `null` is not "no battle": it is "the stored one", which on a contract that never
+     * fights is nothing at all and the screen's own `Empty` says so.
+     */
+    record: BattleRecord | null,
+    applied: number,
+    /** Whether the feed is waiting for the player, and at which of the two speeds. */
+    paused?: boolean,
+    speed?: number,
+    /** Whether a withdrawal can still be signalled — `false` on a replay (§6.3). */
+    retreatOffered?: boolean
+  ): BattleScreenModel | null;
   resolveContract(input: NegotiationCommandInput<ResolveContract>): CommandResult;
   settleContract(input: NegotiationCommandInput<SettleContract>): CommandResult;
   /**
@@ -463,6 +553,70 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
         input.contractId,
         (state, commandId, expectedStateVersion) =>
           applyPollCrew(state, { ...input, commandId, expectedStateVersion })
+      ),
+    previewBattle: (contractId, retreatAtRound) => {
+      const campaign = store.snapshot().state;
+      const contract = campaign?.contracts.get(contractId);
+
+      if (campaign === null || campaign === undefined || contract === undefined) {
+        return null;
+      }
+
+      if (contract.battle === null || contract.offer.deployment === null) {
+        return null;
+      }
+
+      return (
+        resolverFor(contract)(resolutionInputFor(campaign, contract, retreatAtRound)).resolution
+          .battle ?? null
+      );
+    },
+    battleOf: (contractId) =>
+      store.snapshot().state?.contracts.get(contractId)?.resolution?.battle ?? null,
+    battleScreen: (
+      contractId,
+      record,
+      applied,
+      paused = false,
+      speed = 1,
+      retreatOffered = true
+    ) => {
+      const campaign = store.snapshot().state;
+
+      if (campaign === null) {
+        return null;
+      }
+
+      return battleScreenModel(campaign, contractId, {
+        applied,
+        paused,
+        speed,
+        retreatOffered,
+        ...(record === null ? {} : { record })
+      });
+    },
+    placeCrewFromDraft: (contractId, draft) =>
+      dispatchNegotiationCommand(store, contractId, (state, commandId, expectedStateVersion) => {
+        const resolve = heroIdResolver(state);
+
+        return applyPlaceCrew(state, {
+          commandId,
+          contractId,
+          expectedStateVersion,
+          placement: draft.placement.map((slot) => ({
+            hero: resolve(slot.hero),
+            cell: slot.cell
+          })),
+          doctrine: draft.doctrine,
+          retreatBelowPercent: draft.retreatBelowPercent
+        });
+      }),
+    placeCrew: (input) =>
+      dispatchNegotiationCommand(
+        store,
+        input.contractId,
+        (state, commandId, expectedStateVersion) =>
+          applyPlaceCrew(state, { ...input, commandId, expectedStateVersion })
       ),
     resolveContract: (input) =>
       dispatchNegotiationCommand(

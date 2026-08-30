@@ -560,3 +560,64 @@ describe('statuses expire, and bleeding names who caused it', () => {
     ).toHaveLength(1);
   });
 });
+
+describe('what a retreat signal leaves untouched (COMBAT_SPEC §6.3, §9)', () => {
+  it('changes nothing before the round it is given for', () => {
+    // **The property the battle screen rests on.** §6.3 says the feed plays the fight once
+    // with `null` and the button re-runs it with the round filled in, and that only holds
+    // together if "everything before that round" is the same list — the player must be
+    // watching a prefix of what he is about to get, not a different fight with a familiar
+    // beginning.
+    //
+    // The boundary is the round's own start and not the moment of the press: `runBattle`
+    // processes the signal before anybody acts in that round, so the events already seen
+    // *inside* it belong to a fight that no longer happens. External review of segment E
+    // found the screen keeping its position across that boundary; this is the claim the
+    // fix is written against.
+    const units = [
+      unitFrom({
+        id: 'crew:a',
+        side: 'crew',
+        hero: heroId(0),
+        role: CombatRole.Vanguard,
+        cell: { row: 1, column: 1 },
+        combat: { might: 40, guard: 40, aim: 40, focus: 40, care: 20 }
+      }),
+      unitFrom({
+        id: 'crew:b',
+        side: 'crew',
+        hero: heroId(1),
+        role: CombatRole.Rear,
+        cell: { row: 3, column: 2 },
+        combat: { might: 30, guard: 30, aim: 60, focus: 50, care: 20 }
+      }),
+      unitFrom({
+        id: 'foe:a',
+        side: 'foe',
+        hero: null,
+        role: CombatRole.Vanguard,
+        cell: { row: 1, column: 1 },
+        combat: { might: 50, guard: 55, aim: 30, focus: 45, care: 10 }
+      })
+    ];
+
+    const quiet = runBattle(startBattle(units, DoctrineId.HoldTheLine));
+
+    for (const round of [2, 3]) {
+      const signalled = runBattle(startBattle(units, DoctrineId.HoldTheLine), {
+        belowPercent: 0,
+        signalledAtRound: round
+      });
+
+      const opening = signalled.events.findIndex(
+        (event) => event.kind === 'round_started' && event.round === round
+      );
+
+      expect(opening, `round ${String(round)} never started`).toBeGreaterThan(0);
+      expect(
+        signalled.events.slice(0, opening),
+        `the fight before round ${String(round)} must be the fight nobody signalled in`
+      ).toEqual(quiet.events.slice(0, opening));
+    }
+  });
+});

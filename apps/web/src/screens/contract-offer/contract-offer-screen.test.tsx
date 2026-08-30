@@ -209,6 +209,7 @@ function fakeController(refusal: RejectionCode | null = null): FakeController {
     askKeyHero: answer('askKeyHero'),
     lockOffer: answer('lockOffer'),
     pollCrew: answer('pollCrew'),
+    placeCrewFromDraft: answer('placeCrewFromDraft'),
     resolveContract: answer('resolveContract'),
     show: answer('show')
   };
@@ -829,7 +830,9 @@ function draftModel(): ContractOfferScreenModel {
       breachKey: PromiseTermsKeys.Breach,
       bonus: 25
     },
-    settlement: null
+    settlement: null,
+    deployment: null,
+    forecast: null
   });
 }
 
@@ -895,7 +898,9 @@ function lockedUncrewedModel(): ContractOfferScreenModel {
     treasuryForecast: 335,
     availableActions: LIVE_ACTIONS,
     promiseTerms: null,
-    settlement: null
+    settlement: null,
+    deployment: null,
+    forecast: null
   });
 }
 
@@ -977,6 +982,8 @@ function crewedModel(): ContractOfferScreenModel {
       breachKey: PromiseTermsKeys.Breach,
       bonus: 10
     },
+    deployment: null,
+    forecast: null,
     settlement: {
       promisedBonus: 10,
       keyHeroDefinition: 'core:bram',

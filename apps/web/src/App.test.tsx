@@ -129,6 +129,13 @@ function gatedController(run: RunRequest): {
       store,
       start: () => started,
       save: (slot) => inner.save(slot),
+      placeCrew: (input) => inner.placeCrew(input),
+      placeCrewFromDraft: (contractId, draft) => inner.placeCrewFromDraft(contractId, draft),
+      previewBattle: (contractId, retreatAtRound) =>
+        inner.previewBattle(contractId, retreatAtRound),
+      battleOf: (contractId) => inner.battleOf(contractId),
+      battleScreen: (contractId, record, applied) =>
+        inner.battleScreen(contractId, record, applied),
       load: (slot) => inner.load(slot),
       slots: () => inner.slots(),
       focus: (contractId) => {
@@ -165,7 +172,8 @@ describe('the page while its session is still arriving', () => {
       checkpoint: null,
       seed: 424242n,
       locale: 'ru',
-      screen: 'contract-offer'
+      screen: 'contract-offer',
+      contract: null
     });
     const { container } = mount(<App createController={() => gated.controller} />);
 
@@ -178,7 +186,8 @@ describe('the page while its session is still arriving', () => {
       checkpoint: null,
       seed: 424242n,
       locale: 'ru',
-      screen: 'contract-offer'
+      screen: 'contract-offer',
+      contract: null
     });
     const { container } = mount(<App createController={() => gated.controller} />);
 
@@ -210,7 +219,8 @@ describe('the page when the campaign moves to the debrief', () => {
       checkpoint: null,
       seed: 424242n,
       locale: 'ru',
-      screen: 'contract-offer'
+      screen: 'contract-offer',
+      contract: null
     });
     const { container } = mount(<App createController={() => gated.controller} />);
 
@@ -251,7 +261,8 @@ describe('a page taken down while its session is still arriving', () => {
       checkpoint: null,
       seed: 424242n,
       locale: 'ru',
-      screen: 'contract-offer'
+      screen: 'contract-offer',
+      contract: null
     });
     const { container, unmount } = mount(<App createController={() => gated.controller} />);
     expect(gated.subscribers()).toBe(1);

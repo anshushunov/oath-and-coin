@@ -14,6 +14,16 @@ import {
   ACTION_KEYS,
   AFTER_ACTION_FIELD_KEYS,
   AFTER_ACTION_STATE_KEYS,
+  BATTLE_CONTROL_KEYS,
+  BATTLE_EVENT_KEYS,
+  BATTLE_FIELD_KEYS,
+  BATTLE_OUTCOME_KEYS,
+  BATTLE_STATE_KEYS,
+  BATTLE_STATUS_KEYS,
+  BATTLE_TITLE_KEY,
+  COMBAT_ACTION_KEYS,
+  COMBAT_ROLE_KEYS,
+  DOCTRINE_KEYS,
   AFTER_ACTION_TITLE_KEY,
   COMMITMENT_STATE_KEYS,
   CONSEQUENCE_KIND_KEYS,
@@ -57,7 +67,14 @@ import {
   tagKey,
   traitDisplayNameKey
 } from '@oath-and-coin/presentation';
-import { OUTCOME_REASON_CODES, REASON_CODES } from '@oath-and-coin/simulation';
+import {
+  BLOCK_REASONS,
+  FORECAST_REASON_CODES,
+  MOTIVE_REASONS,
+  OUTCOME_REASON_CODES,
+  REASON_CODES,
+  TARGET_REASONS
+} from '@oath-and-coin/simulation';
 
 /**
  * The completeness check that has nowhere else to live, now holding two catalogues
@@ -305,7 +322,41 @@ function everyKeyTheInterfaceCanShow(): readonly string[] {
     // exactly as `REASON_CODES` is on the content side above. The two vocabularies are
     // held disjoint by `outcome-reason-codes.test.ts`, so no code can land on both sides
     // of the catalogue boundary through this pair of lists.
-    ...OUTCOME_REASON_CODES
+    ...OUTCOME_REASON_CODES,
+    // The battle screen (`COMBAT_SPEC` §10.2). The same class as the debrief's above: every
+    // one of these is a text the *interface* invents about a closed engine vocabulary — a
+    // role, an action, a doctrine, a status, an outcome, the line an event is called — plus
+    // the screen's own captions and the five controls.
+    //
+    // **Two lists that are the engine's own and not built here.** `TARGET_REASONS`,
+    // `BLOCK_REASONS` and `MOTIVE_REASONS` are already localization keys on the events that
+    // carry them (`battle-reasons.ts` says so in its own header), exactly as `REASON_CODES`
+    // and `OUTCOME_REASON_CODES` are — so the intent line prints one straight off the event,
+    // and building a second spelling in `keys.ts` would be the drift `TDD` §11.1 forbids.
+    //
+    // **`battle.status.bleeding` is in this list and no action in the build applies it.** The
+    // vocabulary is closed by `STATUS_IDS`, and picking the subset the current rules happen
+    // to reach would be a hand-maintained second declaration of a closed set — and would
+    // leave the status with no text on the day something starts applying it. That nothing
+    // does today is recorded in `COMBAT_SPEC` §16.3, not papered over here.
+    BATTLE_TITLE_KEY,
+    ...BATTLE_STATE_KEYS,
+    ...BATTLE_FIELD_KEYS,
+    ...BATTLE_CONTROL_KEYS,
+    ...BATTLE_EVENT_KEYS,
+    ...BATTLE_OUTCOME_KEYS,
+    ...BATTLE_STATUS_KEYS,
+    ...COMBAT_ACTION_KEYS,
+    ...COMBAT_ROLE_KEYS,
+    ...DOCTRINE_KEYS,
+    ...TARGET_REASONS,
+    ...BLOCK_REASONS,
+    ...MOTIVE_REASONS,
+    // The forecast's own vocabulary (`COMBAT_SPEC` §10.1). The engine's list, like the three
+    // above it: a `ForecastReasonCodes` member is already a dotted lowercase key, and its
+    // declaration order is the ranking `DEC-006` asks for — so nothing builds these, and
+    // what the interface owes is the sentence.
+    ...FORECAST_REASON_CODES
   ];
 }
 

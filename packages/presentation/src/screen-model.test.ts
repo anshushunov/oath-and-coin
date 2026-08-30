@@ -21,6 +21,13 @@ import {
   createContractOfferScreenModel,
   type ContractOfferScreenModel
 } from './contract-offer-screen-model.ts';
+import {
+  BATTLE_LOADING_SCREEN,
+  battleFailedScreen,
+  battleScreenModel,
+  createBattleScreenModel,
+  type BattleScreenContent
+} from './battle-screen-model.ts';
 import { expectedSnapshot } from './rendered-ui-snapshot.ts';
 import { SCREEN_KINDS, ScreenKind } from './screen-kind.ts';
 import { describeReadModel, readModelHash, type ScreenModel } from './screen-model.ts';
@@ -34,6 +41,7 @@ import {
   withContracts,
   withHeroes
 } from './testing/fixtures.ts';
+import { fought } from './testing/fought.ts';
 
 /**
  * The union the session shows one of.
@@ -121,11 +129,15 @@ function aResolvedState() {
 
 function everyScreen(): readonly ScreenModel[] {
   const resolved = aResolvedState();
+  // A campaign that actually went to a fight, so the fourth screen is a battle rather than
+  // the "nothing to watch" shape every other campaign here produces.
+  const battle = fought();
 
   return [
     contractOfferScreenModel(withHeroes(aState(), [soldier]), [aStep()]),
     afterActionScreenModel(resolved, ids.caravan),
-    contractBoardScreenModel(resolved)
+    contractBoardScreenModel(resolved),
+    battleScreenModel(battle.state, battle.contractId, { applied: 0 })
   ];
 }
 
@@ -135,15 +147,20 @@ function everyScreenWithNoCampaign(): readonly ScreenModel[] {
     LOADING_SCREEN,
     AFTER_ACTION_LOADING_SCREEN,
     CONTRACT_BOARD_LOADING_SCREEN,
+    BATTLE_LOADING_SCREEN,
     afterActionFailedScreen('CONTENT_ROOT_NOT_FOUND', 'nowhere'),
-    contractBoardFailedScreen('CONTENT_ROOT_NOT_FOUND', 'nowhere')
+    contractBoardFailedScreen('CONTENT_ROOT_NOT_FOUND', 'nowhere'),
+    battleFailedScreen('CONTENT_ROOT_NOT_FOUND', 'nowhere')
   ];
 }
 
 const catalogue = new Map(
-  ['screen.contract_offer.title', 'screen.after_action.title', 'screen.contract_board.title'].map(
-    (key) => [key, key]
-  )
+  [
+    'screen.contract_offer.title',
+    'screen.after_action.title',
+    'screen.contract_board.title',
+    'screen.battle.title'
+  ].map((key) => [key, key])
 );
 
 /** The three models' own content, without the field their gates stamp. */
@@ -173,7 +190,8 @@ describe('the discriminant', () => {
     expect(everyScreen().map((model) => model.screen)).toEqual([
       ScreenKind.ContractOffer,
       ScreenKind.AfterAction,
-      ScreenKind.ContractBoard
+      ScreenKind.ContractBoard,
+      ScreenKind.Battle
     ]);
   });
 
@@ -194,13 +212,19 @@ describe('the discriminant', () => {
     expect(createContractBoardScreenModel({ ...boardContent(), ...foreign }).screen).toBe(
       ScreenKind.ContractBoard
     );
+    expect(
+      createBattleScreenModel({
+        ...(BATTLE_LOADING_SCREEN as BattleScreenContent),
+        ...foreign
+      }).screen
+    ).toBe(ScreenKind.Battle);
   });
 
   it('survives a spread of a finished model back through its own gate', () => {
     // The other half: a model that has already been stamped is re-validated in two places
     // (the projection and the snapshot walk), and a spread of it carries the field along.
     // A gate that dropped it there would leave those two readers narrowing on `undefined`.
-    const [offer, debrief, board] = everyScreen();
+    const [offer, debrief, board, battle] = everyScreen();
 
     expect(createContractOfferScreenModel({ ...offer! } as never).screen).toBe(
       ScreenKind.ContractOffer
@@ -211,6 +235,7 @@ describe('the discriminant', () => {
     expect(createContractBoardScreenModel({ ...board! } as never).screen).toBe(
       ScreenKind.ContractBoard
     );
+    expect(createBattleScreenModel({ ...battle! } as never).screen).toBe(ScreenKind.Battle);
   });
 
   it('names one screen per kind the union declares', () => {

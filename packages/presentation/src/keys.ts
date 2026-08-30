@@ -22,18 +22,28 @@
 
 import {
   ACTIONS,
+  BATTLE_OUTCOMES,
+  COMBAT_ACTIONS,
+  COMBAT_ROLES,
   CommitmentState,
   ConsequenceKind,
   CoverageVerdict,
+  DOCTRINE_IDS,
   DeficitKind,
   NEED_IDS,
   OfferPhase,
   OutcomeGrade,
   RejectionCodes,
+  STATUS_IDS,
   contentIdName,
   contentIdNamespace,
+  type BattleOutcome,
+  type CombatAction,
+  type CombatRole,
   type ContentId,
-  type NeedId
+  type DoctrineId,
+  type NeedId,
+  type StatusId
 } from '@oath-and-coin/simulation';
 
 import { CONTRACT_AVAILABILITIES, type ContractAvailability } from './contract-availability.ts';
@@ -52,6 +62,7 @@ export const TITLE_KEY = 'screen.contract_offer.title';
  */
 export const AFTER_ACTION_TITLE_KEY = 'screen.after_action.title';
 export const CONTRACT_BOARD_TITLE_KEY = 'screen.contract_board.title';
+export const BATTLE_TITLE_KEY = 'screen.battle.title';
 
 /**
  * A content tag's key (`target:cult` → `tag.target.cult`).
@@ -272,7 +283,27 @@ export const OfferFieldKeys = Object.freeze({
   MaxAdvance: 'field.offer.max_advance',
   MaxBonus: 'field.offer.max_bonus',
   Shortfall: 'field.offer.shortfall',
-  LockCommitment: 'field.offer.lock_commitment'
+  LockCommitment: 'field.offer.lock_commitment',
+  /**
+   * The formation block (`COMBAT_SPEC` §3.7), which lives on the package because it is
+   * decided before the crew leaves and not at the moment of sending.
+   */
+  Formation: 'field.offer.formation',
+  Cell: 'field.offer.cell',
+  Unplaced: 'field.offer.unplaced',
+  Doctrine: 'field.offer.doctrine',
+  RetreatBelow: 'field.offer.retreat_below',
+  /**
+   * The forecast, said before the crew goes (`COMBAT_SPEC` §10.1).
+   *
+   * Its own captions rather than the debrief's: over there the same three words are what
+   * *happened*, here they are what is *expected*, and one text describing both would say
+   * neither. The column heading on the debrief is `AfterActionFieldKeys.Promised`.
+   */
+  Forecast: 'field.offer.forecast',
+  ForecastObjectives: 'field.offer.forecast_objectives',
+  ForecastReasons: 'field.offer.forecast_reasons',
+  ForecastColumn: 'field.offer.forecast_column'
 });
 
 export const OFFER_FIELD_KEYS: readonly string[] = Object.freeze(Object.values(OfferFieldKeys));
@@ -428,7 +459,15 @@ export const SAVES_TITLE_KEY = 'screen.saves.title';
  */
 export const ScreenLinkKeys = Object.freeze({
   OpenSaves: 'screen.saves.open',
-  OpenContractOffer: 'screen.contract_offer.open'
+  OpenContractOffer: 'screen.contract_offer.open',
+  /**
+   * Leaving a finished fight for its debrief (`COMBAT_SPEC` §10.2 → §10.3).
+   *
+   * A screen link rather than one of the battle screen's own controls, and for the reason
+   * every link is one: the rendered-UI snapshot is collected from the screen element, and a
+   * control that navigates *away* from a screen must not be part of that screen's evidence.
+   */
+  OpenAfterAction: 'screen.after_action.open'
 });
 
 export const SCREEN_LINK_KEYS: readonly string[] = Object.freeze(Object.values(ScreenLinkKeys));
@@ -564,7 +603,14 @@ export const AfterActionFieldKeys = Object.freeze({
   Dominant: 'field.after_action.dominant',
   Consequences: 'field.after_action.consequences',
   ConsequenceMagnitude: 'field.after_action.consequence_magnitude',
-  PatronPays: 'field.after_action.patron_pays'
+  PatronPays: 'field.after_action.patron_pays',
+  /** The new column of `COMBAT_SPEC` §10.3: what the forecast said before the crew went. */
+  Promised: 'field.after_action.promised',
+  /** The new section of §10.3: the battle's own feed, and the two facts about the fight. */
+  Battle: 'field.after_action.battle',
+  BattleOutcome: 'field.after_action.battle_outcome',
+  Rounds: 'field.after_action.rounds',
+  RetreatSignalled: 'field.after_action.retreat_signalled'
 });
 
 export const AFTER_ACTION_FIELD_KEYS: readonly string[] = Object.freeze(
@@ -668,6 +714,154 @@ export const OutcomeEventKeys = Object.freeze({
 });
 
 export const OUTCOME_EVENT_KEYS: readonly string[] = Object.freeze(Object.values(OutcomeEventKeys));
+
+/**
+ * Everything the battle screen names (`COMBAT_SPEC` §10.2).
+ *
+ * **The reason codes are not here, and that is not an omission.** `TargetReasons`,
+ * `BlockReasons` and `MotiveReasons` are already localization keys in the simulation — the
+ * intent line prints one straight off the event — so a builder here would be a second
+ * spelling of a set that already has one, which is the exact failure `TDD` §11.1 names.
+ * The completeness check reads them from the engine's own lists.
+ */
+export function battleStateKey(state: ScreenState): string {
+  return `screen.battle.state.${state.toLowerCase()}`;
+}
+
+export const BATTLE_STATE_KEYS: readonly string[] = Object.freeze(
+  SCREEN_STATES.map(battleStateKey)
+);
+
+/** Which of the four jobs a unit holds (`COMBAT_SPEC` §3.3). */
+export function combatRoleKey(role: CombatRole): string {
+  return `battle.role.${role}`;
+}
+
+export const COMBAT_ROLE_KEYS: readonly string[] = Object.freeze(COMBAT_ROLES.map(combatRoleKey));
+
+/** What a unit did on its turn (`COMBAT_SPEC` §4.1). */
+export function combatActionKey(action: CombatAction): string {
+  return `battle.action.${action}`;
+}
+
+export const COMBAT_ACTION_KEYS: readonly string[] = Object.freeze(
+  COMBAT_ACTIONS.map(combatActionKey)
+);
+
+/** The order the crew went out under (`COMBAT_SPEC` §7.2). */
+export function doctrineKey(doctrine: DoctrineId): string {
+  return `battle.doctrine.${doctrine}`;
+}
+
+export const DOCTRINE_KEYS: readonly string[] = Object.freeze(DOCTRINE_IDS.map(doctrineKey));
+
+/**
+ * A status, twice: what it is called, and the glyph beside it.
+ *
+ * **Two keys per status rather than one, because §10.2 п.5 asks for it.** The spike's scene
+ * carried side *and* status on the colour channel, which is the case colour blindness breaks
+ * outright (`GDD` §16.6): the tint says nothing on its own, so the mark and the word carry
+ * it. The glyph is a key like everything else — a component that typed one in would be
+ * inventing a player-facing string.
+ */
+export function battleStatusKey(status: StatusId): string {
+  return `battle.status.${status}`;
+}
+
+export function battleStatusMarkKey(status: StatusId): string {
+  return `battle.status.${status}.mark`;
+}
+
+export const BATTLE_STATUS_KEYS: readonly string[] = Object.freeze([
+  ...STATUS_IDS.map(battleStatusKey),
+  ...STATUS_IDS.map(battleStatusMarkKey)
+]);
+
+/** How the fight ended (`COMBAT_SPEC` §6.1). */
+export function battleOutcomeKey(outcome: BattleOutcome): string {
+  return `battle.outcome.${outcome}`;
+}
+
+export const BATTLE_OUTCOME_KEYS: readonly string[] = Object.freeze(
+  BATTLE_OUTCOMES.map(battleOutcomeKey)
+);
+
+/**
+ * One line of the battle's own journal, per event kind (`COMBAT_SPEC` §8.1, §10.2).
+ *
+ * A frozen object rather than a builder over `BattleEvent['kind']`, for the reason
+ * {@link OutcomeEventKeys} is one: which kinds get a line is decided by the screen model's
+ * own exhaustive `switch`, and a builder taking the whole union would let a kind reach the
+ * journal without anybody deciding it should.
+ */
+export const BattleEventKeys = Object.freeze({
+  BattleStarted: 'battle.event.battle_started',
+  RoundStarted: 'battle.event.round_started',
+  IntentDeclared: 'battle.event.intent_declared',
+  Blocked: 'battle.event.blocked',
+  DamageDealt: 'battle.event.damage_dealt',
+  HealingDone: 'battle.event.healing_done',
+  DamageAbsorbed: 'battle.event.damage_absorbed',
+  StatusApplied: 'battle.event.status_applied',
+  StatusExpired: 'battle.event.status_expired',
+  UnitShifted: 'battle.event.unit_shifted',
+  ShiftResisted: 'battle.event.shift_resisted',
+  UnitPinned: 'battle.event.unit_pinned',
+  TurnSpent: 'battle.event.turn_spent',
+  UnitDowned: 'battle.event.unit_downed',
+  DoctrineBroken: 'battle.event.doctrine_broken',
+  RetreatSignalled: 'battle.event.retreat_signalled',
+  RetreatObeyed: 'battle.event.retreat_obeyed',
+  RetreatRefused: 'battle.event.retreat_refused',
+  RoundEnded: 'battle.event.round_ended',
+  BattleEnded: 'battle.event.battle_ended'
+});
+
+export const BATTLE_EVENT_KEYS: readonly string[] = Object.freeze(Object.values(BattleEventKeys));
+
+/** What the battle screen labels its own parts with. */
+export const BattleFieldKeys = Object.freeze({
+  Board: 'battle.field.board',
+  Round: 'battle.field.round',
+  Doctrine: 'battle.field.doctrine',
+  Intent: 'battle.field.intent',
+  Journal: 'battle.field.journal',
+  Crew: 'battle.field.crew',
+  Foes: 'battle.field.foes',
+  Health: 'battle.field.health',
+  Outcome: 'battle.field.outcome',
+  Downed: 'battle.field.downed',
+  Withdrew: 'battle.field.withdrew'
+});
+
+export type BattleFieldKeys = (typeof BattleFieldKeys)[keyof typeof BattleFieldKeys];
+
+export const BATTLE_FIELD_KEYS: readonly string[] = Object.freeze(Object.values(BattleFieldKeys));
+
+/**
+ * The controls of §10.2, and the one lever `DEC-005` gives the player.
+ *
+ * The retreat button carries its cost on it, and the cost is a *sentence* rather than a
+ * figure: what a withdrawal costs is one `Retreat` on every hero who moved, and how much
+ * that is worth is exactly the kind of number `DEC-006` keeps off a screen.
+ */
+export const BattleControlKeys = Object.freeze({
+  Pause: 'battle.control.pause',
+  Resume: 'battle.control.resume',
+  Speed: 'battle.control.speed',
+  Skip: 'battle.control.skip',
+  Replay: 'battle.control.replay',
+  Retreat: 'battle.control.retreat',
+  RetreatCost: 'battle.control.retreat.cost',
+  RetreatGiven: 'battle.control.retreat.given',
+  RetreatUnavailable: 'battle.control.retreat.unavailable'
+});
+
+export type BattleControlKeys = (typeof BattleControlKeys)[keyof typeof BattleControlKeys];
+
+export const BATTLE_CONTROL_KEYS: readonly string[] = Object.freeze(
+  Object.values(BattleControlKeys)
+);
 
 /** How far a contract on the board has got — see `ContractAvailability`. */
 export function contractAvailabilityKey(availability: ContractAvailability): string {

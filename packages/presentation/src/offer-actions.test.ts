@@ -9,7 +9,16 @@ import {
   lockOffer,
   pollCrew,
   proposeContractToHero,
+  CombatRole,
+  DoctrineId,
+  NeedId,
+  SortedMap,
+  compareNeedIds,
+  placeCrew,
   resolveContract,
+  type BattleObjective,
+  type ContractBattlePlan,
+  type CrewDeployment,
   settleContract,
   type CommandResult,
   type ContentId,
@@ -76,6 +85,10 @@ function campaign(options: {
   readonly requiredCrew?: number;
   readonly treasury?: number;
   readonly advance?: number;
+  /** The enemy pattern, when this contract goes to a fight (`COMBAT_SPEC` §3.7). */
+  readonly battle?: ContractBattlePlan | null;
+  /** Where the crew is standing, once somebody has placed it. */
+  readonly deployment?: CrewDeployment | null;
 }): GameState {
   const {
     phase = OfferPhase.Draft,
@@ -86,7 +99,9 @@ function campaign(options: {
     acceptedBy = [],
     requiredCrew = 2,
     treasury = 400,
-    advance = 0
+    advance = 0,
+    battle = null,
+    deployment = null
   } = options;
 
   const contract = aContract({
@@ -94,13 +109,15 @@ function campaign(options: {
     patronFee: 100,
     requiredCrew,
     status,
+    battle,
     offer: anOffer({
       phase,
       keyHero: keyHero === null ? null : heroId(keyHero),
       advance,
       invited: ids3(...invited),
       respondedBy: ids3(...respondedBy),
-      acceptedBy: ids3(...acceptedBy)
+      acceptedBy: ids3(...acceptedBy),
+      deployment
     })
   });
 
@@ -188,6 +205,49 @@ function actionsOf(state: GameState): readonly OfferAction[] {
  * `lockOffer` runs — and a table that only looked at `crewed` would offer `resolve` over a
  * package nothing has frozen.
  */
+/**
+ * The smallest legal enemy pattern (`COMBAT_SPEC` §3.7): one objective and one foe.
+ *
+ * A contract with a plan is a different contract to this table — it is the only kind
+ * `placeCrew` accepts and the only kind `resolveContract` refuses without a formation — and
+ * until these two rows existed the whole suite ran on contracts with `battle === null`. A
+ * mutant refusing `Place` as `not_a_battle_contract` everywhere stayed green, and so did
+ * deleting the `crew_not_placed` row from `resolveRefusal`. External review of segment E
+ * found both.
+ */
+function aPlan(): ContractBattlePlan {
+  return {
+    // One objective per need the contract carries — the content loader holds the mapping to
+    // exactly that (`COMBAT_SPEC` §6.2), and a plan short of one is a contract this build
+    // refuses to load.
+    objectives: SortedMap.from<NeedId, BattleObjective>(compareNeedIds, [
+      [NeedId.Frontline, { kind: 'subdue', targets: ['foe:a'] }],
+      [NeedId.Wilderness, { kind: 'hold', rounds: 2 }]
+    ]),
+    foes: [
+      {
+        id: 'foe:a',
+        role: CombatRole.Vanguard,
+        cell: { row: 1, column: 1 },
+        combat: { might: 30, guard: 20, aim: 20, focus: 20, care: 0 }
+      }
+    ],
+    wards: []
+  };
+}
+
+/** Where the crew stands once it has been placed — the state `resolveContract` needs. */
+function aFormation(): CrewDeployment {
+  return {
+    placement: SortedMap.from(compareHeroIds, [
+      [heroId(0), { row: 1, column: 1 } as const],
+      [heroId(1), { row: 2, column: 1 } as const]
+    ]),
+    doctrine: DoctrineId.HoldTheLine,
+    retreatBelowPercent: 0
+  };
+}
+
 const ROWS = [
   {
     name: 'a draft with nobody keyed',
@@ -271,6 +331,38 @@ const ROWS = [
     name: 'a settled package',
     state: () => settled(crewed(2)),
     expected: []
+  },
+  {
+    name: 'a battle contract, crewed and locked, with nobody on the board',
+    state: () =>
+      campaign({
+        phase: OfferPhase.Locked,
+        status: ContractStatus.Crewed,
+        invited: [0, 1],
+        respondedBy: [0, 1],
+        acceptedBy: [0, 1],
+        battle: aPlan()
+      }),
+    // `Place` is live and `Resolve` is not: a contract with a plan and nobody standing is
+    // refused by name (`crew_not_placed`, `COMBAT_SPEC` §6.3), which is the row this table
+    // could not see while every fixture in it went to no fight.
+    expected: [OfferAction.Place]
+  },
+  {
+    name: 'the same battle contract, once the crew is on the board',
+    state: () =>
+      campaign({
+        phase: OfferPhase.Locked,
+        status: ContractStatus.Crewed,
+        invited: [0, 1],
+        respondedBy: [0, 1],
+        acceptedBy: [0, 1],
+        battle: aPlan(),
+        deployment: aFormation()
+      }),
+    // Both: a formation may be revised until the crew is sent (§3.7), and sending is now
+    // what the engine will take.
+    expected: [OfferAction.Place, OfferAction.Resolve]
   }
 ] as const;
 
@@ -358,7 +450,7 @@ describe('which of the six commands the screen offers', () => {
  * everywhere and measure the probe rather than the screen. Every other command carries no
  * arguments of its own at all.
  */
-describe('the engine agrees about every one of the six', () => {
+describe('the engine agrees about every one of the seven', () => {
   function refusalOf(state: GameState, action: OfferAction): string | null {
     const contract = state.contracts.get(ids.caravan)!;
     const commandId = 999;
@@ -393,6 +485,24 @@ describe('the engine agrees about every one of the six', () => {
           return lockOffer(state, { commandId, contractId: ids.caravan, expectedStateVersion });
         case OfferAction.Poll:
           return pollCrew(state, { commandId, contractId: ids.caravan, expectedStateVersion });
+        case OfferAction.Place:
+          // The probe carries a legal formation — the crew down the first column, the
+          // default doctrine, no threshold — for the reason `composeOffer`'s does: "may I
+          // place them" is a question about the phase and the plan, not about which cells a
+          // player happens to have picked. Every fixture here is a contract with no battle,
+          // so the answer is `not_a_battle_contract` and the placement is never read; a
+          // deliberately broken one would measure the probe.
+          return placeCrew(state, {
+            commandId,
+            contractId: ids.caravan,
+            expectedStateVersion,
+            placement: invited.map((hero, index) => ({
+              hero,
+              cell: { row: ((index % 3) + 1) as 1 | 2 | 3, column: 1 }
+            })),
+            doctrine: DoctrineId.HoldTheLine,
+            retreatBelowPercent: 0
+          });
         case OfferAction.Resolve:
           return resolveContract(state, {
             commandId,
@@ -435,12 +545,13 @@ describe('the engine agrees about every one of the six', () => {
 });
 
 describe('the vocabulary itself', () => {
-  it('has six members, in the order the protocol runs', () => {
+  it('has seven members, in the order the protocol runs', () => {
     expect(OFFER_ACTIONS).toEqual([
       OfferAction.Compose,
       OfferAction.AskKeyHero,
       OfferAction.Lock,
       OfferAction.Poll,
+      OfferAction.Place,
       OfferAction.Resolve,
       OfferAction.Settle
     ]);

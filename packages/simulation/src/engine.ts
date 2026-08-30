@@ -39,6 +39,7 @@ import { GRIEVANCE_MAX, grievanceForBrokenPromise } from './negotiation/grievanc
 import { divideTowardZero, multiplyInt32 } from './integer-division.ts';
 import { commitmentFor } from './resolution/commitment.ts';
 import { resolverFor } from './resolution/routing.ts';
+import type { ResolutionInput } from './resolution/contract-resolver.ts';
 import { termsOf } from './resolution/outcome-grade.ts';
 import type { ContractState } from './state/contract-state.ts';
 import { ContractStatus } from './state/contract-state.ts';
@@ -943,6 +944,49 @@ export function placeCrew(state: GameState, command: PlaceCrew): CommandResult {
  * Nothing here consumes randomness and nothing produces a decision: a resolution is not a
  * choice anybody made (`ADR-003`, `ADR-007`).
  */
+/**
+ * The input a resolver is handed for `contract` (`RESOLUTION_SPEC` §2.1, `COMBAT_SPEC` §6.3).
+ *
+ * **Exported, because three callers need the identical input and only one of them applies
+ * anything.** `resolveContract` builds it to commit an outcome; `forecastReadiness` needs it
+ * to say what the plan is risking *before* the crew goes (§10.1); and the screen that plays a
+ * battle back needs it to run the fight without committing it, which is how the retreat
+ * signal works at all (§6.3: the feed plays the battle once with `null`, and pressing the
+ * button re-runs it with the round filled in). Three hand-built copies of one input is three
+ * chances for the forecast, the fight the player watched and the outcome he is judged on to
+ * be about slightly different crews.
+ *
+ * Pure and applies nothing. Every guard `resolveContract` makes — a crew that never filled,
+ * a contract already resolved, a signal at round nought — is that command's business and
+ * stays there; this is the assembly, and it assembles whatever it is given.
+ */
+export function resolutionInputFor(
+  state: GameState,
+  contract: ContractState,
+  retreatAtRound: number | null
+): ResolutionInput {
+  return {
+    contract,
+    ...(contract.battle === null || contract.offer.deployment === null
+      ? {}
+      : {
+          deployment: {
+            plan: contract.battle,
+            crew: contract.offer.deployment,
+            retreatSignalledAtRound: retreatAtRound
+          }
+        }),
+    // In `acceptedBy`'s own hero-id order. `commitments.keys() === acceptedBy` is an
+    // invariant of every `ContractState` this package can build, so the lookup cannot
+    // miss — and if it ever did, the resolver would have to invent a state for a man who
+    // demonstrably answered, which is the guess §2.4 exists to prevent.
+    crew: contract.offer.acceptedBy.values().map((heroId) => ({
+      hero: heroOf(state, heroId),
+      commitment: commitmentOf(contract, heroId)
+    }))
+  };
+}
+
 export function resolveContract(state: GameState, command: ResolveContract): CommandResult {
   if (command.expectedStateVersion !== state.metadata.stateVersion) {
     return rejected(state, RejectionCodes.StaleState);
@@ -1011,26 +1055,7 @@ export function resolveContract(state: GameState, command: ResolveContract): Com
     return rejected(state, RejectionCodes.RetreatSignalNotPossible);
   }
 
-  const draft = resolverFor(contract)({
-    contract,
-    ...(contract.battle === null || contract.offer.deployment === null
-      ? {}
-      : {
-          deployment: {
-            plan: contract.battle,
-            crew: contract.offer.deployment,
-            retreatSignalledAtRound: command.retreatAtRound
-          }
-        }),
-    // In `acceptedBy`'s own hero-id order. `commitments.keys() === acceptedBy` is an
-    // invariant of every `ContractState` this package can build, so the lookup cannot
-    // miss — and if it ever did, the resolver would have to invent a state for a man who
-    // demonstrably answered, which is the guess §2.4 exists to prevent.
-    crew: contract.offer.acceptedBy.values().map((heroId) => ({
-      hero: heroOf(state, heroId),
-      commitment: commitmentOf(contract, heroId)
-    }))
-  });
+  const draft = resolverFor(contract)(resolutionInputFor(state, contract, command.retreatAtRound));
 
   const frames = foldOutcome(state, draft, command.contractId);
   const settledState = frames.at(-1)?.state ?? state;

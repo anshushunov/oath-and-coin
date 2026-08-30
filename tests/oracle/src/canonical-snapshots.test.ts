@@ -61,7 +61,16 @@ describe('a canonical snapshot against a fresh run at the CLI default', () => {
     // that answer the same job differently (`resolution-strongest-loses`,
     // `resolution-fitting-crew-wins`) and the two branches of the liquidity fork
     // (`resolution-keep-promise`, `resolution-break-promise`).
-    expect(SNAPSHOT_SCENARIOS).toHaveLength(46);
+    //
+    // 47 since the combat lab's segment E (`COMBAT_SPEC` §10.2): `battle_ready` is the one
+    // scenario that stops with a crew *on the board* and no outcome, which is the only
+    // state the battle screen can be opened from — the fight is watched before it is
+    // committed (§6.3), so a scenario that resolved it would have nothing left to show.
+    //
+    // 48 with `battle_lab`, the playtest's own entry point: it stops *before* its single
+    // command, so the campaign it leaves is the siege camp with nothing composed — which
+    // is the state a tester starts from, and the only way this harness has of opening one.
+    expect(SNAPSHOT_SCENARIOS).toHaveLength(48);
   });
 
   it.each(SNAPSHOT_SCENARIOS)('%s reproduces the file this build already ships', (scenario) => {

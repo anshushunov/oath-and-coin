@@ -1,6 +1,7 @@
 import { startSession } from '@oath-and-coin/application';
 import {
   AFTER_ACTION_LOADING_SCREEN,
+  BATTLE_LOADING_SCREEN,
   CONTRACT_BOARD_LOADING_SCREEN,
   OFFER_ACTIONS,
   SCREEN_KINDS,
@@ -149,7 +150,9 @@ function aModel(rosterDefinitions: readonly string[], responders: readonly strin
     // its six commands.
     availableActions: OFFER_ACTIONS.map((action) => ({ action, disabledReasonKey: null })),
     promiseTerms: null,
-    settlement: null
+    settlement: null,
+    deployment: null,
+    forecast: null
   });
 }
 
@@ -336,8 +339,8 @@ describe('the scene behind the contract-offer screen', () => {
   });
 });
 
-describe('the scene behind the other two screens', () => {
-  it('answers for every kind the union declares, rather than throwing on two of them', () => {
+describe('the scene behind the other three screens', () => {
+  it('answers for every kind the union declares, rather than throwing on some of them', () => {
     // `describeScene` took one model until the contract loop grew three. A `switch` that
     // threw on the two new ones would take the canvas down with the first settlement.
     //
@@ -347,7 +350,8 @@ describe('the scene behind the other two screens', () => {
     const models = [
       modelFor('screen_normal'),
       AFTER_ACTION_LOADING_SCREEN,
-      CONTRACT_BOARD_LOADING_SCREEN
+      CONTRACT_BOARD_LOADING_SCREEN,
+      BATTLE_LOADING_SCREEN
     ];
 
     expect(new Set(models.map((model) => model.screen))).toEqual(new Set(SCREEN_KINDS));

@@ -1,6 +1,10 @@
 import {
+  CoverageVerdict,
   OfferPhase,
   OutcomeReasonCodes,
+  forecastReadiness,
+  resolutionInputFor,
+  unitNamedBy,
   divideTowardZero,
   heroNamedBy,
   multiplyInt32,
@@ -18,9 +22,11 @@ import {
   type OfferState
 } from '@oath-and-coin/simulation';
 
+import { battleAmount, battleDetailKey, battleEventKey } from './battle-journal.ts';
 import {
   AFTER_ACTION_TITLE_KEY,
   OutcomeEventKeys,
+  battleOutcomeKey,
   commitmentStateKey,
   consequenceKindKey,
   contractDisplayNameKey,
@@ -96,6 +102,53 @@ export interface AfterActionContributionLine {
 export interface AfterActionCoverageLine {
   readonly needKey: string;
   readonly verdictKey: string;
+  /**
+   * What the forecast promised about this need, before the crew was sent (`COMBAT_SPEC`
+   * §10.3's "новым столбцом", §10.1).
+   *
+   * **A disagreement between the two columns is content, not a defect.** §10.1 says the
+   * forecast is not a promise, and `ADR-016` §2 makes that measurable — the share of
+   * objectives the two agree about has a declared corridor, because a forecast that always
+   * agrees carries no information and one that never agrees is noise.
+   *
+   * **Recomputed rather than stored, and that is exact rather than approximate in M2.**
+   * `ADR-016` §4 closes the result's growth at three items and a stored forecast is not one
+   * of them; recomputing is only honest if nothing the forecast reads has moved since, and
+   * nothing has — `capability.grade` and `combat` are copied at campaign start and no
+   * command moves either (`hero-state.ts` says so of both), the commitment is recorded when
+   * a hero answers and never recomputed, and the formation is on the package. What a battle
+   * *does* move — wounds and retreats — is read by nothing. `after-action-battle.test.ts`
+   * holds that equality rather than this comment.
+   *
+   * `null` on a contract that never went to a fight: there was no formation to forecast
+   * from, and a column of the abstract resolver's own answer beside the abstract resolver's
+   * own answer would be one number printed twice.
+   */
+  readonly forecastVerdictKey: string | null;
+}
+
+/**
+ * The battle's own section of the debrief (`COMBAT_SPEC` §10.3's "новая секция").
+ *
+ * `null` on a contract the abstract resolver answered. The feed is the same journal the
+ * battle screen shows, in the same order, because it is the same list — what changes is that
+ * the fight is over, so all of it is on the page at once.
+ */
+export interface AfterActionBattleLine {
+  readonly outcomeKey: string;
+  readonly rounds: number;
+  /** The round the player pulled them out at, or `null` if he never did (`DEC-005`). */
+  readonly retreatSignalledAtRound: number | null;
+  readonly feed: readonly AfterActionBattleEventLine[];
+}
+
+/** One line of the battle's feed. The same shape the battle screen's journal uses. */
+export interface AfterActionBattleEventLine {
+  readonly key: string;
+  readonly heroDisplayNameKey: string | null;
+  readonly detailKey: string | null;
+  readonly amount: number | null;
+  readonly round: number;
 }
 
 /** One diagnosis with its sources (`RESOLUTION_SPEC` §4.7, §6.1). */
@@ -182,6 +235,8 @@ export interface AfterActionScreenModel {
   readonly events: readonly AfterActionEventLine[];
   readonly contributions: readonly AfterActionContributionLine[];
   readonly coverage: readonly AfterActionCoverageLine[];
+  /** The fight this contract went to, or `null` when it went to none (§10.3). */
+  readonly battle: AfterActionBattleLine | null;
   readonly deficits: readonly AfterActionDeficitLine[];
   /** `null` when no deficit leads clearly enough to be called the reason (§4.7). */
   readonly dominantKey: string | null;
@@ -277,6 +332,7 @@ function requireNoOutcome(model: AfterActionScreenContent): void {
     model.events.length > 0 ||
     model.contributions.length > 0 ||
     model.coverage.length > 0 ||
+    model.battle !== null ||
     model.deficits.length > 0 ||
     model.dominantKey !== null ||
     model.consequences.length > 0 ||
@@ -297,6 +353,7 @@ const NOTHING_TO_DEBRIEF = {
   events: [],
   contributions: [],
   coverage: [],
+  battle: null,
   deficits: [],
   dominantKey: null,
   consequences: [],
@@ -382,6 +439,9 @@ export function afterActionScreenModel(
     });
   }
 
+  // What the forecast said about each need, or an empty map on a contract that never fought.
+  const promised = forecastOf(state, contract);
+
   const heroes = [...state.heroes.values()];
   const definitions = new Map(heroes.map((hero) => [hero.id, hero.definition]));
   const displayNameKeys = new Map(heroes.map((hero) => [hero.definition, hero.displayNameKey]));
@@ -406,8 +466,11 @@ export function afterActionScreenModel(
     contributions: contributionLinesOf(resolution, named),
     coverage: resolution.coverage.map((row) => ({
       needKey: needKey(row.need),
-      verdictKey: coverageVerdictKey(row.verdict)
+      verdictKey: coverageVerdictKey(row.verdict),
+      forecastVerdictKey:
+        promised.get(row.need) === undefined ? null : coverageVerdictKey(promised.get(row.need)!)
     })),
+    battle: battleLineOf(resolution, named),
     deficits: resolution.deficits.map((deficit) => ({
       key: deficitKindKey(deficit.kind),
       magnitude: deficit.magnitude,
@@ -525,6 +588,79 @@ function displayNameKeyOf(
  * campaign that resolved two contracts holds both runs' events interleaved by nothing but
  * time, and a feed rebuilt from `ContractResolution` would have no order to rebuild at all.
  */
+
+/**
+ * What the forecast promised, per need — recomputed from the campaign as it stands.
+ *
+ * Empty on a contract that never went to a fight: `forecastReadiness` without a formation is
+ * the abstract resolver's own answer, and printing it beside the abstract resolver's own
+ * answer would be one number in two columns.
+ *
+ * The retreat round is taken from the record rather than assumed away. It reaches the
+ * forecast's input only through the deployment, and the forecast reads no part of it that
+ * moves — but handing the input a `null` where the fight had a signal would be building a
+ * slightly different plan than the one that was fought, which is the kind of small lie a
+ * column headed "what was promised" cannot afford.
+ */
+function forecastOf(
+  state: GameState,
+  contract: ContractState
+): ReadonlyMap<NeedId, CoverageVerdict> {
+  if (contract.battle === null || contract.offer.deployment === null) {
+    return new Map();
+  }
+
+  const forecast = forecastReadiness(
+    resolutionInputFor(
+      state,
+      contract,
+      contract.resolution?.battle?.retreatSignalledAtRound ?? null
+    )
+  );
+
+  return new Map(forecast.objectives.map((one) => [one.need, one.verdict]));
+}
+
+/** The battle's section, or `null` on a contract the abstract resolver answered. */
+function battleLineOf(
+  resolution: ContractResolution,
+  named: (heroId: HeroId) => AfterActionHeroLine
+): AfterActionBattleLine | null {
+  const record = resolution.battle;
+
+  if (record === null) {
+    return null;
+  }
+
+  const heroOfUnit = new Map(
+    record.initial.units.flatMap((unit) => (unit.hero === null ? [] : [[unit.id, unit.hero]]))
+  );
+
+  let round = record.initial.round;
+
+  return {
+    outcomeKey: battleOutcomeKey(record.outcome),
+    rounds: record.rounds,
+    retreatSignalledAtRound: record.retreatSignalledAtRound,
+    feed: record.events.map((event) => {
+      if (event.kind === 'round_started' || event.kind === 'round_ended') {
+        round = event.round;
+      }
+
+      const unit = unitNamedBy(event);
+      const hero = unit === null ? undefined : heroOfUnit.get(unit);
+
+      return {
+        key: battleEventKey(event),
+        heroDisplayNameKey: hero === undefined ? null : named(hero).displayNameKey,
+        detailKey: battleDetailKey(event),
+        amount: battleAmount(event),
+        round
+      };
+    })
+  };
+}
+
 function eventLinesOf(
   state: GameState,
   contract: ContractState,
@@ -731,8 +867,24 @@ export function describeAfterActionReadModel(model: AfterActionScreenModel): Can
     })),
     coverage: validated.coverage.map((line) => ({
       need_key: line.needKey,
-      verdict_key: line.verdictKey
+      verdict_key: line.verdictKey,
+      forecast_verdict_key: line.forecastVerdictKey
     })),
+    battle:
+      validated.battle === null
+        ? null
+        : {
+            outcome_key: validated.battle.outcomeKey,
+            rounds: validated.battle.rounds,
+            retreat_signalled_at_round: validated.battle.retreatSignalledAtRound,
+            feed: validated.battle.feed.map((line) => ({
+              key: line.key,
+              hero_display_name_key: line.heroDisplayNameKey,
+              detail_key: line.detailKey,
+              amount: line.amount,
+              round: line.round
+            }))
+          },
     deficits: validated.deficits.map((line) => ({
       key: line.key,
       magnitude: line.magnitude,

@@ -21,13 +21,22 @@ export const OfferAction = Object.freeze({
   AskKeyHero: 'ask_key_hero',
   Lock: 'lock',
   Poll: 'poll',
+  /**
+   * `placeCrew`: the formation and the two orders it fights under (`COMBAT_SPEC` §3.7).
+   *
+   * The seventh, and it sits between the poll and the send because that is the window it
+   * belongs to: a formation is a decision about a *known* crew, made before the crew leaves.
+   * Only a contract with an authored plan has one to make — the rest answer
+   * `not_a_battle_contract`, which is a dark button with a reason rather than a missing one.
+   */
+  Place: 'place',
   Resolve: 'resolve',
   Settle: 'settle'
 });
 
 export type OfferAction = (typeof OfferAction)[keyof typeof OfferAction];
 
-/** The six, in the order the protocol runs them. */
+/** The seven, in the order the protocol runs them. */
 export const OFFER_ACTIONS: readonly OfferAction[] = Object.freeze(Object.values(OfferAction));
 
 /**
@@ -75,6 +84,7 @@ export function availableActions(state: GameState, contract: ContractState): Ava
     { action: OfferAction.AskKeyHero, disabledReasonKey: askKeyHeroRefusal(contract) },
     { action: OfferAction.Lock, disabledReasonKey: lockRefusal(state, contract) },
     { action: OfferAction.Poll, disabledReasonKey: pollRefusal(contract) },
+    { action: OfferAction.Place, disabledReasonKey: placeRefusal(contract) },
     { action: OfferAction.Resolve, disabledReasonKey: resolveRefusal(contract) },
     { action: OfferAction.Settle, disabledReasonKey: settleRefusal(contract) }
   ];
@@ -187,7 +197,40 @@ function resolveRefusal(contract: ContractState): string | null {
     return RejectionCodes.CrewNotFilled;
   }
 
-  return contract.resolution === null ? null : RejectionCodes.AlreadyResolved;
+  if (contract.resolution !== null) {
+    return RejectionCodes.AlreadyResolved;
+  }
+
+  // The row `COMBAT_SPEC` §6.3 added: a contract with a plan and nobody on the board is
+  // refused by name rather than resolved with an invented formation. In the engine's own
+  // order — after `AlreadyResolved`, before the resolver runs — so a dark button shows the
+  // code the command would actually have answered with.
+  return contract.battle !== null && contract.offer.deployment === null
+    ? RejectionCodes.CrewNotPlaced
+    : null;
+}
+
+/**
+ * `placeCrew`: a locked package, a filled crew, an authored plan, and nothing resolved.
+ *
+ * In the engine's own order (`engine.ts`), which is what makes a dark button honest: the
+ * code shown is the one that command would have answered with, not merely *a* true reason
+ * among several.
+ */
+function placeRefusal(contract: ContractState): string | null {
+  if (contract.offer.phase !== OfferPhase.Locked) {
+    return RejectionCodes.OfferNotLocked;
+  }
+
+  if (contract.status !== ContractStatus.Crewed) {
+    return RejectionCodes.CrewNotFilled;
+  }
+
+  if (contract.resolution !== null) {
+    return RejectionCodes.AlreadyResolved;
+  }
+
+  return contract.battle === null ? RejectionCodes.NotABattleContract : null;
 }
 
 /**

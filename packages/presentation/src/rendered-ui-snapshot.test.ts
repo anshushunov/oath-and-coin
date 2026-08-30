@@ -65,6 +65,8 @@ function everyKeyOf(model: ContractOfferScreenModel): ReadonlyMap<string, string
 const aFullModel = createContractOfferScreenModel({
   state: ScreenState.Normal,
   titleKey: TITLE_KEY,
+  deployment: null,
+  forecast: null,
   contract: {
     definition: parseContentId('core:escort_the_caravan'),
     displayNameKey: 'contract.core.escort_the_caravan.name',
@@ -292,6 +294,8 @@ describe('the texts a correctly bound screen produces', () => {
       contract: null,
       roster: [],
       responses: [],
+      deployment: null,
+      forecast: null,
       errorCode: null,
       errorDetail: null,
       treasury: 0,

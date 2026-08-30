@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "scenario": "battle_ready",
+  "expected_outcome": "success",
+  "expected_screen_state": "normal",
+  "checkpoints": [
+    {
+      "name": "battle_ready",
+      "after_command_id": 5
+    }
+  ]
+}

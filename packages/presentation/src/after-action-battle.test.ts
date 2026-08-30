@@ -1,30 +1,23 @@
 import {
-  CombatRole,
-  CommitmentState,
-  ContractStatus,
   DoctrineId,
-  NeedId,
-  OfferPhase,
-  SortedMap,
-  SortedSet,
-  compareContentIds,
-  compareHeroIds,
-  compareNeedIds,
-  createContractState,
-  heroId,
+  forecastReadiness,
   placeCrew,
-  resolveContract,
-  type BattleObjective,
-  type Cell,
-  type ContractBattlePlan,
-  type GameState,
-  type HeroId
+  resolutionInputFor
 } from '@oath-and-coin/simulation';
 import { describe, expect, it } from 'vitest';
 
 import { afterActionScreenModel } from './after-action-screen-model.ts';
+import { contractOfferScreenModel } from './contract-offer-screen-model-factory.ts';
 import { readModelHash } from './screen-model.ts';
-import { aContract, aHero, anOffer, aState } from './testing/fixtures.ts';
+import { aContract } from './testing/fixtures.ts';
+import {
+  KEY,
+  SECOND,
+  campaign,
+  fought,
+  placedCampaign,
+  resolvedWithoutBattle
+} from './testing/fought.ts';
 
 /**
  * `ADR-016` §Проверка, third bullet, as a compiling test rather than as a promise:
@@ -43,102 +36,6 @@ import { aContract, aHero, anOffer, aState } from './testing/fixtures.ts';
  * built by a fixture would prove that the factory reads a shape somebody typed; what has to
  * be true is that it reads the shape the engine produces.
  */
-
-const KEY: HeroId = heroId(0);
-const SECOND: HeroId = heroId(1);
-
-const SOLID = { might: 80, guard: 70, aim: 80, focus: 60, care: 50 };
-const THIN = { might: 20, guard: 10, aim: 20, focus: 20, care: 0 };
-
-function plan(): ContractBattlePlan {
-  return {
-    objectives: SortedMap.from<NeedId, BattleObjective>(compareNeedIds, [
-      [NeedId.Frontline, { kind: 'subdue', targets: ['foe:a'] }],
-      [NeedId.Wilderness, { kind: 'hold', rounds: 3 }]
-    ]),
-    foes: [
-      { id: 'foe:a', role: CombatRole.Vanguard, cell: { row: 1, column: 1 }, combat: THIN },
-      { id: 'foe:b', role: CombatRole.Vanguard, cell: { row: 1, column: 3 }, combat: THIN }
-    ],
-    wards: []
-  };
-}
-
-/** A locked, crewed, battle-bound campaign — one command away from a fight. */
-function campaign(): GameState {
-  const crew = SortedSet.from(compareHeroIds, [KEY, SECOND]);
-
-  const contract = createContractState(
-    aContract({
-      requiredCrew: 2,
-      risk: 0,
-      needs: SortedMap.from<NeedId, number>(compareNeedIds, [
-        [NeedId.Frontline, 40],
-        [NeedId.Wilderness, 30]
-      ]),
-      battle: plan(),
-      status: ContractStatus.Crewed,
-      offer: anOffer({
-        keyHero: KEY,
-        phase: OfferPhase.Locked,
-        invited: crew,
-        respondedBy: crew,
-        acceptedBy: crew,
-        commitments: SortedMap.from(compareHeroIds, [
-          [KEY, CommitmentState.Committed],
-          [SECOND, CommitmentState.Committed]
-        ])
-      })
-    })
-  );
-
-  return aState({
-    heroes: SortedMap.from(compareHeroIds, [
-      [KEY, aHero({ id: KEY, role: CombatRole.Vanguard, combat: SOLID })],
-      [SECOND, aHero({ id: SECOND, role: CombatRole.Rear, combat: SOLID })]
-    ]),
-    contracts: SortedMap.from(compareContentIds, [[contract.id, contract]])
-  });
-}
-
-const at = (row: 1 | 2 | 3, column: 1 | 2 | 3): Cell => ({ row, column });
-
-function fought(): {
-  readonly state: GameState;
-  readonly contractId: ReturnType<typeof aContract>['id'];
-} {
-  const start = campaign();
-  const contractId = aContract().id;
-
-  const placed = placeCrew(start, {
-    commandId: 1,
-    contractId,
-    expectedStateVersion: start.metadata.stateVersion,
-    placement: [
-      { hero: KEY, cell: at(1, 1) },
-      { hero: SECOND, cell: at(3, 2) }
-    ],
-    doctrine: DoctrineId.HoldTheLine,
-    retreatBelowPercent: 0
-  });
-
-  if (placed.rejectionCode !== null) {
-    throw new Error(`placeCrew was refused: ${placed.rejectionCode}`);
-  }
-
-  const resolved = resolveContract(placed.state, {
-    commandId: 2,
-    contractId,
-    expectedStateVersion: placed.state.metadata.stateVersion,
-    retreatAtRound: null
-  });
-
-  if (resolved.rejectionCode !== null) {
-    throw new Error(`resolveContract was refused: ${resolved.rejectionCode}`);
-  }
-
-  return { state: resolved.state, contractId };
-}
 
 describe('a resolution a battle produced, read by the debrief screen’s own factory', () => {
   it('is read by the same factory, without a second reading for battles', () => {
@@ -182,5 +79,107 @@ describe('a resolution a battle produced, read by the debrief screen’s own fac
     const model = afterActionScreenModel(state, contractId);
 
     expect(model.events.every((line) => !line.key.startsWith('battle.'))).toBe(true);
+  });
+});
+
+describe('the section and the column COMBAT_SPEC §10.3 adds', () => {
+  it('carries the battle’s own feed, in the order the fight raised it', () => {
+    const { state, contractId } = fought();
+    const model = afterActionScreenModel(state, contractId);
+    const record = state.contracts.get(contractId)?.resolution?.battle;
+
+    expect(model.battle).not.toBeNull();
+    expect(model.battle?.feed).toHaveLength(record?.events.length ?? -1);
+    expect(model.battle?.feed.at(0)?.key).toBe('battle.event.battle_started');
+    expect(model.battle?.feed.at(-1)?.key).toBe('battle.event.battle_ended');
+    expect(model.battle?.rounds).toBe(record?.rounds);
+    expect(model.battle?.outcomeKey).toBe(`battle.outcome.${String(record?.outcome)}`);
+  });
+
+  it('leaves the section off a contract that never went to a fight', () => {
+    const abstract = resolvedWithoutBattle();
+
+    expect(afterActionScreenModel(abstract.state, abstract.contractId).battle).toBeNull();
+  });
+
+  it('puts what the forecast promised beside every objective it forecast', () => {
+    const { state, contractId } = fought();
+    const model = afterActionScreenModel(state, contractId);
+
+    expect(model.coverage.length).toBeGreaterThan(0);
+    expect(model.coverage.every((row) => row.forecastVerdictKey !== null)).toBe(true);
+  });
+
+  it('promises the same thing after the fight that it promised before it', () => {
+    // **The claim that makes recomputing honest** (`ADR-016` §4 closes the result at three
+    // additions, and a stored forecast is not one of them). A forecast taken from the
+    // campaign as it stands after a battle is only the forecast the player saw if nothing
+    // the forecast reads has moved — and nothing has: `capability.grade` and `combat` are
+    // copied at campaign start and no command moves either, the commitment is recorded when
+    // a hero answers, and the formation is on the package. Wounds and retreats do move, and
+    // are read by nothing.
+    //
+    // A mutant that made a wound reach `capability.grade` reddens this, which is the whole
+    // point of asking it here rather than writing it in a comment.
+    const before = campaign();
+    const placed = placeCrew(before, {
+      commandId: 1,
+      contractId: aContract().id,
+      expectedStateVersion: before.metadata.stateVersion,
+      placement: [
+        { hero: KEY, cell: { row: 1, column: 1 } },
+        { hero: SECOND, cell: { row: 3, column: 2 } }
+      ],
+      doctrine: DoctrineId.HoldTheLine,
+      retreatBelowPercent: 0
+    });
+
+    const contractBefore = placed.state.contracts.get(aContract().id)!;
+    const promisedBefore = forecastReadiness(
+      resolutionInputFor(placed.state, contractBefore, null)
+    );
+
+    const { state, contractId } = fought();
+    const afterwards = afterActionScreenModel(state, contractId);
+
+    expect(afterwards.coverage.map((row) => row.forecastVerdictKey)).toEqual(
+      promisedBefore.objectives.map((one) => `outcome.verdict.${one.verdict}`)
+    );
+  });
+
+  it('promises on the offer screen exactly what the debrief says was promised', () => {
+    // **The half external review found missing.** The column is only honest if the player
+    // was shown the same thing before he sent anybody — `DIRECTION_2026-08` §4.8 asks that
+    // knowing a person change a *preparation*, and a forecast that first appears in the
+    // debrief cannot change one. Until this case existed, the two sides of the comparison
+    // were two internal computations and nothing checked that either reached a screen.
+    const placed = placedCampaign();
+    const offered = contractOfferScreenModel(placed, [], aContract().id);
+
+    expect(offered.forecast, 'a locked battle contract must forecast').not.toBeNull();
+
+    const { state, contractId } = fought();
+    const debrief = afterActionScreenModel(state, contractId);
+
+    expect(offered.forecast?.objectives.map((one) => [one.needKey, one.verdictKey])).toEqual(
+      debrief.coverage.map((row) => [row.needKey, row.forecastVerdictKey])
+    );
+  });
+
+  it('names the bond before the crew is sent, which is §13.2 п.3 itself', () => {
+    // The one line the whole vocabulary exists for. It has to be on the *offer* screen: a
+    // warning that somebody may break formation for a friend is only actionable while the
+    // formation can still be changed.
+    const offered = contractOfferScreenModel(placedCampaign(), [], aContract().id);
+
+    expect(offered.forecast?.reasons.map((reason) => reason.key)).toContain(
+      'forecast.bond_may_break_the_doctrine'
+    );
+  });
+
+  it('says which round the player pulled them out at, and nothing when he did not', () => {
+    const { state, contractId } = fought();
+
+    expect(afterActionScreenModel(state, contractId).battle?.retreatSignalledAtRound).toBeNull();
   });
 });
