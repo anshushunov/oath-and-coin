@@ -1171,30 +1171,44 @@ function FormationBlock({
         })}
       </div>
 
+      {/*
+        Bottom-up, so row 1 is nearest the enemy on this board as it is on the battle
+        screen's (`battle-scene-model.ts` draws the crew's front rank at the bottom for the
+        same reason). A player who places a man "at the top" here and finds him at the bottom
+        there is being shown two different boards for one formation. The *order of the texts*
+        is the model's and is unchanged; where they land is layout, which is this component's.
+      */}
       <div className="formation-board" data-testid="formation-board">
-        {deployment.cells.map((cell) => (
-          <button
-            key={`${String(cell.row)}:${String(cell.column)}`}
-            type="button"
-            data-testid={`formation-cell-${String(cell.row)}-${String(cell.column)}`}
-            onClick={() => {
-              if (holding === null) {
-                return;
-              }
+        {[...deployment.cells]
+          // Rows reversed, columns left alone. Reversing the flat list turns the board
+          // inside out as well as upside down, and the frame showed exactly that: column 3
+          // on the left. Found by looking, and by nothing else — a grid of nine buttons is
+          // the right nine buttons in either order.
+          .sort((left, right) => right.row - left.row || left.column - right.column)
+          .map((cell) => (
+            <button
+              key={`${String(cell.row)}:${String(cell.column)}`}
+              type="button"
+              data-testid={`formation-cell-${String(cell.row)}-${String(cell.column)}`}
+              onClick={() => {
+                if (holding === null) {
+                  return;
+                }
 
-              const evicted = standingOn(cell);
-              const next = { ...draft.placement, [holding]: cell };
+                const evicted = standingOn(cell);
+                const next = { ...draft.placement, [holding]: cell };
 
-              if (evicted !== null && evicted !== holding) {
-                delete next[evicted];
-              }
+                if (evicted !== null && evicted !== holding) {
+                  delete next[evicted];
+                }
 
-              onChange({ ...draft, placement: next });
-            }}
-          >
-            {String(cell.row)}
-          </button>
-        ))}
+                onChange({ ...draft, placement: next });
+              }}
+            >
+              <Label text={String(cell.row)} />
+              <Label text={String(cell.column)} />
+            </button>
+          ))}
       </div>
 
       <div className="formation-doctrine">

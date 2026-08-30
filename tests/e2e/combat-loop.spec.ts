@@ -93,6 +93,13 @@ test('a crew is placed, the fight is watched, and the debrief reads back', async
   await page.getByTestId('formation-doctrine-hold_the_line').click();
   await press(page, 'action-place');
 
+  // The forecast (`COMBAT_SPEC` §10.1), and the frame of it. It is the half of §4.8 a
+  // debrief cannot supply — a warning that somebody may break formation for a friend is only
+  // actionable while the formation can still be changed — and it is on the screen *before*
+  // the send, which is what this position in the walk asserts.
+  await expect(page.getByTestId('offer-forecast')).toBeVisible();
+  await page.screenshot({ path: join(EVIDENCE_ROOT, 'forecast.png'), fullPage: false });
+
   // The send. On a contract with a plan this does not resolve anything: it opens the fight,
   // which is watched before the outcome is committed (§6.3).
   await press(page, 'action-resolve');

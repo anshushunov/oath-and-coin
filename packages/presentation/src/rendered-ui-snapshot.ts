@@ -354,6 +354,15 @@ function contractOfferSnapshot(
   if (model.deployment !== null) {
     resolve(OfferFieldKeys.Formation);
 
+    // The board itself, cell by cell. A cell is two numbers and the screen prints both:
+    // one of them alone is a row of three identical labels, which is the grid a player
+    // cannot aim at. Drawn bottom-up over there and listed row-then-column here — the
+    // order a *list of texts* is in is the model's, and where they land is layout.
+    for (const cell of model.deployment.cells) {
+      texts.push(String(cell.row));
+      texts.push(String(cell.column));
+    }
+
     for (const slot of model.deployment.crew) {
       resolve(slot.displayNameKey);
       resolve(slot.roleKey);

@@ -370,7 +370,7 @@ body {
  */
 .formation-board {
   display: grid;
-  grid-template-columns: repeat(3, 40px);
+  grid-template-columns: repeat(3, 52px);
   gap: 4px;
   margin: 8px 0;
 }
@@ -379,8 +379,38 @@ body {
 .formation-doctrine {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
   margin: 8px 0;
+}
+
+/*
+ * A crew button is four labels — a name, a role and the two numbers of a cell — and inline
+ * spans have no gap, so the frame read `БрамСтолкновениеКлетка11`. The same defect the
+ * intent line had, found the same way.
+ */
+.formation-crew button,
+.formation-board button,
+.forecast .row,
+.forecast > .label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+
+/*
+ * The forecast's two headings are direct children like every screen's title and state, and
+ * for the same reason need to be blocks: `Чего ждатьЦели боя` is two correct texts painted
+ * into one word.
+ */
+.forecast {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 12px 0;
+  padding: 8px 10px;
+  border-left: 3px solid var(--edge);
 }
 
 .formation button {
