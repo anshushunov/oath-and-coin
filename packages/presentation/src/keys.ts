@@ -292,7 +292,18 @@ export const OfferFieldKeys = Object.freeze({
   Cell: 'field.offer.cell',
   Unplaced: 'field.offer.unplaced',
   Doctrine: 'field.offer.doctrine',
-  RetreatBelow: 'field.offer.retreat_below'
+  RetreatBelow: 'field.offer.retreat_below',
+  /**
+   * The forecast, said before the crew goes (`COMBAT_SPEC` §10.1).
+   *
+   * Its own captions rather than the debrief's: over there the same three words are what
+   * *happened*, here they are what is *expected*, and one text describing both would say
+   * neither. The column heading on the debrief is `AfterActionFieldKeys.Promised`.
+   */
+  Forecast: 'field.offer.forecast',
+  ForecastObjectives: 'field.offer.forecast_objectives',
+  ForecastReasons: 'field.offer.forecast_reasons',
+  ForecastColumn: 'field.offer.forecast_column'
 });
 
 export const OFFER_FIELD_KEYS: readonly string[] = Object.freeze(Object.values(OfferFieldKeys));

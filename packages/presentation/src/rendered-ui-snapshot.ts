@@ -382,6 +382,39 @@ function contractOfferSnapshot(
     }
   }
 
+  if (model.forecast !== null) {
+    resolve(OfferFieldKeys.Forecast);
+    resolve(OfferFieldKeys.ForecastObjectives);
+
+    for (const objective of model.forecast.objectives) {
+      resolve(objective.needKey);
+      resolve(objective.verdictKey);
+    }
+
+    if (model.forecast.reasons.length > 0) {
+      resolve(OfferFieldKeys.ForecastReasons);
+
+      for (const reason of model.forecast.reasons) {
+        resolve(reason.key);
+
+        if (reason.needKey !== null) {
+          resolve(reason.needKey);
+        }
+
+        if (reason.heroDisplayNameKey !== null) {
+          resolve(reason.heroDisplayNameKey);
+        }
+
+        // A column is a place on the board, and a place is a number. Captioned, because
+        // "2" beside a sentence about an open column is a figure a player cannot read.
+        if (reason.column !== null) {
+          resolve(OfferFieldKeys.ForecastColumn);
+          texts.push(String(reason.column));
+        }
+      }
+    }
+  }
+
   // Last, because it is what a player does *after* reading everything above. Every one of
   // the seven, dark ones included, each followed by the refusal it would get — a control
   // that vanished would leave the player with no way to learn what to do instead, and a

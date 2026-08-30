@@ -838,6 +838,9 @@ describe('the read-model hash', () => {
       // a loading screen has no board to offer — which hashes differently from a board
       // nobody has stood on, as it should.
       deployment: null,
+      // `null` for the reason the board above is: a forecast of a crew nobody has answered
+      // for is a forecast of a guess (`COMBAT_SPEC` §10.1).
+      forecast: null,
       // Empty rather than seven dark entries: a loading screen has no package behind it, so
       // there is no command to press against one — which is a different claim from "every
       // command is refused" and hashes differently, as it should.

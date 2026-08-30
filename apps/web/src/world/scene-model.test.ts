@@ -151,7 +151,8 @@ function aModel(rosterDefinitions: readonly string[], responders: readonly strin
     availableActions: OFFER_ACTIONS.map((action) => ({ action, disabledReasonKey: null })),
     promiseTerms: null,
     settlement: null,
-    deployment: null
+    deployment: null,
+    forecast: null
   });
 }
 

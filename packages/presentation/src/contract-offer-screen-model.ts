@@ -301,6 +301,45 @@ export interface DeploymentLine {
 }
 
 /**
+ * One ranked reason the plan looks the way it does (`COMBAT_SPEC` §10.1, `DEC-006`).
+ *
+ * The code is already a localization key and the ranking is its declaration order in
+ * `ForecastReasonCodes` — a stated rule rather than a score, because a weighted sum here
+ * would be a probability with the number filed off. What a reason *names* travels beside it
+ * as keys, never as ids a screen would have to print.
+ */
+export interface ForecastReasonLine {
+  readonly key: string;
+  /** The need this is about, as a key, or `null`. */
+  readonly needKey: string | null;
+  /** The hero this is about, as a key, or `null`. */
+  readonly heroDisplayNameKey: string | null;
+  /** The column this is about, or `null`. A column is a place, and a place is a number. */
+  readonly column: number | null;
+}
+
+/**
+ * What the plan is risking, said **before** the crew is sent (`COMBAT_SPEC` §10.1).
+ *
+ * **This is the half of `DIRECTION_2026-08` §4.8 that a debrief cannot supply.** The control
+ * asks that knowing a *person* change the player's *preparation*, and knowledge that arrives
+ * only in the debrief cannot change a preparation that already happened. `forecast.bond_may_
+ * break_the_doctrine` is the line that says it in time, and §13.2's third technical
+ * prerequisite is exactly that it be said.
+ *
+ * **Ranked reasons and three words, never a probability** (`DEC-006`). The verdicts are the
+ * same three the debrief prints, from the same function — which is what lets the debrief put
+ * "promised" and "delivered" in one row.
+ *
+ * `null` on a contract that goes to no fight, and before the package is locked: a forecast
+ * of a crew nobody has answered for would be a forecast of a guess.
+ */
+export interface ForecastLine {
+  readonly objectives: readonly { readonly needKey: string; readonly verdictKey: string }[];
+  readonly reasons: readonly ForecastReasonLine[];
+}
+
+/**
  * Everything the interface needs to draw one of its five shapes, and nothing it would
  * have to guess at or compute itself.
  */
@@ -349,6 +388,8 @@ export interface ContractOfferScreenModel {
   readonly settlement: SettlementLine | null;
   /** The formation and the two orders, or `null` when there is no fight to prepare for. */
   readonly deployment: DeploymentLine | null;
+  /** What the plan is risking, said before the crew goes; `null` where there is no fight. */
+  readonly forecast: ForecastLine | null;
   /**
    * All six commands of the protocol, each with the refusal it would get or `null` when it
    * would be taken (`NEGOTIATION_SPEC` §3.1, `RESOLUTION_SPEC` §3.1).

@@ -335,7 +335,9 @@ export interface SessionController {
     applied: number,
     /** Whether the feed is waiting for the player, and at which of the two speeds. */
     paused?: boolean,
-    speed?: number
+    speed?: number,
+    /** Whether a withdrawal can still be signalled — `false` on a replay (§6.3). */
+    retreatOffered?: boolean
   ): BattleScreenModel | null;
   resolveContract(input: NegotiationCommandInput<ResolveContract>): CommandResult;
   settleContract(input: NegotiationCommandInput<SettleContract>): CommandResult;
@@ -571,7 +573,14 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
     },
     battleOf: (contractId) =>
       store.snapshot().state?.contracts.get(contractId)?.resolution?.battle ?? null,
-    battleScreen: (contractId, record, applied, paused = false, speed = 1) => {
+    battleScreen: (
+      contractId,
+      record,
+      applied,
+      paused = false,
+      speed = 1,
+      retreatOffered = true
+    ) => {
       const campaign = store.snapshot().state;
 
       if (campaign === null) {
@@ -582,6 +591,7 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
         applied,
         paused,
         speed,
+        retreatOffered,
         ...(record === null ? {} : { record })
       });
     },

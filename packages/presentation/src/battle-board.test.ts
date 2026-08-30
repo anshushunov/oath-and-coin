@@ -119,17 +119,46 @@ describe('folding every event lands on the board the battle ended on', () => {
 
       expect(folded.outcome).toBe(record.outcome);
 
+      // **Every field the board can show, not the four the first edition compared.**
+      // External review of segment E named what the narrow comparison let through: a mutant
+      // writing `withdrew` where the events say `downed`, or replacing a status's `source`
+      // with any non-empty string, stayed green while the screen said the wrong thing about
+      // how a man left and about who put a status on him.
+      expect(byId.size, 'every unit of the opening board must survive the fold').toBe(
+        record.initial.units.length
+      );
+
       for (const unit of record.final.units) {
         const drawn = byId.get(unit.id);
 
         expect(drawn, unit.id).toBeDefined();
+        expect(drawn?.side, `${unit.id} side`).toBe(unit.side);
+        expect(drawn?.hero, `${unit.id} hero`).toBe(unit.hero);
+        expect(drawn?.role, `${unit.id} role`).toBe(unit.role);
+        expect(drawn?.maxHealth, `${unit.id} maxHealth`).toBe(unit.maxHealth);
         expect(drawn?.cell, `${unit.id} cell`).toEqual(unit.cell);
         expect(drawn?.health, `${unit.id} health`).toBe(unit.health);
         expect(drawn?.standing, `${unit.id} standing`).toBe(unit.standing);
         expect(
-          drawn?.statuses.map((one) => [one.status, one.remainingRounds]),
+          drawn?.statuses.map((one) => [one.status, one.remainingRounds, one.source]),
           `${unit.id} statuses`
-        ).toEqual([...unit.statuses.entries()].map(([id, one]) => [id, one.remainingRounds]));
+        ).toEqual(
+          [...unit.statuses.entries()].map(([id, one]) => [id, one.remainingRounds, one.source])
+        );
+
+        // How he left, against the events themselves. `BattleUnit.standing` deliberately
+        // does not carry the distinction, so the only honest source for it is the event that
+        // took him off the board — and reading it back here is what makes the field a
+        // projection rather than a guess.
+        const took = record.events.find(
+          (event) =>
+            (event.kind === 'unit_downed' && event.unit === unit.id) ||
+            (event.kind === 'retreat_obeyed' && event.unit === unit.id)
+        );
+
+        expect(drawn?.left, `${unit.id} left`).toBe(
+          took === undefined ? null : took.kind === 'unit_downed' ? 'downed' : 'withdrew'
+        );
       }
     }
   );
@@ -203,19 +232,30 @@ describe('the board at a position that is not the end', () => {
 
 describe('what the board carries for the screen', () => {
   it('marks a status with the unit that put it there, so the screen can say by whom', () => {
-    const record = battles().find((one) =>
-      one.record.events.some((event) => event.kind === 'status_applied')
-    );
+    // Against the event's *own* source, not against "some non-empty string": `bleeding`
+    // damage names an `actor` and `guarded` absorption names a `by`, and both read the
+    // source off the state (§3.5). A fold that invented one would put the wrong man's name
+    // on the line, and external review of segment E found the check unable to see it.
+    let checked = 0;
 
-    expect(record, 'no shipped fixture applied a status').toBeDefined();
+    for (const { name, record: fought } of battles()) {
+      fought.events.forEach((event, index) => {
+        if (event.kind !== 'status_applied') {
+          return;
+        }
 
-    const applied = record!.record.events.findIndex((event) => event.kind === 'status_applied') + 1;
-    const board = boardAfter(record!.record, applied);
-    const marked = board.units.flatMap((unit) => unit.statuses);
+        const held = boardAfter(fought, index + 1)
+          .units.find((unit) => unit.unit === event.target)
+          ?.statuses.find((one) => one.status === event.status);
 
-    expect(marked.length).toBeGreaterThan(0);
-    expect(marked.every((one) => STATUSES.includes(one.status))).toBe(true);
-    expect(marked.every((one) => one.source.length > 0)).toBe(true);
+        expect(held, `${name}: ${event.target} has no ${event.status}`).toBeDefined();
+        expect(held?.source, `${name}: ${event.status} on ${event.target}`).toBe(event.source);
+        expect(STATUSES).toContain(held?.status);
+        checked += 1;
+      });
+    }
+
+    expect(checked, 'no shipped fixture applied a status').toBeGreaterThan(0);
   });
 
   it('counts a status down to nought exactly as the engine reaches its own expiry', () => {

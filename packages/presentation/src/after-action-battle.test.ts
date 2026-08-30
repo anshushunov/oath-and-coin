@@ -7,9 +7,17 @@ import {
 import { describe, expect, it } from 'vitest';
 
 import { afterActionScreenModel } from './after-action-screen-model.ts';
+import { contractOfferScreenModel } from './contract-offer-screen-model-factory.ts';
 import { readModelHash } from './screen-model.ts';
 import { aContract } from './testing/fixtures.ts';
-import { KEY, SECOND, campaign, fought, resolvedWithoutBattle } from './testing/fought.ts';
+import {
+  KEY,
+  SECOND,
+  campaign,
+  fought,
+  placedCampaign,
+  resolvedWithoutBattle
+} from './testing/fought.ts';
 
 /**
  * `ADR-016` §Проверка, third bullet, as a compiling test rather than as a promise:
@@ -136,6 +144,36 @@ describe('the section and the column COMBAT_SPEC §10.3 adds', () => {
 
     expect(afterwards.coverage.map((row) => row.forecastVerdictKey)).toEqual(
       promisedBefore.objectives.map((one) => `outcome.verdict.${one.verdict}`)
+    );
+  });
+
+  it('promises on the offer screen exactly what the debrief says was promised', () => {
+    // **The half external review found missing.** The column is only honest if the player
+    // was shown the same thing before he sent anybody — `DIRECTION_2026-08` §4.8 asks that
+    // knowing a person change a *preparation*, and a forecast that first appears in the
+    // debrief cannot change one. Until this case existed, the two sides of the comparison
+    // were two internal computations and nothing checked that either reached a screen.
+    const placed = placedCampaign();
+    const offered = contractOfferScreenModel(placed, [], aContract().id);
+
+    expect(offered.forecast, 'a locked battle contract must forecast').not.toBeNull();
+
+    const { state, contractId } = fought();
+    const debrief = afterActionScreenModel(state, contractId);
+
+    expect(offered.forecast?.objectives.map((one) => [one.needKey, one.verdictKey])).toEqual(
+      debrief.coverage.map((row) => [row.needKey, row.forecastVerdictKey])
+    );
+  });
+
+  it('names the bond before the crew is sent, which is §13.2 п.3 itself', () => {
+    // The one line the whole vocabulary exists for. It has to be on the *offer* screen: a
+    // warning that somebody may break formation for a friend is only actionable while the
+    // formation can still be changed.
+    const offered = contractOfferScreenModel(placedCampaign(), [], aContract().id);
+
+    expect(offered.forecast?.reasons.map((reason) => reason.key)).toContain(
+      'forecast.bond_may_break_the_doctrine'
     );
   });
 

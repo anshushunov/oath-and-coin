@@ -49,7 +49,8 @@ export interface BattlePlaybackPort {
     record: BattleRecord,
     applied: number,
     paused: boolean,
-    speed: number
+    speed: number,
+    retreatOffered: boolean
   ): BattleScreenModel | null;
 }
 
@@ -59,6 +60,7 @@ export function BattlePlayback({
   onFinished,
   onLeave,
   leaveLabel,
+  initial,
   startPaused = false
 }: {
   readonly contractId: ContentId;
@@ -88,9 +90,28 @@ export function BattlePlayback({
   onLeave?: () => void;
   /** What that control says. A key, like every other player-facing string. */
   leaveLabel?: string;
+  /**
+   * The record to play instead of running the resolver — what a **replay** is.
+   *
+   * A replay plays the battle the campaign actually recorded, never a fresh run of the
+   * resolver: the two are equal by §9's determinism only when the retreat round matches, and
+   * a fight that ended in a withdrawal re-run with `null` is a different fight. External
+   * review of segment E found `StoredBattle` doing exactly that.
+   */
+  initial?: BattleRecord;
 }) {
   const [retreatAtRound, setRetreatAtRound] = useState<number | null>(null);
-  const [record, setRecord] = useState(() => port.previewBattle(contractId, null));
+  const [record, setRecord] = useState(() => initial ?? port.previewBattle(contractId, null));
+  /**
+   * Whether the outcome behind this fight has already been committed.
+   *
+   * **A replay is not a second chance.** Once `onFinished` has fired the campaign carries a
+   * resolution, and a withdrawal signalled after that would be about a fight the campaign
+   * has already recorded a different ending for — the command answers `already_resolved`,
+   * and the screen would show an outcome the debrief beside it does not have. Found by
+   * external review of segment E, which reached it by pressing replay.
+   */
+  const [committed, setCommitted] = useState(initial !== undefined);
   const [feed, setFeed] = useState<BattleFeed>(() => ({ ...startFeed(), paused: startPaused }));
   const [phase, setPhase] = useState(0);
   const announced = useRef(false);
@@ -134,23 +155,31 @@ export function BattlePlayback({
   useEffect(() => {
     if (!announced.current && events.length > 0 && feed.applied >= events.length) {
       announced.current = true;
+      setCommitted(true);
       onFinished?.(retreatAtRound);
     }
   }, [events.length, feed.applied, onFinished, retreatAtRound]);
 
   const signalRetreat = useCallback(
     (round: number) => {
-      // Another run of the same fight, with the round filled in. The feed keeps its position:
-      // everything before `round` is identical by §9, so the player is still looking at the
-      // frame he was looking at — what changed is what happens next.
+      if (committed) {
+        return;
+      }
+
+      // Another run of the same fight, with the round filled in. The feed rewinds to the
+      // start of that round: §9 makes everything the player watched *before* the round
+      // identical, and nothing inside it is — the signal is processed at the round's own
+      // beginning, so the events already seen from it belong to a fight that no longer
+      // happens.
       const rerun = port.previewBattle(contractId, round);
 
       if (rerun !== null) {
         setRetreatAtRound(round);
         setRecord(rerun);
+        setFeed((current) => ({ ...current, applied: openingOfRound(rerun, round), phase: 0 }));
       }
     },
-    [contractId, port]
+    [committed, contractId, port]
   );
 
   const controls: BattleControls = {
@@ -181,7 +210,7 @@ export function BattlePlayback({
   const model =
     record === null
       ? null
-      : port.battleScreen(contractId, record, feed.applied, feed.paused, feed.speed);
+      : port.battleScreen(contractId, record, feed.applied, feed.paused, feed.speed, !committed);
 
   if (model === null) {
     return null;
@@ -199,4 +228,21 @@ export function BattlePlayback({
       ) : null}
     </>
   );
+}
+
+/**
+ * How many events of `record` come before round `round` starts.
+ *
+ * Where the feed goes when a withdrawal is signalled. The signal takes effect at the round's
+ * own beginning (`battle.ts` raises `retreat_signalled` before anybody acts in it), so the
+ * events of that round the player has already watched belong to a fight that no longer
+ * happens — and leaving the position where it was would either skip past new events or
+ * declare a shorter record finished without showing any of them.
+ */
+function openingOfRound(record: BattleRecord, round: number): number {
+  const start = record.events.findIndex(
+    (event) => event.kind === 'round_started' && event.round === round
+  );
+
+  return start === -1 ? 0 : start;
 }

@@ -215,21 +215,20 @@ function unitShapes(unit: BattleUnitLine): readonly BattleShape[] {
 }
 
 /**
- * The floating number, taken from the last journal line that carried one.
+ * The floating number, over the man it happened to.
  *
- * From the journal rather than from a field of its own, because the journal is already the
- * record of what has been applied and a second list would be a second answer to "what just
- * happened". `null` when nothing has, which is every frame of a round in which nobody
- * connected.
+ * From `model.effect` and not from the journal: a journal line names the *actor*, so a scene
+ * reading it drew the number over whoever struck rather than over whoever was struck.
+ * External review of segment E found it, and no hash could — a canvas has no text nodes.
  */
 function popupOf(model: BattleScreenModel, age: number): BattlePopup | null {
-  const last = [...model.journal].reverse().find((line) => line.amount !== null);
+  const effect = model.effect;
 
-  if (last === undefined || last.amount === null || last.unit === null) {
+  if (effect === null) {
     return null;
   }
 
-  const unit = model.units.find((one) => one.unit === last.unit);
+  const unit = model.units.find((one) => one.unit === effect.unit);
 
   if (unit === undefined) {
     return null;
@@ -240,8 +239,8 @@ function popupOf(model: BattleScreenModel, age: number): BattlePopup | null {
   return {
     kind: 'battle-popup',
     id: `popup:${unit.unit}`,
-    amount: last.amount,
-    healing: last.key.endsWith('healing_done'),
+    amount: effect.amount,
+    healing: effect.healing,
     age,
     x: x + CELL / 2,
     // The one thing `advance` moves. Upward as the event ages, so a number that has been on

@@ -93,14 +93,49 @@ export function campaign(): GameState {
 
   return aState({
     heroes: SortedMap.from(compareHeroIds, [
-      [KEY, aHero({ id: KEY, role: CombatRole.Vanguard, combat: SOLID })],
-      [SECOND, aHero({ id: SECOND, role: CombatRole.Rear, combat: SOLID })]
+      [
+        KEY,
+        aHero({
+          id: KEY,
+          definition: ids.bram,
+          role: CombatRole.Vanguard,
+          combat: SOLID,
+          // A bond over the threshold `BOND_STRONG` names, so this crew is one the forecast
+          // has something to say about (`COMBAT_SPEC` §7.3, §13.2 п.3). Without it the
+          // fixture would be a crew of two strangers, and the one line the forecast
+          // vocabulary exists for would have nothing to fire on.
+          relationships: SortedMap.from<ContentId, number>(compareContentIds, [[ids.doran, 14]])
+        })
+      ],
+      [SECOND, aHero({ id: SECOND, definition: ids.doran, role: CombatRole.Rear, combat: SOLID })]
     ]),
     contracts: SortedMap.from(compareContentIds, [[contract.id, contract]])
   });
 }
 
 const at = (row: 1 | 2 | 3, column: 1 | 2 | 3): Cell => ({ row, column });
+
+/** The campaign one command before the fight: crew placed, nothing resolved. */
+export function placedCampaign(): GameState {
+  const start = campaign();
+  const placed = placeCrew(start, {
+    commandId: 1,
+    contractId: aContract().id,
+    expectedStateVersion: start.metadata.stateVersion,
+    placement: [
+      { hero: KEY, cell: at(1, 1) },
+      { hero: SECOND, cell: at(3, 2) }
+    ],
+    doctrine: DoctrineId.HoldTheLine,
+    retreatBelowPercent: 0
+  });
+
+  if (placed.rejectionCode !== null) {
+    throw new Error(`placeCrew was refused: ${placed.rejectionCode}`);
+  }
+
+  return placed.state;
+}
 
 export function fought(): {
   readonly state: GameState;

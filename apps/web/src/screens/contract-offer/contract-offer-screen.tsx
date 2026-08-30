@@ -196,6 +196,44 @@ export function ContractOfferScreen({
         />
       )}
 
+      {model.forecast === null ? null : (
+        <div className="forecast" data-testid="offer-forecast">
+          <Label text={text(OfferFieldKeys.Forecast)} />
+          <Label text={text(OfferFieldKeys.ForecastObjectives)} />
+          {model.forecast.objectives.map((objective) => (
+            <div className="row" key={objective.needKey}>
+              <Label text={text(objective.needKey)} />
+              <Label text={text(objective.verdictKey)} />
+            </div>
+          ))}
+          {model.forecast.reasons.length === 0 ? null : (
+            <>
+              <Label text={text(OfferFieldKeys.ForecastReasons)} />
+              {/*
+                In the model's own order, which is the ranking `DEC-006` asks for
+                (declaration order in `ForecastReasonCodes`). A screen that sorted them
+                would be choosing what to say first, which is the one thing this list is.
+              */}
+              {model.forecast.reasons.map((reason, index) => (
+                <div className="row" key={index}>
+                  <Label text={text(reason.key)} />
+                  {reason.needKey === null ? null : <Label text={text(reason.needKey)} />}
+                  {reason.heroDisplayNameKey === null ? null : (
+                    <Label text={text(reason.heroDisplayNameKey)} />
+                  )}
+                  {reason.column === null ? null : (
+                    <Captioned
+                      captionKey={OfferFieldKeys.ForecastColumn}
+                      value={String(reason.column)}
+                    />
+                  )}
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+
       {model.deployment === null ? null : (
         <FormationBlock
           deployment={model.deployment}

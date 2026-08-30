@@ -10,6 +10,8 @@ import {
   compareContentIds,
   compareStrings,
   divideTowardZero,
+  forecastReadiness,
+  resolutionInputFor,
   reservedCommitments,
   type CanonicalValue,
   type ContentId,
@@ -30,6 +32,8 @@ import {
   TITLE_KEY,
   combatRoleKey,
   contractDisplayNameKey,
+  coverageVerdictKey,
+  needKey,
   doctrineKey,
   tagKey,
   traitDisplayNameKey
@@ -47,6 +51,7 @@ import {
   type PromiseTermsLine,
   type DeploymentLine,
   type DeploymentSlot,
+  type ForecastLine,
   type ReasonLine,
   type ResponseLine,
   type SettlementLine
@@ -122,6 +127,7 @@ export const LOADING_SCREEN: ContractOfferScreenModel = createContractOfferScree
   promiseTerms: null,
   settlement: null,
   deployment: null,
+  forecast: null,
   availableActions: []
 });
 
@@ -152,6 +158,7 @@ export function failedScreen(errorCode: string, errorDetail: string): ContractOf
     promiseTerms: null,
     settlement: null,
     deployment: null,
+    forecast: null,
     availableActions: []
   });
 }
@@ -218,6 +225,7 @@ export function contractOfferScreenModel(
       promiseTerms: null,
       settlement: null,
       deployment: null,
+      forecast: null,
       availableActions: []
     });
   }
@@ -279,6 +287,7 @@ export function contractOfferScreenModel(
       heroDefinitionByHeroId
     ),
     deployment: deploymentLineFor(contract, heroes, heroDefinitionByHeroId),
+    forecast: forecastLineFor(state, contract, heroes),
     // All six, always — the screen draws a dark control with a reason rather than deciding
     // which controls exist (`offer-actions.ts`).
     availableActions: availableActions(state, contract)
@@ -346,6 +355,55 @@ function deploymentLineFor(
     },
     retreatBelowPercent: standing?.retreatBelowPercent ?? null,
     placed: standing !== null
+  };
+}
+
+/**
+ * What the plan is risking, said before the crew is sent (`COMBAT_SPEC` §10.1).
+ *
+ * **Built here rather than in the debrief alone, and that is the whole point.** The debrief
+ * prints what the forecast promised beside what happened (§10.3), and until this existed the
+ * column named something no player had been shown — external review of segment E found it,
+ * and it was a hole in `DIRECTION_2026-08` §4.8 rather than a missing label: the control asks
+ * that knowledge of a person change a *preparation*, and a forecast that only appears
+ * afterwards cannot change one.
+ *
+ * **Only on a locked package of a contract that fights.** `forecastReadiness` answers for any
+ * input, but a forecast of a crew nobody has answered for is a forecast of a guess — and on a
+ * contract with no plan it is the abstract resolver's own coverage, which the offer screen
+ * already shows as needs.
+ *
+ * The formation reasons appear once the crew is placed and not before, which is
+ * `forecastReadiness`'s own rule: a plan whose formation does not exist has nothing to say
+ * about columns.
+ */
+function forecastLineFor(
+  state: GameState,
+  contract: ContractState,
+  heroes: readonly HeroState[]
+): ForecastLine | null {
+  if (contract.battle === null || contract.offer.phase !== OfferPhase.Locked) {
+    return null;
+  }
+
+  const forecast = forecastReadiness(
+    resolutionInputFor(state, contract, contract.offer.deployment?.retreatBelowPercent ?? null)
+  );
+
+  const displayNameKeyOf = (heroId: HeroId): string | null =>
+    heroes.find((hero) => hero.id === heroId)?.displayNameKey ?? null;
+
+  return {
+    objectives: forecast.objectives.map((one) => ({
+      needKey: needKey(one.need),
+      verdictKey: coverageVerdictKey(one.verdict)
+    })),
+    reasons: forecast.reasons.map((reason) => ({
+      key: reason.code,
+      needKey: reason.need === null ? null : needKey(reason.need),
+      heroDisplayNameKey: reason.hero === null ? null : displayNameKeyOf(reason.hero),
+      column: reason.column
+    }))
   };
 }
 
@@ -901,6 +959,21 @@ export function describeContractOfferReadModel(model: ContractOfferScreenModel):
             doctrine_lever: describeChoiceLever(validated.deployment.doctrineLever),
             retreat_below_percent: validated.deployment.retreatBelowPercent,
             placed: validated.deployment.placed
+          },
+    forecast:
+      validated.forecast === null
+        ? null
+        : {
+            objectives: validated.forecast.objectives.map((one) => ({
+              need_key: one.needKey,
+              verdict_key: one.verdictKey
+            })),
+            reasons: validated.forecast.reasons.map((reason) => ({
+              key: reason.key,
+              need_key: reason.needKey,
+              hero_display_name_key: reason.heroDisplayNameKey,
+              column: reason.column
+            }))
           },
     // Both halves of each entry. Which commands *exist* never changes, so a projection of
     // the actions alone would hash identically for a package waiting on its key hero and

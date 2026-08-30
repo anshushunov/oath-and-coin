@@ -43,18 +43,41 @@ describe('the feed has two coordinates and hands out two instructions', () => {
     // Requirement 1: applying an event and advancing the animation are two inputs, and a
     // frame that only did the first loses the first frame of every effect — which is how the
     // spike's popup number failed to appear on the frame that created it.
-    const step = tickFeed(startFeed(), events, 1);
+    //
+    // Taken one event in, because the *first* event is applied on the first frame there is:
+    // there is nothing already on screen for it to wait behind.
+    const opened = tickFeed(startFeed(), events, 1);
+    const step = tickFeed(opened.feed, events, 1);
 
+    expect(opened.apply).toEqual([events[0]]);
     expect(step.apply).toHaveLength(0);
     expect(step.advance).toBe(1);
   });
 
-  it('applies an event once its own duration has passed, and no sooner', () => {
-    const early = play(10, 1);
+  it('applies an event once the one before it has had its time, and no sooner', () => {
+    // **The duration charged is the one on screen, not the one arriving.** A blow's number
+    // has to age over the blow's own life; charging the next event's duration put the phase
+    // on the wrong event, which is what external review found through the popup.
+    const early = play(10, 2);
     const late = play(10, 400);
 
-    expect(early.applied).toHaveLength(0);
+    expect(early.applied).toEqual([events[0]]);
     expect(late.applied).toEqual(events);
+  });
+
+  it('reports how far through the event that is showing it is, never the next one', () => {
+    // `battle_started` is owed 600ms. A third of the way through it the share is a third —
+    // measured against *its* duration, not against `round_started`'s 400.
+    const opened = tickFeed(startFeed(), events, 0);
+    const third = tickFeed(opened.feed, events, 200);
+
+    expect(third.feed.applied).toBe(1);
+    expect(third.share).toBeCloseTo(200 / 600, 5);
+  });
+
+  it('shows nothing at the opening position and a finished effect at the end', () => {
+    expect(tickFeed(startFeed(), events, 0).share).toBe(0);
+    expect(skipFeed(startFeed(), events).share).toBe(1);
   });
 
   it('carries the remainder of a long frame into the next event rather than dropping it', () => {

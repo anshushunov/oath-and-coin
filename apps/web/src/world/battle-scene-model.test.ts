@@ -47,6 +47,7 @@ function aBoard(units: readonly Partial<BattleUnitLine>[]): BattleScreenModel {
     })) as readonly BattleUnitLine[],
     intent: null,
     journal: [],
+    effect: null,
     retreat: null,
     outcomeKey: null,
     errorCode: null,
@@ -153,23 +154,36 @@ describe('one unit becomes a token, a bar and its marks', () => {
 describe('the popup number, and what the second input actually reaches', () => {
   const withBlow = (): BattleScreenModel => ({
     ...aBoard([{}]),
-    journal: [
-      {
-        key: 'battle.event.damage_dealt',
-        unit: 'crew:0',
-        displayNameKey: null,
-        detailKey: null,
-        amount: 7,
-        round: 1
-      }
-    ]
+    effect: { unit: 'crew:0', amount: 7, healing: false }
   });
 
   it('shows nothing when nothing has landed', () => {
     expect(of(describeBattleScene(aBoard([{}]), 0).shapes, 'battle-popup')).toHaveLength(0);
   });
 
-  it('shows the last number the journal carried, over the man it happened to', () => {
+  it('draws the number over the man it happened to, not over the man who did it', () => {
+    // The journal names the *actor* for a blow (`unitNamedBy`), so a scene reading it put
+    // the number over whoever struck. Two men, and the effect names the second: the popup
+    // must be over the second one's cell.
+    const board: BattleScreenModel = {
+      ...aBoard([
+        { unit: 'crew:0', column: 1 },
+        { unit: 'crew:1', column: 3 }
+      ]),
+      effect: { unit: 'crew:1', amount: 4, healing: false }
+    };
+
+    const popup = of(describeBattleScene(board, 0).shapes, 'battle-popup')[0]!;
+    const struck = of(describeBattleScene(board, 0).shapes, 'battle-token').find(
+      (token) => token.id === 'token:crew:1'
+    )!;
+
+    expect(popup.id).toBe('popup:crew:1');
+    expect(popup.x).toBeGreaterThan(struck.x);
+    expect(popup.x).toBeLessThan(struck.x + struck.width + 40);
+  });
+
+  it('shows the last number that landed, over the man it happened to', () => {
     const popup = of(describeBattleScene(withBlow(), 0).shapes, 'battle-popup');
 
     expect(popup).toHaveLength(1);

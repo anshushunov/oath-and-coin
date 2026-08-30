@@ -276,11 +276,20 @@ function StoredBattle({
   readonly model: BattleScreenModel;
   readonly controller: SessionController;
 }) {
-  if (model.contractDefinition === null) {
+  const stored =
+    model.contractDefinition === null ? null : controller.battleOf(model.contractDefinition);
+
+  if (model.contractDefinition === null || stored === null) {
     return <BattleScreen model={model} controls={INERT_CONTROLS} />;
   }
 
-  return <BattlePlayback contractId={model.contractDefinition} port={controller} />;
+  // The battle the campaign recorded, handed over as the record to play. Running the
+  // resolver again instead would be equal by §9's determinism *only* when the retreat round
+  // matches — so a fight that ended in a withdrawal would replay as a fight nobody pulled
+  // out of, which is a re-enactment rather than a replay.
+  return (
+    <BattlePlayback contractId={model.contractDefinition} port={controller} initial={stored} />
+  );
 }
 
 /**

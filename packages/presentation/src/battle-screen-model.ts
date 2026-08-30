@@ -152,6 +152,22 @@ export interface BattleControlsLine {
   readonly replayKey: string;
 }
 
+/**
+ * The number the last blow or heal produced, and **who it happened to**.
+ *
+ * Its own field rather than something a scene digs out of the journal, and the difference is
+ * not tidiness: a journal line names the *actor* (`unitNamedBy` answers `event.actor` for
+ * damage), so a scene reading it floated the number over the man who struck rather than over
+ * the man who was struck. External review of segment E found it, and no hash could: a canvas
+ * has no text nodes.
+ */
+export interface BattleEffectLine {
+  /** Whom it happened to. */
+  readonly unit: BattleUnitId;
+  readonly amount: number;
+  readonly healing: boolean;
+}
+
 export interface BattleScreenModel {
   readonly screen: typeof ScreenKind.Battle;
   readonly state: ScreenState;
@@ -167,6 +183,8 @@ export interface BattleScreenModel {
   /** The last intent the feed applied, or `null` before there has been one. */
   readonly intent: BattleIntentLine | null;
   readonly journal: readonly BattleJournalLine[];
+  /** What just landed and on whom, or `null` when nothing has (`COMBAT_SPEC` §10.2 п.4). */
+  readonly effect: BattleEffectLine | null;
   readonly retreat: BattleRetreatLine | null;
   /**
    * The four controls of §10.2, as the screen reads them right now.
@@ -255,6 +273,37 @@ export function createBattleScreenModel(model: BattleScreenContent): BattleScree
         );
       }
 
+      // **The lever is never absent from a screen that has a fight on it.** `DEC-005` gives
+      // the player exactly one thing to do during a battle, and `MVP_PLAN` §6.4 decides that
+      // decision by how often a person reaches for it — a screen that dropped the button
+      // would take the measurement away, and the gate let a spread do exactly that. Found by
+      // external review of segment E.
+      if (model.retreat === null) {
+        throw new Error(
+          `A ${model.state} battle screen must carry the retreat line: it is the one lever a ` +
+            'player has during a fight (DEC-005), and a screen without it is one the ' +
+            'measurement MVP_PLAN §6.4 rests on cannot be taken from.'
+        );
+      }
+
+      // A signal is *offered* only while there is a fight left to withdraw from, and a
+      // signal already given is not an offer. Both halves, because a button live after the
+      // last event would ask for a decision about the past, and one live beside a signal
+      // already given would ask for the same decision twice.
+      if (model.state === ScreenState.Normal && model.retreat.atRound !== null) {
+        throw new Error(
+          'A finished battle offers no retreat: there is nothing left to withdraw from, and ' +
+            'resolveContract would refuse the signal by name.'
+        );
+      }
+
+      if (model.retreat.atRound !== null && model.retreat.givenAtRound !== null) {
+        throw new Error(
+          'The retreat line offers a round and records one already given: a signal is either ' +
+            'still a choice or already a fact, never both.'
+        );
+      }
+
       break;
 
     default:
@@ -289,6 +338,7 @@ function requireNoBattle(model: BattleScreenContent): void {
     model.units.length > 0 ||
     model.intent !== null ||
     model.journal.length > 0 ||
+    model.effect !== null ||
     model.retreat !== null ||
     model.outcomeKey !== null ||
     model.round !== 0
@@ -330,6 +380,7 @@ const NOTHING_TO_WATCH = {
   units: [],
   intent: null,
   journal: [],
+  effect: null,
   retreat: null,
   outcomeKey: null
 } as const;
@@ -368,6 +419,16 @@ export interface BattleView {
   readonly paused?: boolean;
   /** `1` or `2`. Defaults to the slower of the two. */
   readonly speed?: number;
+  /**
+   * Whether a withdrawal can still be signalled from here. Defaults to yes.
+   *
+   * **`false` once the outcome has been committed**, which is what a replay is. Pressing the
+   * button then would ask for a fight the campaign has already recorded a different ending
+   * for — `resolveContract` answers `already_resolved`, and the screen would be showing a
+   * withdrawal the debrief beside it does not have. External review of segment E found the
+   * path: replay after the feed had arrived re-armed the lever.
+   */
+  readonly retreatOffered?: boolean;
   /**
    * The battle to play, when it is not the one the campaign has already stored.
    *
@@ -436,7 +497,8 @@ export function battleScreenModel(
     units: board.units.map((unit) => unitLineOf(unit, names)),
     intent: lastIntentOf(record, applied, names),
     journal: journalOf(record, applied, names),
-    retreat: retreatOf(record, board.round, finished),
+    effect: effectOf(record, applied),
+    retreat: retreatOf(record, board.round, finished || view.retreatOffered === false),
     controls: controlsLine(view.paused ?? false, view.speed ?? 1),
     outcomeKey: finished ? battleOutcomeKey(record.outcome) : null,
     errorCode: null,
@@ -581,6 +643,37 @@ function journalOf(
 }
 
 /**
+ * The last number that landed, and the man it landed on.
+ *
+ * Searched backwards from the feed's position, like the intent line and for the same reason:
+ * one pass over a list of under a hundred is free, and a tracked value is a second place the
+ * position can be wrong.
+ *
+ * **`target`, never `actor`.** The three kinds that carry an amount all name both, and the
+ * number belongs over the man it happened to — a heal floating over the healer says the
+ * wrong thing about who is in trouble.
+ */
+function effectOf(record: BattleRecord, applied: number): BattleEffectLine | null {
+  for (let index = applied - 1; index >= 0; index -= 1) {
+    const event = record.events[index];
+
+    if (event === undefined) {
+      continue;
+    }
+
+    if (event.kind === 'damage_dealt' || event.kind === 'healing_done') {
+      return { unit: event.target, amount: event.amount, healing: event.kind === 'healing_done' };
+    }
+
+    if (event.kind === 'damage_absorbed') {
+      return { unit: event.target, amount: event.amount, healing: false };
+    }
+  }
+
+  return null;
+}
+
+/**
  * The button, and whether it can be pressed from where the feed is standing.
  *
  * Live only while the fight is still running and only from round one onward: a signal at
@@ -590,7 +683,8 @@ function journalOf(
 function retreatOf(
   record: BattleRecord,
   round: number,
-  finished: boolean
+  /** Either the fight is over, or the outcome is already committed. Both close the lever. */
+  closed: boolean
 ): BattleRetreatLine | null {
   const given = record.retreatSignalledAtRound;
 
@@ -603,7 +697,7 @@ function retreatOf(
     };
   }
 
-  if (finished || round < 1) {
+  if (closed || round < 1) {
     return {
       atRound: null,
       labelKey: BattleControlKeys.RetreatUnavailable,
@@ -665,6 +759,14 @@ export function describeBattleReadModel(model: BattleScreenModel): CanonicalValu
             target_role_key: validated.intent.targetRoleKey,
             reason_key: validated.intent.reasonKey,
             contrary_to_doctrine_key: validated.intent.contraryToDoctrineKey
+          },
+    effect:
+      validated.effect === null
+        ? null
+        : {
+            unit: validated.effect.unit,
+            amount: validated.effect.amount,
+            healing: validated.effect.healing
           },
     journal: validated.journal.map((line) => ({
       key: line.key,

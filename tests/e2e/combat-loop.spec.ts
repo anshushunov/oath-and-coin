@@ -115,6 +115,22 @@ test('a crew is placed, the fight is watched, and the debrief reads back', async
 
   await page.screenshot({ path: join(EVIDENCE_ROOT, 'finished.png'), fullPage: false });
 
+  // **A replay is not a second chance** (`COMBAT_SPEC` §6.3). The outcome is committed the
+  // moment the feed arrives, so a withdrawal signalled after that would be about a fight the
+  // campaign has already recorded a different ending for — `resolveContract` would answer
+  // `already_resolved`, and the screen would show an outcome the debrief beside it does not
+  // have. External review of segment E reached that state by pressing this button.
+  await page.getByTestId('battle-replay').click();
+  await expect(page.getByTestId('battle-screen')).toHaveAttribute('data-state', 'Incomplete');
+  await expect(page.getByTestId('battle-retreat')).toBeDisabled();
+
+  await page.getByTestId('battle-skip').click();
+  await expect(page.getByTestId('battle-screen')).toHaveAttribute('data-state', 'Normal');
+  expect(
+    await page.getByTestId('battle-outcome').textContent(),
+    'a replay must end the way the fight it replays ended'
+  ).toBe(outcome);
+
   // And the debrief. The outcome was committed the moment the fight ended; leaving is the
   // player's own press, so the line saying how it went is not taken off the screen by the
   // last event landing on it.

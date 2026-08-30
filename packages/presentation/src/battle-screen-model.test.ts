@@ -166,6 +166,38 @@ describe('what the screen may not be handed', () => {
     ).toThrow(/standing and gone/u);
   });
 
+  it('refuses a fight with no retreat lever on it', () => {
+    // `DEC-005` gives the player one thing to do during a battle and `MVP_PLAN` §6.4 decides
+    // that decision by how often he reaches for it. A screen without the button takes the
+    // measurement away, and a spread of a correct model is all it took.
+    expect(() =>
+      createBattleScreenModel({ ...(at(1) as BattleScreenContent), retreat: null })
+    ).toThrow(/one lever a player has/u);
+  });
+
+  it('refuses a live retreat button on a fight that is over', () => {
+    const finished = at(events.length);
+
+    expect(() =>
+      createBattleScreenModel({
+        ...(finished as BattleScreenContent),
+        retreat: { ...finished.retreat!, atRound: 3 }
+      })
+    ).toThrow(/finished battle offers no retreat/u);
+  });
+
+  it('refuses a retreat that is both offered and already given', () => {
+    const playing = at(events.findIndex((event) => event.kind === 'round_started') + 1);
+
+    expect(playing.retreat?.atRound).not.toBeNull();
+    expect(() =>
+      createBattleScreenModel({
+        ...(playing as BattleScreenContent),
+        retreat: { ...playing.retreat!, givenAtRound: 1 }
+      })
+    ).toThrow(/still a choice or already a fact/u);
+  });
+
   it('refuses an outcome on a fight that has not finished', () => {
     expect(() =>
       createBattleScreenModel({

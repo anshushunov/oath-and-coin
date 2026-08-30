@@ -831,7 +831,8 @@ function draftModel(): ContractOfferScreenModel {
       bonus: 25
     },
     settlement: null,
-    deployment: null
+    deployment: null,
+    forecast: null
   });
 }
 
@@ -898,7 +899,8 @@ function lockedUncrewedModel(): ContractOfferScreenModel {
     availableActions: LIVE_ACTIONS,
     promiseTerms: null,
     settlement: null,
-    deployment: null
+    deployment: null,
+    forecast: null
   });
 }
 
@@ -981,6 +983,7 @@ function crewedModel(): ContractOfferScreenModel {
       bonus: 10
     },
     deployment: null,
+    forecast: null,
     settlement: {
       promisedBonus: 10,
       keyHeroDefinition: 'core:bram',

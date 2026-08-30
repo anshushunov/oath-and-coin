@@ -69,6 +69,7 @@ import {
 } from '@oath-and-coin/presentation';
 import {
   BLOCK_REASONS,
+  FORECAST_REASON_CODES,
   MOTIVE_REASONS,
   OUTCOME_REASON_CODES,
   REASON_CODES,
@@ -350,7 +351,12 @@ function everyKeyTheInterfaceCanShow(): readonly string[] {
     ...DOCTRINE_KEYS,
     ...TARGET_REASONS,
     ...BLOCK_REASONS,
-    ...MOTIVE_REASONS
+    ...MOTIVE_REASONS,
+    // The forecast's own vocabulary (`COMBAT_SPEC` §10.1). The engine's list, like the three
+    // above it: a `ForecastReasonCodes` member is already a dotted lowercase key, and its
+    // declaration order is the ranking `DEC-006` asks for — so nothing builds these, and
+    // what the interface owes is the sentence.
+    ...FORECAST_REASON_CODES
   ];
 }
 

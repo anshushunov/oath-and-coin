@@ -170,7 +170,13 @@ export function tickFeed(
       break;
     }
 
-    const owed = durationOf(next);
+    // **The duration charged is the one already on screen, not the one about to arrive.**
+    // The first event costs nothing to reach — there is nothing showing to wait behind —
+    // and every one after it waits out its predecessor. The first edition charged the
+    // *next* event's duration, which put the phase on the wrong event: a blow's number
+    // aged over the duration of the intent that followed it. External review of segment E
+    // found it through the popup, which is the one thing that reads the phase.
+    const owed = applied === 0 ? 0 : durationOf(events[applied - 1]!);
 
     if (phase < owed) {
       break;
@@ -192,15 +198,24 @@ export function tickFeed(
   };
 }
 
-/** How far through the event it is on the feed is. `1` once there is nothing left to be on. */
+/**
+ * How far through the event that is **showing** the feed is — the last one applied.
+ *
+ * `0` before anything has been applied and `1` once the fight is over: neither is an event
+ * in the middle of its life, and both are frames a scene can draw without inventing one.
+ */
 function shareOf(feed: BattleFeed, events: readonly BattleEvent[]): number {
-  const next = events[feed.applied];
+  const showing = events[feed.applied - 1];
 
-  if (next === undefined) {
+  if (showing === undefined) {
+    return 0;
+  }
+
+  if (feed.applied >= events.length) {
     return 1;
   }
 
-  const owed = durationOf(next);
+  const owed = durationOf(showing);
 
   return owed <= 0 ? 1 : Math.min(1, feed.phase / owed);
 }
