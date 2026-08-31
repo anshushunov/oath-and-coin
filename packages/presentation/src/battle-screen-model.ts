@@ -94,10 +94,13 @@ export interface BattleUnitLine {
 export interface BattleIntentLine {
   readonly unit: BattleUnitId;
   readonly displayNameKey: string | null;
+  /** His side, so a nameless actor is still somebody rather than an empty space. */
+  readonly sideKey: string;
   readonly roleKey: string;
   readonly actionKey: string;
   readonly targetUnit: BattleUnitId | null;
   readonly targetDisplayNameKey: string | null;
+  readonly targetSideKey: string | null;
   readonly targetRoleKey: string | null;
   readonly reasonKey: string;
   readonly contraryToDoctrineKey: string | null;
@@ -114,6 +117,20 @@ export interface BattleJournalLine {
   readonly key: string;
   readonly unit: BattleUnitId | null;
   readonly displayNameKey: string | null;
+  /**
+   * Who it was, when he has no name — his side and his job.
+   *
+   * **A foe has no `displayNameKey`, and without this the line has no subject at all.** The
+   * frame of a running fight read `Намерение Выстрел` and `Урон 3`: every act of every enemy
+   * was an event that happened to nobody, and the one line the screen exists for named the
+   * wrong man — with the target's name where the actor's should be. Found by looking at the
+   * walkthrough, and by nothing else: both hashes were green, correctly, because every text
+   * on the line was the right text.
+   *
+   * `null` together with {@link displayNameKey} exactly when the line names nobody at all.
+   */
+  readonly sideKey: string | null;
+  readonly roleKey: string | null;
   readonly detailKey: string | null;
   readonly amount: number | null;
   readonly round: number;
@@ -549,6 +566,10 @@ function unitLineOf(unit: BattleBoardUnit, names: Names): BattleUnitLine {
   };
 }
 
+/** Whose man this is, as the one word a screen may say about a side. */
+const sideKeyOf = (side: BattleSide): string =>
+  side === 'crew' ? BattleFieldKeys.Crew : BattleFieldKeys.Foes;
+
 const leftKeyOf = (left: BattleBoardUnit['left']): string | null => {
   switch (left) {
     case 'downed':
@@ -592,11 +613,13 @@ function lastIntentOf(
     return {
       unit: actor.id,
       displayNameKey: actor.hero === null ? null : names.displayNameKeyOf(actor.hero),
+      sideKey: sideKeyOf(actor.side),
       roleKey: combatRoleKey(actor.role),
       actionKey: combatActionKey(event.action),
       targetUnit: target?.id ?? null,
       targetDisplayNameKey: target?.hero == null ? null : names.displayNameKeyOf(target.hero),
-      targetRoleKey: target === undefined || target === null ? null : combatRoleKey(target.role),
+      targetSideKey: target == null ? null : sideKeyOf(target.side),
+      targetRoleKey: target == null ? null : combatRoleKey(target.role),
       reasonKey: event.reason,
       contraryToDoctrineKey: event.contraryTo === null ? null : doctrineKey(event.contraryTo)
     };
@@ -627,12 +650,15 @@ function journalOf(
     }
 
     const unit = unitNamedBy(event);
-    const hero = unit === null ? null : record.initial.units.find((one) => one.id === unit)?.hero;
+    const acting = unit === null ? undefined : record.initial.units.find((one) => one.id === unit);
+    const hero = acting?.hero ?? null;
 
     lines.push({
       key: battleEventKey(event),
       unit,
-      displayNameKey: hero === null || hero === undefined ? null : names.displayNameKeyOf(hero),
+      displayNameKey: hero === null ? null : names.displayNameKeyOf(hero),
+      sideKey: acting === undefined ? null : sideKeyOf(acting.side),
+      roleKey: acting === undefined ? null : combatRoleKey(acting.role),
       detailKey: battleDetailKey(event),
       amount: battleAmount(event),
       round
@@ -752,10 +778,12 @@ export function describeBattleReadModel(model: BattleScreenModel): CanonicalValu
         : {
             unit: validated.intent.unit,
             hero_display_name_key: validated.intent.displayNameKey,
+            side_key: validated.intent.sideKey,
             role_key: validated.intent.roleKey,
             action_key: validated.intent.actionKey,
             target_unit: validated.intent.targetUnit,
             target_display_name_key: validated.intent.targetDisplayNameKey,
+            target_side_key: validated.intent.targetSideKey,
             target_role_key: validated.intent.targetRoleKey,
             reason_key: validated.intent.reasonKey,
             contrary_to_doctrine_key: validated.intent.contraryToDoctrineKey
@@ -772,6 +800,8 @@ export function describeBattleReadModel(model: BattleScreenModel): CanonicalValu
       key: line.key,
       unit: line.unit,
       hero_display_name_key: line.displayNameKey,
+      side_key: line.sideKey,
+      role_key: line.roleKey,
       detail_key: line.detailKey,
       amount: line.amount,
       round: line.round

@@ -172,7 +172,13 @@ function battleSnapshot(
   if (model.intent !== null) {
     resolve(BattleFieldKeys.Intent);
 
-    if (model.intent.displayNameKey !== null) {
+    // A name when he has one, his side and his job when he has not. A foe carries no
+    // display name, and a line without either read `Намерение Выстрел` — an act with no
+    // subject, with the *target's* name where the actor's should have been.
+    if (model.intent.displayNameKey === null) {
+      resolve(model.intent.sideKey);
+      resolve(model.intent.roleKey);
+    } else {
       resolve(model.intent.displayNameKey);
     }
 
@@ -180,6 +186,9 @@ function battleSnapshot(
 
     if (model.intent.targetDisplayNameKey !== null) {
       resolve(model.intent.targetDisplayNameKey);
+    } else if (model.intent.targetSideKey !== null && model.intent.targetRoleKey !== null) {
+      resolve(model.intent.targetSideKey);
+      resolve(model.intent.targetRoleKey);
     }
 
     resolve(model.intent.reasonKey);
@@ -197,6 +206,9 @@ function battleSnapshot(
 
       if (line.displayNameKey !== null) {
         resolve(line.displayNameKey);
+      } else if (line.sideKey !== null && line.roleKey !== null) {
+        resolve(line.sideKey);
+        resolve(line.roleKey);
       }
 
       if (line.detailKey !== null) {
@@ -549,6 +561,9 @@ function afterActionSnapshot(
 
       if (line.heroDisplayNameKey !== null) {
         resolve(line.heroDisplayNameKey);
+      } else if (line.sideKey !== null && line.roleKey !== null) {
+        resolve(line.sideKey);
+        resolve(line.roleKey);
       }
 
       if (line.detailKey !== null) {

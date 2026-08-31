@@ -25,8 +25,10 @@ import {
 import { battleAmount, battleDetailKey, battleEventKey } from './battle-journal.ts';
 import {
   AFTER_ACTION_TITLE_KEY,
+  BattleFieldKeys,
   OutcomeEventKeys,
   battleOutcomeKey,
+  combatRoleKey,
   commitmentStateKey,
   consequenceKindKey,
   contractDisplayNameKey,
@@ -146,6 +148,16 @@ export interface AfterActionBattleLine {
 export interface AfterActionBattleEventLine {
   readonly key: string;
   readonly heroDisplayNameKey: string | null;
+  /**
+   * Who it was when he has no name — his side and his job.
+   *
+   * A foe carries no display name, and without these the line has no subject: the frame of
+   * a finished fight read `Намерение Выстрел` and `Урон 3` down half a screen. The battle
+   * screen had the same hole and the same fix; this is the second of the two places the one
+   * journal is read from.
+   */
+  readonly sideKey: string | null;
+  readonly roleKey: string | null;
   readonly detailKey: string | null;
   readonly amount: number | null;
   readonly round: number;
@@ -632,9 +644,7 @@ function battleLineOf(
     return null;
   }
 
-  const heroOfUnit = new Map(
-    record.initial.units.flatMap((unit) => (unit.hero === null ? [] : [[unit.id, unit.hero]]))
-  );
+  const acting = new Map(record.initial.units.map((unit) => [unit.id, unit]));
 
   let round = record.initial.round;
 
@@ -648,11 +658,18 @@ function battleLineOf(
       }
 
       const unit = unitNamedBy(event);
-      const hero = unit === null ? undefined : heroOfUnit.get(unit);
+      const who = unit === null ? undefined : acting.get(unit);
 
       return {
         key: battleEventKey(event),
-        heroDisplayNameKey: hero === undefined ? null : named(hero).displayNameKey,
+        heroDisplayNameKey: who?.hero == null ? null : named(who.hero).displayNameKey,
+        sideKey:
+          who === undefined
+            ? null
+            : who.side === 'crew'
+              ? BattleFieldKeys.Crew
+              : BattleFieldKeys.Foes,
+        roleKey: who === undefined ? null : combatRoleKey(who.role),
         detailKey: battleDetailKey(event),
         amount: battleAmount(event),
         round

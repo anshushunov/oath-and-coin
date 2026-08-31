@@ -145,8 +145,18 @@ export function AfterActionScreen({
             // carries no identity of its own, and the list is rebuilt whole.
             <div className="battle-line" key={index}>
               <Label text={text(line.key)} />
-              {line.heroDisplayNameKey === null ? null : (
+              {/*
+                A name when he has one, his side and his job when he has not. A foe carries
+                no display name, and the frame of a finished fight read half a screen of
+                `Намерение Выстрел` — acts with no subject.
+              */}
+              {line.heroDisplayNameKey !== null ? (
                 <Label text={text(line.heroDisplayNameKey)} />
+              ) : line.sideKey === null || line.roleKey === null ? null : (
+                <>
+                  <Label text={text(line.sideKey)} />
+                  <Label text={text(line.roleKey)} />
+                </>
               )}
               {line.detailKey === null ? null : <Label text={text(line.detailKey)} />}
               {line.amount === null ? null : <Label text={String(line.amount)} />}
