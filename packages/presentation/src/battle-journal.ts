@@ -33,8 +33,6 @@ export function battleEventKey(event: BattleEvent): string {
       return BattleEventKeys.RoundStarted;
     case 'intent_declared':
       return BattleEventKeys.IntentDeclared;
-    case 'blocked':
-      return BattleEventKeys.Blocked;
     case 'damage_dealt':
       return BattleEventKeys.DamageDealt;
     case 'healing_done':
@@ -75,8 +73,6 @@ export function battleDetailKey(event: BattleEvent): string | null {
   switch (event.kind) {
     case 'intent_declared':
       return combatActionKey(event.action);
-    case 'blocked':
-      return event.reason;
     case 'status_applied':
     case 'status_expired':
       return battleStatusKey(event.status);
@@ -117,7 +113,6 @@ export function battleAmount(event: BattleEvent): number | null {
     case 'battle_started':
     case 'round_started':
     case 'intent_declared':
-    case 'blocked':
     case 'status_applied':
     case 'status_expired':
     case 'unit_shifted':

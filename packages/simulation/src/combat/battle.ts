@@ -19,6 +19,7 @@ import {
   meleeDamageOf,
   rangedDamageOf,
   shortDamageOf,
+  STATUS_ROUNDS,
   withStatus,
   type BattleUnit,
   type BattleUnitId,
@@ -409,7 +410,8 @@ function applyStatus(
     return { units, events: [] };
   }
 
-  const applied = withStatus(target, StatusId.Chilled, actor.id);
+  const status = StatusId.Chilled;
+  const applied = withStatus(target, status, actor.id);
 
   return {
     units: replace(units, applied.unit),
@@ -417,9 +419,9 @@ function applyStatus(
       {
         kind: 'status_applied',
         target: target.id,
-        status: StatusId.Chilled,
+        status,
         source: actor.id,
-        rounds: 1,
+        rounds: STATUS_ROUNDS[status],
         refreshed: applied.refreshed
       }
     ]
@@ -512,10 +514,9 @@ function shift(
   const from = target.cell;
 
   if (partner === null) {
-    return {
-      units: replace(units, { ...target, cell: to }),
-      events: [{ kind: 'unit_shifted', unit: target.id, from, to, forced: true, partner: null }]
-    };
+    return torn(units, { ...target, cell: to }, actor, [
+      { kind: 'unit_shifted', unit: target.id, from, to, forced: true, partner: null }
+    ]);
   }
 
   const swapped = replace(replace(units, { ...target, cell: to, spent: true }), {
@@ -524,17 +525,65 @@ function shift(
     spent: true
   });
 
+  return torn(swapped, byId(swapped, target.id) ?? target, actor, [
+    { kind: 'unit_shifted', unit: target.id, from, to, forced: true, partner: partner.id },
+    {
+      kind: 'unit_shifted',
+      unit: partner.id,
+      from: to,
+      to: from,
+      forced: true,
+      partner: target.id
+    }
+  ]);
+}
+
+/**
+ * A man shoved out of his place, and the wound it leaves (`COMBAT_SPEC` §3.5).
+ *
+ * **This is `bleeding`'s only source, and it had none at all before.** §3.5 gave the status
+ * two rounds, `BLEED` damage and a branch in `tickStatuses`; an audit over 630 battles — the
+ * whole frozen set at all three doctrines — counted it nought times, so all three were code
+ * no battle could reach. It is also the only status that outlives the round it was applied
+ * in, which made the countdown in `tickStatuses` unreachable with it.
+ *
+ * **On the displacement, and the owner's first two choices were measured before this one was
+ * written.** Every melee blow of a breaker bleeding takes `DEC-011`'s refuting check from
+ * three winning formations to two (§13.1) — the outcome that decision pre-accepts, and the
+ * owner had already chosen that matrix over a corridor once; a shorter bleed does not help,
+ * because the count is the frequency and not the duration. Put on the breaker's `Status`
+ * action instead, it occurs in neither the frozen set nor §13.1's matrix: §4.1 gives that
+ * action to row 3 only and a breaker's home rows are 1 and 2, so no sensible formation puts
+ * him there. A path exists — shove a breaker into row 3 and under `break_them_first` he will
+ * take it — so the objection is nought coverage rather than unreachability, which is a
+ * weaker claim and the one the audit can actually make. Here it is the shove itself that
+ * tears — which is what the role is for — the matrix keeps its three winners, and the status
+ * occurs 237 times in 630 battles.
+ */
+function torn(
+  units: readonly BattleUnit[],
+  target: BattleUnit,
+  actor: BattleUnit,
+  events: readonly BattleEvent[]
+): { readonly units: readonly BattleUnit[]; readonly events: readonly BattleEvent[] } {
+  // No guard on `target.standing`, and its absence is deliberate: a shove deals no damage,
+  // and the only caller picks its target among men who are on their feet — so "he went down
+  // from the shove" is not a state this function can be handed. A guard for it was written
+  // first and a mutant deleting it stayed green, which is what dead code looks like from the
+  // outside (`AGENTS.md` §8).
+  const bleeding = withStatus(target, StatusId.Bleeding, actor.id);
+
   return {
-    units: swapped,
+    units: replace(units, bleeding.unit),
     events: [
-      { kind: 'unit_shifted', unit: target.id, from, to, forced: true, partner: partner.id },
+      ...events,
       {
-        kind: 'unit_shifted',
-        unit: partner.id,
-        from: to,
-        to: from,
-        forced: true,
-        partner: target.id
+        kind: 'status_applied',
+        target: target.id,
+        status: StatusId.Bleeding,
+        source: actor.id,
+        rounds: STATUS_ROUNDS[StatusId.Bleeding],
+        refreshed: bleeding.refreshed
       }
     ]
   };

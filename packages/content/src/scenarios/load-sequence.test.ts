@@ -96,7 +96,7 @@ describe('the happy path', () => {
     expect(result.manifest.scenario).toBe('gate0');
     expect(result.outcome.steps.length).toBe(result.commands.length);
     expect(result.outcome.finalState.metadata.campaignSeed).toBe(7n);
-    expect(result.outcome.finalState.metadata.rulesetVersion).toBe('m1-resolution/3');
+    expect(result.outcome.finalState.metadata.rulesetVersion).toBe('m1-resolution/4');
   });
 
   it('stops before content on a scenario whose screen is shown before content exists', () => {

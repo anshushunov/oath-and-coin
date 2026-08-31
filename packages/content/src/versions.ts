@@ -121,10 +121,23 @@ export const SUPPORTED_LOCALE_SCHEMA_VERSION = 2;
  * produced it. A version 6 save is not a legal version 7 save and the reverse is also
  * false.
  *
+ * **8, moved by the completeness audit of 2026-08-31 (`DEC-017`).** The event union lost a
+ * variant: `{ kind: 'blocked', actor, reason }` was accepted by version 7's codec and is
+ * refused by this one, so a version 7 save whose battle log carries it is unreadable here.
+ *
+ * **No file in this repository carries one, and that is not the argument.** Nothing in the
+ * engine ever produced the event — which is why it was removed — so the set of real saves
+ * holding it is empty. The number moves anyway, because the policy this file already
+ * records says so in the paragraph about version 4: *the format's reachability is a
+ * property of the codec's own surface, not of which paths happen to exercise it today*.
+ * Checking the callers instead of the boundary is the mistake that comment exists to
+ * prevent, and it was available again here. Found by external review, twice, in the same
+ * place.
+ *
  * The battle log is in the save although it is **not** in the canonical artifact, and the
  * asymmetry is `ADR-016` §6 rather than an oversight: a save is read by the game and
  * `RESOLUTION_SPEC` §6.4 routes a loaded resolved campaign straight to the debrief, whose
  * feed this is; an artifact is read by a person, and eighty events per contract makes that
  * unreadable.
  */
-export const SAVE_SCHEMA_VERSION = 7;
+export const SAVE_SCHEMA_VERSION = 8;

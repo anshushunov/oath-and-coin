@@ -39,6 +39,7 @@ const fought = (spec: {
   readonly rounds?: number;
   readonly crew?: string;
   readonly shape?: FoughtCase['shape'];
+  readonly doctrine?: FoughtCase['doctrine'];
   readonly grade?: OutcomeGrade;
   readonly outcome?: BattleOutcome;
   readonly verdicts?: readonly CoverageVerdict[];
@@ -47,6 +48,7 @@ const fought = (spec: {
   contract: 'core:a',
   crew: spec.crew ?? 'a+b',
   shape: spec.shape ?? 'stacked',
+  doctrine: spec.doctrine ?? DoctrineId.HoldTheLine,
   record: battle(spec.rounds ?? 7, spec.outcome ?? BattleOutcome.TimedOut),
   grade: spec.grade ?? OutcomeGrade.Costly,
   verdicts: spec.verdicts ?? [],
@@ -106,6 +108,45 @@ describe('what "the formation changed the outcome" counts', () => {
 
     expect(measured.value).toBe(50);
     expect(measured.note).toContain('the grade moved in 1 of 2 scenarios');
+    expect(measured.note).toContain("the battle's own ending moved in 0");
+  });
+
+  it('counts a scenario per doctrine, so the order’s effect is not read as the formation’s', () => {
+    // **One crew, one contract, two orders, and the formation changes nothing under either.**
+    // The right answer is 0 of 2 scenarios. Without the doctrine in the key the four cases
+    // collapse into one scenario whose grades differ — and the metric reports 100%, crediting
+    // the *formation* with what the *doctrine* did. External review found the key unpinned:
+    // every existing case used the default doctrine, so dropping it changed nothing.
+    const measured = formationChangesOutcome([
+      fought({
+        crew: 'a',
+        shape: 'stacked',
+        doctrine: DoctrineId.HoldTheLine,
+        grade: OutcomeGrade.Clean
+      }),
+      fought({
+        crew: 'a',
+        shape: 'corridor',
+        doctrine: DoctrineId.HoldTheLine,
+        grade: OutcomeGrade.Clean
+      }),
+      fought({
+        crew: 'a',
+        shape: 'stacked',
+        doctrine: DoctrineId.BreakThemFirst,
+        grade: OutcomeGrade.Costly
+      }),
+      fought({
+        crew: 'a',
+        shape: 'corridor',
+        doctrine: DoctrineId.BreakThemFirst,
+        grade: OutcomeGrade.Costly
+      })
+    ]);
+
+    expect(measured.cases).toBe(2);
+    expect(measured.exact).toEqual({ of: 0, per: 2 });
+    expect(measured.note).toContain('the grade moved in 0 of 2 scenarios');
     expect(measured.note).toContain("the battle's own ending moved in 0");
   });
 });

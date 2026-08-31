@@ -68,7 +68,6 @@ import {
   traitDisplayNameKey
 } from '@oath-and-coin/presentation';
 import {
-  BLOCK_REASONS,
   FORECAST_REASON_CODES,
   MOTIVE_REASONS,
   OUTCOME_REASON_CODES,
@@ -343,8 +342,8 @@ function everyKeyTheInterfaceCanShow(): readonly string[] {
     // role, an action, a doctrine, a status, an outcome, the line an event is called — plus
     // the screen's own captions and the five controls.
     //
-    // **Two lists that are the engine's own and not built here.** `TARGET_REASONS`,
-    // `BLOCK_REASONS` and `MOTIVE_REASONS` are already localization keys on the events that
+    // **Two lists that are the engine's own and not built here.** `TARGET_REASONS` and
+    // `MOTIVE_REASONS` are already localization keys on the events that
     // carry them (`battle-reasons.ts` says so in its own header), exactly as `REASON_CODES`
     // and `OUTCOME_REASON_CODES` are — so the intent line prints one straight off the event,
     // and building a second spelling in `keys.ts` would be the drift `TDD` §11.1 forbids.
@@ -365,7 +364,6 @@ function everyKeyTheInterfaceCanShow(): readonly string[] {
     ...COMBAT_ROLE_KEYS,
     ...DOCTRINE_KEYS,
     ...TARGET_REASONS,
-    ...BLOCK_REASONS,
     ...MOTIVE_REASONS,
     // The forecast's own vocabulary (`COMBAT_SPEC` §10.1). The engine's list, like the three
     // above it: a `ForecastReasonCodes` member is already a dotted lowercase key, and its

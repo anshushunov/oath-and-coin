@@ -99,16 +99,18 @@ describe('the artifact says which shape it is', () => {
     // the authored battle plan on a contract, and the formation, doctrine and threshold on
     // its package (`COMBAT_SPEC` §3.7).
     //
-    // **`ruleset_version` deliberately does not move with it.** `RESOLUTION_SPEC` §2.8 ties
-    // that number to *answers*, not to shapes: nothing here changes what an old triple of
-    // `(ruleset, content, seed)` produces — the battle branches are unreachable on a
-    // contract with no plan, and no such contract existed before this segment's content.
-    // What refuses an older save is `SAVE_SCHEMA_VERSION`, which did move.
+    // **`ruleset_version` did not move with segment C and moved on 2026-08-31.** §2.8 ties
+    // that number to *answers*, not to shapes, and segment C changed no answer: its battle
+    // branches were unreachable on a contract with no plan, and no such contract existed
+    // before its content. `DEC-017` did change one — a forced displacement now leaves
+    // `bleeding`, so the same `(ruleset, content, seed)` produces a different battle — and
+    // it takes `m1-resolution/4`. The artifact's own version is untouched by that: its
+    // *shape* is the same, which is the distinction these two numbers exist to keep.
     expect(ARTIFACT_VERSION).toBe(9);
     expect(JSON.parse(toCanonicalJson(ran('gate0').outcome))).toMatchObject({
       artifact_version: 9,
       rng_algorithm: 'splitmix64-composed/1',
-      ruleset_version: 'm1-resolution/3'
+      ruleset_version: 'm1-resolution/4'
     });
   });
 

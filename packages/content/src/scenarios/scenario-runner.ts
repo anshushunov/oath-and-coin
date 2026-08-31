@@ -65,10 +65,20 @@ import { ScenarioCommandKind, type ScenarioCommand } from './scenario-commands.t
  * price of a word — both of their outcomes are paid in full, so neither says anything
  * about this table.
  *
+ * **`m1-resolution/3` → `m1-resolution/4` (`COMBAT_SPEC` §3.5, `DEC-017`).** The answer
+ * changed a fourth time, and the smallest input that shows it is one successful forced
+ * displacement: whoever was shoved now carries `bleeding` and takes `BLEED` at the end of
+ * each of the next two rounds. Same state, same commands, same content, same seed — a
+ * different battle, which is exactly what this number exists to say out loud.
+ *
+ * The status existed in `COMBAT_SPEC` §3.5 before this and had no source at all; an audit
+ * over 630 battles counted it nought times. Giving it one is a change to what the rules
+ * answer and not to a format, so it takes this number rather than a schema.
+ *
  * One number per set of rules anyone could have saved a campaign under: if a later task
- * changes an answer again, it takes `m1-resolution/4`.
+ * changes an answer again, it takes `m1-resolution/5`.
  */
-export const RULESET_VERSION = 'm1-resolution/3';
+export const RULESET_VERSION = 'm1-resolution/4';
 
 /**
  * One decision a step produced, with the hero it belongs to when the step's decisions do

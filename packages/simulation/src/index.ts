@@ -125,9 +125,7 @@ export {
 } from './combat/targeting.ts';
 export {
   BATTLE_OUTCOMES,
-  BLOCK_REASONS,
   BattleOutcome,
-  BlockReasons,
   COMBAT_ACTIONS,
   CombatAction,
   MOTIVE_REASONS,
@@ -135,7 +133,6 @@ export {
   unitNamedBy,
   type BattleEvent,
   type BattleEventKind,
-  type BlockReason,
   type MotiveReason
 } from './combat/events.ts';
 export {

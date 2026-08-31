@@ -1,7 +1,6 @@
 import {
   BattleObjectiveKind,
   BATTLE_OUTCOMES,
-  BLOCK_REASONS,
   COMBAT_ACTIONS,
   COMBAT_ROLES,
   COLUMNS,
@@ -148,11 +147,6 @@ const eventSchema = z.discriminatedUnion('kind', [
     target: battleUnitId.nullable(),
     reason: z.enum([...TARGET_REASONS, ...MOTIVE_REASONS]),
     contraryTo: z.enum(DOCTRINE_IDS).nullable()
-  }),
-  z.strictObject({
-    kind: z.literal('blocked'),
-    actor: battleUnitId,
-    reason: z.enum(BLOCK_REASONS)
   }),
   z.strictObject({
     kind: z.literal('damage_dealt'),

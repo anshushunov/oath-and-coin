@@ -5,14 +5,7 @@ import {
   type BattleEvent,
   type BattleEventKind
 } from '../domain/battle-event.ts';
-import {
-  BLOCK_REASONS,
-  BlockReasons,
-  MOTIVE_REASONS,
-  MotiveReasons,
-  type BlockReason,
-  type MotiveReason
-} from '../domain/battle-reasons.ts';
+import { MOTIVE_REASONS, MotiveReasons, type MotiveReason } from '../domain/battle-reasons.ts';
 import { COMBAT_ACTIONS, CombatAction } from '../domain/combat-action.ts';
 
 /**
@@ -29,12 +22,10 @@ import { COMBAT_ACTIONS, CombatAction } from '../domain/combat-action.ts';
 export {
   BATTLE_OUTCOMES,
   BattleOutcome,
-  BLOCK_REASONS,
-  BlockReasons,
   COMBAT_ACTIONS,
   CombatAction,
   MOTIVE_REASONS,
   MotiveReasons,
   unitNamedBy
 };
-export type { BattleEvent, BattleEventKind, BlockReason, MotiveReason };
+export type { BattleEvent, BattleEventKind, MotiveReason };
