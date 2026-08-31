@@ -2,6 +2,7 @@ import {
   BattleOutcome,
   CoverageVerdict,
   DoctrineId,
+  MAX_ROUNDS,
   OutcomeGrade
 } from '@oath-and-coin/simulation';
 import { describe, expect, it } from 'vitest';
@@ -75,6 +76,25 @@ describe('a threshold is checked on the exact quantity, never on the printed one
     const measured = battleLength([fought({ rounds: 6 }), fought({ rounds: 6 })]);
 
     expect(measured.status).toBe('ok');
+  });
+
+  it('breaks the ceiling count down by doctrine, so one broken order of three is visible', () => {
+    // The median hides it and that is the point (`COMBAT_SPEC` §12.5): a corridor declared
+    // over the whole set averages three doctrines, and the owner's first play found one of
+    // them running into the ceiling three quarters of the time while the median sat inside
+    // `6–12`. Here every `break_them_first` battle is at the ceiling and the median passes.
+    const measured = battleLength([
+      fought({ rounds: 6, doctrine: DoctrineId.HoldTheLine }),
+      fought({ rounds: 6, doctrine: DoctrineId.SpareThePeople }),
+      fought({ rounds: MAX_ROUNDS, doctrine: DoctrineId.BreakThemFirst }),
+      fought({ rounds: MAX_ROUNDS, doctrine: DoctrineId.BreakThemFirst })
+    ]);
+
+    expect(measured.status).toBe('ok');
+    expect(measured.note).toContain('2 of 4');
+    expect(measured.note).toContain('break_them_first 2 of 2');
+    expect(measured.note).toContain('hold_the_line 0 of 1');
+    expect(measured.note).toContain('spare_the_people 0 of 1');
   });
 
   it('refuses 6 agreements of 11 against a floor of 55%, and prints it as 55%', () => {

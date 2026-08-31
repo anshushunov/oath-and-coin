@@ -558,7 +558,7 @@ function shift(
  * take it — so the objection is nought coverage rather than unreachability, which is a
  * weaker claim and the one the audit can actually make. Here it is the shove itself that
  * tears — which is what the role is for — the matrix keeps its three winners, and the status
- * occurs 237 times in 630 battles.
+ * occurs 239 times in 630 battles.
  */
 function torn(
   units: readonly BattleUnit[],

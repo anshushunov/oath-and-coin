@@ -12,7 +12,7 @@ import {
   statusAim,
   supportAim
 } from './targeting.ts';
-import { rangedDamageOf, unitFrom, type BattleUnit } from './unit.ts';
+import { StatusId, rangedDamageOf, unitFrom, withStatus, type BattleUnit } from './unit.ts';
 
 /**
  * `COMBAT_SPEC` §4.2, case by case — including the cases `DEC-011` listed as *not*
@@ -183,6 +183,25 @@ describe('support, status and displacement each name their own reason', () => {
     const weak = unit('foe:weak', 'foe', 1, 3, { combat: { ...AVERAGE, might: 10 } });
 
     expect(statusAim(caster, [caster, strong, weak])?.target.id).toBe('foe:strong');
+  });
+
+  it('has nobody to aim a status at when the hardest to shift already carries it', () => {
+    const caster = unit('crew:c', 'crew', 3, 2, { role: CombatRole.Rear });
+    const strong = withStatus(
+      unit('foe:strong', 'foe', 1, 1, { combat: { ...AVERAGE, might: 90 } }),
+      StatusId.Chilled,
+      'crew:c'
+    ).unit;
+    const weak = unit('foe:weak', 'foe', 1, 3, { combat: { ...AVERAGE, might: 10 } });
+
+    // **Null with a weaker enemy standing right there, and that is the point.** A turn that
+    // changes nothing is not a turn (owner's decision, 2026-08-31): the status is aimed at
+    // the hardest to move, and when he already carries it there is nothing this action can
+    // do that is worth the round. Redirecting it onto the next man instead was measured
+    // over the same 630 battles and moved no outcome at all — the refreshes went away and
+    // 159 of 210 battles still ran into the ceiling — because the freed turn went on
+    // chilling somebody else rather than on hitting anybody.
+    expect(statusAim(caster, [caster, strong, weak])).toBeNull();
   });
 
   it('displacement borrows the reach of the row it is thrown from', () => {

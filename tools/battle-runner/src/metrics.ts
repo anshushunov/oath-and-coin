@@ -170,10 +170,31 @@ export function fightTheCoreSet(content: ContentSet): readonly FoughtCase[] {
   return fought;
 }
 
-/** §12.5, row 1: the median length of a battle, in rounds. */
+/**
+ * §12.5, row 1: the median length of a battle, in rounds.
+ *
+ * **The ceiling count is broken down by doctrine, and that is not decoration.** The corridor
+ * is declared over the whole set, so it averages the three orders a player can give — and one
+ * broken order of three does not move a median. The owner's first play of the lab found
+ * exactly that: `break_them_first` ran into the ceiling in 159 battles of 210 while the median
+ * sat at 9 inside `6–12` and the report printed `229 of 630` without saying which doctrine
+ * they came from. The breakdown is printed rather than gated: a ninth threshold is the owner's
+ * decision, and the number being visible is what makes it possible to take.
+ */
 export function battleLength(fought: readonly FoughtCase[]): Measurement {
   const rounds = fought.map((one) => one.record.rounds).sort((left, right) => left - right);
   const median = medianOf(rounds);
+  const ceilings = [...DOCTRINE_IDS]
+    .map((doctrine) => {
+      const under = fought.filter((one) => one.doctrine === doctrine);
+
+      return {
+        doctrine,
+        at: under.filter((one) => one.record.rounds === MAX_ROUNDS).length,
+        of: under.length
+      };
+    })
+    .filter((row) => row.of > 0);
 
   return measurement({
     id: 'battle_length_rounds',
@@ -182,7 +203,9 @@ export function battleLength(fought: readonly FoughtCase[]): Measurement {
     threshold: corridorOf(Thresholds.battleLengthRounds, 'median'),
     withinThreshold: insideExactly(median, Thresholds.battleLengthRounds),
     cases: fought.length,
-    note: `${String(rounds.filter((one) => one === MAX_ROUNDS).length)} of ${String(rounds.length)} reached the ${String(MAX_ROUNDS)}-round ceiling`
+    note:
+      `${String(rounds.filter((one) => one === MAX_ROUNDS).length)} of ${String(rounds.length)} reached the ${String(MAX_ROUNDS)}-round ceiling` +
+      ` — by doctrine: ${ceilings.map((row) => `${row.doctrine} ${String(row.at)} of ${String(row.of)}`).join(', ')}`
   });
 }
 
