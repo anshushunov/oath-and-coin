@@ -11,7 +11,7 @@ import { BOND_STRONG } from './decision.ts';
 import { DoctrineId } from './doctrine.ts';
 import { BattleOutcome } from './events.ts';
 import type { BattleSide, Column, Row } from './field.ts';
-import { StatusId, unitFrom, type BattleUnit, type BattleUnitId } from './unit.ts';
+import { StatusId, unitFrom, withStatus, type BattleUnit, type BattleUnitId } from './unit.ts';
 
 /**
  * The round, the outcome and the properties `COMBAT_SPEC` §12.1 asks for.
@@ -214,6 +214,60 @@ describe('the properties COMBAT_SPEC §12.1 states', () => {
     const breaking = runBattle(startBattle([...crew, ...foes], DoctrineId.BreakThemFirst));
 
     expect(JSON.stringify(holding.events)).not.toBe(JSON.stringify(breaking.events));
+  });
+});
+
+/**
+ * A turn that changes nothing is not a turn (owner's decision, 2026-08-31).
+ *
+ * `break_them_first` ranks the status above every attack, and it has to: no other doctrine
+ * ever prefers it, so a ranking that dropped it would put one of the four statuses of §3.5
+ * out of reach of the whole game. The price of that rank was never measured until the owner
+ * played the lab himself and reported that his men "hit for nought" — in his log not one of
+ * them struck at all. Over the frozen set at all three doctrines, 76% of the battles under
+ * this doctrine ran into the twelve-round ceiling against 14% and 19% under the other two.
+ */
+describe('a status nobody would feel is not worth the round', () => {
+  it('shoots instead of chilling a man who is already chilled', () => {
+    const caster = unit('crew:rear', 'crew', 3, 2, { role: CombatRole.Rear });
+    const cold = withStatus(unit('foe:v', 'foe', 1, 2), StatusId.Chilled, 'crew:rear').unit;
+
+    const { events } = runRound(startBattle([caster, cold], DoctrineId.BreakThemFirst));
+    const intent = events.find((event) => event.kind === 'intent_declared');
+
+    expect(intent).toMatchObject({ actor: 'crew:rear', action: 'shot' });
+    expect(kinds(events)).toContain('damage_dealt');
+  });
+
+  it('still chills him when he is not carrying it yet', () => {
+    const caster = unit('crew:rear', 'crew', 3, 2, { role: CombatRole.Rear });
+    const warm = unit('foe:v', 'foe', 1, 2);
+
+    const { events } = runRound(startBattle([caster, warm], DoctrineId.BreakThemFirst));
+
+    // The other half of the rule, and the one a mutant that simply deleted the status action
+    // would pass: the round the status *is* worth taking still ends with it applied.
+    expect(events.find((event) => event.kind === 'intent_declared')).toMatchObject({
+      action: 'status'
+    });
+    expect(events.some((event) => event.kind === 'status_applied' && !event.refreshed)).toBe(true);
+  });
+
+  it('never refreshes a chill anywhere in a battle it is free to take every round', () => {
+    const caster = unit('crew:rear', 'crew', 3, 2, { role: CombatRole.Rear });
+    const second = unit('crew:rear2', 'crew', 3, 1, { role: CombatRole.Rear });
+    const foes = [unit('foe:v', 'foe', 1, 2), unit('foe:b', 'foe', 1, 1)];
+
+    const record = runBattle(startBattle([caster, second, ...foes], DoctrineId.BreakThemFirst));
+    const chills = record.events.filter(
+      (event) => event.kind === 'status_applied' && event.status === StatusId.Chilled
+    );
+
+    // Two casters and two enemies over a whole battle: without the rule the second caster
+    // refreshes what the first has just applied, every round. The count is asserted too, so
+    // "no refreshes because no chills" cannot pass this.
+    expect(chills.length).toBeGreaterThan(0);
+    expect(chills.every((event) => event.kind === 'status_applied' && !event.refreshed)).toBe(true);
   });
 });
 

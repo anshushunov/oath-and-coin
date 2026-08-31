@@ -10,7 +10,7 @@ import {
   type Column,
   type Positioned
 } from './field.ts';
-import type { BattleUnit } from './unit.ts';
+import { StatusId, type BattleUnit } from './unit.ts';
 
 /**
  * Who a unit can reach, and by which road (`COMBAT_SPEC` §4.2).
@@ -144,13 +144,34 @@ export function supportAim(actor: BattleUnit, units: readonly BattleUnit[]): Aim
   return worst === undefined ? null : { target: worst, reason: TargetReasons.TheWorstHurt };
 }
 
-/** The enemy hardest to shift is the one worth a status (`COMBAT_SPEC` §5.1). */
+/**
+ * The enemy hardest to shift is the one worth a status — **unless he already carries it**
+ * (`COMBAT_SPEC` §5.1, §3.5).
+ *
+ * A turn that changes nothing is not a turn, and a refresh changes nothing: §3.5 makes the
+ * status refresh rather than stack, so a second caster in the same round buys a duration the
+ * target already has. `break_them_first` ranks the status above every attack — the only
+ * doctrine that does, and it has to, or one of the four statuses would be out of reach of the
+ * whole game — so without this rule its casters spend every round re-applying the same chill
+ * to the same man. That is what the owner played in the lab, and his report of it was that his
+ * men "hit for nought": in his whole log not one of them struck at all.
+ *
+ * **Nought, not the next man down the list, and the difference was measured** over the frozen
+ * set at all three doctrines (630 battles). Skipping to the next un-chilled enemy removes every
+ * refresh and moves no outcome whatever: 159 of 210 battles under this doctrine still run into
+ * the round ceiling, because the freed turn goes on chilling somebody else rather than on
+ * hitting anybody. Dropping the action instead frees the turn for a shot and takes that to 135.
+ * The action is aimed at the hardest to move by rule; when he is already cold, this action has
+ * nothing left to do that is worth the round.
+ */
 export function statusAim(actor: BattleUnit, units: readonly BattleUnit[]): Aim | null {
   const best = [...standingEnemiesOf(actor, units)].sort(
     (left, right) => right.combat.might - left.combat.might || (left.id < right.id ? -1 : 1)
   )[0];
 
-  return best === undefined ? null : { target: best, reason: TargetReasons.TheHardestToMove };
+  return best === undefined || best.statuses.has(StatusId.Chilled)
+    ? null
+    : { target: best, reason: TargetReasons.TheHardestToMove };
 }
 
 /**
