@@ -323,7 +323,23 @@ export const OFFER_FIELD_KEYS: readonly string[] = Object.freeze(Object.values(O
  */
 export const LeverDisabledKeys = Object.freeze({
   Locked: 'offer.locked',
-  Settled: 'offer.settled'
+  Settled: 'offer.settled',
+  /**
+   * Why the **first** control of the whole loop is dark, and the only two reasons it can be.
+   *
+   * **The engine has no opinion here, and that is the whole problem this closes.** Every
+   * other dark control carries the code the command would have answered with; `composeOffer`
+   * would accept a draft the player has not finished typing, so its refusal is `null` and the
+   * button went dark in silence — the one control that starts everything, alone among seven,
+   * explaining nothing. The owner opened the build and reported "nothing is clickable", which
+   * is exactly what a screen that will not say what it wants looks like from the outside.
+   *
+   * So these two are the *screen's* own reasons rather than the engine's, and they are keys
+   * for the reason every other player-facing string is one (`TDD` §11.1). They belong beside
+   * `Locked` and `Settled`, which are also the screen's, not the engine's.
+   */
+  NoKeyHero: 'offer.no_key_hero',
+  CrewNotChosen: 'offer.crew_not_chosen'
 });
 
 export const LEVER_DISABLED_KEYS: readonly string[] = Object.freeze(

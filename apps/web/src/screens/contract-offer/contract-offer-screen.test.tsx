@@ -582,6 +582,64 @@ describe('the draft block, the promise, the treasury and the settlement', () => 
     ).toEqual([]);
   });
 
+  it('never darkens a control without saying why', () => {
+    // **The rule the whole block exists for, asserted over every state rather than for the
+    // six the engine refuses.** `composeOffer` would accept a draft a player has not
+    // finished typing, so its refusal is `null`, and the first edition darkened the one
+    // control that starts the loop in silence. The owner opened the build and reported
+    // "nothing is clickable" — which is what a screen that will not say what it wants looks
+    // like from the outside, and what neither hash can see: a `disabled` attribute is not
+    // a text node.
+    for (const model of [draftModel(), crewedModel(), everyActionLive()]) {
+      const container = renderScreen(model);
+      const texts = collectRenderedTexts(container);
+
+      for (const button of container.querySelectorAll('[data-testid^="action-"]')) {
+        if (!(button as HTMLButtonElement).disabled) {
+          continue;
+        }
+
+        // The reason sits next to the button it is about, so a screen with several dark
+        // controls does not make the player match sentences to buttons by eye.
+        const beside = button.nextElementSibling?.textContent ?? '';
+
+        expect(
+          beside.trim(),
+          `${button.getAttribute('data-testid') ?? '?'} is dark in silence`
+        ).not.toBe('');
+        expect(texts).toContain(beside);
+      }
+    }
+  });
+
+  it('tells the player what the first control is waiting for, in the order he fills it in', () => {
+    // A name first, then the crew: the two reasons are the two halves of a package, and the
+    // second cannot be acted on before the first. This is the state a build actually opens
+    // on — nothing named, nobody invited — which is where the owner met seven dark buttons.
+    const base = draftModel();
+    const untouched = createContractOfferScreenModel({
+      ...base,
+      offer: {
+        ...base.offer!,
+        keyHeroLever: { ...base.offer!.keyHeroLever, chosen: null },
+        crewLever: { ...base.offer!.crewLever, chosen: [] }
+      }
+    });
+
+    expect(collectRenderedTexts(renderScreen(untouched))).toContain(
+      textOf(LeverDisabledKeys.NoKeyHero)
+    );
+
+    const named = createContractOfferScreenModel({
+      ...base,
+      offer: { ...base.offer!, crewLever: { ...base.offer!.crewLever, chosen: [] } }
+    });
+
+    expect(collectRenderedTexts(renderScreen(named))).toContain(
+      textOf(LeverDisabledKeys.CrewNotChosen)
+    );
+  });
+
   it('renders every label from ui-text, never a literal', () => {
     expect(literalsIn(ContractOfferScreen)).toEqual([]);
   });

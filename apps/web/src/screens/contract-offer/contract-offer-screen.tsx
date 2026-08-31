@@ -1,5 +1,6 @@
 import {
   FieldKeys,
+  LeverDisabledKeys,
   OfferFieldKeys,
   OfferAction,
   ScreenKind,
@@ -246,7 +247,7 @@ export function ContractOfferScreen({
 
       <ActionsBlock
         actions={model.availableActions}
-        canCompose={isSendable(form.draft, model)}
+        composeBlockedBy={composeBlockedBy(form.draft, model)}
         rejectionKey={form.rejectionKey}
         onPress={(action) => {
           setForm({
@@ -412,8 +413,27 @@ function formFor(model: ContractOfferScreenModel): FormState {
  * reads. A screen that pre-empted those would be keeping a second copy of rules it does not
  * own, which is the whole failure `offer-actions.ts` is built to avoid.
  */
-function isSendable(draft: OfferForm, model: ContractOfferScreenModel): boolean {
-  return draft.keyHero !== null && draft.invited.length === (model.offer?.crewLever.exactly ?? 0);
+/**
+ * Why the draft cannot be recorded yet, or `null` when it can.
+ *
+ * **A reason and not a boolean, and the difference is what the owner ran into.** The first
+ * edition answered yes or no, so the one control that starts the whole loop went dark
+ * without a word while the other six explained themselves — `composeOffer` would accept an
+ * unfinished draft, so the engine's own refusal is `null` and there was nothing to print.
+ * A player who opens the build sees seven dark buttons and no way to learn which one is
+ * waiting on him.
+ *
+ * The order is the order a person fills the form in: name somebody first, then decide who
+ * goes with him.
+ */
+function composeBlockedBy(draft: OfferForm, model: ContractOfferScreenModel): string | null {
+  if (draft.keyHero === null) {
+    return LeverDisabledKeys.NoKeyHero;
+  }
+
+  return draft.invited.length === (model.offer?.crewLever.exactly ?? 0)
+    ? null
+    : LeverDisabledKeys.CrewNotChosen;
 }
 
 /**
@@ -526,12 +546,13 @@ function refusalOf(result: {
  */
 function ActionsBlock({
   actions,
-  canCompose,
+  composeBlockedBy: composeBlocked,
   rejectionKey,
   onPress
 }: {
   readonly actions: readonly AvailableAction[];
-  readonly canCompose: boolean;
+  /** The screen's own reason `compose` is dark, when the engine has none (`§5.1`). */
+  readonly composeBlockedBy: string | null;
   readonly rejectionKey: string | null;
   readonly onPress: (action: OfferAction) => void;
 }) {
@@ -543,27 +564,31 @@ function ActionsBlock({
 
   return (
     <div className="actions" data-testid="offer-actions">
-      {actions.map((available) => (
-        <div className="action" key={available.action}>
-          <button
-            type="button"
-            data-testid={`action-${available.action}`}
-            disabled={
-              available.disabledReasonKey !== null ||
-              (available.action === OfferAction.Compose && !canCompose)
-            }
-            onClick={() => {
-              onPress(available.action);
-            }}
-          >
-            {text(offerActionKey(available.action))}
-          </button>
+      {actions.map((available) => {
+        // The engine's refusal when it has one, the screen's when it does not. Never both:
+        // a control cannot be dark for two reasons at once, and a player reading two would
+        // not know which one to act on.
+        const reasonKey =
+          available.disabledReasonKey ??
+          (available.action === OfferAction.Compose ? composeBlocked : null);
 
-          {available.disabledReasonKey === null ? null : (
-            <Label text={text(available.disabledReasonKey)} />
-          )}
-        </div>
-      ))}
+        return (
+          <div className="action" key={available.action}>
+            <button
+              type="button"
+              data-testid={`action-${available.action}`}
+              disabled={reasonKey !== null}
+              onClick={() => {
+                onPress(available.action);
+              }}
+            >
+              {text(offerActionKey(available.action))}
+            </button>
+
+            {reasonKey === null ? null : <Label text={text(reasonKey)} />}
+          </div>
+        );
+      })}
 
       {rejectionKey === null ? null : (
         <p className="rejection" data-testid="offer-rejection">
