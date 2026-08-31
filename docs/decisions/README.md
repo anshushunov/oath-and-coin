@@ -45,6 +45,7 @@ ADR-001-engine-and-language.md
 | [DEC-014](DEC-014-two-numbers-and-who-is-wounded.md) | Экран разбора: два числа у героя и кого ранит, когда участок держать было некому | accepted |
 | [DEC-015](DEC-015-no-scene-behind-the-debrief-and-the-board.md) | За разбором и доской схематичного мира нет | accepted |
 | [DEC-016](DEC-016-hero-combat-layer.md) | Боевой слой модели героя: пять атрибутов, роль, способности, перк, снаряжение | accepted |
+| [DEC-017](DEC-017-what-the-battle-vocabulary-promised.md) | Что боевой словарь обещал и чего не делал: источник `bleeding`, удаление `blocked`, четвёртое измерение набора | accepted |
 
 Технические решения:
 

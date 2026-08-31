@@ -41,17 +41,22 @@ export type TargetReason = (typeof TargetReasons)[keyof typeof TargetReasons];
 
 export const TARGET_REASONS: readonly TargetReason[] = Object.freeze(Object.values(TargetReasons));
 
-/** Why a unit could not do a thing. A hard gate, with no score behind it (`TDD` §8). */
-export const BlockReasons = Object.freeze({
-  /** The action belongs to a row this unit is not standing in (`COMBAT_SPEC` §3.4). */
-  WrongRow: 'combat.blocked.wrong_row',
-  /** Nothing this action could be aimed at. */
-  NoTarget: 'combat.blocked.no_target'
-});
-
-export type BlockReason = (typeof BlockReasons)[keyof typeof BlockReasons];
-
-export const BLOCK_REASONS: readonly BlockReason[] = Object.freeze(Object.values(BlockReasons));
+/*
+ * **`BlockReasons` used to sit here and no longer does** (owner's decision of 2026-08-31).
+ *
+ * Two codes and a `blocked` event, and nothing in the engine ever produced any of the three:
+ * an audit over 630 battles — the whole frozen set at all three doctrines — counted them
+ * nought times, and a search of the tree found the event only in its own union and in
+ * `unitNamedBy`'s switch. It could not have been otherwise: `COMBAT_SPEC` §4.1 makes
+ * `Собраться` available always, and the action choice takes the first *available* thing on
+ * the doctrine's list — so "he could not" is not a state the rules can reach.
+ *
+ * Removed rather than left as a promise. A vocabulary that names an event no battle raises
+ * teaches a reader that battles have a shape they do not have, and a screen carrying a line
+ * for it is a line nobody will ever see. If a later rule makes a chosen action fail — an
+ * ability with a cost, a target that moves between the choice and the blow — the event comes
+ * back with that rule and with a producer.
+ */
 
 /** Why a unit went against the doctrine, or against the signal. */
 export const MotiveReasons = Object.freeze({

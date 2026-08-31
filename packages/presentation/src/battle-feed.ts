@@ -118,7 +118,6 @@ export function durationOf(event: BattleEvent): number {
       return 350;
     case 'shift_resisted':
     case 'unit_pinned':
-    case 'blocked':
       return 300;
     case 'turn_spent':
       return 80;

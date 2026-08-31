@@ -798,7 +798,6 @@ export const BattleEventKeys = Object.freeze({
   BattleStarted: 'battle.event.battle_started',
   RoundStarted: 'battle.event.round_started',
   IntentDeclared: 'battle.event.intent_declared',
-  Blocked: 'battle.event.blocked',
   DamageDealt: 'battle.event.damage_dealt',
   HealingDone: 'battle.event.healing_done',
   DamageAbsorbed: 'battle.event.damage_absorbed',

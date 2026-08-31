@@ -6,6 +6,7 @@ import { CombatRole } from '../domain/combat-role.ts';
 import { heroId, type HeroId } from '../ids/hero-id.ts';
 
 import { MAX_ROUNDS, runBattle, runRound, startBattle } from './battle.ts';
+import { BLEED } from './unit.ts';
 import { BOND_STRONG } from './decision.ts';
 import { DoctrineId } from './doctrine.ts';
 import { BattleOutcome } from './events.ts';
@@ -619,5 +620,104 @@ describe('what a retreat signal leaves untouched (COMBAT_SPEC §6.3, §9)', () =
         `the fight before round ${String(round)} must be the fight nobody signalled in`
       ).toEqual(quiet.events.slice(0, opening));
     }
+  });
+});
+
+describe('a shove tears the man it moves (COMBAT_SPEC §3.5)', () => {
+  /**
+   * **`bleeding` had no source at all until this.** §3.5 gives it two rounds, `BLEED` damage
+   * and a branch in `tickStatuses`; an audit over 630 battles — the whole frozen set at all
+   * three doctrines — counted it nought times, so all three were code no battle could reach.
+   * It is also the only status that outlives its own round, which left the countdown in
+   * `tickStatuses` unreachable with it.
+   *
+   * Owner's decision of 2026-08-31: the breaker is the source. *Which* of his acts was
+   * measured rather than chosen — every melee blow takes `DEC-011`'s refuting check from
+   * three winning formations to two, and his `Status` action never fires at all (§4.1 gives
+   * it to row 3, and his home rows are 1 and 2). The shove itself tears.
+   */
+  const breaker = unit('crew:breaker', 'crew', 1, 1, {
+    role: CombatRole.Breaker,
+    combat: { might: 95, guard: 60, aim: 30, focus: 70, care: 20 }
+  });
+
+  /** A foe easy enough to move: `might` above his stability is what §4.6 asks for. */
+  const soft = (row: 1 | 2 | 3, column: 1 | 2 | 3, id = 'foe:a') =>
+    unit(id, 'foe', row, column, { stability: 10 });
+
+  it('leaves bleeding on a man shoved into an empty cell', () => {
+    const { events } = runRound(startBattle([breaker, soft(1, 1)], DoctrineId.BreakThemFirst));
+
+    expect(events.some((event) => event.kind === 'unit_shifted' && event.forced)).toBe(true);
+    expect(
+      events.find((event) => event.kind === 'status_applied' && event.status === StatusId.Bleeding)
+    ).toMatchObject({ target: 'foe:a', source: 'crew:breaker', rounds: 2 });
+  });
+
+  it('leaves it on the man who was shoved when two of them change places', () => {
+    // **Against the state, not against the event.** A rule that put the status on the
+    // partner while announcing the displaced man would pass an events-only check with the
+    // screen showing one name and the fight costing the other — external review found that
+    // gap, and this is the shape that closes it.
+    const { events, state } = runRound(
+      startBattle([breaker, soft(1, 1), soft(2, 1, 'foe:b')], DoctrineId.BreakThemFirst)
+    );
+
+    const shoved = state.units.find((one) => one.id === 'foe:a')!;
+    const partner = state.units.find((one) => one.id === 'foe:b')!;
+
+    expect(shoved.statuses.get(StatusId.Bleeding)).toMatchObject({
+      // One, not two: the round it arrived in has already ended by the time the state is
+      // read, and `tickStatuses` has counted it down once.
+      remainingRounds: 1,
+      source: 'crew:breaker'
+    });
+    expect(partner.statuses.get(StatusId.Bleeding)).toBeUndefined();
+
+    expect(
+      events.filter(
+        (event) => event.kind === 'status_applied' && event.status === StatusId.Bleeding
+      )
+    ).toHaveLength(1);
+  });
+
+  it('leaves nothing on a man who held his ground', () => {
+    // `shift_resisted` is not a displacement, so nothing was torn.
+    // `stability` outright, not through `guard`: the helper spreads its overrides *over* a
+    // built unit, so a combat layer handed to it never reaches the formula that derives one.
+    const solid = unit('foe:a', 'foe', 1, 1, { stability: 100 });
+    const { events } = runRound(startBattle([breaker, solid], DoctrineId.BreakThemFirst));
+
+    expect(events.some((event) => event.kind === 'shift_resisted')).toBe(true);
+    expect(
+      events.some((event) => event.kind === 'status_applied' && event.status === StatusId.Bleeding)
+    ).toBe(false);
+  });
+
+  it('outlives the round it was applied in, and stops after the second', () => {
+    // The claim the first version could not make: a bleed that ticked once in its own round
+    // and then vanished would have satisfied "damage arrived after it was applied". What
+    // §3.5 declares is two rounds, and what makes `tickStatuses`'s countdown reachable at
+    // all is that a status crosses a round boundary — so the count of ticks is the check.
+    let state = startBattle([breaker, soft(1, 1)], DoctrineId.BreakThemFirst);
+    const bleeds: number[] = [];
+
+    for (let round = 0; round < 3; round += 1) {
+      const step = runRound(state);
+
+      state = step.state;
+      bleeds.push(
+        step.events.filter(
+          (event) => event.kind === 'damage_dealt' && event.provenance.base === BLEED
+        ).length
+      );
+    }
+
+    // Applied in round one and counted down at its end, so it bites at the end of rounds one
+    // and two and is gone by the third.
+    expect(bleeds.slice(0, 2).every((count) => count > 0)).toBe(true);
+    expect(
+      state.units.find((one) => one.id === 'foe:a')?.statuses.get(StatusId.Bleeding)
+    ).toBeUndefined();
   });
 });

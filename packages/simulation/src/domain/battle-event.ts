@@ -1,6 +1,6 @@
 import type { Cell } from './battle-cell.ts';
 import type { AmountProvenance } from './battle-provenance.ts';
-import type { BlockReason, MotiveReason, TargetReason } from './battle-reasons.ts';
+import type { MotiveReason, TargetReason } from './battle-reasons.ts';
 import type { StatusId } from './battle-status.ts';
 import type { BattleUnitId } from './battle-unit-id.ts';
 import type { CombatAction } from './combat-action.ts';
@@ -53,7 +53,6 @@ export type BattleEvent =
       /** The doctrine this intent went against, or `null` when it followed it. */
       readonly contraryTo: DoctrineId | null;
     }
-  | { readonly kind: 'blocked'; readonly actor: BattleUnitId; readonly reason: BlockReason }
   | {
       readonly kind: 'damage_dealt';
       readonly actor: BattleUnitId;
@@ -125,7 +124,6 @@ export type BattleEventKind = BattleEvent['kind'];
 export function unitNamedBy(event: BattleEvent): BattleUnitId | null {
   switch (event.kind) {
     case 'intent_declared':
-    case 'blocked':
       return event.actor;
     case 'damage_dealt':
     case 'healing_done':

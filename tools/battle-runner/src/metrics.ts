@@ -2,6 +2,7 @@ import type { ContentSet, ContractDefinition } from '@oath-and-coin/content';
 import {
   BattleOutcome,
   CombatRole,
+  DOCTRINE_IDS,
   DoctrineId,
   MATRIX_PATTERNS,
   MAX_ROUNDS,
@@ -114,6 +115,17 @@ export interface FoughtCase {
   readonly contract: string;
   readonly crew: string;
   readonly shape: FormationShape;
+  /**
+   * The order this crew went out under.
+   *
+   * **The fourth dimension of the set, added 2026-08-31 by the owner's decision.** Until it
+   * was there the whole report was taken under `hold_the_line` alone, and an audit found what
+   * that hid: under that one doctrine `status` and `shift` are never chosen at all, so two of
+   * the eight actions of §4.1 and two of the four statuses of §3.5 took no part in any of the
+   * eight numbers. A corridor measured over a third of the battle is a corridor about a third
+   * of the battle.
+   */
+  readonly doctrine: DoctrineId;
   readonly record: BattleRecord;
   readonly grade: OutcomeGrade;
   readonly verdicts: readonly CoverageVerdict[];
@@ -136,18 +148,21 @@ export function fightTheCoreSet(content: ContentSet): readonly FoughtCase[] {
   for (const definition of contracts) {
     for (const crew of crewsOf(pool, definition.requiredCrew)) {
       for (const shape of FORMATION_SHAPES) {
-        const input = inputFor({ content, definition, crew, shape });
-        const draft = battleResolver(input);
+        for (const doctrine of DOCTRINE_IDS) {
+          const input = inputFor({ content, definition, crew, shape, doctrine });
+          const draft = battleResolver(input);
 
-        fought.push({
-          contract: definition.id,
-          crew: crew.map((hero) => hero.id).join('+'),
-          shape,
-          record: draft.resolution.battle!,
-          grade: draft.resolution.grade,
-          verdicts: draft.resolution.coverage.map((row) => row.verdict),
-          forecast: forecastReadiness(input).objectives.map((one) => one.verdict)
-        });
+          fought.push({
+            contract: definition.id,
+            crew: crew.map((hero) => hero.id).join('+'),
+            shape,
+            doctrine,
+            record: draft.resolution.battle!,
+            grade: draft.resolution.grade,
+            verdicts: draft.resolution.coverage.map((row) => row.verdict),
+            forecast: forecastReadiness(input).objectives.map((one) => one.verdict)
+          });
+        }
       }
     }
   }
@@ -210,7 +225,10 @@ export function formationChangesOutcome(fought: readonly FoughtCase[]): Measurem
   const endings = new Map<string, Set<string>>();
 
   for (const one of fought) {
-    const key = `${one.contract}|${one.crew}`;
+    // A scenario is a contract, a crew **and a doctrine**: the three shapes are what varies
+    // inside it. Letting the doctrine vary within a scenario would fold "the order changed
+    // the outcome" into "the formation changed the outcome" and report the sum as the second.
+    const key = `${one.contract}|${one.crew}|${one.doctrine}`;
     grades.set(key, (grades.get(key) ?? new Set<string>()).add(one.grade));
     endings.set(key, (endings.get(key) ?? new Set<string>()).add(one.record.outcome));
   }

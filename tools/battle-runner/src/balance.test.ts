@@ -3,7 +3,9 @@ import { join, resolve } from 'node:path';
 import { loadContentSet } from '@oath-and-coin/content/node';
 import { describe, expect, it } from 'vitest';
 
-import { measureAll } from './metrics.ts';
+import { DOCTRINE_IDS } from '@oath-and-coin/simulation';
+
+import { fightTheCoreSet, measureAll } from './metrics.ts';
 
 /**
  * The eight corridors of `COMBAT_SPEC` §12.5, taken over the **shipped** content.
@@ -22,6 +24,44 @@ import { measureAll } from './metrics.ts';
 const repoRoot = resolve(import.meta.dirname, '..', '..', '..');
 const content = loadContentSet(join(repoRoot, 'content'));
 const measured = measureAll(content);
+
+describe('the shape of the frozen set (COMBAT_SPEC §12.5)', () => {
+  const fought = fightTheCoreSet(content);
+
+  it('fights every doctrine, not the one the set used to stand on', () => {
+    // **A mutant replacing the loop with `HoldTheLine` alone stayed green on everything
+    // else**: 210 battles instead of 630, and every corridor still inside itself. External
+    // review found it, and the reason it matters is what the audit found first — under that
+    // one doctrine `status` and `shift` are never chosen, so two of the eight actions of
+    // §4.1 and two of the four statuses of §3.5 take no part in any of the eight numbers.
+    const byDoctrine = new Map<string, number>();
+
+    for (const one of fought) {
+      byDoctrine.set(one.doctrine, (byDoctrine.get(one.doctrine) ?? 0) + 1);
+    }
+
+    expect([...byDoctrine.keys()].sort()).toEqual([...DOCTRINE_IDS].sort());
+    expect(new Set(byDoctrine.values()), 'every doctrine fights the same set').toHaveLength(1);
+  });
+
+  it('gives every contract, crew and formation all three orders', () => {
+    // Stated as the product rather than as a total: a set of the right *size* built by
+    // fighting one board three times would satisfy a count and measure nothing.
+    const orders = new Map<string, Set<string>>();
+
+    for (const one of fought) {
+      const board = `${one.contract}|${one.crew}|${one.shape}`;
+
+      orders.set(board, (orders.get(board) ?? new Set<string>()).add(one.doctrine));
+    }
+
+    expect(orders.size * DOCTRINE_IDS.length).toBe(fought.length);
+
+    for (const [board, seen] of orders) {
+      expect([...seen].sort(), board).toEqual([...DOCTRINE_IDS].sort());
+    }
+  });
+});
 
 describe('the balance corridors declared before balancing (COMBAT_SPEC §12.5)', () => {
   it('measures all eight, so a missing one cannot pass by not being asked', () => {

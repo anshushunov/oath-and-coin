@@ -184,7 +184,6 @@ function applyToBoard(
     // The board does not draw either: the intent line does, and it reads the event itself.
     case 'battle_started':
     case 'intent_declared':
-    case 'blocked':
     case 'damage_absorbed':
     case 'shift_resisted':
     case 'unit_pinned':
