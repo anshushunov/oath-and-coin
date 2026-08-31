@@ -508,9 +508,17 @@ nav {
   gap: 8px;
 }
 
+/*
+ * The control that leaves a finished fight for its debrief. Outside the screen element for
+ * the reason `nav` is (a control that navigates away must not be part of that screen's own
+ * evidence), and styled with the rest of them because the frame showed it as a full-width
+ * grey bar across the page — an unstyled `<button>` is `display: block` inside a grid row.
+ */
+[data-testid='battle-leave'],
 nav button,
 .saves button,
 .settlement button {
+  justify-self: start;
   padding: 4px 10px;
   border: 1px solid var(--edge);
   border-radius: 4px;

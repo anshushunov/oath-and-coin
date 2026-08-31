@@ -77,13 +77,22 @@ export function BattleScreen({
       {model.intent === null ? null : (
         <div className="intent" data-testid="battle-intent">
           <Label text={text(BattleFieldKeys.Intent)} />
-          {model.intent.displayNameKey === null ? null : (
-            <Label text={text(model.intent.displayNameKey)} />
-          )}
+          {/*
+            A name when he has one, his side and his job when he has not. A foe carries no
+            display name, and the frame of a running fight read `Намерение Выстрел Доран`:
+            the act had no subject and the *target's* name sat where the actor's belongs.
+          */}
+          <Who
+            displayNameKey={model.intent.displayNameKey}
+            sideKey={model.intent.sideKey}
+            roleKey={model.intent.roleKey}
+          />
           <Label text={text(model.intent.actionKey)} />
-          {model.intent.targetDisplayNameKey === null ? null : (
-            <Label text={text(model.intent.targetDisplayNameKey)} />
-          )}
+          <Who
+            displayNameKey={model.intent.targetDisplayNameKey}
+            sideKey={model.intent.targetSideKey}
+            roleKey={model.intent.targetRoleKey}
+          />
           <Label text={text(model.intent.reasonKey)} />
           {/*
             The moment `DIRECTION` §4.8 is about, and it is never shown on its own: a man
@@ -154,10 +163,45 @@ function JournalRow({ line }: { readonly line: BattleJournalLine }) {
   return (
     <div className="journal-line">
       <Label text={text(line.key)} />
-      {line.displayNameKey === null ? null : <Label text={text(line.displayNameKey)} />}
+      <Who displayNameKey={line.displayNameKey} sideKey={line.sideKey} roleKey={line.roleKey} />
       {line.detailKey === null ? null : <Label text={text(line.detailKey)} />}
       {line.amount === null ? null : <Label text={String(line.amount)} />}
     </div>
+  );
+}
+
+/**
+ * Who a line is about: his name, or — when he has none — his side and his job.
+ *
+ * One component because the rule is one rule, and the frame proved it has to be: the board
+ * list, the intent line and the journal all name people, and two of the three said nothing at
+ * all about a foe. Draws nothing when the line names nobody, which is what `round_ended` and
+ * `battle_started` are.
+ */
+function Who({
+  displayNameKey,
+  sideKey,
+  roleKey
+}: {
+  readonly displayNameKey: string | null;
+  readonly sideKey: string | null;
+  readonly roleKey: string | null;
+}) {
+  const text = useText();
+
+  if (displayNameKey !== null) {
+    return <Label text={text(displayNameKey)} />;
+  }
+
+  if (sideKey === null || roleKey === null) {
+    return null;
+  }
+
+  return (
+    <>
+      <Label text={text(sideKey)} />
+      <Label text={text(roleKey)} />
+    </>
   );
 }
 
