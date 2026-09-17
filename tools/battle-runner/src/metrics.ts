@@ -1,11 +1,14 @@
 import type { ContentSet, ContractDefinition } from '@oath-and-coin/content';
 import {
   BattleOutcome,
+  CombatAction,
   CombatRole,
   DOCTRINE_IDS,
   DoctrineId,
   MATRIX_PATTERNS,
   MAX_ROUNDS,
+  ModifierCodes,
+  StatusId,
   battleResolver,
   forecastReadiness,
   heroId,
@@ -15,6 +18,7 @@ import {
   winnerAgainst,
   type BattleRecord,
   type BattleUnit,
+  type BattleUnitId,
   type Cell,
   type CoverageVerdict,
   type HeroCombatLayer,
@@ -671,10 +675,196 @@ function archerBehind(ahead: number): readonly BattleUnit[] {
 const roleForRow = (row: 1 | 2 | 3): CombatRole =>
   row === 1 ? CombatRole.Vanguard : row === 2 ? CombatRole.Support : CombatRole.Rear;
 
-/** Everything §12.5 asks for, in the order it asks for it. */
-export function measureAll(content: ContentSet): readonly Measurement[] {
-  const fought = fightTheCoreSet(content);
+/**
+ * What the set produced under one doctrine — counted, printed, and gated by nothing.
+ *
+ * **These are the numbers §5.1 and §12.5 reason from, and until 2026-09 none of them had
+ * a producer in the tree.** The 1403 resisted shoves that named the second half of the
+ * rule, the share of the crew's blows a blocker stood in, the battles a shove of the crew
+ * landed in — every one was taken by a script in an agent's temp directory and retyped into
+ * the spec, which `AGENTS.md` §11 says is not a measurement. They come out of the report
+ * now, beside the eight corridors and from the same 630 battles, so a sentence in the spec
+ * can name the command that took its number.
+ *
+ * Not measurements: no corridor was declared over any of them, and printing a count as a
+ * `Measurement` would give it a verdict nobody decided. `balance.test.ts` pins the one of
+ * them that is a rule (`shiftsResisted` is nought); the rest are for reading.
+ */
+export interface DoctrineCount {
+  readonly doctrine: DoctrineId;
+  readonly battles: number;
+  /** Turns declared as a shove, on either side. */
+  readonly shiftIntents: number;
+  readonly shiftsResisted: number;
+  /** Shoves that met the back wall and pinned instead (§4.6). */
+  readonly pinned: number;
+  /**
+   * Shoves that moved or swapped somebody: intents less resisted less pinned. Read that
+   * way rather than off `unit_shifted`, which a swap raises twice — once per man.
+   */
+  readonly shovesLanded: number;
+  /** `bleeding` applied — one per landed shove by §3.5, and printed so that is checkable. */
+  readonly bleeding: number;
+  /** Blows of the crew's *heroes*: a ward stands on the crew's side without being one. */
+  readonly crewBlows: number;
+  readonly crewBlowsAtNought: number;
+  /** Blows whose provenance carries an obstruction step — a blocker stood in the way. */
+  readonly crewBlowsObstructed: number;
+  /** The same battles split by whether a shove of a crew hero landed in them. */
+  readonly withCrewShove: ShoveSplit;
+  readonly withoutCrewShove: ShoveSplit;
+}
 
+export interface ShoveSplit {
+  readonly battles: number;
+  readonly atCeiling: number;
+  readonly crewBlows: number;
+  readonly crewBlowsObstructed: number;
+}
+
+export function countByDoctrine(fought: readonly FoughtCase[]): readonly DoctrineCount[] {
+  return [...DOCTRINE_IDS]
+    .map((doctrine) =>
+      countOne(
+        doctrine,
+        fought.filter((one) => one.doctrine === doctrine)
+      )
+    )
+    .filter((row) => row.battles > 0);
+}
+
+function countOne(doctrine: DoctrineId, under: readonly FoughtCase[]): DoctrineCount {
+  let shiftIntents = 0;
+  let shiftsResisted = 0;
+  let pinned = 0;
+  let bleeding = 0;
+  let crewBlows = 0;
+  let crewBlowsAtNought = 0;
+  let crewBlowsObstructed = 0;
+  const withCrewShove = { battles: 0, atCeiling: 0, crewBlows: 0, crewBlowsObstructed: 0 };
+  const withoutCrewShove = { battles: 0, atCeiling: 0, crewBlows: 0, crewBlowsObstructed: 0 };
+
+  for (const one of under) {
+    const heroes = crewHeroesOf(one.record);
+    let blows = 0;
+    let obstructed = 0;
+    let crewShoveLanded = false;
+
+    for (const event of one.record.events) {
+      switch (event.kind) {
+        case 'intent_declared':
+          if (event.action === CombatAction.Shift) {
+            shiftIntents += 1;
+          }
+          break;
+        case 'shift_resisted':
+          shiftsResisted += 1;
+          break;
+        case 'unit_pinned':
+          pinned += 1;
+          break;
+        case 'status_applied':
+          if (event.status === StatusId.Bleeding) {
+            bleeding += 1;
+            crewShoveLanded ||= heroes.has(event.source);
+          }
+          break;
+        case 'damage_dealt':
+          if (heroes.has(event.actor)) {
+            blows += 1;
+            crewBlowsAtNought += event.amount === 0 ? 1 : 0;
+            obstructed += event.provenance.steps.some(
+              (step) => step.code === ModifierCodes.Obstruction
+            )
+              ? 1
+              : 0;
+          }
+          break;
+        // Named rather than defaulted, for the reason the union gives: a kind added next
+        // has to be placed here on purpose, not counted as nothing by a `default`.
+        case 'battle_started':
+        case 'round_started':
+        case 'healing_done':
+        case 'damage_absorbed':
+        case 'status_expired':
+        case 'unit_shifted':
+        case 'turn_spent':
+        case 'unit_downed':
+        case 'doctrine_broken':
+        case 'retreat_signalled':
+        case 'retreat_obeyed':
+        case 'retreat_refused':
+        case 'round_ended':
+        case 'battle_ended':
+          break;
+      }
+    }
+
+    crewBlows += blows;
+    crewBlowsObstructed += obstructed;
+
+    const side = crewShoveLanded ? withCrewShove : withoutCrewShove;
+    side.battles += 1;
+    side.atCeiling += one.record.rounds === MAX_ROUNDS ? 1 : 0;
+    side.crewBlows += blows;
+    side.crewBlowsObstructed += obstructed;
+  }
+
+  return {
+    doctrine,
+    battles: under.length,
+    shiftIntents,
+    shiftsResisted,
+    pinned,
+    shovesLanded: shiftIntents - shiftsResisted - pinned,
+    bleeding,
+    crewBlows,
+    crewBlowsAtNought,
+    crewBlowsObstructed,
+    withCrewShove,
+    withoutCrewShove
+  };
+}
+
+/** The crew's heroes, off the record's own roster — a ward is on the side and not a hero. */
+function crewHeroesOf(record: BattleRecord): ReadonlySet<BattleUnitId> {
+  return new Set(
+    record.initial.units
+      .filter((unit) => unit.side === 'crew' && unit.hero !== null)
+      .map((unit) => unit.id)
+  );
+}
+
+/** The counts as report lines, two per doctrine, under the eight measurements. */
+export function renderCounts(counts: readonly DoctrineCount[]): readonly string[] {
+  return counts.flatMap((row) => [
+    `     ${row.doctrine.padEnd(18)} shoves: ${String(row.shiftIntents)} intents, ${String(row.shiftsResisted)} resisted, ` +
+      `${String(row.pinned)} pinned, ${String(row.shovesLanded)} landed (bleeding ${String(row.bleeding)}); ` +
+      `${String(row.crewBlows)} crew blows, ${String(row.crewBlowsAtNought)} at nought, ` +
+      `${String(row.crewBlowsObstructed)} obstructed (${percentText(row.crewBlowsObstructed, row.crewBlows)})`,
+    `${' '.repeat(24)} a crew shove landed in ${String(row.withCrewShove.battles)} of ${String(row.battles)} battles: ` +
+      `${String(row.withCrewShove.atCeiling)} at the ceiling, ` +
+      `${percentText(row.withCrewShove.crewBlowsObstructed, row.withCrewShove.crewBlows)} obstructed; ` +
+      `in the other ${String(row.withoutCrewShove.battles)}: ${String(row.withoutCrewShove.atCeiling)} at the ceiling, ` +
+      `${percentText(row.withoutCrewShove.crewBlowsObstructed, row.withoutCrewShove.crewBlows)} obstructed`
+  ]);
+}
+
+/** One decimal, for reading — nothing is decided on it. A share of nothing prints as such. */
+function percentText(part: number, whole: number): string {
+  return whole === 0 ? 'n/a' : `${((part * 100) / whole).toFixed(1)}%`;
+}
+
+/**
+ * Everything §12.5 asks for, in the order it asks for it.
+ *
+ * The set is fought once and handed in, so the counts printed under the report come from
+ * the same 630 battles the verdicts were taken on and not from a second fight beside them.
+ */
+export function measureAll(
+  content: ContentSet,
+  fought: readonly FoughtCase[] = fightTheCoreSet(content)
+): readonly Measurement[] {
   return [
     battleLength(fought),
     doctrineBreaches(fought),

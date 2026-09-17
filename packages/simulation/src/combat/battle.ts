@@ -484,8 +484,14 @@ function support(
  * for the contract of §4.6 rather than for any caller — the event stays in the vocabulary
  * with its producer intact. Whether `shift_resisted` should now leave the vocabulary the way
  * `blocked` did (`DEC-017` §2) is a codec change and a decision, not taken here.
+ *
+ * **Exported for exactly that reason.** A guard no round can reach is a guard no round can
+ * show red, and review found the mutant deleting it green on the whole suite. The contract
+ * is held by calling the resolution directly (`battle.test.ts`, «the resolution, not the
+ * aim»); the selector is tested apart, for never choosing what this refuses. The package
+ * index does not re-export it: the resolution of one action is not a boundary of the core.
  */
-function shift(
+export function shift(
   units: readonly BattleUnit[],
   actor: BattleUnit,
   target: BattleUnit | null

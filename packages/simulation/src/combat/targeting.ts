@@ -192,9 +192,10 @@ export function statusAim(actor: BattleUnit, units: readonly BattleUnit[]): Aim 
  * decision, 2026-08-31): the action is left untaken and the doctrine's list goes on to the
  * blow.
  *
- * **Untaken, not re-aimed, and the difference was measured** the way it was for the status.
- * The reach of a shove is one cell by construction, so the nearest thing to "the next man"
- * is the walk-around of `meleeAim` — the first man down each neighbouring column, nearest
+ * **Untaken, not re-aimed, and the difference was measured** the way it was for the status:
+ * a one-off run on a temporary patch of this function, not reproducible from the tree. The
+ * reach of a shove is one cell by construction, so the nearest thing to "the next man" is
+ * the walk-around of `meleeAim` — the first man down each neighbouring column, nearest
  * first. Aimed that way, 123 of 210 battles under this doctrine still run into the ceiling
  * against 111 with the action dropped, because the freed turn goes on shoving somebody else
  * rather than on hitting anybody.

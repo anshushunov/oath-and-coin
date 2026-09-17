@@ -64,6 +64,22 @@ describe('the report says what it measured, and the verdict follows the same num
     expect(text).toContain('doctrine_breach_percent');
   });
 
+  it('prints the counts under a heading that says they are gated by nothing, and only when given some', () => {
+    // The counts are what the set produced (`metrics.ts`, `DoctrineCount`); no corridor
+    // reads them, and the heading has to say so where the number is read.
+    const bare = render([measurement('a')], 'core', 'x').join('\n');
+    const counted = render([measurement('a')], 'core', 'x', ['     break_them_first row']).join(
+      '\n'
+    );
+
+    expect(bare).not.toContain('counted, not gated');
+    expect(counted).toContain('counted, not gated — what the set produced, by doctrine:');
+    expect(counted).toContain('break_them_first row');
+    expect(counted.indexOf('break_them_first row')).toBeLessThan(
+      counted.indexOf('every threshold this run gates on held')
+    );
+  });
+
   it('says plainly when every threshold held, and names the ones that did not', () => {
     expect(render([measurement('a')], 'core', 'x').join('\n')).toContain(
       'every threshold this run gates on held'

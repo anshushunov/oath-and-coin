@@ -1,18 +1,28 @@
 import {
   BattleOutcome,
+  CombatAction,
+  CombatRole,
   CoverageVerdict,
   DoctrineId,
   MAX_ROUNDS,
-  OutcomeGrade
+  ModifierCodes,
+  OutcomeGrade,
+  StatusId,
+  heroId,
+  unitFrom,
+  type BattleEvent,
+  type BattleUnit
 } from '@oath-and-coin/simulation';
 import { describe, expect, it } from 'vitest';
 
 import {
   battleLength,
+  countByDoctrine,
   dominanceOf,
   forecastAgreement,
   formationChangesOutcome,
   formationDominance,
+  renderCounts,
   threatsBeaten,
   type FoughtCase
 } from './metrics.ts';
@@ -204,6 +214,162 @@ describe('strict dominance is asked of §13.1’s own matrix', () => {
 
     expect(dominanceOf(tied).status).toBe('ok');
     expect(dominanceOf(tied).note).toContain('ram→tie');
+  });
+});
+
+describe('what the set produced, counted by doctrine and gated by nothing', () => {
+  // Two men, one a hero of the crew and one not, so "a blow of the crew" has something to
+  // be distinguished from. Built with `unitFrom` rather than sketched: the counter reads the
+  // side and the hero off the record's own initial units, the way `meanRearEffect` does.
+  const crew = unitFrom({
+    id: 'crew:a',
+    side: 'crew',
+    hero: heroId(0),
+    role: CombatRole.Breaker,
+    cell: { row: 1, column: 2 },
+    combat: { might: 50, guard: 50, aim: 50, focus: 50, care: 50 }
+  });
+  const foe = unitFrom({
+    id: 'foe:a',
+    side: 'foe',
+    hero: null,
+    role: CombatRole.Vanguard,
+    cell: { row: 1, column: 2 },
+    combat: { might: 50, guard: 50, aim: 50, focus: 50, care: 50 }
+  });
+
+  const shove = (actor: BattleUnit['id']): BattleEvent => ({
+    kind: 'intent_declared',
+    actor,
+    action: CombatAction.Shift,
+    target: actor === 'crew:a' ? 'foe:a' : 'crew:a',
+    reason: 'combat.reason.the_easiest_to_move',
+    contraryTo: null
+  });
+  const bled = (source: BattleUnit['id']): BattleEvent => ({
+    kind: 'status_applied',
+    target: source === 'crew:a' ? 'foe:a' : 'crew:a',
+    status: StatusId.Bleeding,
+    source,
+    rounds: 2,
+    refreshed: false
+  });
+  const blow = (
+    actor: BattleUnit['id'],
+    amount: number,
+    steps: readonly { readonly code: (typeof ModifierCodes)[keyof typeof ModifierCodes] }[]
+  ): BattleEvent => ({
+    kind: 'damage_dealt',
+    actor,
+    target: actor === 'crew:a' ? 'foe:a' : 'crew:a',
+    amount,
+    provenance: {
+      base: 10,
+      steps: steps.map((step) => ({ ...step, source: actor, delta: -1 })),
+      final: amount
+    }
+  });
+
+  const record = (rounds: number, events: readonly BattleEvent[]): FoughtCase['record'] => ({
+    initial: { round: 0, units: [crew, foe], doctrine: DoctrineId.BreakThemFirst, outcome: null },
+    final: {
+      round: rounds,
+      units: [crew, foe],
+      doctrine: DoctrineId.BreakThemFirst,
+      outcome: BattleOutcome.TimedOut
+    },
+    events,
+    rounds,
+    outcome: BattleOutcome.TimedOut,
+    retreatSignalledAtRound: null
+  });
+
+  const under = (rounds: number, events: readonly BattleEvent[]): FoughtCase => ({
+    ...fought({ doctrine: DoctrineId.BreakThemFirst }),
+    record: record(rounds, events)
+  });
+
+  // Three shoves of the crew: one resisted, one that pinned, one that landed and tore. Two
+  // blows of the crew — one through a blocker, one chilled to nought — and one of the foe
+  // through a blocker, which is not a blow of the crew whatever stood in its way.
+  const withACrewShove = under(7, [
+    shove('crew:a'),
+    { kind: 'shift_resisted', unit: 'foe:a', by: 'crew:a' },
+    shove('crew:a'),
+    { kind: 'unit_pinned', unit: 'foe:a' },
+    shove('crew:a'),
+    bled('crew:a'),
+    blow('crew:a', 5, [{ code: ModifierCodes.Obstruction }]),
+    blow('crew:a', 0, [{ code: ModifierCodes.Chilled }]),
+    blow('foe:a', 5, [{ code: ModifierCodes.Obstruction }])
+  ]);
+
+  // The foe's shove landed and the crew's did not; the battle ran to the ceiling.
+  const withoutOne = under(MAX_ROUNDS, [
+    shove('foe:a'),
+    bled('foe:a'),
+    blow('crew:a', 5, [{ code: ModifierCodes.Chilled }, { code: ModifierCodes.Obstruction }])
+  ]);
+
+  it('counts the shoves by how they resolved, and the landed ones as what is left', () => {
+    const [count] = countByDoctrine([withACrewShove, withoutOne]);
+
+    expect(count).toMatchObject({
+      doctrine: DoctrineId.BreakThemFirst,
+      battles: 2,
+      shiftIntents: 4,
+      shiftsResisted: 1,
+      pinned: 1,
+      // Intents less resisted less pinned: the ones that moved or swapped somebody. Read
+      // that way rather than off `unit_shifted`, which a swap raises twice.
+      shovesLanded: 2,
+      bleeding: 2
+    });
+  });
+
+  it('counts the blows of the crew’s heroes alone, and which of them a blocker stood in', () => {
+    const [count] = countByDoctrine([withACrewShove, withoutOne]);
+
+    expect(count).toMatchObject({
+      crewBlows: 3,
+      crewBlowsAtNought: 1,
+      // Obstructed is the obstruction step being present, not any step: the chilled blow
+      // to nought had one step and no blocker.
+      crewBlowsObstructed: 2
+    });
+  });
+
+  it('splits the battles by whether a shove of the crew landed, with the ceiling and the obstruction on each side', () => {
+    const count = countByDoctrine([withACrewShove, withoutOne])[0]!;
+
+    expect(count.withCrewShove).toEqual({
+      battles: 1,
+      atCeiling: 0,
+      crewBlows: 2,
+      crewBlowsObstructed: 1
+    });
+    expect(count.withoutCrewShove).toEqual({
+      battles: 1,
+      atCeiling: 1,
+      crewBlows: 1,
+      crewBlowsObstructed: 1
+    });
+  });
+
+  it('prints one row per doctrine the set was fought under, and nothing for the ones it was not', () => {
+    const counts = countByDoctrine([withACrewShove, withoutOne]);
+
+    expect(counts).toHaveLength(1);
+
+    const text = renderCounts(counts).join('\n');
+
+    expect(text).toContain('break_them_first');
+    expect(text).toContain('4 intents, 1 resisted, 1 pinned, 2 landed');
+    expect(text).toContain('3 crew blows, 1 at nought, 2 obstructed (66.7%)');
+    expect(text).toContain(
+      'a crew shove landed in 1 of 2 battles: 0 at the ceiling, 50.0% obstructed'
+    );
+    expect(text).toContain('in the other 1: 1 at the ceiling, 100.0% obstructed');
   });
 });
 

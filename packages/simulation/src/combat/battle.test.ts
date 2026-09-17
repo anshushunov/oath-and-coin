@@ -5,7 +5,7 @@ import { compareStrings } from '../collections/comparator.ts';
 import { CombatRole } from '../domain/combat-role.ts';
 import { heroId, type HeroId } from '../ids/hero-id.ts';
 
-import { MAX_ROUNDS, runBattle, runRound, startBattle } from './battle.ts';
+import { MAX_ROUNDS, runBattle, runRound, shift, startBattle } from './battle.ts';
 import { BLEED } from './unit.ts';
 import { BOND_STRONG } from './decision.ts';
 import { DoctrineId } from './doctrine.ts';
@@ -379,6 +379,20 @@ describe('a shove nobody would feel is not worth the round', () => {
     // this: the breaker has struck at least once, and not one turn went on the shove.
     expect(blows.length).toBeGreaterThan(0);
     expect(record.events.filter((event) => event.kind === 'shift_resisted')).toHaveLength(0);
+  });
+
+  it('still refuses the shove itself when handed a man who would hold — the resolution, not the aim', () => {
+    // **No battle reaches this branch any more, and that is why it is called directly.**
+    // The aim above never hands the resolution a man who would keep his footing, so through
+    // `runRound` the guard in `shift` cannot be shown red — and a check that cannot go red
+    // is not a check (`AGENTS.md` §8). §4.6's contract is on the resolution: `might` strictly
+    // above `stability` or the man holds, no roll, nothing moved, nothing torn. Held here
+    // on the function, with the selector tested separately for never choosing it.
+    const units = [weak, solid];
+    const { units: after, events } = shift(units, weak, solid);
+
+    expect(events).toEqual([{ kind: 'shift_resisted', unit: 'foe:v', by: 'crew:b' }]);
+    expect(after).toBe(units);
   });
 });
 
