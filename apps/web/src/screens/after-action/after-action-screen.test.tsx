@@ -236,8 +236,28 @@ const STATES = [
     state: ScreenState.Normal,
     describe: 'a contract that has been settled',
     model: () => debriefFor('promise_kept', 'final')
+  },
+  {
+    // The one debrief with a battle section on it (`COMBAT_SPEC` §10.3): `battle_ready`
+    // stops one press before the fight, and the live `resolveContract` is that press. Without
+    // this row the feed's own bindings — a line's subject, its target, its number — were
+    // compared by nothing in jsdom, and a target dropped here alone would have been green.
+    state: ScreenState.Incomplete,
+    describe: 'an outcome a fight produced',
+    model: aFoughtDebrief
   }
 ] as const;
+
+/** The debrief of `battle_ready`'s siege camp, fought by the live command. */
+function aFoughtDebrief(): AfterActionScreenModel {
+  const debrief = aResolvedDebrief('battle_ready', 'battle_ready', ['resolveContract']);
+
+  if (debrief.battle === null) {
+    throw new Error('battle_ready resolved without a fight, so this row measures nothing.');
+  }
+
+  return debrief;
+}
 
 interface FakeController extends AfterActionScreenActions {
   readonly calls: { name: string; args: readonly unknown[] }[];
@@ -320,6 +340,26 @@ describe('the five states a debrief can be in', () => {
     expect(snapshotHash(collectRenderedTexts(renderScreen(screen)))).toBe(
       snapshotHash(expectedSnapshot(screen, catalogue))
     );
+  });
+});
+
+describe('the battle’s own section', () => {
+  it('says whom every blow in the feed landed on, as the battle screen does', () => {
+    // One journal, two readers (`COMBAT_SPEC` §10.2, §10.3). The owner's first play found
+    // `Урон Противник Столкновение 10` with nobody struck; the arrow is the word between
+    // the two men, and the debrief owes it exactly where the battle screen does.
+    const container = renderScreen(aFoughtDebrief());
+    const lines = Array.from(container.querySelectorAll('.battle-line')).map((line) =>
+      collectRenderedTexts(line)
+    );
+    const blows = lines.filter((line) => line[0] === 'Урон');
+
+    expect(blows.length).toBeGreaterThan(0);
+
+    for (const blow of blows) {
+      expect(blow, blow.join(' | ')).toContain('→');
+      expect(blow[blow.indexOf('→') + 1]).not.toMatch(/^\d+$/u);
+    }
   });
 });
 

@@ -155,6 +155,12 @@ function battleSnapshot(
       }
 
       resolve(unit.roleKey);
+      // Where he stands, in the two words `COMBAT_SPEC` §3.1 names a cell by. The owner's
+      // first play could not tell how anybody stood: the list had no cell on it.
+      resolve(BattleFieldKeys.Row);
+      texts.push(String(unit.row));
+      resolve(BattleFieldKeys.Column);
+      texts.push(String(unit.column));
       resolve(BattleFieldKeys.Health);
       texts.push(String(unit.health));
 
@@ -213,6 +219,19 @@ function battleSnapshot(
 
       if (line.detailKey !== null) {
         resolve(line.detailKey);
+      }
+
+      // The other man, after the word saying which way it went and before the number: the
+      // sentence first, the figure last. Named by the rule the subject is named by.
+      if (line.linkKey !== null) {
+        resolve(line.linkKey);
+
+        if (line.targetDisplayNameKey !== null) {
+          resolve(line.targetDisplayNameKey);
+        } else if (line.targetSideKey !== null && line.targetRoleKey !== null) {
+          resolve(line.targetSideKey);
+          resolve(line.targetRoleKey);
+        }
       }
 
       if (line.amount !== null) {
@@ -568,6 +587,18 @@ function afterActionSnapshot(
 
       if (line.detailKey !== null) {
         resolve(line.detailKey);
+      }
+
+      // The same line the battle screen prints, in the same order: one journal, two readers.
+      if (line.linkKey !== null) {
+        resolve(line.linkKey);
+
+        if (line.targetDisplayNameKey !== null) {
+          resolve(line.targetDisplayNameKey);
+        } else if (line.targetSideKey !== null && line.targetRoleKey !== null) {
+          resolve(line.targetSideKey);
+          resolve(line.targetRoleKey);
+        }
       }
 
       if (line.amount !== null) {

@@ -108,6 +108,122 @@ describe('what moves as the feed moves', () => {
   });
 });
 
+describe('the journal names the other man on the line, by the rule it names the first', () => {
+  // The owner's first play: «непонятно, кто куда бьёт». A line read `Урон Противник
+  // Столкновение 10` — who struck and how hard, and nothing about whom. PR #57 gave every
+  // line a subject; these give it the second man where the event carries one.
+  const finished = at(events.length);
+
+  /** What the board list calls `unit` — the one naming rule, read from the other place it is applied. */
+  const listed = (unit: string) => {
+    const line = finished.units.find((one) => one.unit === unit);
+
+    if (line === undefined) {
+      throw new Error(`No unit '${unit}' on the board.`);
+    }
+
+    return {
+      displayNameKey: line.displayNameKey,
+      sideKey: line.side === 'crew' ? 'battle.field.crew' : 'battle.field.foes',
+      roleKey: line.roleKey
+    };
+  };
+
+  it('names whom every blow landed on, pointing at him, as the board list names him', () => {
+    const blows = events
+      .map((event, index) => ({ event, index }))
+      .filter(({ event }) => event.kind === 'damage_dealt');
+
+    expect(blows.length).toBeGreaterThan(0);
+
+    for (const { event, index } of blows) {
+      if (event.kind !== 'damage_dealt') {
+        continue;
+      }
+
+      const line = finished.journal[index]!;
+
+      expect(line.unit).toBe(event.actor);
+      expect(line.targetUnit).toBe(event.target);
+      expect(line.linkKey).toBe('battle.field.to');
+      expect({
+        displayNameKey: line.targetDisplayNameKey,
+        sideKey: line.targetSideKey,
+        roleKey: line.targetRoleKey
+      }).toEqual(listed(event.target));
+
+      // A blow crosses the line, so the two men are never on one side: a mutant that named
+      // the striker twice would agree with everything above except this.
+      expect(line.targetSideKey).not.toBe(line.sideKey);
+    }
+  });
+
+  it('names who put a man down, pointing back at him', () => {
+    // The line's own word is about the man who fell — «Сбит» — so the other man is the one
+    // who acted, and the arrow points back at him rather than forward from him.
+    const downed = events
+      .map((event, index) => ({ event, index }))
+      .filter(({ event }) => event.kind === 'unit_downed');
+
+    expect(downed.length).toBeGreaterThan(0);
+
+    for (const { event, index } of downed) {
+      if (event.kind !== 'unit_downed') {
+        continue;
+      }
+
+      const line = finished.journal[index]!;
+
+      expect(line.unit).toBe(event.unit);
+      expect(line.targetUnit).toBe(event.by);
+      expect(line.linkKey).toBe('battle.field.from');
+      expect({
+        displayNameKey: line.targetDisplayNameKey,
+        sideKey: line.targetSideKey,
+        roleKey: line.targetRoleKey
+      }).toEqual(listed(event.by));
+    }
+  });
+
+  it('names nobody else on a line about nobody', () => {
+    const alone = events
+      .map((event, index) => ({ event, index }))
+      .filter(
+        ({ event }) =>
+          event.kind === 'battle_started' ||
+          event.kind === 'round_started' ||
+          event.kind === 'battle_ended'
+      );
+
+    expect(alone.length).toBeGreaterThan(0);
+
+    for (const { index } of alone) {
+      const line = finished.journal[index]!;
+
+      expect(line.targetUnit).toBeNull();
+      expect(line.targetDisplayNameKey).toBeNull();
+      expect(line.targetSideKey).toBeNull();
+      expect(line.targetRoleKey).toBeNull();
+      expect(line.linkKey).toBeNull();
+    }
+  });
+
+  it('refuses a line that names a second man with no word between the two', () => {
+    const struck = finished.journal.findIndex((line) => line.linkKey !== null);
+
+    expect(struck).toBeGreaterThanOrEqual(0);
+
+    expect(() =>
+      createBattleScreenModel({
+        ...(finished as BattleScreenContent),
+        journal: finished.journal.map((line, index) =>
+          index === struck ? { ...line, linkKey: null } : line
+        )
+      })
+    ).toThrow(/second man/u);
+  });
+});
+
 describe('the retreat button (DEC-005, COMBAT_SPEC §7.4)', () => {
   it('cannot be pressed before the first round has started', () => {
     // A signal at round nought is one given before the battle began, which `resolveContract`

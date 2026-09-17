@@ -7,6 +7,7 @@ import {
 import { describe, expect, it } from 'vitest';
 
 import { afterActionScreenModel } from './after-action-screen-model.ts';
+import { battleScreenModel } from './battle-screen-model.ts';
 import { contractOfferScreenModel } from './contract-offer-screen-model-factory.ts';
 import { readModelHash } from './screen-model.ts';
 import { aContract } from './testing/fixtures.ts';
@@ -175,6 +176,44 @@ describe('the section and the column COMBAT_SPEC §10.3 adds', () => {
     expect(offered.forecast?.reasons.map((reason) => reason.key)).toContain(
       'forecast.bond_may_break_the_doctrine'
     );
+  });
+
+  it('names the second man on every line exactly as the battle screen’s journal does', () => {
+    // One journal, two readers (`COMBAT_SPEC` §10.2, §10.3). PR #57 closed "who acted" in
+    // both places at once, and this holds the second half to the same rule: a target
+    // dropped from the debrief while the battle screen kept it would leave the two lists
+    // disagreeing about the same fight.
+    const { state, contractId } = fought();
+    const debrief = afterActionScreenModel(state, contractId);
+    const watched = battleScreenModel(state, contractId, {
+      applied: state.contracts.get(contractId)?.resolution?.battle?.events.length ?? 0
+    });
+
+    expect(debrief.battle?.feed.length).toBe(watched.journal.length);
+
+    expect(
+      watched.journal.some((line) => line.linkKey === 'battle.field.to'),
+      'a fight with nobody struck proves nothing here'
+    ).toBe(true);
+
+    debrief.battle?.feed.forEach((line, index) => {
+      const journal = watched.journal[index]!;
+
+      expect(
+        {
+          displayNameKey: line.targetDisplayNameKey,
+          sideKey: line.targetSideKey,
+          roleKey: line.targetRoleKey,
+          linkKey: line.linkKey
+        },
+        `line ${String(index)} (${line.key})`
+      ).toEqual({
+        displayNameKey: journal.targetDisplayNameKey,
+        sideKey: journal.targetSideKey,
+        roleKey: journal.targetRoleKey,
+        linkKey: journal.linkKey
+      });
+    });
   });
 
   it('says which round the player pulled them out at, and nothing when he did not', () => {

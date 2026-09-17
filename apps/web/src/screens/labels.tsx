@@ -67,6 +67,43 @@ export function Captioned({
 }
 
 /**
+ * Who a line is about: his name, or — when he has none — his side and his job.
+ *
+ * One component because the rule is one rule, and the frame proved it has to be: the board
+ * list, the intent line, the journal and the debrief's feed all name people, and two of the
+ * four once said nothing at all about a foe. Now the same four name a *second* man — whom a
+ * blow landed on, who laid a status — so the component moved up here beside the other three
+ * primitives rather than being imported across screens. Draws nothing when the line names
+ * nobody, which is what `round_ended` and `battle_started` are.
+ */
+export function Who({
+  displayNameKey,
+  sideKey,
+  roleKey
+}: {
+  readonly displayNameKey: string | null;
+  readonly sideKey: string | null;
+  readonly roleKey: string | null;
+}) {
+  const text = useText();
+
+  if (displayNameKey !== null) {
+    return <Label text={text(displayNameKey)} />;
+  }
+
+  if (sideKey === null || roleKey === null) {
+    return null;
+  }
+
+  return (
+    <>
+      <Label text={text(sideKey)} />
+      <Label text={text(roleKey)} />
+    </>
+  );
+}
+
+/**
  * A captioned row of localization keys — a hero's principles, a contract's tags — or
  * nothing at all when the list is empty.
  *

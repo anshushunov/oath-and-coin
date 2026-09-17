@@ -10,7 +10,7 @@ import {
 import { WorldCanvas } from '../../world/world-canvas.tsx';
 import { useText } from '../../text.tsx';
 
-import { Captioned, Label } from '../labels.tsx';
+import { Captioned, Label, Who } from '../labels.tsx';
 
 /**
  * The fight, as a board, a line of intent, a journal and five buttons (`COMBAT_SPEC` §10.2).
@@ -144,6 +144,14 @@ function UnitRow({ unit }: { readonly unit: BattleUnitLine }) {
       <Label text={text(unit.side === 'crew' ? BattleFieldKeys.Crew : BattleFieldKeys.Foes)} />
       {unit.displayNameKey === null ? null : <Label text={text(unit.displayNameKey)} />}
       <Label text={text(unit.roleKey)} />
+      {/*
+        Where he stands, in the two words `COMBAT_SPEC` §3.1 names a cell by: row 1 is the
+        rank that meets the enemy, and the column is shared with the other side. The owner's
+        first play: «непонятно, как стоят» — the list carried everything about a man except
+        his cell, and the canvas beside it has no text a reader can check the picture against.
+      */}
+      <Captioned captionKey={BattleFieldKeys.Row} value={String(unit.row)} />
+      <Captioned captionKey={BattleFieldKeys.Column} value={String(unit.column)} />
       <Captioned captionKey={BattleFieldKeys.Health} value={String(unit.health)} />
       {unit.leftKey === null ? null : <Label text={text(unit.leftKey)} />}
       {unit.statuses.map((status) => (
@@ -165,43 +173,25 @@ function JournalRow({ line }: { readonly line: BattleJournalLine }) {
       <Label text={text(line.key)} />
       <Who displayNameKey={line.displayNameKey} sideKey={line.sideKey} roleKey={line.roleKey} />
       {line.detailKey === null ? null : <Label text={text(line.detailKey)} />}
+      {/*
+        The other man, after the word saying which way it went and before the number. The
+        owner's first play read `Урон Противник Столкновение 10` and asked «кто куда бьёт»:
+        the striker and the figure were there, and nobody struck. The arrow is a text from
+        the catalogue like every other word here, and the man after it is named by the rule
+        the man before it is.
+      */}
+      {line.linkKey === null ? null : (
+        <>
+          <Label text={text(line.linkKey)} />
+          <Who
+            displayNameKey={line.targetDisplayNameKey}
+            sideKey={line.targetSideKey}
+            roleKey={line.targetRoleKey}
+          />
+        </>
+      )}
       {line.amount === null ? null : <Label text={String(line.amount)} />}
     </div>
-  );
-}
-
-/**
- * Who a line is about: his name, or — when he has none — his side and his job.
- *
- * One component because the rule is one rule, and the frame proved it has to be: the board
- * list, the intent line and the journal all name people, and two of the three said nothing at
- * all about a foe. Draws nothing when the line names nobody, which is what `round_ended` and
- * `battle_started` are.
- */
-function Who({
-  displayNameKey,
-  sideKey,
-  roleKey
-}: {
-  readonly displayNameKey: string | null;
-  readonly sideKey: string | null;
-  readonly roleKey: string | null;
-}) {
-  const text = useText();
-
-  if (displayNameKey !== null) {
-    return <Label text={text(displayNameKey)} />;
-  }
-
-  if (sideKey === null || roleKey === null) {
-    return null;
-  }
-
-  return (
-    <>
-      <Label text={text(sideKey)} />
-      <Label text={text(roleKey)} />
-    </>
   );
 }
 
