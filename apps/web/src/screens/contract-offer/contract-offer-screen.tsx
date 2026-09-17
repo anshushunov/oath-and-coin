@@ -3,12 +3,14 @@ import {
   LeverDisabledKeys,
   OfferFieldKeys,
   OfferAction,
+  OfferLeverId,
   ScreenKind,
   ScreenState,
   SettlementFieldKeys,
   TreasuryFieldKeys,
   actionKey,
   errorKey,
+  leverOfRefusal,
   offerActionKey,
   offerPhaseKey,
   qualitativeKey,
@@ -122,6 +124,17 @@ export function ContractOfferScreen({
   // `Normal` — a campaign with nothing to offer still has one — and only `Loading` and
   // `Error` have no campaign behind them to read a figure from at all.
   const showTreasury = model.state !== ScreenState.Loading && model.state !== ScreenState.Error;
+  // Where the last refusal stands: beside the lever it names, or — when it names none —
+  // beside the button that was pressed. Decided once, here, from the model's own answer
+  // (`leverOfRefusal`), so that every block below branches only on whether the refusal it
+  // was handed is `null`.
+  const refusedLever =
+    form.refusal === null ? null : leverOfRefusal(form.refusal.action, form.refusal.key);
+  const leverRefusal =
+    form.refusal === null || refusedLever === null
+      ? null
+      : { lever: refusedLever, key: form.refusal.key };
+  const buttonRefusal = form.refusal !== null && refusedLever === null ? form.refusal : null;
 
   return (
     <section className="contract-offer" data-testid="contract-offer-screen">
@@ -154,9 +167,10 @@ export function ContractOfferScreen({
           onDraft={(draft) => {
             // A keystroke clears the last refusal: it was about the package as it stood,
             // and the package has just changed.
-            setForm({ ...form, draft, rejectionKey: null });
+            setForm({ ...form, draft, refusal: null });
           }}
           heroDisplayNameKeyOf={heroDisplayNameKeyOf}
+          refusal={leverRefusal}
         />
       )}
 
@@ -242,18 +256,18 @@ export function ContractOfferScreen({
           onChange={(draft) => {
             setForm({ ...form, draft });
           }}
+          refusal={leverRefusal}
         />
       )}
 
       <ActionsBlock
         actions={model.availableActions}
         composeBlockedBy={composeBlockedBy(form.draft, model)}
-        rejectionKey={form.rejectionKey}
+        refusal={buttonRefusal}
         onPress={(action) => {
-          setForm({
-            ...form,
-            rejectionKey: press(controller, action, form.draft, model, onBattle)
-          });
+          const key = press(controller, action, form.draft, model, onBattle);
+
+          setForm({ ...form, refusal: key === null ? null : { action, key } });
         }}
       />
     </section>
@@ -342,12 +356,31 @@ function formationFor(
   };
 }
 
+/**
+ * What the last press came back with: the refusal, and which command was refused.
+ *
+ * The action travels with the key because the key alone does not say where the sentence
+ * belongs. `offer_terms_out_of_bounds` is `composeOffer`'s answer for a term past the patron
+ * fee and `placeCrew`'s for a retreat threshold past one hundred per cent, and the two
+ * levers are half a screen apart — `leverOfRefusal` needs both halves to say which.
+ */
+interface Refusal {
+  readonly action: OfferAction;
+  readonly key: string;
+}
+
+/** A refusal that names a lever, and the lever it names — what {@link LeverRefusal} draws. */
+interface LeverRefusal {
+  readonly lever: OfferLeverId;
+  readonly key: string;
+}
+
 interface FormState {
   /** The package this draft belongs to; a change to it throws the draft away. */
   readonly key: string | null;
   readonly draft: OfferForm;
   /** The refusal the last press produced, or `null` when the last press was taken. */
-  readonly rejectionKey: string | null;
+  readonly refusal: Refusal | null;
 }
 
 const EMPTY_FORM: OfferForm = {
@@ -395,7 +428,7 @@ function formFor(model: ContractOfferScreenModel): FormState {
             invited: [...offer.crewLever.chosen],
             ...formationFor(model)
           },
-    rejectionKey: null
+    refusal: null
   };
 }
 
@@ -536,24 +569,31 @@ function refusalOf(result: {
  * refusal to show, because nothing has been refused. A player is told about the first and
  * simply cannot press the second.
  *
- * `rejectionKey` is a third thing again, and it lives outside the list: it is what the last
- * press actually came back with, so it belongs to the moment rather than to any one control.
+ * `refusal` is a third thing again: what the last press actually came back with, when it
+ * was about the package as a whole rather than about a lever. It stands beside the button
+ * that was pressed — the control it is about — in the slot a dark button's reason takes,
+ * and the two never meet: a dark button cannot be pressed. A refusal that names a lever
+ * never reaches this block at all; it stands beside that lever ({@link LeverRefusal}).
+ * **It used to be printed here for every refusal, after the last button, and that put it
+ * below the window at 1280×800 — the owner typed an advance past the ceiling, pressed, and
+ * read nothing.**
  *
  * Every branch here is on a field being `null` or a boolean the parent computed — never on
  * which action this is — and `expectedSnapshot` makes the identical decisions from the
- * identical model fields. `canCompose` and `rejectionKey` produce no text of their own, so
+ * identical model fields. `canCompose` and `refusal` produce no text of their own, so
  * neither can move the second hash.
  */
 function ActionsBlock({
   actions,
   composeBlockedBy: composeBlocked,
-  rejectionKey,
+  refusal,
   onPress
 }: {
   readonly actions: readonly AvailableAction[];
   /** The screen's own reason `compose` is dark, when the engine has none (`§5.1`). */
   readonly composeBlockedBy: string | null;
-  readonly rejectionKey: string | null;
+  /** The last refusal, when it names no lever and so belongs beside the button pressed. */
+  readonly refusal: Refusal | null;
   readonly onPress: (action: OfferAction) => void;
 }) {
   const text = useText();
@@ -586,17 +626,50 @@ function ActionsBlock({
             </button>
 
             {reasonKey === null ? null : <Label text={text(reasonKey)} />}
+            {refusal === null || refusal.action !== available.action ? null : (
+              <Refusal textKey={refusal.key} />
+            )}
           </div>
         );
       })}
-
-      {rejectionKey === null ? null : (
-        <p className="rejection" data-testid="offer-rejection">
-          {text(rejectionKey)}
-        </p>
-      )}
     </div>
   );
+}
+
+/**
+ * The sentence a press came back with, wherever it stands.
+ *
+ * One element and one test id however many places can draw it, because at most one refusal
+ * exists at a time — it is what the *last* press answered — and the browser suites find it
+ * by that id without knowing which control it landed beside.
+ */
+function Refusal({ textKey }: { readonly textKey: string }) {
+  const text = useText();
+
+  return (
+    <p className="rejection" data-testid="offer-rejection">
+      {text(textKey)}
+    </p>
+  );
+}
+
+/**
+ * The refusal beside the lever it names, or nothing — drawn inside that lever's own block,
+ * which is what "beside" means on this screen: the block a control is in is the block its
+ * refusal is in, so a reader who has found the number has found the sentence about it.
+ *
+ * A branch on which lever this is, and it is the same kind as `ActionsBlock`'s branch on
+ * which action a button is: the model has said which lever the refusal names, and each
+ * block asks only whether that is itself.
+ */
+function LeverRefusal({
+  at,
+  refusal
+}: {
+  readonly at: OfferLeverId;
+  readonly refusal: LeverRefusal | null;
+}) {
+  return refusal === null || refusal.lever !== at ? null : <Refusal textKey={refusal.key} />;
 }
 
 /**
@@ -897,12 +970,15 @@ function OfferBlock({
   offer,
   draft,
   onDraft,
-  heroDisplayNameKeyOf
+  heroDisplayNameKeyOf,
+  refusal
 }: {
   readonly offer: OfferLine;
   readonly draft: OfferForm;
   readonly onDraft: (next: OfferForm) => void;
   readonly heroDisplayNameKeyOf: (definition: string) => string;
+  /** The last refusal, when it names one of this block's levers. */
+  readonly refusal: LeverRefusal | null;
 }) {
   const text = useText();
 
@@ -911,64 +987,71 @@ function OfferBlock({
       <Captioned captionKey={OfferFieldKeys.Version} value={String(offer.version)} />
       <Label text={text(offerPhaseKey(offer.phase))} />
 
-      <div className="row lever">
-        <Captioned captionKey={OfferFieldKeys.Advance} value={String(offer.advanceLever.value)} />
-        <NumberField
-          testId="offer.advance"
-          lever={offer.advanceLever}
-          value={draft.advance}
-          onChange={(advance) => {
-            onDraft({ ...draft, advance });
-          }}
-        />
-        <DisabledReason lever={offer.advanceLever} />
+      {/* Each lever in a block of its own, named by `data-lever`, so that a refusal has a
+          place to stand that is provably the lever's — the browser suite asks the DOM which
+          block the sentence is in. The wrappers carry no text, so the walk both hashes
+          make sees exactly what it saw before them. */}
+      <div className="lever-block" data-lever={OfferLeverId.Terms}>
+        <div className="row lever">
+          <Captioned captionKey={OfferFieldKeys.Advance} value={String(offer.advanceLever.value)} />
+          <NumberField
+            testId="offer.advance"
+            lever={offer.advanceLever}
+            value={draft.advance}
+            onChange={(advance) => {
+              onDraft({ ...draft, advance });
+            }}
+          />
+          <DisabledReason lever={offer.advanceLever} />
 
-        {offer.methodLever.options.length === 0 ? null : (
-          <div className="method-options">
-            <Label text={text(OfferFieldKeys.Method)} />
-            {offer.methodLever.options.map((option, index) => (
-              <label className="method-option" key={option.value}>
-                <input
-                  type="radio"
-                  name="offer-method"
-                  data-testid={`method-option-${String(index)}`}
-                  checked={option.value === draft.methodTag}
-                  disabled={offer.methodLever.disabledReasonKey !== null}
-                  onChange={() => {
-                    onDraft({ ...draft, methodTag: option.value });
-                  }}
-                />
-                <span className="label">{text(option.labelKey)}</span>
-              </label>
+          {offer.methodLever.options.length === 0 ? null : (
+            <div className="method-options">
+              <Label text={text(OfferFieldKeys.Method)} />
+              {offer.methodLever.options.map((option, index) => (
+                <label className="method-option" key={option.value}>
+                  <input
+                    type="radio"
+                    name="offer-method"
+                    data-testid={`method-option-${String(index)}`}
+                    checked={option.value === draft.methodTag}
+                    disabled={offer.methodLever.disabledReasonKey !== null}
+                    onChange={() => {
+                      onDraft({ ...draft, methodTag: option.value });
+                    }}
+                  />
+                  <span className="label">{text(option.labelKey)}</span>
+                </label>
+              ))}
+            </div>
+          )}
+
+          {offer.methodLever.options
+            .filter((option) => option.selected)
+            .map((option) => (
+              <Captioned
+                key={option.value}
+                captionKey={OfferFieldKeys.SelectedMethod}
+                value={text(option.labelKey)}
+              />
             ))}
-          </div>
-        )}
 
-        {offer.methodLever.options
-          .filter((option) => option.selected)
-          .map((option) => (
-            <Captioned
-              key={option.value}
-              captionKey={OfferFieldKeys.SelectedMethod}
-              value={text(option.labelKey)}
-            />
-          ))}
+          <DisabledReason lever={offer.methodLever} />
 
-        <DisabledReason lever={offer.methodLever} />
-
-        <Captioned
-          captionKey={OfferFieldKeys.PromisedBonus}
-          value={String(offer.bonusLever.value)}
-        />
-        <NumberField
-          testId="offer.promised_bonus"
-          lever={offer.bonusLever}
-          value={draft.promisedBonus}
-          onChange={(promisedBonus) => {
-            onDraft({ ...draft, promisedBonus });
-          }}
-        />
-        <DisabledReason lever={offer.bonusLever} />
+          <Captioned
+            captionKey={OfferFieldKeys.PromisedBonus}
+            value={String(offer.bonusLever.value)}
+          />
+          <NumberField
+            testId="offer.promised_bonus"
+            lever={offer.bonusLever}
+            value={draft.promisedBonus}
+            onChange={(promisedBonus) => {
+              onDraft({ ...draft, promisedBonus });
+            }}
+          />
+          <DisabledReason lever={offer.bonusLever} />
+        </div>
+        <LeverRefusal at={OfferLeverId.Terms} refusal={refusal} />
       </div>
 
       {/* Both hero levers show every option before they show the choice made out of it:
@@ -976,60 +1059,66 @@ function OfferBlock({
           and the crew being part of the package is the whole point of `RESOLUTION_SPEC`
           §2.5. Never gated on emptiness — a roster is never empty on a screen that has a
           contract at all (`contractOfferScreenModel`'s own `Empty` guard). */}
-      <OptionList
-        captionKey={OfferFieldKeys.KeyHeroOptions}
-        type="radio"
-        name="offer-key-hero"
-        prefix="key-hero"
-        options={offer.keyHeroLever.options}
-        disabled={offer.keyHeroLever.disabledReasonKey !== null}
-        isChosen={(value) => value === draft.keyHero}
-        onToggle={(keyHero) => {
-          onDraft({ ...draft, keyHero });
-        }}
-      />
-
-      {offer.keyHeroLever.chosen === null ? null : (
-        <Captioned
-          captionKey={OfferFieldKeys.KeyHero}
-          value={text(heroDisplayNameKeyOf(offer.keyHeroLever.chosen))}
+      <div className="lever-block" data-lever={OfferLeverId.KeyHero}>
+        <OptionList
+          captionKey={OfferFieldKeys.KeyHeroOptions}
+          type="radio"
+          name="offer-key-hero"
+          prefix="key-hero"
+          options={offer.keyHeroLever.options}
+          disabled={offer.keyHeroLever.disabledReasonKey !== null}
+          isChosen={(value) => value === draft.keyHero}
+          onToggle={(keyHero) => {
+            onDraft({ ...draft, keyHero });
+          }}
         />
-      )}
-      <DisabledReason lever={offer.keyHeroLever} />
 
-      <OptionList
-        captionKey={OfferFieldKeys.CrewOptions}
-        type="checkbox"
-        name="offer-crew"
-        prefix="crew"
-        options={offer.crewLever.options}
-        disabled={offer.crewLever.disabledReasonKey !== null}
-        isChosen={(value) => draft.invited.includes(value)}
-        onToggle={(value) => {
-          // Kept in the options' own order rather than in the order they were ticked: the
-          // engine sorts the crew into a `SortedSet` anyway (`composeOffer`), so click order
-          // is a difference nothing downstream can see — and a list that reordered itself as
-          // a player worked would be the same thing the owner rejected for the method
-          // alternatives.
-          onDraft({
-            ...draft,
-            invited: offer.crewLever.options
-              .map((option) => option.value)
-              .filter((candidate) =>
-                candidate === value
-                  ? !draft.invited.includes(value)
-                  : draft.invited.includes(candidate)
-              )
-          });
-        }}
-      />
-      <Captioned captionKey={OfferFieldKeys.CrewSize} value={String(offer.crewLever.exactly)} />
+        {offer.keyHeroLever.chosen === null ? null : (
+          <Captioned
+            captionKey={OfferFieldKeys.KeyHero}
+            value={text(heroDisplayNameKeyOf(offer.keyHeroLever.chosen))}
+          />
+        )}
+        <DisabledReason lever={offer.keyHeroLever} />
+        <LeverRefusal at={OfferLeverId.KeyHero} refusal={refusal} />
+      </div>
 
-      <KeyList
-        captionKey={OfferFieldKeys.Crew}
-        keys={offer.crewLever.chosen.map(heroDisplayNameKeyOf)}
-      />
-      <DisabledReason lever={offer.crewLever} />
+      <div className="lever-block" data-lever={OfferLeverId.Crew}>
+        <OptionList
+          captionKey={OfferFieldKeys.CrewOptions}
+          type="checkbox"
+          name="offer-crew"
+          prefix="crew"
+          options={offer.crewLever.options}
+          disabled={offer.crewLever.disabledReasonKey !== null}
+          isChosen={(value) => draft.invited.includes(value)}
+          onToggle={(value) => {
+            // Kept in the options' own order rather than in the order they were ticked: the
+            // engine sorts the crew into a `SortedSet` anyway (`composeOffer`), so click order
+            // is a difference nothing downstream can see — and a list that reordered itself as
+            // a player worked would be the same thing the owner rejected for the method
+            // alternatives.
+            onDraft({
+              ...draft,
+              invited: offer.crewLever.options
+                .map((option) => option.value)
+                .filter((candidate) =>
+                  candidate === value
+                    ? !draft.invited.includes(value)
+                    : draft.invited.includes(candidate)
+                )
+            });
+          }}
+        />
+        <Captioned captionKey={OfferFieldKeys.CrewSize} value={String(offer.crewLever.exactly)} />
+
+        <KeyList
+          captionKey={OfferFieldKeys.Crew}
+          keys={offer.crewLever.chosen.map(heroDisplayNameKeyOf)}
+        />
+        <DisabledReason lever={offer.crewLever} />
+        <LeverRefusal at={OfferLeverId.Crew} refusal={refusal} />
+      </div>
 
       <div className="row budget">
         <Captioned
@@ -1146,11 +1235,14 @@ function SettlementBlock({
 function FormationBlock({
   deployment,
   draft,
-  onChange
+  onChange,
+  refusal
 }: {
   readonly deployment: DeploymentLine;
   readonly draft: OfferForm;
   readonly onChange: (draft: OfferForm) => void;
+  /** The last refusal, when `placeCrew` made it about the board or the threshold. */
+  readonly refusal: LeverRefusal | null;
 }) {
   const text = useText();
   const [holding, setHolding] = useState<ContentId | null>(
@@ -1163,7 +1255,7 @@ function FormationBlock({
     )?.[0] as ContentId | null;
 
   return (
-    <div className="formation" data-testid="offer-formation">
+    <div className="formation" data-testid="offer-formation" data-lever={OfferLeverId.Formation}>
       <Label text={text(OfferFieldKeys.Formation)} />
 
       <div className="formation-crew">
@@ -1264,6 +1356,8 @@ function FormationBlock({
           }}
         />
       </label>
+
+      <LeverRefusal at={OfferLeverId.Formation} refusal={refusal} />
     </div>
   );
 }

@@ -368,6 +368,41 @@ jobs:
             echo
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
+      # The one run that measures *where* a refusal lands rather than whether it is printed.
+      # Found by the owner playing (2026-08-31): an advance past the ceiling was refused with
+      # a sentence under seven rows of buttons, below the window, and both hashes were green
+      # — every text was the right text. The report carries the boxes the verdict was taken
+      # from, so a reader can see the refusal inside the lever's block and inside the screen.
+      - name: Summarise the offer-refusal evidence
+        if: always() && steps.e2e.outcome != 'skipped'
+        shell: bash
+        run: |
+          root=artifacts/browser-evidence/offer_refusal
+
+          missing=""
+          [ -f "$root/report.json" ] || missing="$missing report"
+          [ -f "$root/screenshot.png" ] || missing="$missing frame"
+          [ -f "$root/events.jsonl" ] || missing="$missing events"
+
+          if [ -n "$missing" ]; then
+            echo "::error::The offer-refusal run produced no evidence for:$missing"
+            exit 1
+          fi
+
+          {
+            echo "### offer-refusal evidence"
+            echo
+            echo "| scenario | typed | ceiling | lever | refusal box (y, h) | screen box (y, h) | in lever block | on screen | events |"
+            echo "|---|---|---|---|---|---|---|---|---|"
+            jq -r '
+              "| \(.scenario) | \(.advance_typed) | \(.ceiling) | \(.lever) "
+              + "| \(.refusal_box.y), \(.refusal_box.height) "
+              + "| \(.screen_box.y), \(.screen_box.height) "
+              + "| \(.refusal_within_lever_block) | \(.refusal_within_screen) | \(.events) |"
+            ' "$root/report.json"
+            echo
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
       # The vitest report of whatever ran here, on its own and under a bare
       # `always()`. It is not folded into the upload below, and that is the whole
       # point of it existing separately.

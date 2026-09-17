@@ -5,6 +5,7 @@ import {
   OFFER_ACTIONS,
   OfferAction,
   OfferFieldKeys,
+  OfferLeverId,
   REJECTION_KEYS,
   RejectionCodes,
   offerActionKey,
@@ -1366,6 +1367,201 @@ describe('the package a player is still assembling', () => {
     expect(controller.calls).toEqual([]);
   });
 });
+
+/**
+ * Where a refusal is printed.
+ *
+ * **Found by the owner playing, 2026-08-31.** He typed an advance of 100 against a ceiling
+ * of 65, pressed `Записать условия`, and `Условие вышло за границы платы заказчика` printed
+ * under seven rows of buttons — below the window, while the lever it was about stood in the
+ * middle of it. The session stalled there. Neither hash could have seen it: every text was
+ * the right text, and *where* a text stands is not a text node.
+ *
+ * So the rule is stated as one about the DOM: a refusal that names a lever is rendered inside
+ * that lever's own block — the block the control it is about is in — and never under the
+ * buttons; a refusal that names no lever is rendered beside the button that was pressed,
+ * which is the control it is about. Which lever a code names is `leverOfRefusal`'s, checked
+ * against the engine in `packages/presentation`; what is checked here is that the screen
+ * puts the sentence where that answer says.
+ */
+describe('the refusal stands by the lever it refuses', () => {
+  /** The block the refusal was printed in, or `null` when it stands in no lever's block. */
+  function leverOf(container: HTMLElement): string | null {
+    return (
+      control(container, 'offer-rejection').closest('[data-lever]')?.getAttribute('data-lever') ??
+      null
+    );
+  }
+
+  /** The button a refusal stands beside, or `null` when it is not beside one. */
+  function buttonBeside(container: HTMLElement): string | null {
+    return (
+      control(container, 'offer-rejection')
+        .closest('.action')
+        ?.querySelector('button')
+        ?.getAttribute('data-testid') ?? null
+    );
+  }
+
+  it('prints a term over the patron fee beside the three term levers, not under the buttons', () => {
+    const controller = fakeController(RejectionCodes.OfferTermsOutOfBounds);
+    const { container } = renderWith(everyActionLive(), controller);
+
+    // The owner's own package: an advance past what the lever's ceiling allows. The control
+    // does not stop him (the handler ignores `max` — a decision about input behaviour that is
+    // the owner's, not this task's), so the engine refuses, and the sentence has to land
+    // where the number is.
+    type(control(container, 'offer.advance'), '100');
+    click(actionButton(container, OfferAction.Compose));
+
+    expect(collectRenderedTexts(container)).toContain(textOf(RejectionCodes.OfferTermsOutOfBounds));
+    expect(leverOf(container)).toBe(OfferLeverId.Terms);
+
+    // "Beside": the block the refusal is in is the block the advance control is in.
+    const block = control(container, 'offer-rejection').closest('[data-lever]');
+    expect(block?.querySelector('[data-testid="offer.advance"]')).not.toBeNull();
+    expect(block?.querySelector('[data-testid="offer.promised_bonus"]')).not.toBeNull();
+
+    // And not where it used to be: the old place was the last child of the actions block,
+    // after every button, which is what put it below the window.
+    expect(
+      control(container, 'offer-rejection').closest('[data-testid="offer-actions"]')
+    ).toBeNull();
+  });
+
+  it('prints a crew of the wrong size beside the crew lever', () => {
+    const controller = fakeController(RejectionCodes.CrewSizeMismatch);
+    const { container } = renderWith(everyActionLive(), controller);
+
+    click(actionButton(container, OfferAction.Compose));
+
+    expect(leverOf(container)).toBe(OfferLeverId.Crew);
+    expect(
+      control(container, 'offer-rejection')
+        .closest('[data-lever]')
+        ?.querySelector('[data-testid="crew-option-0"]')
+    ).not.toBeNull();
+  });
+
+  it('prints a key hero the package does not invite beside the key-hero lever', () => {
+    const controller = fakeController(RejectionCodes.KeyHeroNotInvited);
+    const { container } = renderWith(everyActionLive(), controller);
+
+    click(actionButton(container, OfferAction.Compose));
+
+    expect(leverOf(container)).toBe(OfferLeverId.KeyHero);
+    expect(
+      control(container, 'offer-rejection')
+        .closest('[data-lever]')
+        ?.querySelector('[data-testid="key-hero-option-0"]')
+    ).not.toBeNull();
+  });
+
+  it('prints a formation the board refuses beside the board', () => {
+    const controller = fakeController(RejectionCodes.OfferTermsOutOfBounds);
+    const { container } = renderWith(placeableModel(), controller);
+
+    // The same code the first test above puts beside the advance — here it is `placeCrew`'s
+    // answer for the retreat threshold, and the command pressed is what tells the two apart.
+    type(control(container, 'formation-retreat-below'), '150');
+    click(actionButton(container, OfferAction.Place));
+
+    expect(leverOf(container)).toBe(OfferLeverId.Formation);
+    expect(
+      control(container, 'offer-rejection')
+        .closest('[data-lever]')
+        ?.querySelector('[data-testid="formation-retreat-below"]')
+    ).not.toBeNull();
+  });
+
+  it.each([
+    [OfferAction.Compose, RejectionCodes.StaleState],
+    [OfferAction.Lock, RejectionCodes.KeyHeroHasNotAccepted],
+    [OfferAction.Poll, RejectionCodes.NobodyLeftToPoll]
+  ])('prints a refusal about the whole package beside the button pressed: %s', (action, code) => {
+    const controller = fakeController(code);
+    const { container } = renderWith(everyActionLive(), controller);
+
+    click(actionButton(container, action));
+
+    expect(collectRenderedTexts(container)).toContain(textOf(code));
+    expect(leverOf(container)).toBeNull();
+    expect(buttonBeside(container)).toBe(`action-${action}`);
+  });
+
+  it('prints one refusal at a time, the last press wins', () => {
+    // Two presses, two refusals, and only the second is on the screen: a refusal is about
+    // the moment, and two sentences from two moments would be two claims about one package.
+    const controller = fakeController(RejectionCodes.OfferTermsOutOfBounds);
+    const { container } = renderWith(everyActionLive(), controller);
+
+    click(actionButton(container, OfferAction.Compose));
+    expect(leverOf(container)).toBe(OfferLeverId.Terms);
+
+    click(actionButton(container, OfferAction.Lock));
+    expect(container.querySelectorAll('[data-testid="offer-rejection"]')).toHaveLength(1);
+    expect(leverOf(container)).toBeNull();
+    expect(buttonBeside(container)).toBe(`action-${OfferAction.Lock}`);
+  });
+
+  it('takes a refusal about a term off the screen at the next keystroke', () => {
+    const controller = fakeController(RejectionCodes.OfferTermsOutOfBounds);
+    const { container } = renderWith(everyActionLive(), controller);
+
+    type(control(container, 'offer.advance'), '100');
+    click(actionButton(container, OfferAction.Compose));
+    expect(container.querySelectorAll('[data-testid="offer-rejection"]')).toHaveLength(1);
+
+    type(control(container, 'offer.advance'), '60');
+    expect(container.querySelectorAll('[data-testid="offer-rejection"]')).toHaveLength(0);
+  });
+});
+
+/**
+ * A locked, crewed battle contract with its board on the screen and `place` live — the one
+ * shape the formation block exists in (`deploymentLineFor`), hand-built the way the fixtures
+ * above are. One man, one cell, the three orders, no threshold yet.
+ */
+function placeableModel(): ContractOfferScreenModel {
+  const base = crewedModel();
+
+  return createContractOfferScreenModel({
+    ...base,
+    availableActions: LIVE_ACTIONS,
+    deployment: {
+      cells: [1, 2, 3].flatMap((row) =>
+        [1, 2, 3].map((column) => ({ row: row as 1 | 2 | 3, column: column as 1 | 2 | 3 }))
+      ),
+      crew: [
+        {
+          heroDefinition: id('core:bram'),
+          displayNameKey: 'hero.core.bram.name',
+          roleKey: 'battle.role.vanguard',
+          cell: null
+        }
+      ],
+      doctrineLever: {
+        chosen: null,
+        options: [
+          { value: 'hold_the_line', labelKey: 'battle.doctrine.hold_the_line', selected: false },
+          {
+            value: 'break_them_first',
+            labelKey: 'battle.doctrine.break_them_first',
+            selected: false
+          },
+          {
+            value: 'spare_the_people',
+            labelKey: 'battle.doctrine.spare_the_people',
+            selected: false
+          }
+        ],
+        disabledReasonKey: null
+      },
+      retreatBelowPercent: null,
+      placed: false
+    }
+  });
+}
 
 /**
  * What a number field does with input that is legal for `input[type=number]` and is not an
