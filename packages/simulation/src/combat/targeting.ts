@@ -10,7 +10,7 @@ import {
   type Column,
   type Positioned
 } from './field.ts';
-import { StatusId, type BattleUnit } from './unit.ts';
+import { StatusId, resistsShift, type BattleUnit } from './unit.ts';
 
 /**
  * Who a unit can reach, and by which road (`COMBAT_SPEC` §4.2).
@@ -176,16 +176,33 @@ export function statusAim(actor: BattleUnit, units: readonly BattleUnit[]): Aim 
 
 /**
  * Displacement reaches by the rule of the row the actor is standing in
- * (`COMBAT_SPEC` §4.2).
+ * (`COMBAT_SPEC` §4.2) — **unless the man in reach would keep his footing** (§5.1, §4.6).
  *
  * Not an access rule of its own, and that is deliberate: two different reaches for a strike
  * and a shove would mean a `Breaker` hits what a `Vanguard` beside him cannot, from the
  * same cell. Among whoever is reachable, the one least able to keep his footing.
+ *
+ * The second clause is the rule of `statusAim` above, applied to the second action it
+ * covers. §4.6 resolves a shove with no roll — `might` strictly above `stability`, or the
+ * man holds — and neither number moves in his favour during a battle (`Steady` only raises
+ * `stability`), so a shove that fails once fails every round to the end. `break_them_first`
+ * ranks the shove first of all, and after the status half of the rule alone the frozen set
+ * still spent **1403 turns on `shift_resisted`** — 240 distinct fighter→man pairs, the same
+ * shove repeated until the ceiling. A turn that changes nothing is not a turn (owner's
+ * decision, 2026-08-31): the action is left untaken and the doctrine's list goes on to the
+ * blow.
+ *
+ * **Untaken, not re-aimed, and the difference was measured** the way it was for the status.
+ * The reach of a shove is one cell by construction, so the nearest thing to "the next man"
+ * is the walk-around of `meleeAim` — the first man down each neighbouring column, nearest
+ * first. Aimed that way, 123 of 210 battles under this doctrine still run into the ceiling
+ * against 111 with the action dropped, because the freed turn goes on shoving somebody else
+ * rather than on hitting anybody.
  */
 export function shiftAim(actor: BattleUnit, units: readonly BattleUnit[]): Aim | null {
   const reach = actor.cell.row === 1 ? meleeAim(actor, units) : shortAim(actor, units);
 
-  if (reach === null) {
+  if (reach === null || resistsShift(reach.target, actor)) {
     return null;
   }
 

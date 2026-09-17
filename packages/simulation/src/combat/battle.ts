@@ -18,6 +18,7 @@ import {
   healingOf,
   meleeDamageOf,
   rangedDamageOf,
+  resistsShift,
   shortDamageOf,
   STATUS_ROUNDS,
   withStatus,
@@ -476,6 +477,13 @@ function support(
  * `might` against `stability`, strictly greater, integer, no roll. Toward the target's own
  * rear; into an occupied cell it is a swap and **both** lose their next action; against the
  * back wall it pins instead — a shove that lands is never a shove that vanished.
+ *
+ * **The resisted branch is the resolution's own guard, and no battle reaches it any more.**
+ * Since §5.1's rule was extended to this action (2026-09), `shiftAim` reads the same
+ * `resistsShift` and never hands this function a man who would hold, so the branch is kept
+ * for the contract of §4.6 rather than for any caller — the event stays in the vocabulary
+ * with its producer intact. Whether `shift_resisted` should now leave the vocabulary the way
+ * `blocked` did (`DEC-017` §2) is a codec change and a decision, not taken here.
  */
 function shift(
   units: readonly BattleUnit[],
@@ -486,7 +494,7 @@ function shift(
     return { units, events: [] };
   }
 
-  if (actor.combat.might <= target.stability) {
+  if (resistsShift(target, actor)) {
     return { units, events: [{ kind: 'shift_resisted', unit: target.id, by: actor.id }] };
   }
 
