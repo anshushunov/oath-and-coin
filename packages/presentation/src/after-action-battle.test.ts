@@ -6,7 +6,10 @@ import {
 } from '@oath-and-coin/simulation';
 import { describe, expect, it } from 'vitest';
 
-import { afterActionScreenModel } from './after-action-screen-model.ts';
+import {
+  afterActionScreenModel,
+  createAfterActionScreenModel
+} from './after-action-screen-model.ts';
 import { battleScreenModel } from './battle-screen-model.ts';
 import { contractOfferScreenModel } from './contract-offer-screen-model-factory.ts';
 import { readModelHash } from './screen-model.ts';
@@ -214,6 +217,42 @@ describe('the section and the column COMBAT_SPEC §10.3 adds', () => {
         linkKey: journal.linkKey
       });
     });
+  });
+
+  it('refuses a feed line that names a second man by halves, through the factory and the hash', () => {
+    // The gate the battle screen's factory has and this one did not, found by review: a
+    // spread walks around `afterActionScreenModel`, and `describeAfterActionReadModel`
+    // revalidates through `createAfterActionScreenModel` — so a feed line with a side and no
+    // word, or a name and nobody behind it, hashed and rendered with the target silently
+    // dropped, because the snapshot prints him only under the word.
+    const { state, contractId } = fought();
+    const debrief = afterActionScreenModel(state, contractId);
+    const feed = debrief.battle?.feed ?? [];
+    const struck = feed.findIndex((line) => line.linkKey !== null);
+    const alone = feed.findIndex((line) => line.linkKey === null);
+    const named = feed.find((line) => line.targetDisplayNameKey !== null);
+
+    expect(struck).toBeGreaterThanOrEqual(0);
+    expect(alone).toBeGreaterThanOrEqual(0);
+    expect(named, 'a fight in which no named man was struck proves nothing here').toBeDefined();
+
+    const withFeed = (
+      patch: (line: (typeof feed)[number], index: number) => (typeof feed)[number]
+    ) => ({ ...debrief, battle: { ...debrief.battle!, feed: feed.map(patch) } });
+
+    const halves = [
+      withFeed((line, index) => (index === struck ? { ...line, linkKey: null } : line)),
+      withFeed((line, index) => (index === struck ? { ...line, targetSideKey: null } : line)),
+      withFeed((line, index) => (index === struck ? { ...line, targetRoleKey: null } : line)),
+      withFeed((line, index) =>
+        index === alone ? { ...line, targetDisplayNameKey: named!.targetDisplayNameKey } : line
+      )
+    ];
+
+    for (const half of halves) {
+      expect(() => createAfterActionScreenModel(half)).toThrow(/second man/u);
+      expect(() => readModelHash(half)).toThrow(/second man/u);
+    }
   });
 
   it('says which round the player pulled them out at, and nothing when he did not', () => {

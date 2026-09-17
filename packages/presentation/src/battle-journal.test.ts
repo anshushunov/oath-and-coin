@@ -1,10 +1,19 @@
-import { BattleOutcome, CombatRole, DoctrineId, type BattleEvent } from '@oath-and-coin/simulation';
+import {
+  BattleOutcome,
+  CombatAction,
+  DoctrineId,
+  MotiveReasons,
+  StatusId,
+  TargetReasons,
+  type AmountProvenance,
+  type BattleEvent
+} from '@oath-and-coin/simulation';
 import { describe, expect, it } from 'vitest';
 
 import { battleCounterpart, battleWho, sideKeyOf } from './battle-journal.ts';
-import { BattleFieldKeys } from './keys.ts';
+import { BattleFieldKeys, combatRoleKey } from './keys.ts';
 
-import { plan } from './testing/fought.ts';
+import { fought } from './testing/fought.ts';
 
 /**
  * The second man on a journal line, and the word between the two (`COMBAT_SPEC` §8.1, §10.2).
@@ -13,9 +22,14 @@ import { plan } from './testing/fought.ts';
  * 10` — who struck, how hard, and nothing about whom. Every event that carries a second man is
  * listed here with the man it carries and the direction it went, and every event that carries
  * none answers `null` rather than inventing one.
+ *
+ * **The fixtures are typed, and the first version of this file was not.** Review found every
+ * awkward row cast through `as never` — and under the cast the provenance carried a field the
+ * real type has never had. A fixture the compiler cannot see is one that goes stale in silence
+ * the day a field is renamed; these fail to build instead.
  */
 
-const provenance = { base: 10, modifiers: [], final: 10 } as never;
+const provenance: AmountProvenance = { base: 10, steps: [], final: 10 };
 
 describe('battleCounterpart: who else is on the line, and which way it went', () => {
   it.each<[string, BattleEvent, { unit: string; linkKey: string } | null]>([
@@ -24,11 +38,11 @@ describe('battleCounterpart: who else is on the line, and which way it went', ()
       {
         kind: 'intent_declared',
         actor: 'crew:a',
-        action: 'strike',
+        action: CombatAction.Strike,
         target: 'foe:a',
-        reason: 'first_occupied_cell_ahead',
+        reason: TargetReasons.FrontOfTheColumn,
         contraryTo: null
-      } as never,
+      },
       { unit: 'foe:a', linkKey: BattleFieldKeys.To }
     ],
     [
@@ -36,11 +50,11 @@ describe('battleCounterpart: who else is on the line, and which way it went', ()
       {
         kind: 'intent_declared',
         actor: 'crew:a',
-        action: 'steady',
+        action: CombatAction.Steady,
         target: null,
-        reason: 'nothing_in_reach',
+        reason: TargetReasons.HeldHisGround,
         contraryTo: null
-      } as never,
+      },
       null
     ],
     [
@@ -63,11 +77,11 @@ describe('battleCounterpart: who else is on the line, and which way it went', ()
       {
         kind: 'status_applied',
         target: 'foe:a',
-        status: 'chilled',
+        status: StatusId.Chilled,
         source: 'crew:b',
         rounds: 1,
         refreshed: false
-      } as never,
+      },
       { unit: 'crew:b', linkKey: BattleFieldKeys.From }
     ],
     [
@@ -106,7 +120,7 @@ describe('battleCounterpart: who else is on the line, and which way it went', ()
     ],
     [
       'a status that ran out names nobody else',
-      { kind: 'status_expired', target: 'foe:a', status: 'chilled' } as never,
+      { kind: 'status_expired', target: 'foe:a', status: StatusId.Chilled },
       null
     ],
     ['a pinned man names nobody else', { kind: 'unit_pinned', unit: 'foe:a' }, null],
@@ -117,14 +131,14 @@ describe('battleCounterpart: who else is on the line, and which way it went', ()
         kind: 'doctrine_broken',
         unit: 'crew:a',
         doctrine: DoctrineId.HoldTheLine,
-        motive: 'friend_in_trouble'
-      } as never,
+        motive: MotiveReasons.StoodByAFriend
+      },
       null
     ],
     ['an obeyed retreat names nobody else', { kind: 'retreat_obeyed', unit: 'crew:a' }, null],
     [
       'a refused retreat names nobody else',
-      { kind: 'retreat_refused', unit: 'crew:a', motive: 'friend_in_trouble' } as never,
+      { kind: 'retreat_refused', unit: 'crew:a', motive: MotiveReasons.StoodByAFriend },
       null
     ],
     [
@@ -147,21 +161,30 @@ describe('battleCounterpart: who else is on the line, and which way it went', ()
 });
 
 describe('battleWho: what a screen calls a man', () => {
-  const foe = { ...plan().foes[0]!, side: 'foe' as const, hero: null };
+  // Real units off a fought record rather than objects shaped to look like one: a
+  // `BattleUnit` carries a combat layer and two sorted maps, and a fixture that typed all of
+  // that by hand would be a second definition of the unit.
+  const { state, contractId } = fought();
+  const units = state.contracts.get(contractId)?.resolution?.battle?.initial.units ?? [];
+  const hero = units.find((unit) => unit.hero !== null);
+  const foe = units.find((unit) => unit.side === 'foe');
 
   it('names a hero by his name, and always by his side and his job', () => {
-    const hero = { ...foe, side: 'crew' as const, hero: 'hero:0' as never, role: CombatRole.Rear };
+    expect(hero, 'a fight with no hero in it proves nothing here').toBeDefined();
 
-    expect(battleWho(hero as never, () => 'hero.core.doran.name')).toEqual({
+    expect(battleWho(hero!, () => 'hero.core.doran.name')).toEqual({
       displayNameKey: 'hero.core.doran.name',
       sideKey: BattleFieldKeys.Crew,
-      roleKey: 'battle.role.rear'
+      roleKey: combatRoleKey(hero!.role)
     });
   });
 
   it('names a foe by his side and his job, and by no name', () => {
+    expect(foe, 'a fight with no foe in it proves nothing here').toBeDefined();
+    expect(foe!.hero).toBeNull();
+
     expect(
-      battleWho(foe as never, () => {
+      battleWho(foe!, () => {
         throw new Error('a foe has no hero to name');
       })
     ).toEqual({

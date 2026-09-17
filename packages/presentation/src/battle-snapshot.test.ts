@@ -18,7 +18,15 @@ import { fought } from './testing/fought.ts';
  * the thing at all, in the order a reader parses it.
  */
 
-/** A catalogue answering every key the snapshot asks for, with the key itself marked as resolved. */
+/**
+ * A catalogue answering every key the snapshot asks for, with the key itself marked as resolved.
+ *
+ * Found by asking: the snapshot is run against a catalogue that has nothing in it, and the key
+ * it refuses on is read out of its error. That couples this helper to the wording of
+ * `resolveText`'s message — deliberately, and the coupling fails loud rather than green: a
+ * reworded message leaves `match` empty and the error is rethrown, so the test breaks on its
+ * first line instead of passing on an empty catalogue.
+ */
 function everyKeyOf(model: ScreenModel): ReadonlyMap<string, string> {
   const keys: string[] = [];
   const catalogue = () => new Map(keys.map((key) => [key, `text(${key})`]));
@@ -101,6 +109,28 @@ describe('the battle screen’s journal, as texts', () => {
       `text(${String(aimed!.detailKey)})`,
       `text(${String(aimed!.linkKey)})`,
       ...who(aimed!.targetDisplayNameKey, aimed!.targetSideKey, aimed!.targetRoleKey)
+    ];
+
+    expect(indexOfRun(texts, run), run.join(' | ')).toBeGreaterThanOrEqual(0);
+  });
+
+  it('prints the intent line above the journal with the same word between the two men', () => {
+    // One event, one format. The last intent is printed twice on a finished screen — as the
+    // line above the journal and as the journal's own `intent_declared` line — and review
+    // found the first without the arrow the second has. A reader given `Выстрел Доран` on one
+    // line and `Выстрел → Доран` on the next is being taught two grammars for one thing.
+    const intent = watched.intent;
+
+    expect(intent, 'a fight in which nobody declared anything proves nothing here').not.toBeNull();
+    expect(intent!.targetSideKey, 'the last intent must be aimed at somebody').not.toBeNull();
+
+    const run = [
+      `text(${BattleFieldKeys.Intent})`,
+      ...who(intent!.displayNameKey, intent!.sideKey, intent!.roleKey),
+      `text(${intent!.actionKey})`,
+      `text(${BattleFieldKeys.To})`,
+      ...who(intent!.targetDisplayNameKey, intent!.targetSideKey, intent!.targetRoleKey),
+      `text(${intent!.reasonKey})`
     ];
 
     expect(indexOfRun(texts, run), run.join(' | ')).toBeGreaterThanOrEqual(0);

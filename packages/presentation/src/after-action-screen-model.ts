@@ -346,6 +346,24 @@ export function createAfterActionScreenModel(
     }
   }
 
+  for (const line of model.battle?.feed ?? []) {
+    // The gate `createBattleScreenModel` keeps over its journal, kept here over the same
+    // journal's second reader: a second man is named under the word saying which way it
+    // went, his side and his job, or the line names nobody else. The feed carries no unit
+    // id, so the word is the anchor — and a name with no word is an orphan the screen would
+    // hide in silence, because it prints the name only under the word.
+    if (
+      (line.linkKey === null) !== (line.targetSideKey === null) ||
+      (line.linkKey === null) !== (line.targetRoleKey === null) ||
+      (line.linkKey === null && line.targetDisplayNameKey !== null)
+    ) {
+      throw new Error(
+        `Feed line '${line.key}' names a second man by halves: a target is named under its ` +
+          'side, its job and the word between the two men, or the line names nobody else.'
+      );
+    }
+  }
+
   return { ...model, screen: ScreenKind.AfterAction };
 }
 

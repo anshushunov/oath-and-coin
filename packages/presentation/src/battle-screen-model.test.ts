@@ -222,6 +222,26 @@ describe('the journal names the other man on the line, by the rule it names the 
       })
     ).toThrow(/second man/u);
   });
+
+  it('refuses a line that names a second man by his name alone, with no man behind it', () => {
+    // The half the first gate did not close, found by review: every check above hangs off
+    // `targetUnit`, so a name with no unit, no side, no job and no word passed it — and the
+    // screen, which prints the name only under the word, would have hidden it in silence.
+    const alone = finished.journal.findIndex((line) => line.linkKey === null);
+    const named = finished.journal.find((line) => line.targetDisplayNameKey !== null);
+
+    expect(alone).toBeGreaterThanOrEqual(0);
+    expect(named, 'a fight in which no named man was struck proves nothing here').toBeDefined();
+
+    expect(() =>
+      createBattleScreenModel({
+        ...(finished as BattleScreenContent),
+        journal: finished.journal.map((line, index) =>
+          index === alone ? { ...line, targetDisplayNameKey: named!.targetDisplayNameKey } : line
+        )
+      })
+    ).toThrow(/second man/u);
+  });
 });
 
 describe('the retreat button (DEC-005, COMBAT_SPEC §7.4)', () => {

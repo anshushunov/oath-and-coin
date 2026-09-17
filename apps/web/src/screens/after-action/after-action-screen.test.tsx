@@ -7,6 +7,8 @@ import {
 import { RULESET_VERSION } from '@oath-and-coin/content';
 import {
   AFTER_ACTION_LOADING_SCREEN,
+  BattleEventKeys,
+  BattleFieldKeys,
   RejectionCodes,
   SETTLEMENT_CONSEQUENCE_KEYS,
   ScreenKind,
@@ -199,8 +201,9 @@ function contractOf(model: AfterActionScreenModel): ContentId {
 }
 
 /**
- * The five shapes the debrief can be in, each from the run that produces it — and `Incomplete`
- * twice, because the settlement block has two shapes of its own inside that one state.
+ * The five shapes the debrief can be in, each from the run that produces it — seven rows for
+ * five states, because `Incomplete` comes in three forms: a promise still owed, a package
+ * that promised nothing, and an outcome a fight produced (the one row with a battle section).
  *
  * `screen_normal` polls a crew and stops, so its contract carries no resolution — the `Empty`
  * debrief, which is what a player sees on a contract whose crew is still at home.
@@ -352,13 +355,17 @@ describe('the battle’s own section', () => {
     const lines = Array.from(container.querySelectorAll('.battle-line')).map((line) =>
       collectRenderedTexts(line)
     );
-    const blows = lines.filter((line) => line[0] === 'Урон');
+    // Through the keys, as the rest of this file reads the catalogue: a reworded
+    // translation is not a red test.
+    const blow = textOf(BattleEventKeys.DamageDealt);
+    const to = textOf(BattleFieldKeys.To);
+    const blows = lines.filter((line) => line[0] === blow);
 
     expect(blows.length).toBeGreaterThan(0);
 
-    for (const blow of blows) {
-      expect(blow, blow.join(' | ')).toContain('→');
-      expect(blow[blow.indexOf('→') + 1]).not.toMatch(/^\d+$/u);
+    for (const line of blows) {
+      expect(line, line.join(' | ')).toContain(to);
+      expect(line[line.indexOf(to) + 1]).not.toMatch(/^\d+$/u);
     }
   });
 });

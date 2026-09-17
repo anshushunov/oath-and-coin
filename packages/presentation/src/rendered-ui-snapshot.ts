@@ -190,11 +190,19 @@ function battleSnapshot(
 
     resolve(model.intent.actionKey);
 
-    if (model.intent.targetDisplayNameKey !== null) {
-      resolve(model.intent.targetDisplayNameKey);
-    } else if (model.intent.targetSideKey !== null && model.intent.targetRoleKey !== null) {
-      resolve(model.intent.targetSideKey);
-      resolve(model.intent.targetRoleKey);
+    // The word between the two men, the same one the journal's own `intent_declared` line
+    // carries: an intent is always the subject's act aimed at the other man, so it is
+    // always `To`. Without it the same event read two ways on one screen. The branch is on
+    // `targetUnit`, the field the screen branches on.
+    if (model.intent.targetUnit !== null) {
+      resolve(BattleFieldKeys.To);
+
+      if (model.intent.targetDisplayNameKey !== null) {
+        resolve(model.intent.targetDisplayNameKey);
+      } else if (model.intent.targetSideKey !== null && model.intent.targetRoleKey !== null) {
+        resolve(model.intent.targetSideKey);
+        resolve(model.intent.targetRoleKey);
+      }
     }
 
     resolve(model.intent.reasonKey);

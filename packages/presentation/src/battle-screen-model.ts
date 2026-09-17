@@ -371,11 +371,14 @@ export function createBattleScreenModel(model: BattleScreenContent): BattleScree
   for (const line of model.journal) {
     // A second man is named under a word saying which way it went, or not at all: a target
     // with no link would print two men side by side and leave the reader to guess who
-    // struck whom, which is the hole the link exists to close.
+    // struck whom, which is the hole the link exists to close. The name is the one optional
+    // half — a foe has none — but a name with no man behind it is an orphan the screen would
+    // hide in silence, because it prints the name only under the word.
     if (
       (line.targetUnit === null) !== (line.linkKey === null) ||
       (line.targetUnit === null) !== (line.targetSideKey === null) ||
-      (line.targetUnit === null) !== (line.targetRoleKey === null)
+      (line.targetUnit === null) !== (line.targetRoleKey === null) ||
+      (line.targetUnit === null && line.targetDisplayNameKey !== null)
     ) {
       throw new Error(
         `Journal line '${line.key}' names a second man by halves: a target is named under its ` +

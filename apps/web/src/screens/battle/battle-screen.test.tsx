@@ -6,6 +6,8 @@ import {
 } from '@oath-and-coin/application';
 import { RULESET_VERSION } from '@oath-and-coin/content';
 import {
+  BattleEventKeys,
+  BattleFieldKeys,
   ScreenState,
   expectedSnapshot,
   snapshotHash,
@@ -119,6 +121,17 @@ const INERT: BattleControls = {
   retreat: () => undefined
 };
 
+/** The text `key` resolves to, or a loud failure — the same rule the screen itself follows. */
+function textOf(key: string): string {
+  const text = catalogue.get(key);
+
+  if (text === undefined) {
+    throw new Error(`Neither catalogue answers '${key}'.`);
+  }
+
+  return text;
+}
+
 function renderScreen(model: BattleScreenModel): HTMLElement {
   return render(
     <TextSource catalogue={catalogue}>
@@ -164,7 +177,9 @@ describe('what the owner could not read from the first play', () => {
   it('puts a cell on every man in the list under the board', () => {
     // «непонятно, как стоят». The list carried side, name, job, health and statuses, and no
     // cell — the geometry of `COMBAT_SPEC` §4 rests on `(row, column)` and the list said
-    // neither. Read off the page rather than off the model, on the same words the spec uses.
+    // neither. Read off the page rather than off the model, on the words the shipped
+    // catalogue gives the spec's two — through the key, so a reworded translation is not a
+    // red test (`AGENTS.md` §6: texts are not keys of logic, and not of tests either).
     const container = renderScreen(fightAt(0));
     const rows = Array.from(container.querySelectorAll('[data-testid^="battle-unit-"]'));
 
@@ -173,8 +188,8 @@ describe('what the owner could not read from the first play', () => {
     for (const row of rows) {
       const texts = collectRenderedTexts(row);
 
-      expect(texts, texts.join(' | ')).toContain('Ряд');
-      expect(texts, texts.join(' | ')).toContain('Колонка');
+      expect(texts, texts.join(' | ')).toContain(textOf(BattleFieldKeys.Row));
+      expect(texts, texts.join(' | ')).toContain(textOf(BattleFieldKeys.Column));
     }
   });
 
@@ -185,14 +200,16 @@ describe('what the owner could not read from the first play', () => {
     const lines = Array.from(container.querySelectorAll('.journal-line')).map((line) =>
       collectRenderedTexts(line)
     );
-    const blows = lines.filter((line) => line[0] === 'Урон');
+    const blow = textOf(BattleEventKeys.DamageDealt);
+    const to = textOf(BattleFieldKeys.To);
+    const blows = lines.filter((line) => line[0] === blow);
 
     expect(blows.length).toBeGreaterThan(0);
 
-    for (const blow of blows) {
-      expect(blow, blow.join(' | ')).toContain('→');
+    for (const line of blows) {
+      expect(line, line.join(' | ')).toContain(to);
       // The arrow is followed by somebody, never by the number.
-      expect(blow[blow.indexOf('→') + 1]).not.toMatch(/^\d+$/u);
+      expect(line[line.indexOf(to) + 1]).not.toMatch(/^\d+$/u);
     }
   });
 });

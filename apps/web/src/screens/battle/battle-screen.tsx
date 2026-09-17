@@ -88,11 +88,21 @@ export function BattleScreen({
             roleKey={model.intent.roleKey}
           />
           <Label text={text(model.intent.actionKey)} />
-          <Who
-            displayNameKey={model.intent.targetDisplayNameKey}
-            sideKey={model.intent.targetSideKey}
-            roleKey={model.intent.targetRoleKey}
-          />
+          {/*
+            The word between the two men, the same one the journal's own `intent_declared`
+            line carries: an intent is always the subject's act aimed at the other man, so
+            it is always `To`. Without it the same event read two ways on one screen.
+          */}
+          {model.intent.targetUnit === null ? null : (
+            <>
+              <Label text={text(BattleFieldKeys.To)} />
+              <Who
+                displayNameKey={model.intent.targetDisplayNameKey}
+                sideKey={model.intent.targetSideKey}
+                roleKey={model.intent.targetRoleKey}
+              />
+            </>
+          )}
           <Label text={text(model.intent.reasonKey)} />
           {/*
             The moment `DIRECTION` §4.8 is about, and it is never shown on its own: a man

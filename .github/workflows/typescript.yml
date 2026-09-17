@@ -274,6 +274,10 @@ jobs:
             [ -f "$root/$state/screenshot.png" ] || missing="$missing $state/frame"
             [ -f "$root/$state/events.jsonl" ] || missing="$missing $state/events"
           done
+          # The finished fight publishes a second frame, of the journal: the first frame is
+          # what a player sees first, and on a finished fight that is the board with the
+          # journal's heading on the fold and every line of it below.
+          [ -f "$root/normal/journal.png" ] || missing="$missing normal/journal"
 
           if [ -n "$missing" ]; then
             echo "::error::The battle run produced no evidence for:$missing"
