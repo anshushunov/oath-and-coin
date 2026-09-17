@@ -75,10 +75,30 @@ import { ScenarioCommandKind, type ScenarioCommand } from './scenario-commands.t
  * over 630 battles counted it nought times. Giving it one is a change to what the rules
  * answer and not to a format, so it takes this number rather than a schema.
  *
+ * **`m1-resolution/4` → `m1-resolution/5` (`COMBAT_SPEC` §5.1, «ход, не меняющий ничего,
+ * — не ход»).** The answer changed a fifth time, in two halves that share one sentence: the
+ * status action is not taken when the man it is aimed at already carries the status
+ * (2026-08-31, the owner's decision), and the shove is not taken when the man it is aimed
+ * at would keep his footing (2026-09, the same rule extended to the second action it
+ * covers). Under `break_them_first` the same state, commands, content and seed now reach a
+ * blow where they used to reach a refresh or a resisted shove — 205 battles of the frozen
+ * set ran into the ceiling and 181 do — which is a different battle and not a different
+ * format.
+ *
+ * **One number for both halves, and the gap is named rather than hidden.** The first half
+ * shipped without moving this constant, so for the commits between it and the second a
+ * campaign carried `/4` while its rules were no longer the rules of `/4`. That is the
+ * silence this number exists to prevent, and it is closed here rather than by pretending
+ * the first half was a refactor. No shipped scenario reaches either half — every snapshot
+ * changes in exactly two fields, as under `/3`; the checks that do reach them are
+ * `battle.test.ts` (`strikes instead of shoving a man who would keep his footing`) and
+ * `balance.test.ts` (`spends not one turn of the whole set on a shove that would be
+ * resisted`), over the frozen set rather than over the corpus.
+ *
  * One number per set of rules anyone could have saved a campaign under: if a later task
- * changes an answer again, it takes `m1-resolution/5`.
+ * changes an answer again, it takes `m1-resolution/6`.
  */
-export const RULESET_VERSION = 'm1-resolution/4';
+export const RULESET_VERSION = 'm1-resolution/5';
 
 /**
  * One decision a step produced, with the hero it belongs to when the step's decisions do
