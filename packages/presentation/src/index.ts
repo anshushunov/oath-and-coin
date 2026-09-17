@@ -196,7 +196,7 @@ export {
   type AvailableAction
 } from './offer-actions.ts';
 
-export { OFFER_LEVER_IDS, OfferLeverId, leverOfRefusal } from './refused-lever.ts';
+export { OfferLeverId, leverOfRefusal } from './refused-lever.ts';
 
 export { describeReadModel, readModelHash, type ScreenModel } from './screen-model.ts';
 

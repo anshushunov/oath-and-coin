@@ -32,8 +32,6 @@ export const OfferLeverId = Object.freeze({
 
 export type OfferLeverId = (typeof OfferLeverId)[keyof typeof OfferLeverId];
 
-export const OFFER_LEVER_IDS: readonly OfferLeverId[] = Object.freeze(Object.values(OfferLeverId));
-
 /**
  * Which lever a refusal is about, or `null` when it is about the package as a whole.
  *

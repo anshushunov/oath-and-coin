@@ -1515,6 +1515,32 @@ describe('the refusal stands by the lever it refuses', () => {
     type(control(container, 'offer.advance'), '60');
     expect(container.querySelectorAll('[data-testid="offer-rejection"]')).toHaveLength(0);
   });
+
+  it.each([
+    [
+      'the threshold',
+      (container: HTMLElement) => type(control(container, 'formation-retreat-below'), '50')
+    ],
+    [
+      'the doctrine',
+      (container: HTMLElement) => click(control(container, 'formation-doctrine-hold_the_line'))
+    ],
+    ['a cell', (container: HTMLElement) => click(control(container, 'formation-cell-1-1'))]
+  ])('takes a refusal about the formation off the screen when %s is moved', (_, move) => {
+    // The same rule the term levers follow, on the board: a refusal is about the formation
+    // as it stood at the press, and a sentence left standing beside a threshold that has
+    // since been corrected is a claim about a package that no longer exists — and it stands
+    // exactly where the player is looking now, which is worse than under the buttons.
+    const controller = fakeController(RejectionCodes.OfferTermsOutOfBounds);
+    const { container } = renderWith(placeableModel(), controller);
+
+    type(control(container, 'formation-retreat-below'), '150');
+    click(actionButton(container, OfferAction.Place));
+    expect(leverOf(container)).toBe(OfferLeverId.Formation);
+
+    move(container);
+    expect(container.querySelectorAll('[data-testid="offer-rejection"]')).toHaveLength(0);
+  });
 });
 
 /**

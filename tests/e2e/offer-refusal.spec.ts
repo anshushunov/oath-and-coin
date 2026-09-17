@@ -90,6 +90,10 @@ test('a term the engine refuses is refused on screen, beside the lever it came f
     throw new Error(`ui-text/${LOCALE}.json ships no sentence for the refusal under test.`);
   }
 
+  // The one wait: the sentence is on the page. Everything the verdict is taken from is
+  // measured and written out *before* any of it is judged, so that a red run leaves the
+  // boxes it went red on — the report of a failing run is the evidence that matters most,
+  // and a report written after the first `expect` would be missing exactly then.
   await expect(refusal).toHaveText(expectedSentence);
 
   // The block the refusal is in, asked of the DOM: the three term levers share one block,
@@ -98,14 +102,13 @@ test('a term the engine refuses is refused on screen, beside the lever it came f
     (element) => element.closest('[data-lever]')?.getAttribute('data-lever') ?? null
   );
 
-  expect(lever, 'the refusal must stand in the block of the levers it is about').toBe(
-    OfferLeverId.Terms
-  );
-
   const screenBox = await boxOf(page, `[data-testid="${SCREEN}"]`);
-  const leverBox = await boxOf(page, `[data-lever="${OfferLeverId.Terms}"]`);
   const advanceBox = await boxOf(page, '[data-testid="offer.advance"]');
   const refusalBox = await boxOf(page, '[data-testid="offer-rejection"]');
+  // The one box that may not be there: a screen that draws no lever blocks at all — the
+  // screen before this run existed — has nothing to measure, and the report has to say so
+  // rather than the run timing out before the report is written.
+  const leverBox = await boxIfPresent(page, `[data-lever="${OfferLeverId.Terms}"]`);
 
   await page.screenshot({ path: join(EVIDENCE_ROOT, 'screenshot.png'), fullPage: false });
   writeFileSync(join(EVIDENCE_ROOT, 'events.jsonl'), events.map((line) => `${line}\n`).join(''));
@@ -136,8 +139,12 @@ test('a term the engine refuses is refused on screen, beside the lever it came f
   );
 
   // The verdict, in the two halves it has. Inside the lever's own block first — that is what
-  // "beside" means — and inside the screen's box second, without anything having been
-  // scrolled since the press: a sentence a person has to go looking for is the defect.
+  // "beside" means, in the tree and then in the layout — and inside the screen's box second,
+  // without anything having been scrolled since the press: a sentence a person has to go
+  // looking for is the defect.
+  expect(lever, 'the refusal must stand in the block of the levers it is about').toBe(
+    OfferLeverId.Terms
+  );
   expect(within(refusalBox, leverBox), 'the refusal must be drawn inside the lever block').toBe(
     true
   );
@@ -155,9 +162,10 @@ test('a term the engine refuses is refused on screen, beside the lever it came f
   expect(events, 'the page must produce no error or failed request').toEqual([]);
 });
 
-/** Whether `inner` lies entirely inside `outer`, to the pixel. */
-function within(inner: Box, outer: Box): boolean {
+/** Whether `inner` lies entirely inside `outer`, to the pixel; never inside a box that is not there. */
+function within(inner: Box, outer: Box | null): boolean {
   return (
+    outer !== null &&
     inner.x >= outer.x &&
     inner.y >= outer.y &&
     inner.x + inner.width <= outer.x + outer.width &&
@@ -177,18 +185,33 @@ function describe(box: Box): string {
  * person sees of the screen, and an element scrolled past its bottom edge has a `y` below it.
  */
 async function boxOf(page: Page, selector: string): Promise<Box> {
-  const box = await page.locator(selector).first().boundingBox();
+  const box = await boxIfPresent(page, selector);
 
   if (box === null) {
     throw new Error(`The page has no visible '${selector}' to measure.`);
   }
 
-  return {
-    x: Math.round(box.x),
-    y: Math.round(box.y),
-    width: Math.round(box.width),
-    height: Math.round(box.height)
-  };
+  return box;
+}
+
+/** {@link boxOf} for an element the page may not have at all: `null` then, not a wait. */
+async function boxIfPresent(page: Page, selector: string): Promise<Box | null> {
+  const element = page.locator(selector).first();
+
+  if ((await element.count()) === 0) {
+    return null;
+  }
+
+  const box = await element.boundingBox();
+
+  return box === null
+    ? null
+    : {
+        x: Math.round(box.x),
+        y: Math.round(box.y),
+        width: Math.round(box.width),
+        height: Math.round(box.height)
+      };
 }
 
 async function scrollTop(page: Page): Promise<number> {

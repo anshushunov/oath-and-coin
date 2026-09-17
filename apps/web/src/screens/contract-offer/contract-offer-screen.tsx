@@ -254,7 +254,9 @@ export function ContractOfferScreen({
           deployment={model.deployment}
           draft={form.draft}
           onChange={(draft) => {
-            setForm({ ...form, draft });
+            // The same rule as `onDraft` above: a move on the board, the doctrine or the
+            // threshold clears the last refusal, which was about the formation as it stood.
+            setForm({ ...form, draft, refusal: null });
           }}
           refusal={leverRefusal}
         />

@@ -389,6 +389,24 @@ jobs:
             exit 1
           fi
 
+          # The report's shape, before anything is read out of it: `jq -r` on a missing
+          # field prints `null` and exits 0, so a report the run never finished writing —
+          # or one whose fields were renamed — would be published as a row of nulls.
+          if ! jq -e '
+            def box: type == "object" and (.y | type == "number") and (.height | type == "number");
+            (.scenario | type == "string")
+              and (.advance_typed | type == "number")
+              and (.ceiling | type == "number")
+              and (.refusal_box | box)
+              and (.screen_box | box)
+              and (.refusal_within_lever_block | type == "boolean")
+              and (.refusal_within_screen | type == "boolean")
+              and (.events | type == "number")
+          ' "$root/report.json" > /dev/null; then
+            echo "::error::The offer-refusal report is not the shape the run writes (see tests/e2e/offer-refusal.spec.ts)"
+            exit 1
+          fi
+
           {
             echo "### offer-refusal evidence"
             echo
@@ -402,6 +420,15 @@ jobs:
             ' "$root/report.json"
             echo
           } | tee -a "$GITHUB_STEP_SUMMARY"
+
+          # The verdict, after the row is in the summary: the run writes its report before
+          # it judges, so a red run's boxes are printed above — and then this stage is red
+          # for the same reason the run was.
+          if ! jq -e '.refusal_within_lever_block and .refusal_within_screen and .events == 0' \
+            "$root/report.json" > /dev/null; then
+            echo "::error::The offer-refusal run measured the refusal outside its lever block or off screen, or the page produced events (see the table above)"
+            exit 1
+          fi
 
       # The vitest report of whatever ran here, on its own and under a bare
       # `always()`. It is not folded into the upload below, and that is the whole

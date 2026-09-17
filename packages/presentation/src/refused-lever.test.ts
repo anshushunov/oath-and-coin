@@ -24,7 +24,7 @@ import {
 import { describe, expect, it } from 'vitest';
 
 import { OfferAction } from './offer-actions.ts';
-import { OFFER_LEVER_IDS, OfferLeverId, leverOfRefusal } from './refused-lever.ts';
+import { OfferLeverId, leverOfRefusal } from './refused-lever.ts';
 import {
   aContract,
   aHero,
@@ -295,13 +295,35 @@ describe('the lever a refusal stands beside', () => {
     expect(leverOfRefusal(OfferAction.Poll, RejectionCodes.NobodyLeftToPoll)).toBeNull();
   });
 
-  it('answers only with a lever the screen draws, whatever it is asked', () => {
-    for (const action of Object.values(OfferAction)) {
-      for (const code of Object.values(RejectionCodes)) {
-        const lever = leverOfRefusal(action, code);
+  it('names a lever for exactly the seven pairs above and for no other', () => {
+    // The negative space, pinned. Every row above is a pair the engine was run for; this is
+    // the whole table — every command the screen sends against every code the engine has —
+    // so that a row added for a pair no command answers with (`resolve` refusing with
+    // `stale_state` "beside the terms", say) goes red here rather than being drawn beside a
+    // lever that had nothing to do with it.
+    const named = new Map<string, OfferLeverId>([
+      [`${OfferAction.Compose} ${RejectionCodes.OfferTermsOutOfBounds}`, OfferLeverId.Terms],
+      [`${OfferAction.Compose} ${RejectionCodes.CrewSizeMismatch}`, OfferLeverId.Crew],
+      [`${OfferAction.Compose} ${RejectionCodes.KeyHeroNotInvited}`, OfferLeverId.KeyHero],
+      [`${OfferAction.Lock} ${RejectionCodes.TreasuryCannotCoverTheOffer}`, OfferLeverId.Terms],
+      [`${OfferAction.Place} ${RejectionCodes.OfferTermsOutOfBounds}`, OfferLeverId.Formation],
+      [`${OfferAction.Place} ${RejectionCodes.CellTaken}`, OfferLeverId.Formation],
+      [`${OfferAction.Place} ${RejectionCodes.UnplacedHero}`, OfferLeverId.Formation]
+    ]);
+    const table = Object.values(OfferAction).flatMap((action) =>
+      Object.values(RejectionCodes).map((code) => ({
+        action,
+        code,
+        lever: leverOfRefusal(action, code)
+      }))
+    );
+    const expected = table.map(({ action, code }) => ({
+      action,
+      code,
+      lever: named.get(`${action} ${code}`) ?? null
+    }));
 
-        expect(lever === null || OFFER_LEVER_IDS.includes(lever)).toBe(true);
-      }
-    }
+    expect(table.length).toBeGreaterThan(named.size);
+    expect(table).toEqual(expected);
   });
 });
