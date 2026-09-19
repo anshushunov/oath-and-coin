@@ -3,7 +3,13 @@ import process from 'node:process';
 
 import { loadContentSet } from '@oath-and-coin/content/node';
 
-import { measureAll, type Measurement } from './metrics.ts';
+import {
+  countByDoctrine,
+  fightTheCoreSet,
+  measureAll,
+  renderCounts,
+  type Measurement
+} from './metrics.ts';
 import { Thresholds } from './thresholds.ts';
 
 /**
@@ -64,9 +70,15 @@ export function main(argv: readonly string[]): number {
     resolve(options.get('--content') ?? join(repositoryRoot, 'content'))
   );
 
-  const measurements = measureAll(content);
+  const fought = fightTheCoreSet(content);
+  const measurements = measureAll(content, fought);
 
-  for (const line of render(measurements, set, content.contentVersion)) {
+  for (const line of render(
+    measurements,
+    set,
+    content.contentVersion,
+    renderCounts(countByDoctrine(fought))
+  )) {
     console.log(line);
   }
 
@@ -82,11 +94,16 @@ export function main(argv: readonly string[]): number {
  * Its own function so the shape is testable without a process, and so the numbers a PR
  * quotes come out of the same code that decides the exit — a report and a verdict computed
  * separately are two things that can disagree (`AGENTS.md` §11).
+ *
+ * `counted` goes under the measurements and above the verdict, and the heading says it is
+ * gated by nothing: the lines are what the set produced (`metrics.ts`, `DoctrineCount`),
+ * printed so the spec can cite this command for them, and no corridor reads them.
  */
 export function render(
   measurements: readonly Measurement[],
   set: string,
-  contentVersion: string
+  contentVersion: string,
+  counted: readonly string[] = []
 ): readonly string[] {
   const failed = measurements.filter((one) => one.status === 'fail');
   const open = measurements.filter((one) => one.status === 'open');
@@ -101,6 +118,9 @@ export function render(
         `${format(one)}  (${one.threshold}, over ${String(one.cases)} case(s))` +
         (one.note === undefined ? '' : `\n     ${one.note}`)
     ),
+    ...(counted.length === 0
+      ? []
+      : ['', 'counted, not gated — what the set produced, by doctrine:', ...counted]),
     '',
     failed.length === 0
       ? 'every threshold this run gates on held'

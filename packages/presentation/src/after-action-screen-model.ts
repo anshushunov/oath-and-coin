@@ -22,13 +22,17 @@ import {
   type OfferState
 } from '@oath-and-coin/simulation';
 
-import { battleAmount, battleDetailKey, battleEventKey } from './battle-journal.ts';
+import {
+  battleAmount,
+  battleCounterpart,
+  battleDetailKey,
+  battleEventKey,
+  battleWho
+} from './battle-journal.ts';
 import {
   AFTER_ACTION_TITLE_KEY,
-  BattleFieldKeys,
   OutcomeEventKeys,
   battleOutcomeKey,
-  combatRoleKey,
   commitmentStateKey,
   consequenceKindKey,
   contractDisplayNameKey,
@@ -159,6 +163,15 @@ export interface AfterActionBattleEventLine {
   readonly sideKey: string | null;
   readonly roleKey: string | null;
   readonly detailKey: string | null;
+  /**
+   * The other man on the line and the word between the two — the same four the battle
+   * screen's journal carries, for the same reason: `Урон Противник Столкновение 10` said who
+   * struck and never whom. `null` together, exactly when the event names nobody else.
+   */
+  readonly targetDisplayNameKey: string | null;
+  readonly targetSideKey: string | null;
+  readonly targetRoleKey: string | null;
+  readonly linkKey: string | null;
   readonly amount: number | null;
   readonly round: number;
 }
@@ -329,6 +342,24 @@ export function createAfterActionScreenModel(
         `Event line '${line.key}' carries half a hero: an event names somebody under both an id ` +
           'and a key, or under neither. A line with an id and no key is one the screen cannot ' +
           'label without showing the id itself.'
+      );
+    }
+  }
+
+  for (const line of model.battle?.feed ?? []) {
+    // The gate `createBattleScreenModel` keeps over its journal, kept here over the same
+    // journal's second reader: a second man is named under the word saying which way it
+    // went, his side and his job, or the line names nobody else. The feed carries no unit
+    // id, so the word is the anchor — and a name with no word is an orphan the screen would
+    // hide in silence, because it prints the name only under the word.
+    if (
+      (line.linkKey === null) !== (line.targetSideKey === null) ||
+      (line.linkKey === null) !== (line.targetRoleKey === null) ||
+      (line.linkKey === null && line.targetDisplayNameKey !== null)
+    ) {
+      throw new Error(
+        `Feed line '${line.key}' names a second man by halves: a target is named under its ` +
+          'side, its job and the word between the two men, or the line names nobody else.'
       );
     }
   }
@@ -645,6 +676,7 @@ function battleLineOf(
   }
 
   const acting = new Map(record.initial.units.map((unit) => [unit.id, unit]));
+  const displayNameKeyOf = (hero: HeroId): string | null => named(hero).displayNameKey;
 
   let round = record.initial.round;
 
@@ -658,19 +690,25 @@ function battleLineOf(
       }
 
       const unit = unitNamedBy(event);
-      const who = unit === null ? undefined : acting.get(unit);
+      const subject = unit === null ? undefined : acting.get(unit);
+      const who = subject === undefined ? null : battleWho(subject, displayNameKeyOf);
+
+      // The second man, by the same rule and the same function the battle screen names him
+      // with: one journal, two readers, and the two must not drift.
+      const counterpart = battleCounterpart(event);
+      const other = counterpart === null ? undefined : acting.get(counterpart.unit);
+      const whom = other === undefined ? null : battleWho(other, displayNameKeyOf);
 
       return {
         key: battleEventKey(event),
-        heroDisplayNameKey: who?.hero == null ? null : named(who.hero).displayNameKey,
-        sideKey:
-          who === undefined
-            ? null
-            : who.side === 'crew'
-              ? BattleFieldKeys.Crew
-              : BattleFieldKeys.Foes,
-        roleKey: who === undefined ? null : combatRoleKey(who.role),
+        heroDisplayNameKey: who === null ? null : who.displayNameKey,
+        sideKey: who === null ? null : who.sideKey,
+        roleKey: who === null ? null : who.roleKey,
         detailKey: battleDetailKey(event),
+        targetDisplayNameKey: whom === null ? null : whom.displayNameKey,
+        targetSideKey: whom === null ? null : whom.sideKey,
+        targetRoleKey: whom === null ? null : whom.roleKey,
+        linkKey: other === undefined || counterpart === null ? null : counterpart.linkKey,
         amount: battleAmount(event),
         round
       };
@@ -897,7 +935,13 @@ export function describeAfterActionReadModel(model: AfterActionScreenModel): Can
             feed: validated.battle.feed.map((line) => ({
               key: line.key,
               hero_display_name_key: line.heroDisplayNameKey,
+              side_key: line.sideKey,
+              role_key: line.roleKey,
               detail_key: line.detailKey,
+              target_display_name_key: line.targetDisplayNameKey,
+              target_side_key: line.targetSideKey,
+              target_role_key: line.targetRoleKey,
+              link_key: line.linkKey,
               amount: line.amount,
               round: line.round
             }))

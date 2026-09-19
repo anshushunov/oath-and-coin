@@ -207,11 +207,30 @@ describe('support, status and displacement each name their own reason', () => {
   it('displacement borrows the reach of the row it is thrown from', () => {
     const fromFront = unit('crew:b', 'crew', 1, 2, { role: CombatRole.Breaker });
     const fromSupport = unit('crew:b', 'crew', 2, 2, { role: CombatRole.Breaker });
-    const deep = unit('foe:deep', 'foe', 2, 2);
+    // Easy to move on purpose: what is under test is the reach, and a man who would keep
+    // his footing is out of this action's aim for a different reason (the case below).
+    const deep = unit('foe:deep', 'foe', 2, 2, { stability: 10 });
 
     // Row 1 reaches through the open front cell; row 2 does not go deeper at all, and the
     // difference is the reason displacement has no access rule of its own.
     expect(shiftAim(fromFront, [fromFront, deep])?.target.id).toBe('foe:deep');
     expect(shiftAim(fromSupport, [fromSupport, deep])).toBeNull();
+  });
+
+  it('has nobody to shove when the man in reach would keep his footing', () => {
+    const breaker = unit('crew:b', 'crew', 1, 2, {
+      role: CombatRole.Breaker,
+      combat: { ...AVERAGE, might: 40 }
+    });
+    const solid = unit('foe:solid', 'foe', 1, 2, { stability: 40 });
+    const soft = unit('foe:soft', 'foe', 1, 2, { stability: 39 });
+
+    // **Null with the man standing right there in reach, and that is the point.** §4.6
+    // resolves a shove with no roll — `might` strictly above `stability` or it fails — so a
+    // shove that would be resisted is resisted every round for the rest of the battle, and
+    // a turn that changes nothing is not a turn (owner's decision, 2026-08-31). At equality
+    // he holds; one point below he goes.
+    expect(shiftAim(breaker, [breaker, solid])).toBeNull();
+    expect(shiftAim(breaker, [breaker, soft])?.target.id).toBe('foe:soft');
   });
 });

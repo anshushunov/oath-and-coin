@@ -44,6 +44,18 @@ describe('the shape of the frozen set (COMBAT_SPEC §12.5)', () => {
     expect(new Set(byDoctrine.values()), 'every doctrine fights the same set').toHaveLength(1);
   });
 
+  it('spends not one turn of the whole set on a shove that would be resisted', () => {
+    // `COMBAT_SPEC` §5.1, the rule's second action. Pinned at set scale because that is
+    // where the defect was: 1403 turns of the frozen set were `shift_resisted` after the
+    // status half of the rule alone, and a unit test over one board cannot say the number
+    // for 630 of them. Nought, and not "fewer".
+    const resisted = fought.flatMap((one) =>
+      one.record.events.filter((event) => event.kind === 'shift_resisted')
+    );
+
+    expect(resisted).toHaveLength(0);
+  });
+
   it('gives every contract, crew and formation all three orders', () => {
     // Stated as the product rather than as a total: a set of the right *size* built by
     // fighting one board three times would satisfy a count and measure nothing.

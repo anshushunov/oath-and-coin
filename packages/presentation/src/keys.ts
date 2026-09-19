@@ -846,7 +846,27 @@ export const BattleFieldKeys = Object.freeze({
   Health: 'battle.field.health',
   Outcome: 'battle.field.outcome',
   Downed: 'battle.field.downed',
-  Withdrew: 'battle.field.withdrew'
+  Withdrew: 'battle.field.withdrew',
+  /**
+   * Where a man stands, in the two words `COMBAT_SPEC` §3.1 names a cell by. The owner's
+   * first play: «непонятно, как стоят» — the list under the board carried everything about a
+   * man except his cell, and the geometry of §4 rests on nothing else.
+   */
+  Row: 'battle.field.row',
+  Column: 'battle.field.column',
+  /**
+   * The word between the two men on a journal line — which way the thing went.
+   *
+   * `To` when the line's subject did it to the other man (a blow, a heal, an intent); `From`
+   * when the other man did it to the subject (a status laid on him, a guard that took the
+   * hit, the shove he held against, the blow that put him down); `With` when the two traded
+   * places. Three rather than one, because the event's own wording is about its subject —
+   * «Сбит», «Устоял на месте» — and an arrow pointing the wrong way would name the wrong man
+   * as the one who acted.
+   */
+  To: 'battle.field.to',
+  From: 'battle.field.from',
+  With: 'battle.field.with'
 });
 
 export type BattleFieldKeys = (typeof BattleFieldKeys)[keyof typeof BattleFieldKeys];

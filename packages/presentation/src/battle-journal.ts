@@ -1,10 +1,18 @@
-import type { BattleEvent } from '@oath-and-coin/simulation';
+import type {
+  BattleEvent,
+  BattleSide,
+  BattleUnit,
+  BattleUnitId,
+  HeroId
+} from '@oath-and-coin/simulation';
 
 import {
   BattleEventKeys,
+  BattleFieldKeys,
   battleOutcomeKey,
   battleStatusKey,
   combatActionKey,
+  combatRoleKey,
   doctrineKey
 } from './keys.ts';
 
@@ -128,4 +136,84 @@ export function battleAmount(event: BattleEvent): number | null {
     case 'battle_ended':
       return null;
   }
+}
+
+/**
+ * The other man on the line, and the word between the two (`COMBAT_SPEC` §8.1, §10.2).
+ *
+ * **The owner's first play: «непонятно, кто куда бьёт».** A line read `Урон Противник
+ * Столкновение 10` — who struck and how hard, and nothing about whom. PR #57 gave every line
+ * its subject (`unitNamedBy`); this is the second man, on the eight kinds that carry one, and
+ * `null` on the eleven that do not — a step into an empty cell carries no shover and a spent
+ * turn nobody else, and a line that invented one would be teaching the reader a fight that
+ * did not happen.
+ *
+ * **The link says which way it went, and it has to.** The event's own wording is about its
+ * subject — «Урон» is what the subject dealt, «Сбит» is what happened to him — so the other
+ * man is sometimes the one struck and sometimes the one who struck. One arrow for both would
+ * name the wrong man as the one who acted on half the lines.
+ */
+export interface BattleCounterpart {
+  readonly unit: BattleUnitId;
+  readonly linkKey: string;
+}
+
+export function battleCounterpart(event: BattleEvent): BattleCounterpart | null {
+  switch (event.kind) {
+    case 'intent_declared':
+      return event.target === null ? null : { unit: event.target, linkKey: BattleFieldKeys.To };
+    case 'damage_dealt':
+    case 'healing_done':
+      return { unit: event.target, linkKey: BattleFieldKeys.To };
+    case 'damage_absorbed':
+      return { unit: event.by, linkKey: BattleFieldKeys.From };
+    case 'status_applied':
+      return { unit: event.source, linkKey: BattleFieldKeys.From };
+    case 'unit_shifted':
+      return event.partner === null ? null : { unit: event.partner, linkKey: BattleFieldKeys.With };
+    case 'shift_resisted':
+    case 'unit_downed':
+      return { unit: event.by, linkKey: BattleFieldKeys.From };
+    case 'status_expired':
+    case 'unit_pinned':
+    case 'turn_spent':
+    case 'doctrine_broken':
+    case 'retreat_obeyed':
+    case 'retreat_refused':
+    case 'battle_started':
+    case 'round_started':
+    case 'retreat_signalled':
+    case 'round_ended':
+    case 'battle_ended':
+      return null;
+  }
+}
+
+/** Whose man this is, as the one word a screen may say about a side. */
+export const sideKeyOf = (side: BattleSide): string =>
+  side === 'crew' ? BattleFieldKeys.Crew : BattleFieldKeys.Foes;
+
+/**
+ * What a screen calls a man: his name when he has one, his side and his job always.
+ *
+ * **One rule, applied to everybody a line names.** PR #57 wrote it for the subject after the
+ * frame read `Намерение Выстрел` — an act with no subject — and the target is named by the
+ * same function rather than by a second one, so the two cannot drift: a foe is «Противник
+ * Столкновение» whether he struck or was struck.
+ */
+export interface BattleWho {
+  readonly displayNameKey: string | null;
+  readonly sideKey: string;
+  readonly roleKey: string;
+}
+
+export function battleWho(
+  unit: BattleUnit,
+  displayNameKeyOf: (hero: HeroId) => string | null
+): BattleWho {
+  return {
+    displayNameKey: unit.hero === null ? null : displayNameKeyOf(unit.hero),
+    sideKey: sideKeyOf(unit.side),
+    roleKey: combatRoleKey(unit.role)
+  };
 }

@@ -46,6 +46,7 @@ ADR-001-engine-and-language.md
 | [DEC-015](DEC-015-no-scene-behind-the-debrief-and-the-board.md) | За разбором и доской схематичного мира нет | accepted |
 | [DEC-016](DEC-016-hero-combat-layer.md) | Боевой слой модели героя: пять атрибутов, роль, способности, перк, снаряжение | accepted |
 | [DEC-017](DEC-017-what-the-battle-vocabulary-promised.md) | Что боевой словарь обещал и чего не делал: источник `bleeding`, удаление `blocked`, четвёртое измерение набора | accepted |
+| [DEC-018](DEC-018-colour-in-the-journal.md) | Цвет в боевом журнале: три канала, и у каждого есть слово | proposed |
 
 Технические решения:
 

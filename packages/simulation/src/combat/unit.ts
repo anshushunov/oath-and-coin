@@ -103,6 +103,18 @@ export function unitFrom(blueprint: UnitBlueprint): BattleUnit {
   };
 }
 
+/**
+ * Whether `target` keeps his footing against a shove by `actor` (`COMBAT_SPEC` §4.6).
+ *
+ * `might` against `stability`, strictly greater, integer, no roll. **One predicate for the
+ * decision and for the resolution**: the aim of `Смещение` reads it to leave a shove that
+ * would fail untaken (§5.1), and the shove itself reads it to refuse one anyway — two
+ * comparisons written separately would be two places for the rule to part company.
+ */
+export function resistsShift(target: BattleUnit, actor: BattleUnit): boolean {
+  return actor.combat.might <= target.stability;
+}
+
 /** How chilled a unit is, in percentage points off its own actions (§3.5). */
 export function chillPointsOf(unit: BattleUnit): number {
   return unit.statuses.has(StatusId.Chilled) ? CHILL_EFFECT : 0;

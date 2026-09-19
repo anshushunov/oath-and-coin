@@ -5,7 +5,7 @@ import { compareStrings } from '../collections/comparator.ts';
 import { CombatRole } from '../domain/combat-role.ts';
 import { heroId, type HeroId } from '../ids/hero-id.ts';
 
-import { MAX_ROUNDS, runBattle, runRound, startBattle } from './battle.ts';
+import { MAX_ROUNDS, runBattle, runRound, shift, startBattle } from './battle.ts';
 import { BLEED } from './unit.ts';
 import { BOND_STRONG } from './decision.ts';
 import { DoctrineId } from './doctrine.ts';
@@ -325,17 +325,74 @@ describe('displacement, and what it costs the man behind', () => {
 
     expect(kinds(events)).toContain('unit_pinned');
   });
+});
 
-  it('is resisted when might does not beat stability, and the turn is still spent', () => {
-    const breaker = unit('crew:b', 'crew', 1, 2, {
-      role: CombatRole.Breaker,
-      combat: { ...AVERAGE, might: 10 }
+/**
+ * The same rule, applied to the second action it covers: a shove that would be resisted.
+ *
+ * §4.6 resolves a shove with no roll — `might` strictly above `stability`, or the man holds —
+ * so a shove that fails once fails every round for the rest of the battle: `stability` only
+ * ever rises (`Steady`), and `might` never moves. `break_them_first` ranks the shove first of
+ * all, so a breaker whose shove would fail spent every round of the owner's battle on it and
+ * printed «Устоял на месте» twelve times. Over the frozen set, after the status half of the
+ * rule alone, 1403 turns were still `shift_resisted` — 240 distinct fighter→man pairs, the
+ * same shove repeated to the end of the battle.
+ */
+describe('a shove nobody would feel is not worth the round', () => {
+  const weak = unit('crew:b', 'crew', 1, 2, {
+    role: CombatRole.Breaker,
+    combat: { ...AVERAGE, might: 10 }
+  });
+  const solid = unit('foe:v', 'foe', 1, 2, { combat: { ...AVERAGE, guard: 90 } });
+
+  it('strikes instead of shoving a man who would keep his footing', () => {
+    const { events } = runRound(startBattle([weak, solid], DoctrineId.BreakThemFirst));
+
+    expect(events.find((event) => event.kind === 'intent_declared')).toMatchObject({
+      actor: 'crew:b',
+      action: 'strike'
     });
-    const solid = unit('foe:v', 'foe', 1, 2, { combat: { ...AVERAGE, guard: 90 } });
-    const { events } = runRound(startBattle([breaker, solid], DoctrineId.BreakThemFirst));
-
-    expect(kinds(events)).toContain('shift_resisted');
+    expect(kinds(events)).toContain('damage_dealt');
+    expect(kinds(events)).not.toContain('shift_resisted');
     expect(kinds(events)).not.toContain('unit_shifted');
+  });
+
+  it('still shoves him when the shove would land', () => {
+    const strong = { ...weak, combat: { ...AVERAGE, might: 100 } };
+    const { events } = runRound(startBattle([strong, solid], DoctrineId.BreakThemFirst));
+
+    // The other half, and the one a mutant that simply deleted the shove would pass: the
+    // round the shove *is* worth taking still ends with the man moved.
+    expect(events.find((event) => event.kind === 'intent_declared')).toMatchObject({
+      action: 'shift'
+    });
+    expect(kinds(events)).toContain('unit_shifted');
+  });
+
+  it('never spends a turn on a resisted shove anywhere in a battle it is free to take every round', () => {
+    const record = runBattle(startBattle([weak, solid], DoctrineId.BreakThemFirst));
+    const blows = record.events.filter(
+      (event) => event.kind === 'damage_dealt' && event.actor === 'crew:b'
+    );
+
+    // A whole battle, so "no resisted shove because the fight ended in a round" cannot pass
+    // this: the breaker has struck at least once, and not one turn went on the shove.
+    expect(blows.length).toBeGreaterThan(0);
+    expect(record.events.filter((event) => event.kind === 'shift_resisted')).toHaveLength(0);
+  });
+
+  it('still refuses the shove itself when handed a man who would hold — the resolution, not the aim', () => {
+    // **No battle reaches this branch any more, and that is why it is called directly.**
+    // The aim above never hands the resolution a man who would keep his footing, so through
+    // `runRound` the guard in `shift` cannot be shown red — and a check that cannot go red
+    // is not a check (`AGENTS.md` §8). §4.6's contract is on the resolution: `might` strictly
+    // above `stability` or the man holds, no roll, nothing moved, nothing torn. Held here
+    // on the function, with the selector tested separately for never choosing it.
+    const units = [weak, solid];
+    const { units: after, events } = shift(units, weak, solid);
+
+    expect(events).toEqual([{ kind: 'shift_resisted', unit: 'foe:v', by: 'crew:b' }]);
+    expect(after).toBe(units);
   });
 });
 
@@ -735,14 +792,17 @@ describe('a shove tears the man it moves (COMBAT_SPEC §3.5)', () => {
     ).toHaveLength(1);
   });
 
-  it('leaves nothing on a man who held his ground', () => {
-    // `shift_resisted` is not a displacement, so nothing was torn.
+  it('leaves nothing on a man who would have held his ground', () => {
+    // A man the breaker cannot move is struck rather than shoved (§5.1), and a blow does not
+    // tear: the only road to `bleeding` is a shove that landed.
     // `stability` outright, not through `guard`: the helper spreads its overrides *over* a
     // built unit, so a combat layer handed to it never reaches the formula that derives one.
     const solid = unit('foe:a', 'foe', 1, 1, { stability: 100 });
     const { events } = runRound(startBattle([breaker, solid], DoctrineId.BreakThemFirst));
 
-    expect(events.some((event) => event.kind === 'shift_resisted')).toBe(true);
+    expect(events.find((event) => event.kind === 'intent_declared')).toMatchObject({
+      action: 'strike'
+    });
     expect(
       events.some((event) => event.kind === 'status_applied' && event.status === StatusId.Bleeding)
     ).toBe(false);

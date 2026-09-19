@@ -106,11 +106,14 @@ describe('the artifact says which shape it is', () => {
     // `bleeding`, so the same `(ruleset, content, seed)` produces a different battle — and
     // it takes `m1-resolution/4`. The artifact's own version is untouched by that: its
     // *shape* is the same, which is the distinction these two numbers exist to keep.
+    // `m1-resolution/5` is the same distinction once more (`COMBAT_SPEC` §5.1): a turn
+    // that changes nothing is no longer taken, so a battle under `break_them_first` runs
+    // differently on the same triple — and the artifact's shape is again untouched.
     expect(ARTIFACT_VERSION).toBe(9);
     expect(JSON.parse(toCanonicalJson(ran('gate0').outcome))).toMatchObject({
       artifact_version: 9,
       rng_algorithm: 'splitmix64-composed/1',
-      ruleset_version: 'm1-resolution/4'
+      ruleset_version: 'm1-resolution/5'
     });
   });
 

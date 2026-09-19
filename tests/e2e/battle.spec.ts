@@ -8,6 +8,7 @@ import {
   loadUiTextCatalogue
 } from '@oath-and-coin/content/node';
 import {
+  BattleFieldKeys,
   battleFailedScreen,
   battleScreenModel,
   expectedSnapshot,
@@ -228,6 +229,38 @@ test.describe('the battle screen, in a browser', () => {
         document.querySelector(`[data-testid="${testId}"]`)?.scrollTo(0, 0);
       }, SCREEN);
       await page.screenshot({ path: join(directory, 'screenshot.png'), fullPage: false });
+
+      const model = run.model();
+
+      // A second frame, of the journal, on the position that has one. The frame above is
+      // what a player sees first, and on a finished fight that is the board — the journal
+      // is eighty lines further down, and the owner's first play was about *those* lines.
+      // A frame that never reaches them is evidence of the half of the screen that was not
+      // changed. Scrolled by name rather than by wheel, so the frame is of the same lines on
+      // every run.
+      if (model.journal.length > 0) {
+        const journal = page.getByTestId('battle-journal');
+        const to = catalogue.get(BattleFieldKeys.To);
+
+        if (to === undefined) {
+          throw new Error(`The catalogue has no text for '${BattleFieldKeys.To}'.`);
+        }
+
+        await journal.evaluate((element) => {
+          element.scrollIntoView({ block: 'start' });
+        });
+
+        // Whole, not "some part of": at 1280x800 the journal's heading sits exactly on the
+        // fold of a finished fight, so a check that any pixel of it is on screen is green
+        // with every arrow line below the fold — measured, and that is why the check is on
+        // the first line that carries the arrow.
+        await expect(journal.locator('.label').first()).toBeInViewport({ ratio: 1 });
+        await expect(journal.locator('.journal-line', { hasText: to }).first()).toBeInViewport({
+          ratio: 1
+        });
+        await page.screenshot({ path: join(directory, 'journal.png'), fullPage: false });
+      }
+
       writeFileSync(join(directory, 'events.jsonl'), events.map((line) => `${line}\n`).join(''));
       writeFileSync(
         join(directory, 'report.json'),
@@ -250,7 +283,7 @@ test.describe('the battle screen, in a browser', () => {
       // The list, not a hash of it: a hash says two screens differ and only the list says
       // where. Built here from the catalogue on disk and from a model this process ran the
       // resolver for, so nothing in it can know what the page rendered.
-      expect(renderedTexts).toEqual(expectedSnapshot(run.model(), catalogue));
+      expect(renderedTexts).toEqual(expectedSnapshot(model, catalogue));
 
       // Before the reachability assertion, and for the reason `layout.ts` records: it
       // compares content against a box, and a box sized by its own content satisfies it

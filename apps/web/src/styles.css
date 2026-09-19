@@ -440,6 +440,17 @@ body {
   border-left: 3px solid var(--edge);
 }
 
+/*
+ * A refusal stands inside the block of the control it is about — a lever's block, or the
+ * pressed button's — so the paragraph's default margins are tightened to keep it there
+ * visually as well as in the tree: the owner's advance of 100 was refused with a sentence
+ * that printed under seven rows of buttons and below the window, and a sentence about a
+ * number belongs under the number.
+ */
+.rejection {
+  margin: 4px 0 0;
+}
+
 .method-options {
   display: flex;
   flex-wrap: wrap;

@@ -19,7 +19,7 @@ import { useState } from 'react';
 
 import { useText } from '../../text.tsx';
 
-import { Captioned, KeyList, Label } from '../labels.tsx';
+import { Captioned, KeyList, Label, Who } from '../labels.tsx';
 
 /**
  * The debrief: what the run cost, what it bought, and the one decision left over
@@ -150,15 +150,26 @@ export function AfterActionScreen({
                 no display name, and the frame of a finished fight read half a screen of
                 `Намерение Выстрел` — acts with no subject.
               */}
-              {line.heroDisplayNameKey !== null ? (
-                <Label text={text(line.heroDisplayNameKey)} />
-              ) : line.sideKey === null || line.roleKey === null ? null : (
+              <Who
+                displayNameKey={line.heroDisplayNameKey}
+                sideKey={line.sideKey}
+                roleKey={line.roleKey}
+              />
+              {line.detailKey === null ? null : <Label text={text(line.detailKey)} />}
+              {/*
+                The other man, after the word saying which way it went — the same line the
+                battle screen prints, because it is the same journal read a second time.
+              */}
+              {line.linkKey === null ? null : (
                 <>
-                  <Label text={text(line.sideKey)} />
-                  <Label text={text(line.roleKey)} />
+                  <Label text={text(line.linkKey)} />
+                  <Who
+                    displayNameKey={line.targetDisplayNameKey}
+                    sideKey={line.targetSideKey}
+                    roleKey={line.targetRoleKey}
+                  />
                 </>
               )}
-              {line.detailKey === null ? null : <Label text={text(line.detailKey)} />}
               {line.amount === null ? null : <Label text={String(line.amount)} />}
             </div>
           ))}

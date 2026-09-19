@@ -11,7 +11,13 @@ import {
 } from '@oath-and-coin/simulation';
 
 import { boardAfter, type BattleBoardUnit } from './battle-board.ts';
-import { battleAmount, battleDetailKey, battleEventKey } from './battle-journal.ts';
+import {
+  battleAmount,
+  battleCounterpart,
+  battleDetailKey,
+  battleEventKey,
+  battleWho
+} from './battle-journal.ts';
 import {
   BATTLE_TITLE_KEY,
   BattleControlKeys,
@@ -132,6 +138,24 @@ export interface BattleJournalLine {
   readonly sideKey: string | null;
   readonly roleKey: string | null;
   readonly detailKey: string | null;
+  /**
+   * The other man on the line, named by the rule the subject is named by, and the word
+   * between the two.
+   *
+   * **The owner's first play: «непонятно, кто куда бьёт».** PR #57 gave every line its
+   * subject and stopped there, so a blow read `Урон Противник Столкновение 10` — who struck
+   * and how hard, and nobody struck. `battleCounterpart` decides which events carry a second
+   * man; `linkKey` is `→` when the subject did it to him, `←` when he did it to the subject,
+   * `↔` when they traded places — the event's own wording is about its subject, and one
+   * arrow for both directions would name the wrong man as the one who acted.
+   *
+   * All four `null` together with {@link linkKey}, exactly when the event names nobody else.
+   */
+  readonly targetUnit: BattleUnitId | null;
+  readonly targetDisplayNameKey: string | null;
+  readonly targetSideKey: string | null;
+  readonly targetRoleKey: string | null;
+  readonly linkKey: string | null;
   readonly amount: number | null;
   readonly round: number;
 }
@@ -340,6 +364,25 @@ export function createBattleScreenModel(model: BattleScreenContent): BattleScree
       throw new Error(
         `Unit '${unit.unit}' is both standing and gone, or neither: a unit off the board says ` +
           'how it left, and a unit on it has nothing to say about leaving.'
+      );
+    }
+  }
+
+  for (const line of model.journal) {
+    // A second man is named under a word saying which way it went, or not at all: a target
+    // with no link would print two men side by side and leave the reader to guess who
+    // struck whom, which is the hole the link exists to close. The name is the one optional
+    // half — a foe has none — but a name with no man behind it is an orphan the screen would
+    // hide in silence, because it prints the name only under the word.
+    if (
+      (line.targetUnit === null) !== (line.linkKey === null) ||
+      (line.targetUnit === null) !== (line.targetSideKey === null) ||
+      (line.targetUnit === null) !== (line.targetRoleKey === null) ||
+      (line.targetUnit === null && line.targetDisplayNameKey !== null)
+    ) {
+      throw new Error(
+        `Journal line '${line.key}' names a second man by halves: a target is named under its ` +
+          'side, its job and the word between the two men, or the line names nobody else.'
       );
     }
   }
@@ -566,10 +609,6 @@ function unitLineOf(unit: BattleBoardUnit, names: Names): BattleUnitLine {
   };
 }
 
-/** Whose man this is, as the one word a screen may say about a side. */
-const sideKeyOf = (side: BattleSide): string =>
-  side === 'crew' ? BattleFieldKeys.Crew : BattleFieldKeys.Foes;
-
 const leftKeyOf = (left: BattleBoardUnit['left']): string | null => {
   switch (left) {
     case 'downed':
@@ -610,16 +649,19 @@ function lastIntentOf(
       return null;
     }
 
+    const who = battleWho(actor, names.displayNameKeyOf);
+    const whom = target === null ? null : battleWho(target, names.displayNameKeyOf);
+
     return {
       unit: actor.id,
-      displayNameKey: actor.hero === null ? null : names.displayNameKeyOf(actor.hero),
-      sideKey: sideKeyOf(actor.side),
-      roleKey: combatRoleKey(actor.role),
+      displayNameKey: who.displayNameKey,
+      sideKey: who.sideKey,
+      roleKey: who.roleKey,
       actionKey: combatActionKey(event.action),
       targetUnit: target?.id ?? null,
-      targetDisplayNameKey: target?.hero == null ? null : names.displayNameKeyOf(target.hero),
-      targetSideKey: target == null ? null : sideKeyOf(target.side),
-      targetRoleKey: target == null ? null : combatRoleKey(target.role),
+      targetDisplayNameKey: whom === null ? null : whom.displayNameKey,
+      targetSideKey: whom === null ? null : whom.sideKey,
+      targetRoleKey: whom === null ? null : whom.roleKey,
       reasonKey: event.reason,
       contraryToDoctrineKey: event.contraryTo === null ? null : doctrineKey(event.contraryTo)
     };
@@ -651,15 +693,29 @@ function journalOf(
 
     const unit = unitNamedBy(event);
     const acting = unit === null ? undefined : record.initial.units.find((one) => one.id === unit);
-    const hero = acting?.hero ?? null;
+    const who = acting === undefined ? null : battleWho(acting, names.displayNameKeyOf);
+
+    // The second man, by the same rule as the first — one function, so a foe is «Противник
+    // Столкновение» whether he struck or was struck.
+    const counterpart = battleCounterpart(event);
+    const other =
+      counterpart === null
+        ? undefined
+        : record.initial.units.find((one) => one.id === counterpart.unit);
+    const whom = other === undefined ? null : battleWho(other, names.displayNameKeyOf);
 
     lines.push({
       key: battleEventKey(event),
       unit,
-      displayNameKey: hero === null ? null : names.displayNameKeyOf(hero),
-      sideKey: acting === undefined ? null : sideKeyOf(acting.side),
-      roleKey: acting === undefined ? null : combatRoleKey(acting.role),
+      displayNameKey: who === null ? null : who.displayNameKey,
+      sideKey: who === null ? null : who.sideKey,
+      roleKey: who === null ? null : who.roleKey,
       detailKey: battleDetailKey(event),
+      targetUnit: other === undefined ? null : other.id,
+      targetDisplayNameKey: whom === null ? null : whom.displayNameKey,
+      targetSideKey: whom === null ? null : whom.sideKey,
+      targetRoleKey: whom === null ? null : whom.roleKey,
+      linkKey: other === undefined || counterpart === null ? null : counterpart.linkKey,
       amount: battleAmount(event),
       round
     });
@@ -803,6 +859,11 @@ export function describeBattleReadModel(model: BattleScreenModel): CanonicalValu
       side_key: line.sideKey,
       role_key: line.roleKey,
       detail_key: line.detailKey,
+      target_unit: line.targetUnit,
+      target_display_name_key: line.targetDisplayNameKey,
+      target_side_key: line.targetSideKey,
+      target_role_key: line.targetRoleKey,
+      link_key: line.linkKey,
       amount: line.amount,
       round: line.round
     })),
