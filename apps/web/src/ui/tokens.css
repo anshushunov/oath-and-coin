@@ -1,0 +1,44 @@
+/* Сгенерировано `pnpm tokens:generate` из apps/web/src/ui/tokens.ts.
+   Править здесь нечего: правка уедет при следующей генерации, а
+   `pnpm tokens:check` покраснеет раньше этого. */
+
+:root {
+  --surface: #0d0f14;
+  --panel: #161a22;
+  --edge: #2a3140;
+  --ink: #e6e8ee;
+  --ink-dim: #98a1b3;
+  --danger: #f0a8a8;
+  --scene-background: #11131a;
+  --cell: #1a1d26;
+  --crew: #4a7fc8;
+  --foe: #c85a4a;
+  --downed: #5a4a52;
+  --health: #6fbf73;
+  --health-empty: #3a2a2a;
+  --status: #d8c26a;
+  --harm: #ffd8d0;
+  --aid: #d0ffd8;
+  --popup-outline: #0a0b0f;
+  --outline: #8b93a7;
+  --favour: #9ed0a1;
+  --against: #e8a596;
+  --blocked: #c2addf;
+
+  --type-display: 1.75rem;
+  --type-title: 1.25rem;
+  --type-heading: 1rem;
+  --type-body: 0.875rem;
+  --type-caption: 0.75rem;
+  --type-micro: 0.6875rem;
+
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-xxl: 32px;
+
+  --stroke-hairline: 2px;
+  --stroke-thick: 3px;
+}

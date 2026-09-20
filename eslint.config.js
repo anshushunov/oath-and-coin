@@ -29,6 +29,25 @@ export default tseslint.config(
     ]
   },
 
+  // An `eslint-disable` that no longer suppresses anything is an error, not a
+  // warning, and it is raised here because a ban in this file depends on it.
+  //
+  // The colour ban (`ADR-017`, below) keeps its exceptions as line-scoped
+  // directives rather than as entries in `ignores`, so that a whole module is
+  // never carried outside a rule. Three of those directives are dated: they sit
+  // on constants Task 5 deletes. What turns "dated" into something a machine
+  // enforces is this setting — when the constants go and the directives do not,
+  // they stop suppressing anything and are reported by file and line.
+  //
+  // `error` rather than the default: `pnpm lint` is `eslint .` with no
+  // `--max-warnings`, so a warning here would be printed and then exited 0 over,
+  // which is a reminder rather than a gate.
+  {
+    linterOptions: {
+      reportUnusedDisableDirectives: 'error'
+    }
+  },
+
   // Type-aware linting for everything written in TypeScript. The rules below
   // need types — that is the whole point of choosing them.
   {
@@ -186,6 +205,71 @@ export default tseslint.config(
           selector: 'ImportExpression[source.type!="Literal"]',
           message:
             'A dynamic import with a computed specifier is invisible to the dependency-boundary gate, which is the only authoritative check on what these layers may import. Name the module literally, or it cannot be checked at all.'
+        }
+      ]
+    }
+  },
+
+  // Colour is declared once, and this is the half of that ban which lives on the
+  // TypeScript side of the CSS/TypeScript seam (`ADR-017` §2). Its twin is
+  // `scripts/check-ui-colours.mjs`, which reads `.css` — a file ESLint does not
+  // parse at all, so neither gate can stand in for the other.
+  //
+  // What it catches is a defect no type and no test can see. `DEC-018` requires
+  // that the battle journal have no palette of its own and repeat the canvas
+  // constants: "blue means the crew" has to be one fact on both sides of the
+  // seam. Before this rule it was two — a number `0x4a7fc8` in `pixi-scene.ts`
+  // and a string `#4a7fc8` in a stylesheet — and each of them was, on its own,
+  // perfectly correct. That is why nothing reddened when they drifted: the
+  // measured version of this is three files that independently chose almost the
+  // same dark tone for "background" (`0x11131a`, `#101014`, `#0d0f14`), no pair
+  // of them equal, and only a human who opened all three could have known.
+  //
+  // **Exactly one exception at this level, and `AGENTS.md` §12 п. 3 is why there
+  // is not a second.** `tokens.ts` is where the literals are declared, so the ban
+  // cannot apply to it; everything else in `apps/web` is inside, whole files
+  // included. The three sites that legitimately still write a number —
+  // `MARKER_FILL`, `TOKEN_ANSWERED`, `TOKEN_WAITING` in `pixi-scene.ts`, and the
+  // two assertions in `ui/tokens.test.ts` that pin `hex()` — carry
+  // `eslint-disable-next-line` directives at the line instead, the form this
+  // repository already uses at `apps/web/src/world/world-canvas.tsx:119`.
+  //
+  // That is a mechanism rather than a tidier spelling of the same thing, and the
+  // difference is the whole reason for it. An entry in `ignores` exempts the
+  // *file*: a 300-line module that owns the canvas palette would sit outside the
+  // ban entirely, and a sixteenth colour added to it before Task 5 would pass
+  // lint in silence — which is precisely the second-declaration defect this rule
+  // exists to make impossible. A directive exempts the *line*, so the rest of the
+  // file stays guarded, and the exemption is written where the thing it excuses
+  // is, not in a config file nobody opens.
+  //
+  // It also closes the "what if Task 5 forgets" question that a file-level
+  // exception could only pose and never answer. Task 5 deletes the canvas of the
+  // offer and those three constants with it; `reportUnusedDisableDirectives`
+  // (below, raised to `error`) then reports three directives that no longer
+  // suppress anything, by file and line. A leftover announces itself instead of
+  // quietly widening the ban's hole for the rest of the repository's life.
+  {
+    files: ['apps/web/**/*.ts', 'apps/web/**/*.tsx'],
+    ignores: ['apps/web/src/ui/tokens.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'Literal[value=/^#[0-9a-fA-F]{3,8}$/]',
+          message:
+            'Цвет объявляется один раз, в apps/web/src/ui/tokens.ts (ADR-017). DEC-018 требует, чтобы журнал боя не имел собственной палитры и повторял константы канваса; второе объявление того же цвета расходится с первым молча, и ни один тест этого не поймает. Возьмите роль из Colour или заведите новую.'
+        },
+        {
+          // Six hex digits, with the numeric separators JavaScript allows between
+          // any two of them. `^0x[0-9a-fA-F]{6}$` was the first shape of this and
+          // it was porous by exactly one formatting choice: `0xab_cd_ef` passed
+          // lint clean while `0xabcdef` reddened — and the separated form is the
+          // one this repository actually writes, in `ui/tokens.test.ts`. A ban a
+          // second palette gets past by adding two underscores is not a ban.
+          selector: 'Literal[raw=/^0x(?:[0-9a-fA-F]_?){5}[0-9a-fA-F]$/]',
+          message:
+            'Число вида 0xrrggbb — это цвет для Pixi, и он берётся из hex(role) в apps/web/src/ui/tokens.ts (ADR-017), а не пишется на месте. Разделители (0xrr_gg_bb) — та же запись того же цвета и запрещены так же. См. сообщение выше о том, почему двух объявлений быть не может.'
         }
       ]
     }

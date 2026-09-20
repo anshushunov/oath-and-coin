@@ -16,6 +16,8 @@ import { Application, Container, Graphics, Text } from 'pixi.js';
 // transform.
 import 'pixi.js/unsafe-eval';
 
+import { Stroke, hex } from '../ui/tokens.ts';
+
 import type { BattlePopup } from './battle-scene-model.ts';
 import type { SceneDescription, SceneShape } from './scene-model.ts';
 
@@ -37,34 +39,62 @@ import type { SceneDescription, SceneShape } from './scene-model.ts';
  * nothing here pretends otherwise.
  *
  * The colours are the schematic palette `DEC-007` asks for until the vertical slice —
- * a token, a marker, and the one distinction the scene draws. They are constants here
- * rather than CSS custom properties because nothing in a canvas reads CSS.
+ * a token, a marker, and the one distinction the scene draws. They are read through
+ * `hex()` rather than written here as numbers, because nothing in a canvas reads CSS and
+ * `ADR-017` refuses the obvious consequence — a second palette that happens to agree with
+ * the stylesheets until the day it does not. The names below are unchanged: this file
+ * swapped where its numbers come from and nothing else.
  */
 
 /** The scene's own background, so the canvas is never a hole in the page. */
-const BACKGROUND = 0x11131a;
+const BACKGROUND = hex('sceneBackground');
 
-/** The offered contract. */
+/**
+ * The offered contract, and a hero who has answered beside one still to.
+ *
+ * The only three colours in this file still written as numbers, and they are written here
+ * on a deadline rather than by exception: they belong to the canvas of the contract offer,
+ * which Task 5 relays onto the kit and removes.
+ *
+ * The ban on `0xrrggbb` (`ADR-017`) is suspended per line and not per file, deliberately.
+ * A file-level entry in `eslint.config.js`'s `ignores` would carry the whole module —
+ * every colour the board draws — outside the rule, and a sixteenth constant added here
+ * before Task 5 would pass lint in silence. Three directives leave the other twelve
+ * guarded.
+ *
+ * They are also what makes the deadline enforceable rather than merely written down. When
+ * Task 5 takes these constants, a directive left behind suppresses nothing and
+ * `reportUnusedDisableDirectives` reports it by file and line — so "the exception outlived
+ * the thing it excused" is a red gate instead of a sentence somebody has to remember.
+ */
+// eslint-disable-next-line no-restricted-syntax -- canvas of the offer; leaves in Task 5
 const MARKER_FILL = 0xc8a04a;
-
-/** A hero who has answered, and one still to. */
+// eslint-disable-next-line no-restricted-syntax -- canvas of the offer; leaves in Task 5
 const TOKEN_ANSWERED = 0x4a7fc8;
+// eslint-disable-next-line no-restricted-syntax -- canvas of the offer; leaves in Task 5
 const TOKEN_WAITING = 0x3a3f4b;
 
 /** The battle board: a cell, the two sides, a man who is down, a bar and a status mark. */
-const CELL_FILL = 0x1a1d26;
-const TOKEN_CREW = 0x4a7fc8;
-const TOKEN_FOE = 0xc85a4a;
+const CELL_FILL = hex('cell');
+const TOKEN_CREW = hex('crew');
+const TOKEN_FOE = hex('foe');
 /*
  * A man who is out of the fight. Far enough from the cell's own fill to read as a token
  * rather than as an empty cell — found by looking at the frame, where the first value
  * (`0x2a2d36`) was within a shade of `CELL_FILL` and four downed men looked like four
  * cells nobody had ever stood in.
+ *
+ * That rejected value stays written down. It is a record of what was tried, not a colour
+ * anything uses, and it survives both gates honestly: the ESLint ban matches `Literal`
+ * nodes rather than comment text, and `check-ui-colours.mjs` reads only `.css`. Nothing
+ * here is leaking through a hole — do not "fix" it, and note that it needs no
+ * `eslint-disable` either: a directive over a comment would suppress nothing and
+ * `reportUnusedDisableDirectives` would report it.
  */
-const TOKEN_DOWNED = 0x5a4a52;
-const HEALTH_FILL = 0x6fbf73;
-const HEALTH_EMPTY = 0x3a2a2a;
-const STATUS_MARK = 0xd8c26a;
+const TOKEN_DOWNED = hex('downed');
+const HEALTH_FILL = hex('health');
+const HEALTH_EMPTY = hex('healthEmpty');
+const STATUS_MARK = hex('status');
 
 /**
  * The floating number and the outline under it (`COMBAT_SPEC` §10.2 п.4).
@@ -72,14 +102,14 @@ const STATUS_MARK = 0xd8c26a;
  * The outline is near-black and three pixels wide, which is what makes the number readable
  * on the white flash the spike measured it disappearing into.
  */
-const POPUP_DAMAGE = 0xffd8d0;
-const POPUP_HEALING = 0xd0ffd8;
-const POPUP_OUTLINE = 0x0a0b0f;
-const POPUP_OUTLINE_WIDTH = 3;
+const POPUP_DAMAGE = hex('harm');
+const POPUP_HEALING = hex('aid');
+const POPUP_OUTLINE = hex('popupOutline');
+const POPUP_OUTLINE_WIDTH = Stroke.thick;
 
 /** Drawn on every shape, so a token on the background still has an edge. */
-const OUTLINE = 0x8b93a7;
-const OUTLINE_WIDTH = 2;
+const OUTLINE = hex('outline');
+const OUTLINE_WIDTH = Stroke.hairline;
 
 /** A mounted scene, and the two things its owner may do with it. */
 export interface PixiScene {

@@ -27,14 +27,23 @@
  * needed either would stop being a page that runs offline.
  */
 
+/*
+ * `--surface`, `--panel`, `--edge`, `--ink` and `--ink-dim` were declared here and are
+ * now declared in `apps/web/src/ui/tokens.ts` (`ADR-017`), reaching the page through the
+ * generated `ui/tokens.css`. The names are unchanged on purpose, so that the five hundred
+ * lines of selectors below did not move a character for this.
+ *
+ * That file is not pulled in with `@import` — the docblock above rules one out and the
+ * reason has not changed. `main.tsx` imports it immediately before this stylesheet, so
+ * the bundler owns both and the declaration order is the one written there.
+ *
+ * `color-scheme` stays: it is a statement about how the browser should paint the widgets
+ * it owns — scrollbars, form controls, the canvas of the page itself — and not a colour
+ * this repository chose. A token module that carried it would be declaring something that
+ * is neither colour, kegl nor step.
+ */
 :root {
   color-scheme: dark;
-
-  --surface: #0d0f14;
-  --panel: #161a22;
-  --edge: #2a3140;
-  --ink: #e6e8ee;
-  --ink-dim: #98a1b3;
 }
 
 * {

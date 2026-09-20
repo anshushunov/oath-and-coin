@@ -7,6 +7,13 @@ import { App } from './App';
 // bundler owns it: it is hashed, emitted beside the scripts and loaded by the same
 // relative `base` the packaged Electron host needs. A `<link>` in the document would be
 // a second asset path to keep correct under `file://`.
+//
+// The tokens come first, and they are imported here rather than `@import`-ed from
+// `styles.css` for the reason that file's own docblock gives: `index.html` declares
+// `default-src 'none'`, so a stylesheet that fetched another one would stop being a page
+// that runs offline. Two imports in the order they must apply in cost nothing and keep
+// that sentence true.
+import './ui/tokens.css';
 import './styles.css';
 
 // `index.html` ships an empty `#root`. Everything below the root element is

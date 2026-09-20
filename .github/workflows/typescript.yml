@@ -70,6 +70,21 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      # The two halves of the colour ban (ADR-017), in the same position they
+      # hold inside `pnpm verify`: after formatting, before the content schemas.
+      #
+      # They run in the release gate too — that job runs `pnpm verify` whole, and
+      # `tests/architecture/release-gate.test.ts` keeps both stages in the chain —
+      # so this is not a hole being closed, it is feedback arriving in seconds on
+      # every push instead of behind a browser download. A `tokens.css` that was
+      # not regenerated is a one-line fix, and learning about it from the slowest
+      # job in the workflow is how a one-line fix costs an afternoon.
+      - name: UI tokens are generated from their source
+        run: pnpm tokens:check
+
+      - name: No colour is declared twice in CSS
+        run: pnpm lint:colours
+
       # Three statements of the content rules, held to each other: the Zod
       # contracts, the generated schemas committed beside them, and the
       # hand-written schemas the .NET stack still reads until cutover. Cheap, and
