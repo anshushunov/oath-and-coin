@@ -1,3 +1,7 @@
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { expect, test } from '@playwright/test';
 
 import { frameDigest } from './frame-digest.ts';
@@ -26,6 +30,14 @@ const SEED = 424242n;
 const LOCALE = 'ru';
 const SCENARIO = 'battle_ready';
 
+const REPOSITORY_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const EVIDENCE = join(REPOSITORY_ROOT, 'artifacts', 'browser-evidence', 'battle_redraw');
+
+test.beforeAll(() => {
+  rmSync(EVIDENCE, { recursive: true, force: true });
+  mkdirSync(EVIDENCE, { recursive: true });
+});
+
 test('боевая доска перерисовывается, а не стоит мёртвым кадром', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
@@ -52,6 +64,34 @@ test('боевая доска перерисовывается, а не стои
   // и «сломан» одновременно, поэтому проверяется отдельно от неравенства.
   expect(after.distinctColors, 'кадр не должен быть залит одним цветом').toBeGreaterThan(1);
   expect(errors, 'страница не должна ронять ошибок').toEqual([]);
+
+  // Улика `AGENTS.md` §7, как у `live-command.spec.ts`, которому этот гейт наследует:
+  // зелёный статус теста без отпечатков не даёт читателю CI ничего проверить руками.
+  await page.screenshot({ path: join(EVIDENCE, 'screenshot.png'), fullPage: false });
+  writeFileSync(join(EVIDENCE, 'events.jsonl'), errors.map((line) => `${line}\n`).join(''));
+  writeFileSync(
+    join(EVIDENCE, 'report.json'),
+    `${JSON.stringify(
+      {
+        scenario: SCENARIO,
+        seed: SEED.toString(),
+        locale: LOCALE,
+        command: 'skip',
+        scene_shapes_before: before.shapes,
+        scene_shapes_after: after.shapes,
+        frame_digest_before: before.pixels,
+        frame_digest_after: after.pixels,
+        distinct_colors_after: after.distinctColors,
+        events: errors.length
+      },
+      null,
+      2
+    )}\n`
+  );
+
+  expect(existsSync(join(EVIDENCE, 'screenshot.png')), 'screenshot.png').toBe(true);
+  expect(existsSync(join(EVIDENCE, 'events.jsonl')), 'events.jsonl').toBe(true);
+  expect(existsSync(join(EVIDENCE, 'report.json')), 'report.json').toBe(true);
 });
 
 /**

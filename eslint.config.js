@@ -255,10 +255,36 @@ export default tseslint.config(
     rules: {
       'no-restricted-syntax': [
         'error',
+        // Unanchored, and on template quasis as well as on string literals. The
+        // first shape was `^#…$` on `Literal` alone, and external review walked
+        // two colours straight past it: `` `#c85a4a` `` (a template, which is a
+        // `TemplateElement`, not a `Literal`) and `'1px solid #c85a4a'` (a colour
+        // inside a CSS string, which the anchors refused to see). `style={{…}}`
+        // and CSS-in-TS are both exactly that — a string carrying a colour.
         {
-          selector: 'Literal[value=/^#[0-9a-fA-F]{3,8}$/]',
+          selector: 'Literal[value=/#[0-9a-fA-F]{3,8}\\b/]',
           message:
             'Цвет объявляется один раз, в apps/web/src/ui/tokens.ts (ADR-017). DEC-018 требует, чтобы журнал боя не имел собственной палитры и повторял константы канваса; второе объявление того же цвета расходится с первым молча, и ни один тест этого не поймает. Возьмите роль из Colour или заведите новую.'
+        },
+        {
+          selector: 'TemplateElement[value.raw=/#[0-9a-fA-F]{3,8}\\b/]',
+          message:
+            'Цвет в шаблонной строке — то же второе объявление, что и в обычной (ADR-017). Возьмите роль из Colour или var(--роль).'
+        },
+        // The functional notations are the same colour in another spelling, and a
+        // ban that only reads hex is a ban on one spelling. `var(--role)` and
+        // `currentColor` are the legitimate ways to name a colour here and match
+        // neither pattern.
+        {
+          selector: 'Literal[value=/\\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\\(/i]',
+          message:
+            'rgb()/hsl() и прочие функциональные записи — тот же цвет другим почерком (ADR-017). Возьмите роль из Colour или var(--роль).'
+        },
+        {
+          selector:
+            'TemplateElement[value.raw=/\\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\\(/i]',
+          message:
+            'rgb()/hsl() и прочие функциональные записи — тот же цвет другим почерком (ADR-017). Возьмите роль из Colour или var(--роль).'
         },
         {
           // Six hex digits, with the numeric separators JavaScript allows between
@@ -267,7 +293,7 @@ export default tseslint.config(
           // lint clean while `0xabcdef` reddened — and the separated form is the
           // one this repository actually writes, in `ui/tokens.test.ts`. A ban a
           // second palette gets past by adding two underscores is not a ban.
-          selector: 'Literal[raw=/^0x(?:[0-9a-fA-F]_?){5}[0-9a-fA-F]$/]',
+          selector: 'Literal[raw=/^0[xX](?:[0-9a-fA-F]_?){5}[0-9a-fA-F]$/]',
           message:
             'Число вида 0xrrggbb — это цвет для Pixi, и он берётся из hex(role) в apps/web/src/ui/tokens.ts (ADR-017), а не пишется на месте. Разделители (0xrr_gg_bb) — та же запись того же цвета и запрещены так же. См. сообщение выше о том, почему двух объявлений быть не может.'
         }
