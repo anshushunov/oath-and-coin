@@ -69,6 +69,7 @@ ADR-001-engine-and-language.md
 | [ADR-014](ADR-014-contract-resolver-boundary.md) | Граница резолвера контракта: события первичны, авторитетна одна реализация | accepted |
 | [ADR-015](ADR-015-resolution-draft-shape.md) | Форма черновика разрешения: где живёт засчитанная доля и чем закрывается лента | accepted |
 | [ADR-016](ADR-016-battle-resolver-and-the-forecast.md) | Боевой резолвер — экзамен, абстрактный — прогноз, и один язык на двоих | accepted |
+| [ADR-017](ADR-017-ui-tokens-single-source.md) | Токены — единственный источник цвета, кегля и шага для CSS и канваса | accepted |
 
 **Cutover состоялся 2026-08-22** ([`FULL_TYPESCRIPT_MIGRATION`](../production/FULL_TYPESCRIPT_MIGRATION.md), Task 19): Godot/.NET-дерево удалено, действующее решение о движке и языке — `ADR-010`. `ADR-001` получил статус `superseded`, `ADR-008` — `superseded в части механизма`; у обоих сверху стоит датированная заметка cutover.
 

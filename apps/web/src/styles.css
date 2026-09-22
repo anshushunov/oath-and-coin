@@ -596,11 +596,12 @@ nav button,
   display: flex;
   align-items: center;
   gap: var(--space-sm);
+  flex-wrap: wrap;
 }
 
 .bar-label {
   font-size: var(--type-caption);
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 /*
