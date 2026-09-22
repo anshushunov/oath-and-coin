@@ -37,7 +37,6 @@ import { ContractBoardScreen } from './screens/board/contract-board-screen.tsx';
 import { ContractOfferScreen } from './screens/contract-offer/contract-offer-screen.tsx';
 import { SavesScreen } from './screens/saves/saves-screen.tsx';
 import { TextSource, useText } from './text.tsx';
-import { WorldCanvas } from './world/world-canvas.tsx';
 
 /**
  * The browser build's root: the port of `Main._Ready` minus Godot.
@@ -199,22 +198,12 @@ export function App({ createController = browserSessionController }: AppProps = 
       </TextSource>
 
       {/*
-        The schematic world behind the screen (`DEC-007`, Task 14). Outside the
-        `TextSource` because it renders no text at all — a canvas has no text nodes, so
-        the rendered-UI hash collected from the screen above cannot see it either way,
-        and putting it under a text provider would suggest otherwise.
-
-        Drawn on both screens, and from the same model: it is the campaign behind the
-        page rather than a decoration of one screen, and a canvas that blanked while the
-        player looked at the slots would be claiming the campaign went away.
-
-        **Not while a battle is on screen.** The battle draws its own board, and this one
-        would be a second canvas showing the campaign's line-up under it — two pictures of
-        different things, one above the other, with nothing saying which is which. Found by
-        looking at the frame, and by nothing else: every hash was green on it, correctly,
-        because a canvas has no texts for either of them to see.
+        No schematic world behind the screens (`DEC-020`, superseding `DEC-015`). A canvas
+        stood here under the offer, the board, the debrief and the saves; the offer's count
+        and its squad cards now say in words what its line-up of tokens said in shapes, and
+        on the other three it was already an empty box. The one canvas left on the page is
+        the battle board, which `BattleScreen` mounts for itself.
       */}
-      {screen === 'battle' || watching !== null ? null : <WorldCanvas model={session.screen} />}
 
       {/*
         Not part of the screen, and deliberately after it: one fact worth reporting

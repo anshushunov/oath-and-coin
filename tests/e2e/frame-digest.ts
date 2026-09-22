@@ -4,11 +4,10 @@ import type { Page } from '@playwright/test';
  * The frame on the canvas, read back as pixels — shared by every suite that has to tell a
  * redrawn scene from one left standing.
  *
- * Lifted out of `live-command.spec.ts` unchanged, because the gate it served moves: that
- * suite presses a command on the contract offer, and the offer's canvas leaves the page
- * (`DEC-020`). `battle-redraw.spec.ts` carries the same question onto the battle board, and
- * two copies of one digest would be two definitions of "the frame changed" that agree only
- * until one of them is edited.
+ * Lifted out of `live-command.spec.ts` unchanged, because the gate it served moved: that
+ * suite pressed a command on the contract offer, and the offer's canvas left the page
+ * (`DEC-020`) and the suite with it. `battle-redraw.spec.ts` carries the same question on the
+ * battle board.
  */
 
 /** What the canvas is actually showing, read back as pixels the page cannot fake. */

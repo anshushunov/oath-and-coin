@@ -38,6 +38,7 @@ import type { ContractBoardScreenModel } from './contract-board-screen-model.ts'
 import { ScreenKind } from './screen-kind.ts';
 import type { ScreenModel } from './screen-model.ts';
 import { ScreenState } from './screen-state.ts';
+import { heroOfferRows } from './hero-offer-row.ts';
 import { qualitativeKey } from './qualitative-scale.ts';
 
 /**
@@ -55,13 +56,19 @@ import { qualitativeKey } from './qualitative-scale.ts';
  * The two lists are produced by unrelated code paths on purpose: a binding mistake
  * breaks the match precisely because nothing here can know what the screen rendered.
  *
- * The order promised is the order a depth-first walk visits — title, state, error,
- * contract, then the whole roster, then every response. Not "the order a reader
- * encounters it": the screen may lay the roster and the responses out as two columns,
- * so a person reads them interleaved while the walk still visits every roster text
- * before every response text. That distinction matters because this list *is* the
- * second hash — if it described what a reader sees, a pure layout change would have to
- * move it, and the hash would assert something no code on either side computes.
+ * The order promised is the order a depth-first walk visits — title, state, error, then
+ * the package band (contract, count, levers, treasury, the ladder of commands), then one
+ * row per hero with his own answer on it, refusals first (`heroOfferRows`). Not "the order
+ * a reader encounters it": the screen lays the rows out in two columns, so a person reads
+ * them across while the walk still visits one row whole before the next. That distinction
+ * matters because this list *is* the second hash — if it described what a reader sees, a
+ * pure layout change would have to move it, and the hash would assert something no code on
+ * either side computes.
+ *
+ * The rows are paired since the kit's relayout (spec §4.1). Before it the screen printed
+ * the whole roster and then every response, and a player matched a hero to his answer by
+ * name across two columns — the thing the owner could not read. That moved this list on
+ * purpose, and the component tests and the browser comparison moved with it.
  */
 
 /**
@@ -299,10 +306,6 @@ function contractOfferSnapshot(
     texts.push(String(contract.patronFee));
     resolve(FieldKeys.ContractRisk);
     resolve(qualitativeKey(contract.risk));
-    resolve(FieldKeys.ContractRequiredCrew);
-    texts.push(String(contract.requiredCrew));
-    resolve(FieldKeys.ContractAcceptedCount);
-    texts.push(String(contract.acceptedCount));
 
     // A caption for a list nobody has is a heading over nothing, so an empty list
     // produces neither. A branch on whether a model field is empty — never on what is
@@ -311,54 +314,19 @@ function contractOfferSnapshot(
       resolve(FieldKeys.ContractTags);
       contract.tagKeys.forEach(resolve);
     }
-  }
 
-  for (const hero of model.roster) {
-    resolve(hero.displayNameKey);
-    resolve(FieldKeys.HeroGreed);
-    resolve(qualitativeKey(hero.greed));
-    resolve(FieldKeys.HeroCaution);
-    resolve(qualitativeKey(hero.caution));
-    resolve(FieldKeys.HeroPride);
-    resolve(qualitativeKey(hero.pride));
-
-    if (hero.principleKeys.length > 0) {
-      resolve(FieldKeys.HeroPrinciples);
-      hero.principleKeys.forEach(resolve);
+    // The count of the package band: how many said yes, against how many the job needs.
+    // Nobody answering the package as it stands is its own sentence rather than a `0` —
+    // a branch on the list being empty, never on what is in it (spec §4.2).
+    if (model.responses.length === 0) {
+      resolve(OfferFieldKeys.NotAsked);
+    } else {
+      resolve(FieldKeys.ContractAcceptedCount);
+      texts.push(String(contract.acceptedCount));
     }
 
-    if (hero.inclinationKeys.length > 0) {
-      resolve(FieldKeys.HeroInclinations);
-      hero.inclinationKeys.forEach(resolve);
-    }
-  }
-
-  for (const response of model.responses) {
-    resolve(response.heroDisplayNameKey);
-    resolve(actionKey(response.action));
-
-    for (const reason of response.reasons) {
-      resolve(reason.reasonCode);
-
-      if (reason.sourceDisplayNameKey !== null) {
-        resolve(reason.sourceDisplayNameKey);
-      }
-
-      resolve(reasonDirectionKey(reason.direction));
-      resolve(FieldKeys.ReasonStrength);
-      resolve(qualitativeKey(reason.strength));
-    }
-
-    if (response.blockedByDisplayNameKey !== null) {
-      resolve(FieldKeys.ResponseBlockedBy);
-      resolve(response.blockedByDisplayNameKey);
-    }
-
-    if (response.tieBreakCode !== null) {
-      resolve(response.tieBreakCode);
-    }
-
-    resolve(waveredKey(response.wavered));
+    resolve(FieldKeys.ContractRequiredCrew);
+    texts.push(String(contract.requiredCrew));
   }
 
   const heroDisplayNameKeyOf = displayNameKeyResolver(model.roster);
@@ -384,6 +352,73 @@ function contractOfferSnapshot(
 
   if (model.promiseTerms !== null) {
     resolvePromiseTerms(model.promiseTerms, resolve, texts);
+  }
+
+  // The ladder closes the package band: every one of the seven, dark ones included, each
+  // followed by the refusal it would get — a control that vanished would leave the player
+  // with no way to learn what to do instead, and a dark one with no reason would leave them
+  // with no way to learn why not.
+  for (const available of model.availableActions) {
+    resolve(offerActionKey(available.action));
+
+    if (available.disabledReasonKey !== null) {
+      resolve(available.disabledReasonKey);
+    }
+  }
+
+  // The squad, one row per hero with his answer on it, in the order `heroOfferRows` sorts
+  // them — refusals first. The sort is the projection's and not repeated here, so the two
+  // sides of the second hash cannot disagree about it; what this walk states is the texts
+  // one row owes, in the order the row draws them.
+  for (const { hero, response } of heroOfferRows(model)) {
+    resolve(hero.displayNameKey);
+
+    if (response !== null) {
+      resolve(actionKey(response.action));
+      resolve(waveredKey(response.wavered));
+    }
+
+    resolve(FieldKeys.HeroGreed);
+    resolve(qualitativeKey(hero.greed));
+    resolve(FieldKeys.HeroCaution);
+    resolve(qualitativeKey(hero.caution));
+    resolve(FieldKeys.HeroPride);
+    resolve(qualitativeKey(hero.pride));
+
+    if (hero.principleKeys.length > 0) {
+      resolve(FieldKeys.HeroPrinciples);
+      hero.principleKeys.forEach(resolve);
+    }
+
+    if (hero.inclinationKeys.length > 0) {
+      resolve(FieldKeys.HeroInclinations);
+      hero.inclinationKeys.forEach(resolve);
+    }
+
+    if (response === null) {
+      continue;
+    }
+
+    for (const reason of response.reasons) {
+      resolve(reason.reasonCode);
+
+      if (reason.sourceDisplayNameKey !== null) {
+        resolve(reason.sourceDisplayNameKey);
+      }
+
+      resolve(reasonDirectionKey(reason.direction));
+      resolve(FieldKeys.ReasonStrength);
+      resolve(qualitativeKey(reason.strength));
+    }
+
+    if (response.blockedByDisplayNameKey !== null) {
+      resolve(FieldKeys.ResponseBlockedBy);
+      resolve(response.blockedByDisplayNameKey);
+    }
+
+    if (response.tieBreakCode !== null) {
+      resolve(response.tieBreakCode);
+    }
   }
 
   if (model.settlement !== null) {
@@ -460,18 +495,6 @@ function contractOfferSnapshot(
           texts.push(String(reason.column));
         }
       }
-    }
-  }
-
-  // Last, because it is what a player does *after* reading everything above. Every one of
-  // the seven, dark ones included, each followed by the refusal it would get — a control
-  // that vanished would leave the player with no way to learn what to do instead, and a
-  // dark one with no reason would leave them with no way to learn why not.
-  for (const available of model.availableActions) {
-    resolve(offerActionKey(available.action));
-
-    if (available.disabledReasonKey !== null) {
-      resolve(available.disabledReasonKey);
     }
   }
 

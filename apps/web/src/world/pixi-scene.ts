@@ -39,7 +39,7 @@ import type { SceneDescription, SceneShape } from './scene-model.ts';
  * nothing here pretends otherwise.
  *
  * The colours are the schematic palette `DEC-007` asks for until the vertical slice —
- * a token, a marker, and the one distinction the scene draws. They are read through
+ * the board's cells, the two sides and the marks on them. They are read through
  * `hex()` rather than written here as numbers, because nothing in a canvas reads CSS and
  * `ADR-017` refuses the obvious consequence — a second palette that happens to agree with
  * the stylesheets until the day it does not. The names below are unchanged: this file
@@ -49,30 +49,12 @@ import type { SceneDescription, SceneShape } from './scene-model.ts';
 /** The scene's own background, so the canvas is never a hole in the page. */
 const BACKGROUND = hex('sceneBackground');
 
-/**
- * The offered contract, and a hero who has answered beside one still to.
- *
- * The only three colours in this file still written as numbers, and they are written here
- * on a deadline rather than by exception: they belong to the canvas of the contract offer,
- * which Task 5 relays onto the kit and removes.
- *
- * The ban on `0xrrggbb` (`ADR-017`) is suspended per line and not per file, deliberately.
- * A file-level entry in `eslint.config.js`'s `ignores` would carry the whole module —
- * every colour the board draws — outside the rule, and a sixteenth constant added here
- * before Task 5 would pass lint in silence. Three directives leave the other twelve
- * guarded.
- *
- * They are also what makes the deadline enforceable rather than merely written down. When
- * Task 5 takes these constants, a directive left behind suppresses nothing and
- * `reportUnusedDisableDirectives` reports it by file and line — so "the exception outlived
- * the thing it excused" is a red gate instead of a sentence somebody has to remember.
+/*
+ * The offer's marker and its two hero-token colours stood here, written as numbers on a
+ * deadline with a directive each — and left with the canvas of the offer (`DEC-020`). Every
+ * colour this file draws is a role of `tokens.ts` now; there is no line left for the ban on
+ * `0xrrggbb` to excuse.
  */
-// eslint-disable-next-line no-restricted-syntax -- canvas of the offer; leaves in Task 5
-const MARKER_FILL = 0xc8a04a;
-// eslint-disable-next-line no-restricted-syntax -- canvas of the offer; leaves in Task 5
-const TOKEN_ANSWERED = 0x4a7fc8;
-// eslint-disable-next-line no-restricted-syntax -- canvas of the offer; leaves in Task 5
-const TOKEN_WAITING = 0x3a3f4b;
 
 /** The battle board: a cell, the two sides, a man who is down, a bar and a status mark. */
 const CELL_FILL = hex('cell');
@@ -255,10 +237,6 @@ function drawPopup(shape: BattlePopup): Container {
 
 function fillFor(shape: Exclude<SceneShape, BattlePopup>): number {
   switch (shape.kind) {
-    case 'contract-marker':
-      return MARKER_FILL;
-    case 'hero-token':
-      return shape.answered ? TOKEN_ANSWERED : TOKEN_WAITING;
     case 'battle-cell':
       return CELL_FILL;
     case 'battle-token':

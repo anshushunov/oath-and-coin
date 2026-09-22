@@ -285,6 +285,18 @@ export const OfferFieldKeys = Object.freeze({
   Shortfall: 'field.offer.shortfall',
   LockCommitment: 'field.offer.lock_commitment',
   /**
+   * The count of the package band when nobody has answered the package as it stands — a
+   * freshly composed one, whose answers the engine has just emptied (`DEC-012`). A `0`
+   * there would read as "everyone refused", which is the opposite of what happened.
+   */
+  NotAsked: 'field.offer.not_asked',
+  /**
+   * The mark on the count while the form holds terms the package does not record yet.
+   * Screen state rather than model state, so no snapshot carries it: the answers under the
+   * mark are about the terms as recorded, and the mark is what says so (spec §4.2).
+   */
+  Editing: 'field.offer.editing',
+  /**
    * The formation block (`COMBAT_SPEC` §3.7), which lives on the package because it is
    * decided before the crew leaves and not at the moment of sending.
    */

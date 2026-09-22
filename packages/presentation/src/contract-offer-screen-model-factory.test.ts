@@ -152,6 +152,50 @@ describe('which contract the screen is about', () => {
     expect(model.responses.map((response) => response.heroDefinition)).toEqual([ids.bram]);
   });
 
+  // `DEC-012`: an answer to a package the player has since changed does not exist — the
+  // engine clears `respondedBy` on every revision and keeps the history. The steps are
+  // history-shaped too, so without the window an answer to version 1 went on standing on
+  // the screen beside version 2, under a count that had already dropped it (measured on
+  // `screen_draft`: re-compose → version 3, `acceptedCount` 0, one response still drawn).
+  it('leaves answers to an earlier version of the package off the screen', () => {
+    const base = withContracts(withHeroes(aState(), heroes(ids.bram, ids.doran)), [caravan]);
+    const answer = (heroIndex: number, eventId: number) =>
+      ({
+        eventId,
+        logicalTime: eventId,
+        causalTraceId: eventId,
+        kind: 'hero_accepted_contract',
+        heroId: heroId(heroIndex),
+        contractId: ids.caravan
+      }) as const;
+    const revised = (eventId: number) =>
+      ({
+        eventId,
+        logicalTime: eventId,
+        causalTraceId: null,
+        kind: 'offer_revised',
+        contractId: ids.caravan
+      }) as const;
+    const steps = [
+      aStep({ command: { contract: ids.caravan }, heroDefinition: ids.bram }),
+      aStep({ command: { contract: ids.caravan }, heroDefinition: ids.doran })
+    ];
+
+    const revisedSinceBoth = contractOfferScreenModel(
+      { ...base, history: [revised(1), answer(0, 2), answer(1, 3), revised(4)] },
+      steps
+    );
+    const revisedBetween = contractOfferScreenModel(
+      { ...base, history: [revised(1), answer(0, 2), revised(3), answer(1, 4)] },
+      steps
+    );
+
+    expect(revisedSinceBoth.responses).toEqual([]);
+    expect(revisedBetween.responses.map((response) => response.heroDefinition)).toEqual([
+      ids.doran
+    ]);
+  });
+
   it('refuses a step naming a contract the state does not have', () => {
     expect(() =>
       contractOfferScreenModel(aState(), [aStep({ command: { contract: ids.crypt } })])

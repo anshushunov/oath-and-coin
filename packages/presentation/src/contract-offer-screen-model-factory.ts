@@ -11,6 +11,7 @@ import {
   compareStrings,
   divideTowardZero,
   forecastReadiness,
+  isAnswerToAnOffer,
   resolutionInputFor,
   reservedCommitments,
   type CanonicalValue,
@@ -244,11 +245,14 @@ export function contractOfferScreenModel(
   // definition the rest of the screen already shows.
   const heroDefinitionByHeroId = new Map(heroes.map((hero) => [hero.id, hero.definition]));
 
-  const responses = steps
+  const answers = steps
     .filter((step) => step.command.contract === contract.id)
     .flatMap((step) =>
       step.decisions.map((decision) => toResponseLine(step, decision, heroDisplayNameKeys))
     );
+  const responses = answers.slice(
+    answers.length - answersToCurrentVersion(state, contract.id, answers.length)
+  );
 
   return createContractOfferScreenModel({
     // "Everyone who was going to answer has" — measured against the crew the package
@@ -292,6 +296,47 @@ export function contractOfferScreenModel(
     // which controls exist (`offer-actions.ts`).
     availableActions: availableActions(state, contract)
   });
+}
+
+/**
+ * How many of the last `answered` answers to `contractId` were given to the package as it
+ * stands now, rather than to a version the player has since revised.
+ *
+ * **`DEC-012`: an answer to a package that has changed does not exist.** `composeOffer`
+ * empties `respondedBy`/`acceptedBy` on every revision and leaves the history alone, so the
+ * log since the contract's last `offer_revised` is the answered set of the current version —
+ * the window `validate-game-state.ts`'s `checkResponseBookkeeping` already reads it through.
+ * The steps this factory is handed are the same answers in the same order (a live run's
+ * outcome, or `restoreDecidedSteps` over that very history), so the current version's
+ * answers are their tail, and this counts how long the tail is.
+ *
+ * A history with no revision of this contract at all keeps every answer: nothing has been
+ * superseded, and a hand-built state with steps and no log is exactly that. Clamped to
+ * `answered` from above so that a log holding more answers than the steps (it cannot, in a
+ * run; it can, in a fixture) keeps all of them rather than slicing from a negative index.
+ */
+function answersToCurrentVersion(
+  state: GameState,
+  contractId: ContentId,
+  answered: number
+): number {
+  let sinceRevision: number | null = null;
+
+  for (const event of state.history) {
+    if (event.kind === 'offer_revised') {
+      if (event.contractId === contractId) {
+        sinceRevision = 0;
+      }
+    } else if (
+      sinceRevision !== null &&
+      isAnswerToAnOffer(event) &&
+      event.contractId === contractId
+    ) {
+      sinceRevision += 1;
+    }
+  }
+
+  return sinceRevision === null ? answered : Math.min(answered, sinceRevision);
 }
 
 /**

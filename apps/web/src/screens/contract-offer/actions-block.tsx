@@ -1,8 +1,7 @@
 import { OfferAction, offerActionKey, type AvailableAction } from '@oath-and-coin/presentation';
 
 import { useText } from '../../text.tsx';
-
-import { Label } from '../labels.tsx';
+import { Button } from '../../ui/button.tsx';
 
 import { Refusal } from './refusal.tsx';
 
@@ -62,18 +61,18 @@ export function ActionsBlock({
 
         return (
           <div className="action" key={available.action}>
-            <button
-              type="button"
-              data-testid={`action-${available.action}`}
-              disabled={reasonKey !== null}
-              onClick={() => {
+            {/* The kit's button, which carries the reason itself and ties it to the control
+                (`aria-describedby`) — a dark step of the ladder says why on the same line. */}
+            <Button
+              testId={`action-${available.action}`}
+              disabledReason={reasonKey === null ? null : text(reasonKey)}
+              onPress={() => {
                 onPress(available.action);
               }}
             >
               {text(offerActionKey(available.action))}
-            </button>
+            </Button>
 
-            {reasonKey === null ? null : <Label text={text(reasonKey)} />}
             {refusal === null || refusal.action !== available.action ? null : (
               <Refusal textKey={refusal.key} />
             )}

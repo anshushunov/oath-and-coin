@@ -228,27 +228,24 @@ export default tseslint.config(
   // **Exactly one exception at this level, and `AGENTS.md` §12 п. 3 is why there
   // is not a second.** `tokens.ts` is where the literals are declared, so the ban
   // cannot apply to it; everything else in `apps/web` is inside, whole files
-  // included. The three sites that legitimately still write a number —
-  // `MARKER_FILL`, `TOKEN_ANSWERED`, `TOKEN_WAITING` in `pixi-scene.ts`, and the
-  // two assertions in `ui/tokens.test.ts` that pin `hex()` — carry
+  // included. The one site that legitimately still writes a number — the two
+  // assertions in `ui/tokens.test.ts` that pin `hex()` — carries
   // `eslint-disable-next-line` directives at the line instead, the form this
   // repository already uses at `apps/web/src/world/world-canvas.tsx:119`.
   //
   // That is a mechanism rather than a tidier spelling of the same thing, and the
   // difference is the whole reason for it. An entry in `ignores` exempts the
-  // *file*: a 300-line module that owns the canvas palette would sit outside the
-  // ban entirely, and a sixteenth colour added to it before Task 5 would pass
-  // lint in silence — which is precisely the second-declaration defect this rule
-  // exists to make impossible. A directive exempts the *line*, so the rest of the
-  // file stays guarded, and the exemption is written where the thing it excuses
-  // is, not in a config file nobody opens.
+  // *file*: a module that owns a palette would sit outside the ban entirely, and a
+  // new colour added to it would pass lint in silence — which is precisely the
+  // second-declaration defect this rule exists to make impossible. A directive
+  // exempts the *line*, so the rest of the file stays guarded, and the exemption
+  // is written where the thing it excuses is, not in a config file nobody opens.
   //
-  // It also closes the "what if Task 5 forgets" question that a file-level
-  // exception could only pose and never answer. Task 5 deletes the canvas of the
-  // offer and those three constants with it; `reportUnusedDisableDirectives`
-  // (below, raised to `error`) then reports three directives that no longer
-  // suppress anything, by file and line. A leftover announces itself instead of
-  // quietly widening the ban's hole for the rest of the repository's life.
+  // The canvas of the offer carried three more such directives (`MARKER_FILL`,
+  // `TOKEN_ANSWERED`, `TOKEN_WAITING` in `pixi-scene.ts`) on a deadline, and they
+  // left with that canvas (`DEC-020`). `reportUnusedDisableDirectives` (below,
+  // raised to `error`) is what would have reported any of them left behind, by
+  // file and line.
   {
     files: ['apps/web/**/*.ts', 'apps/web/**/*.tsx'],
     ignores: ['apps/web/src/ui/tokens.ts'],

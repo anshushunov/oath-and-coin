@@ -6,6 +6,7 @@ import {
   ScreenState,
   TreasuryFieldKeys,
   errorKey,
+  heroOfferRows,
   leverOfRefusal,
   screenStateKey,
   type ContentId,
@@ -17,17 +18,18 @@ import type { SessionController } from '@oath-and-coin/application';
 import { useState } from 'react';
 
 import { useText } from '../../text.tsx';
+import { Columns } from '../../ui/layout.tsx';
 
 import { Captioned, Label } from '../labels.tsx';
 
 import { ActionsBlock } from './actions-block.tsx';
 import { ContractBlock } from './contract-block.tsx';
 import { FormationBlock } from './formation-block.tsx';
-import { HeroCardBlock } from './hero-card-block.tsx';
+import { HeroRow } from './hero-row.tsx';
 import { OfferBlock } from './offer-block.tsx';
 import type { OfferForm } from './offer-form.ts';
+import { PackageBand, Tally } from './package-band.tsx';
 import type { Refusal } from './refusal.tsx';
-import { ResponseBlock } from './response-block.tsx';
 import { SettlementBlock } from './settlement-block.tsx';
 
 /**
@@ -61,12 +63,20 @@ import { SettlementBlock } from './settlement-block.tsx';
  * `expectedSnapshot` puts in its list, in the same order, and nothing else. Which
  * element a text hangs off does not enter into it — `collectRenderedTexts` is a
  * document-order walk, so a row laying a caption and its value out side by side
- * visits them in the same order a column would. The roster and the responses are two
- * columns for the reason the Godot original made them two: a single stack of six hero
- * cards followed by six response blocks is twice as tall as the window and pushes
- * every response below the fold. A depth-first walk still visits every roster text
- * before every response text, so that is a layout choice and not a change to the
- * order the snapshot states.
+ * visits them in the same order a column would.
+ *
+ * **Layout Б of the kit's relayout (spec §4).** The package is a band across the top —
+ * contract, count, levers, treasury, the ladder of commands; sticky where the window has room
+ * for it beside the squad (`package-band.tsx`) — and the squad below it
+ * is one card per hero with his own answer on it, two cards to a line. The pairing and the
+ * "refusals first" order are `heroOfferRows`'s: both are decisions on the *value* of an
+ * answer, which this component is not allowed to make, so it only maps the list it is
+ * handed. The squad used to be two columns — every card, then every answer — joined by name
+ * across the page, and that is what the owner could not read.
+ *
+ * The one screen-state text is the "being edited" mark on the count ({@link Tally}): it
+ * exists only while the form holds terms the package does not record, so a render of the
+ * model alone — which is what both hashes compare — never carries it.
  */
 export function ContractOfferScreen({
   model,
@@ -126,6 +136,17 @@ export function ContractOfferScreen({
       : { lever: refusedLever, key: form.refusal.key };
   const buttonRefusal = form.refusal !== null && refusedLever === null ? form.refusal : null;
 
+  // The count goes quiet while the form holds terms the package does not record — and only
+  // then: a refused `compose` leaves the draft where it was but takes the mark off, because
+  // the refusal is now what the screen has to say about those terms (spec §4.2).
+  const stale = form.refusal === null && isEditing(form.draft, model);
+  const hasBand =
+    model.contract !== null ||
+    model.offer !== null ||
+    showTreasury ||
+    model.promiseTerms !== null ||
+    model.availableActions.length > 0;
+
   return (
     <section className="contract-offer" data-testid="contract-offer-screen">
       <Label text={text(model.titleKey)} />
@@ -133,71 +154,100 @@ export function ContractOfferScreen({
 
       {model.errorCode === null ? null : <Label text={text(errorKey(model.errorCode))} />}
 
-      {model.contract === null ? null : <ContractBlock contract={model.contract} />}
+      {hasBand ? (
+        <PackageBand>
+          {model.contract === null ? null : <ContractBlock contract={model.contract} />}
+          {model.contract === null ? null : (
+            <Tally contract={model.contract} answered={model.responses.length > 0} stale={stale} />
+          )}
 
-      {model.roster.length === 0 && model.responses.length === 0 ? null : (
-        <div className="columns">
-          <div className="roster">
-            {model.roster.map((hero) => (
-              <HeroCardBlock key={hero.definition} hero={hero} />
-            ))}
-          </div>
-          <div className="responses">
-            {model.responses.map((response) => (
-              <ResponseBlock key={response.heroDefinition} response={response} />
-            ))}
-          </div>
-        </div>
-      )}
+          {model.offer === null ? null : (
+            <OfferBlock
+              offer={model.offer}
+              draft={form.draft}
+              onDraft={(draft) => {
+                // A keystroke clears the last refusal: it was about the package as it stood,
+                // and the package has just changed.
+                setForm({ ...form, draft, refusal: null });
+              }}
+              heroDisplayNameKeyOf={heroDisplayNameKeyOf}
+              refusal={leverRefusal}
+            />
+          )}
 
-      {model.offer === null ? null : (
-        <OfferBlock
-          offer={model.offer}
-          draft={form.draft}
-          onDraft={(draft) => {
-            // A keystroke clears the last refusal: it was about the package as it stood,
-            // and the package has just changed.
-            setForm({ ...form, draft, refusal: null });
-          }}
-          heroDisplayNameKeyOf={heroDisplayNameKeyOf}
-          refusal={leverRefusal}
-        />
-      )}
+          {/* Treasury and its forecast sit beside the promise (`NEGOTIATION_SPEC` §5.1's
+              own "цена уступки, видна до подтверждения"), in the one container both this
+              and `PromiseTermsBlock` render into — the treasury the deal would leave is
+              the price of the very promise stated beside it. */}
+          {showTreasury || model.promiseTerms !== null ? (
+            <div className="row price">
+              {showTreasury ? (
+                <>
+                  <Captioned
+                    captionKey={TreasuryFieldKeys.Treasury}
+                    value={String(model.treasury)}
+                  />
+                  <Captioned
+                    captionKey={TreasuryFieldKeys.Forecast}
+                    value={String(model.treasuryForecast)}
+                    testId="treasury-forecast"
+                  />
+                </>
+              ) : null}
 
-      {/* Treasury and its forecast sit beside the promise (`NEGOTIATION_SPEC` §5.1's
-          own "цена уступки, видна до подтверждения"), in the one container both this
-          and `PromiseTermsBlock` render into — the treasury the deal would leave is
-          the price of the very promise stated beside it. */}
-      {showTreasury || model.promiseTerms !== null ? (
-        <div className="row price">
-          {showTreasury ? (
-            <>
-              <Captioned captionKey={TreasuryFieldKeys.Treasury} value={String(model.treasury)} />
-              <Captioned
-                captionKey={TreasuryFieldKeys.Forecast}
-                value={String(model.treasuryForecast)}
-                testId="treasury-forecast"
-              />
-            </>
+              {model.promiseTerms === null ? null : (
+                <div className="promise">
+                  <Label text={text(model.promiseTerms.fulfilKey)} />
+                  <Label text={text(model.promiseTerms.breachKey)} />
+                  <Captioned
+                    captionKey={OfferFieldKeys.PromisedBonus}
+                    value={String(model.promiseTerms.bonus)}
+                  />
+                </div>
+              )}
+            </div>
           ) : null}
 
-          {model.promiseTerms === null ? null : (
-            <div className="promise">
-              <Label text={text(model.promiseTerms.fulfilKey)} />
-              <Label text={text(model.promiseTerms.breachKey)} />
-              <Captioned
-                captionKey={OfferFieldKeys.PromisedBonus}
-                value={String(model.promiseTerms.bonus)}
-              />
-            </div>
-          )}
-        </div>
+          <ActionsBlock
+            actions={model.availableActions}
+            composeBlockedBy={composeBlockedBy(form.draft, model)}
+            refusal={buttonRefusal}
+            onPress={(action) => {
+              const key = press(controller, action, form.draft, model, onBattle);
+
+              setForm({ ...form, refusal: key === null ? null : { action, key } });
+            }}
+          />
+        </PackageBand>
       ) : null}
+
+      {/* The squad, one card per hero with his own answer on it, refusals first — the
+          order and the pairing are `heroOfferRows`'s, not this component's. */}
+      {model.roster.length === 0 ? null : (
+        <Columns>
+          {heroOfferRows(model).map((row) => (
+            <HeroRow key={row.hero.definition} row={row} />
+          ))}
+        </Columns>
+      )}
 
       {model.settlement === null ? null : (
         <SettlementBlock
           settlement={model.settlement}
           heroDisplayNameKeyOf={heroDisplayNameKeyOf}
+        />
+      )}
+
+      {model.deployment === null ? null : (
+        <FormationBlock
+          deployment={model.deployment}
+          draft={form.draft}
+          onChange={(draft) => {
+            // The same rule as `onDraft` above: a move on the board, the doctrine or the
+            // threshold clears the last refusal, which was about the formation as it stood.
+            setForm({ ...form, draft, refusal: null });
+          }}
+          refusal={leverRefusal}
         />
       )}
 
@@ -238,31 +288,29 @@ export function ContractOfferScreen({
           )}
         </div>
       )}
-
-      {model.deployment === null ? null : (
-        <FormationBlock
-          deployment={model.deployment}
-          draft={form.draft}
-          onChange={(draft) => {
-            // The same rule as `onDraft` above: a move on the board, the doctrine or the
-            // threshold clears the last refusal, which was about the formation as it stood.
-            setForm({ ...form, draft, refusal: null });
-          }}
-          refusal={leverRefusal}
-        />
-      )}
-
-      <ActionsBlock
-        actions={model.availableActions}
-        composeBlockedBy={composeBlockedBy(form.draft, model)}
-        refusal={buttonRefusal}
-        onPress={(action) => {
-          const key = press(controller, action, form.draft, model, onBattle);
-
-          setForm({ ...form, refusal: key === null ? null : { action, key } });
-        }}
-      />
     </section>
+  );
+}
+
+/**
+ * Whether the form holds terms the package does not record — the half of the draft that
+ * `compose` sends, compared against what the model says the package already is.
+ *
+ * The formation half is left out on purpose: placing the crew is its own command, and
+ * moving a man on the board does not change what the squad was asked about.
+ */
+function isEditing(draft: OfferForm, model: ContractOfferScreenModel): boolean {
+  const recorded = formFor(model).draft;
+
+  return (
+    draft.advance !== recorded.advance ||
+    draft.promisedBonus !== recorded.promisedBonus ||
+    draft.methodTag !== recorded.methodTag ||
+    draft.keyHero !== recorded.keyHero ||
+    // As sets: the form keeps the crew in the options' order and the package in its own,
+    // and a hero ticked off and on again has changed nothing about who is asked.
+    draft.invited.length !== recorded.invited.length ||
+    draft.invited.some((hero) => !recorded.invited.includes(hero))
   );
 }
 

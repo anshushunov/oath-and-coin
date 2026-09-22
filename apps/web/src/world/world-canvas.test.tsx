@@ -1,9 +1,5 @@
 // @vitest-environment jsdom
-import {
-  createSessionController,
-  startSession,
-  type SaveStorePort
-} from '@oath-and-coin/application';
+import { createSessionController, type SaveStorePort } from '@oath-and-coin/application';
 import { RULESET_VERSION } from '@oath-and-coin/content';
 import {
   LOADING_SCREEN,
@@ -88,14 +84,16 @@ beforeEach(() => {
   recorder.applyThrows = null;
 });
 
-/** A campaign on screen, so the two models below describe two different scenes. */
-function aCampaignScreen(): ScreenModel {
-  return startSession({
-    content: browserContentSource(),
-    scenario: 'screen_normal',
-    checkpoint: 'screen_normal',
-    seed: 424242n
-  }).screen;
+/**
+ * A board with men on it, so that this and {@link LOADING_SCREEN} describe two different
+ * scenes. It was the offer's line-up until `DEC-020` took the canvas off the offer: the offer
+ * now describes the same empty box a loading screen does, and a pair of models that draw one
+ * picture could not tell a redraw from no redraw.
+ */
+function aBoardOnScreen(): ScreenModel {
+  const battle = aBattleScreen();
+
+  return battle.at(battle.landed);
 }
 
 /**
@@ -211,7 +209,7 @@ async function unhandledDuring(body: () => Promise<void>): Promise<unknown[]> {
 
 describe('the renderer behind the screen', () => {
   it('is brought up once and told what to draw afterwards, never brought up again', async () => {
-    const campaign = aCampaignScreen();
+    const campaign = aBoardOnScreen();
     const tree = await mountCanvas(LOADING_SCREEN);
 
     expect(recorder.mounted).toHaveLength(1);
@@ -250,7 +248,7 @@ describe('the renderer behind the screen', () => {
     // What the browser evidence waits for before it photographs the canvas. It has to move
     // with the scene rather than with the mount: a marker left at the first model's count
     // would let a frame be taken of a scene that is no longer the one described.
-    const campaign = aCampaignScreen();
+    const campaign = aBoardOnScreen();
     const tree = await mountCanvas(LOADING_SCREEN);
     const canvas = tree.container.querySelector('canvas');
 
@@ -307,7 +305,7 @@ describe('a model that arrives before the renderer has finished coming up', () =
     // session lands in that moment, and React renders the new model before the renderer
     // exists to draw it. A draw dispatched outside the chain finds no scene and is lost —
     // the canvas then shows the campaign as it was when the page opened, for good.
-    const campaign = aCampaignScreen();
+    const campaign = aBoardOnScreen();
     recorder.held = true;
 
     const tree = mount(<WorldCanvas model={LOADING_SCREEN} />);
@@ -366,7 +364,7 @@ describe('a step that fails', () => {
     // A rejected chain used to stay rejected: one throwing draw and every later step was
     // skipped in silence, including the release of the renderer. The failure itself still
     // has to reach the page, which is what the rejection below is.
-    const campaign = aCampaignScreen();
+    const campaign = aBoardOnScreen();
     const refused = new Error('this draw refuses');
     const tree = await mountCanvas(LOADING_SCREEN);
 

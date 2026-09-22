@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
-import { startSession, type SessionState } from '@oath-and-coin/application';
 import {
+  createSessionController,
+  startSession,
+  type SessionState
+} from '@oath-and-coin/application';
+import {
+  HeroStance,
   LeverDisabledKeys,
   OFFER_ACTIONS,
   OfferAction,
@@ -18,6 +23,7 @@ import {
   createContractOfferScreenModel,
   expectedSnapshot,
   failedScreen,
+  heroOfferRows,
   snapshotHash,
   type AvailableAction,
   type ContentId,
@@ -1675,3 +1681,157 @@ describe('a screen with some controls live and others dark', () => {
     ]);
   });
 });
+
+/**
+ * The count of the package band while the package is touched — the three transitions of
+ * spec §4.2, each one a thing the screen could lie about in a different direction.
+ *
+ * Off `screen_draft`, a real run: the package is composed and the key hero has answered,
+ * so the count is a number and the inputs are live. The middle case runs through the real
+ * session controller rather than a hand-built model, because that is where it used to go
+ * wrong: the answers are rebuilt from history, and a re-composed package went on showing
+ * an answer to the version before it (`contractOfferScreenModel`'s window, `DEC-012`).
+ */
+describe('the count while the package is touched', () => {
+  function draft(): ContractOfferScreenModel {
+    return sessionFor('screen_draft', 'screen_draft', SEED).screen;
+  }
+
+  function tally(container: HTMLElement): HTMLElement {
+    return control(container, 'offer-tally');
+  }
+
+  /** Every text of the squad's cards, in order — what "the rows did not move" is about. */
+  function rowTexts(container: HTMLElement): readonly string[] {
+    return [...container.querySelectorAll('[data-testid="hero-row"]')].flatMap((row) =>
+      collectRenderedTexts(row)
+    );
+  }
+
+  it('dims the count and marks it while the form holds terms nobody was asked about', () => {
+    const model = draft();
+    const { container } = renderWith(model, fakeController());
+    const countBefore = control(container, 'tally-accepted').textContent;
+    const rowsBefore = rowTexts(container);
+
+    expect(model.responses.length).toBeGreaterThan(0);
+    expect(tally(container).dataset['stale']).toBe('false');
+    expect(collectRenderedTexts(tally(container))).not.toContain(textOf(OfferFieldKeys.Editing));
+
+    type(control(container, 'offer.advance'), String(model.offer!.advanceLever.value - 1));
+
+    expect(tally(container).dataset['stale']).toBe('true');
+    expect(collectRenderedTexts(tally(container))).toContain(textOf(OfferFieldKeys.Editing));
+    // The numbers are the ones the recorded package got — nothing has been asked yet.
+    expect(control(container, 'tally-accepted').textContent).toBe(countBefore);
+    expect(rowTexts(container)).toEqual(rowsBefore);
+  });
+
+  it('says the squad has not been asked once a new package is recorded', async () => {
+    const controller = createSessionController({
+      request: {
+        content: browserContentSource(),
+        scenario: 'screen_draft',
+        checkpoint: 'screen_draft',
+        seed: SEED
+      },
+      saves: {
+        read: () => Promise.resolve(null),
+        write: () => Promise.resolve(),
+        list: () => Promise.resolve([])
+      },
+      now: () => '2026-09-22T00:00:00.000Z',
+      expected: { rulesetVersion: 'unused-here', contentVersion: 'unused-here' }
+    });
+    await controller.start();
+
+    const before = offerScreenOf(controller.store.snapshot().screen);
+    const { container, rerender } = mount(
+      <TextSource catalogue={catalogue}>
+        <ContractOfferScreen model={before} controller={controller} />
+      </TextSource>
+    );
+
+    expect(before.responses.length).toBeGreaterThan(0);
+
+    type(control(container, 'offer.advance'), String(before.offer!.advanceLever.value - 1));
+    click(actionButton(container, OfferAction.Compose));
+
+    const after = offerScreenOf(controller.store.snapshot().screen);
+
+    // Applied: the package moved to a new version, and the engine emptied its answers.
+    expect(after.offer!.version).toBe(before.offer!.version + 1);
+
+    rerender(
+      <TextSource catalogue={catalogue}>
+        <ContractOfferScreen model={after} controller={controller} />
+      </TextSource>
+    );
+
+    expect(collectRenderedTexts(tally(container))).toContain(textOf(OfferFieldKeys.NotAsked));
+    expect(container.querySelector('[data-testid="tally-accepted"]')).toBeNull();
+    expect(tally(container).dataset['stale']).toBe('false');
+    // Cards without answers: no hero carries a chip saying what he said to the old terms.
+    expect(container.querySelectorAll('[data-testid="hero-row"] .tag')).toHaveLength(0);
+    expect(
+      [...container.querySelectorAll('[data-testid="hero-row"]')].map(
+        (row) => (row as HTMLElement).dataset['stance']
+      )
+    ).toEqual(after.roster.map(() => HeroStance.Unanswered));
+  });
+
+  it('takes the mark off a refused package and leaves the count where it was', () => {
+    const model = draft();
+    const { container } = renderWith(model, fakeController(RejectionCodes.OfferTermsOutOfBounds));
+    const countBefore = control(container, 'tally-accepted').textContent;
+
+    type(control(container, 'offer.advance'), String(model.offer!.advanceLever.value - 1));
+    click(actionButton(container, OfferAction.Compose));
+
+    expect(tally(container).dataset['stale']).toBe('false');
+    expect(collectRenderedTexts(tally(container))).not.toContain(textOf(OfferFieldKeys.Editing));
+    expect(control(container, 'tally-accepted').textContent).toBe(countBefore);
+    // The refusal is what the screen says about those terms now, and it stands by the lever.
+    expect(
+      control(container, 'offer-rejection').closest(`[data-lever="${OfferLeverId.Terms}"]`)
+    ).not.toBeNull();
+  });
+});
+
+describe('the squad, one card per hero with his own answer', () => {
+  it('puts the refusals first and colours each answer by where its hero stands', () => {
+    // A blocked answer is on this run, so the order has something to put before the rest.
+    const { screen } = sessionFor('two_principles_blocked', 'final', SEED);
+    const container = renderScreen(screen);
+    const rows = [...container.querySelectorAll('[data-testid="hero-row"]')] as HTMLElement[];
+    const stances = rows.map((row) => row.dataset['stance']);
+    const roleOf: Readonly<Record<string, string>> = {
+      [HeroStance.Refused]: 'against',
+      [HeroStance.Blocked]: 'blocked',
+      [HeroStance.Accepted]: 'favour'
+    };
+
+    expect(stances).toEqual(heroOfferRows(screen).map((row) => row.stance));
+    expect(stances).toContain(HeroStance.Blocked);
+
+    // The chip's colour is the stance's, never worked out from the word on it.
+    for (const row of rows) {
+      const tag = row.querySelector<HTMLElement>('.tag');
+
+      if (tag !== null) {
+        expect(tag.dataset['role'], row.dataset['stance']).toBe(
+          roleOf[row.dataset['stance'] ?? '']
+        );
+      }
+    }
+  });
+});
+
+/** The session's screen, narrowed to the one this file is about, or a loud failure. */
+function offerScreenOf(screen: SessionState['screen']): ContractOfferScreenModel {
+  if (screen.screen !== ScreenKind.ContractOffer) {
+    throw new Error(`The session is on '${screen.screen}', not on the contract-offer screen.`);
+  }
+
+  return screen;
+}

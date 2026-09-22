@@ -33,7 +33,8 @@ import {
   type TraceFactor
 } from '@oath-and-coin/simulation';
 
-import type { DecidedStep } from '../contract-offer-screen-model.ts';
+import type { DecidedStep, HeroCard, ResponseLine } from '../contract-offer-screen-model.ts';
+import { QualitativeGrade } from '../qualitative-scale.ts';
 
 /**
  * Fixtures for this package's tests.
@@ -384,6 +385,39 @@ export function aStep(overrides: Partial<DecidedStep> = {}): DecidedStep {
     command: { contract: ids.caravan },
     heroDefinition: ids.bram,
     decisions: [aDecision()],
+    ...overrides
+  };
+}
+
+/**
+ * One hero card in the shape the offer screen reads it — every scale middling, nothing
+ * held. A row of the screen rather than a hero of the campaign: `aHero` above builds the
+ * state a card is projected *from*.
+ */
+export function aHeroCard(overrides: Partial<HeroCard> = {}): HeroCard {
+  return {
+    definition: 'core:bram',
+    displayNameKey: 'hero.core_bram.name',
+    greed: QualitativeGrade.Moderate,
+    caution: QualitativeGrade.Moderate,
+    pride: QualitativeGrade.Moderate,
+    principleKeys: [],
+    inclinationKeys: [],
+    ...overrides
+  };
+}
+
+/** One hero's answer in the shape the offer screen reads it — an acceptance, nothing behind it. */
+export function aResponseLine(overrides: Partial<ResponseLine> = {}): ResponseLine {
+  return {
+    heroDefinition: 'core:bram',
+    heroDisplayNameKey: 'hero.core_bram.name',
+    action: Actions.Accept,
+    reasons: [],
+    blockedByEntity: null,
+    blockedByDisplayNameKey: null,
+    tieBreakCode: null,
+    wavered: false,
     ...overrides
   };
 }

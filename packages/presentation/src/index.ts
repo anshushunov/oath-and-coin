@@ -198,6 +198,8 @@ export {
 
 export { OfferLeverId, leverOfRefusal } from './refused-lever.ts';
 
+export { HERO_STANCES, HeroStance, heroOfferRows, type HeroOfferRow } from './hero-offer-row.ts';
+
 export { describeReadModel, readModelHash, type ScreenModel } from './screen-model.ts';
 
 export {

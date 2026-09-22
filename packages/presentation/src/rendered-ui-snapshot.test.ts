@@ -155,8 +155,12 @@ const aFullModel = createContractOfferScreenModel({
       wavered: false
     },
     {
-      heroDefinition: 'core:bram',
-      heroDisplayNameKey: 'hero.core.bram.name',
+      // Ilsa and not Bram a second time. The screen pairs each hero with *his* answer
+      // (`heroOfferRows`), and one hero answering one version twice is a state the engine
+      // refuses (`respondedBy`) and the projection refuses in turn — the fixture used to
+      // carry it only because two columns never had to say whose answer was whose.
+      heroDefinition: 'core:ilsa',
+      heroDisplayNameKey: 'hero.core.ilsa.name',
       action: 'action:accept',
       reasons: [],
       blockedByEntity: null,
@@ -315,7 +319,7 @@ describe('the texts a correctly bound screen produces', () => {
     expect(snapshotHash(loadingTexts)).not.toBe(snapshotHash(emptyTexts));
   });
 
-  it('walks title, state, error, contract, roster, then responses', () => {
+  it('walks title, state, error, the package band, then one row per hero', () => {
     const texts = expectedSnapshot(aFullModel, everyKeyOf(aFullModel));
 
     // Every optional branch of the projection is in this list, which is what makes it
@@ -329,60 +333,13 @@ describe('the texts a correctly bound screen produces', () => {
       '40',
       'text(field.contract.risk)',
       'text(qualitative.moderate)',
-      'text(field.contract.required_crew)',
-      '2',
-      'text(field.contract.accepted_count)',
-      '2',
       'text(field.contract.tags)',
       'text(tag.patron.merchant_guild)',
       'text(tag.target.bandits)',
-      'text(hero.core.bram.name)',
-      'text(field.hero.greed)',
-      'text(qualitative.moderate)',
-      'text(field.hero.caution)',
-      'text(qualitative.low)',
-      'text(field.hero.pride)',
-      'text(qualitative.moderate)',
-      'text(field.hero.principles)',
-      'text(trait.core.will_not_strike_a_temple.name)',
-      'text(field.hero.inclinations)',
-      'text(trait.core.hates_the_cult.name)',
-      'text(trait.core.hungry_for_renown.name)',
-      'text(hero.core.doran.name)',
-      'text(field.hero.greed)',
-      'text(qualitative.high)',
-      'text(field.hero.caution)',
-      'text(qualitative.negligible)',
-      'text(field.hero.pride)',
-      'text(qualitative.extreme)',
-      'text(hero.core.ilsa.name)',
-      'text(field.hero.greed)',
-      'text(qualitative.low)',
-      'text(field.hero.caution)',
-      'text(qualitative.moderate)',
-      'text(field.hero.pride)',
-      'text(qualitative.low)',
-      'text(hero.core.bram.name)',
-      'text(action.accept)',
-      'text(hero.decision.personal_conviction)',
-      'text(trait.core.loyal_to_the_merchant_guild.name)',
-      'text(reason.direction.supported)',
-      'text(field.reason.strength)',
-      'text(qualitative.low)',
-      'text(hero.decision.risk_too_high)',
-      'text(reason.direction.opposed)',
-      'text(field.reason.strength)',
-      'text(qualitative.high)',
-      'text(response.wavered.true)',
-      'text(hero.core.doran.name)',
-      'text(action.decline)',
-      'text(field.response.blocked_by)',
-      'text(trait.core.will_not_serve_slavers.name)',
-      'text(response.wavered.false)',
-      'text(hero.core.bram.name)',
-      'text(action.accept)',
-      'text(hero.decision.no_reason_to_refuse)',
-      'text(response.wavered.false)',
+      'text(field.contract.accepted_count)',
+      '2',
+      'text(field.contract.required_crew)',
+      '2',
       'text(field.offer.version)',
       '3',
       'text(offer.phase.locked)',
@@ -433,6 +390,61 @@ describe('the texts a correctly bound screen produces', () => {
       'text(offer.promise.breach)',
       'text(field.offer.promised_bonus)',
       '20',
+      'text(action.offer.compose)',
+      'text(action.offer.ask_key_hero)',
+      'text(rejected.already_responded)',
+      'text(action.offer.lock)',
+      'text(rejected.offer_not_in_draft)',
+      'text(action.offer.poll)',
+      'text(action.offer.resolve)',
+      'text(rejected.crew_not_filled)',
+      'text(action.offer.settle)',
+      // Doran first: blocked by a principle, and nobody refused outright. Then the two who
+      // accepted, in roster order (`heroOfferRows`).
+      'text(hero.core.doran.name)',
+      'text(action.decline)',
+      'text(response.wavered.false)',
+      'text(field.hero.greed)',
+      'text(qualitative.high)',
+      'text(field.hero.caution)',
+      'text(qualitative.negligible)',
+      'text(field.hero.pride)',
+      'text(qualitative.extreme)',
+      'text(field.response.blocked_by)',
+      'text(trait.core.will_not_serve_slavers.name)',
+      'text(hero.core.bram.name)',
+      'text(action.accept)',
+      'text(response.wavered.true)',
+      'text(field.hero.greed)',
+      'text(qualitative.moderate)',
+      'text(field.hero.caution)',
+      'text(qualitative.low)',
+      'text(field.hero.pride)',
+      'text(qualitative.moderate)',
+      'text(field.hero.principles)',
+      'text(trait.core.will_not_strike_a_temple.name)',
+      'text(field.hero.inclinations)',
+      'text(trait.core.hates_the_cult.name)',
+      'text(trait.core.hungry_for_renown.name)',
+      'text(hero.decision.personal_conviction)',
+      'text(trait.core.loyal_to_the_merchant_guild.name)',
+      'text(reason.direction.supported)',
+      'text(field.reason.strength)',
+      'text(qualitative.low)',
+      'text(hero.decision.risk_too_high)',
+      'text(reason.direction.opposed)',
+      'text(field.reason.strength)',
+      'text(qualitative.high)',
+      'text(hero.core.ilsa.name)',
+      'text(action.accept)',
+      'text(response.wavered.false)',
+      'text(field.hero.greed)',
+      'text(qualitative.low)',
+      'text(field.hero.caution)',
+      'text(qualitative.moderate)',
+      'text(field.hero.pride)',
+      'text(qualitative.low)',
+      'text(hero.decision.no_reason_to_refuse)',
       'text(field.offer.promised_bonus)',
       '20',
       'text(field.offer.key_hero)',
@@ -443,17 +455,24 @@ describe('the texts a correctly bound screen produces', () => {
       'text(field.settlement.treasury_if_kept)',
       '390',
       'text(field.settlement.treasury_if_broken)',
-      '410',
-      'text(action.offer.compose)',
-      'text(action.offer.ask_key_hero)',
-      'text(rejected.already_responded)',
-      'text(action.offer.lock)',
-      'text(rejected.offer_not_in_draft)',
-      'text(action.offer.poll)',
-      'text(action.offer.resolve)',
-      'text(rejected.crew_not_filled)',
-      'text(action.offer.settle)'
+      '410'
     ]);
+  });
+
+  it('says the squad has not been asked, rather than that nobody agreed', () => {
+    // The count of the band on a package nobody has answered yet — a freshly composed one
+    // (`DEC-012`). A `0` beside "согласились" would read as four refusals.
+    const unasked = createContractOfferScreenModel({
+      ...aFullModel,
+      state: ScreenState.Incomplete,
+      contract: { ...aFullModel.contract!, acceptedCount: 0 },
+      responses: []
+    });
+    const texts = expectedSnapshot(unasked, everyKeyOf(unasked));
+
+    expect(texts).toContain('text(field.offer.not_asked)');
+    expect(texts).not.toContain('text(field.contract.accepted_count)');
+    expect(texts).toContain('text(field.contract.required_crew)');
   });
 
   it('resolves every key the model carries, and shows no key the model does not', () => {

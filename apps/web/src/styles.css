@@ -200,20 +200,18 @@ body {
 }
 
 /*
- * Two columns, for the reason the Godot original had two: six hero cards followed by six
- * response blocks is twice the height of the window, and every response ends up below
- * the fold. `align-items: start` so a short column does not stretch to the tall one's
- * height and pad the page with emptiness.
+ * Two columns: the offer's squad, two hero cards to a line, and the panels under the
+ * battle field. Six cards in one column are twice the height of the window. `align-items:
+ * start` so a short card does not stretch to the tall one's height and pad the page with
+ * emptiness.
  */
 .columns {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   align-items: start;
-  gap: 16px;
+  gap: var(--space-md);
 }
 
-.hero,
-.response,
 .board-row {
   margin-bottom: 8px;
   padding: 8px 10px;
@@ -296,10 +294,54 @@ body {
   gap: 4px 8px;
 }
 
+/*
+ * One reason on a hero card: a mark, the reason, whose it is, which way it pulled and how
+ * hard. The mark and the pips are drawn here and not written — `hero-row.tsx` says why — so
+ * the arrow comes from `content` over the direction the row already states in words.
+ */
 .reason {
-  margin-top: 4px;
-  padding-left: 8px;
-  border-left: 2px solid var(--edge);
+  align-items: center;
+  gap: var(--space-xs) var(--space-sm);
+}
+
+.reason[data-direction='Opposed'] {
+  color: var(--ink-dim);
+}
+
+.reason > .mark::before {
+  display: inline-block;
+  width: 1em;
+  color: var(--ink-dim);
+}
+
+.reason[data-direction='Supported'] > .mark::before {
+  content: '\2192';
+}
+
+.reason[data-direction='Opposed'] > .mark::before {
+  content: '\2190';
+}
+
+/* A red line has no direction and no strength: a cross, in the colour of a block. */
+.reason[data-direction='blocked'] > .mark::before {
+  content: '\2715';
+  color: var(--blocked);
+}
+
+.pips {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.pips > i {
+  width: 5px;
+  height: 10px;
+  border-radius: 1px;
+  background: var(--edge);
+}
+
+.pips > i[data-lit='true'] {
+  background: var(--ink-dim);
 }
 
 /*
@@ -493,23 +535,18 @@ body {
 }
 
 /*
- * The scene sits under the screen at its own aspect ratio. `height: auto` with the
- * element's `width`/`height` attributes is what keeps it undistorted; PixiJS draws at the
- * attribute size and the browser scales the result.
+ * The battle board, at its own aspect ratio — the one canvas left on the page (`DEC-020`).
+ * `height: auto` with the element's `width`/`height` attributes is what keeps it
+ * undistorted; PixiJS draws at the attribute size and the browser scales the result.
  */
 canvas {
   display: block;
   width: 100%;
   /*
-   * Smaller than the scene's own 640px, and that is the whole of the sizing decision:
-   * the screen above is where a player reads, and at the scene's natural size the canvas
-   * took roughly a third of the window and left the roster the rest. At 420px the screen's
-   * box measures 532 in a 1280x800 window — taken this task, after the screen link took a
-   * row of its own and after the suite's viewport was repaired to the 800 the record asks
-   * for. (Task 15 recorded 411 and 494 here for the same two numbers; both were taken at
-   * the 1280x720 `devices['Desktop Chrome']` was imposing, which is what the repair in
-   * `playwright.config.ts` is about.) `DEC-007` puts the schematic world second to the
-   * information screen until Milestone 4.
+   * Smaller than the scene's own 640px. The rule was sized for the schematic world under
+   * the offer, where at the scene's natural size the canvas took roughly a third of the
+   * window; the offer has no canvas now, and the board keeps the size it was drawn at until
+   * the battle's own relayout decides otherwise.
    */
   max-width: 420px;
   height: auto;
@@ -523,6 +560,20 @@ canvas {
  * a control that navigated *away* from a screen would otherwise be part of that screen's
  * own evidence.
  */
+/*
+ * The rows around the screen are a whole number of pixels high, and that is load-bearing.
+ * At the page's 1.45 a 14px line is 20.3px, so the link row was 30.3px and the screen box
+ * began at y = 54.3: a scroll box at a fractional offset whose wheel stops one pixel short
+ * of the end `scrollTop` can reach. The reachability measurement (`tests/e2e/layout.ts`)
+ * then reported the last pixel of the offer unreachable. The offer's canvas hid this — its
+ * own row happened to round the other way — and it surfaced the day the canvas left
+ * (`DEC-020`). One and a half of 14px and of 12px are whole pixels.
+ */
+nav,
+[data-testid='node-api-exposure'] {
+  line-height: 1.5;
+}
+
 nav {
   display: flex;
   gap: 8px;
@@ -559,8 +610,8 @@ nav button,
  * Роль чипа и полоски выбирается по `data-role`, а не по классу, — тот же атрибут читают
  * тесты компонентов, и второго способа назвать роль нет.
  *
- * `Columns` своего правила не имеет: он рисует `.columns`, объявленный выше для ростера и
- * ответов оффера, чтобы две колонки были одним правилом, а не двумя одинаковыми.
+ * `Columns` своего правила не имеет: он рисует `.columns`, объявленный выше, чтобы две
+ * колонки были одним правилом, а не двумя одинаковыми.
  */
 .panel {
   padding: var(--space-md);
@@ -712,6 +763,169 @@ nav button,
   flex-wrap: wrap;
   align-items: baseline;
   gap: var(--space-sm) var(--space-lg);
+}
+
+/*
+ * Экран оффера на ките (спека §4, раскладка Б): пакет полосой сверху, отряд под ним в две
+ * колонки.
+ *
+ * Полоса липкая — игрок, читающий отряд внизу, видит условия, о которых торгуется, — но
+ * только в окне, где она помещается рядом с отрядом. В окне 1280×800 (окно десктопа и
+ * браузерных улик) полоса с лестницей и причинами тёмных шагов — около 450 px из 690 px
+ * экрана, и прилипшая она оставила бы отряду полосу в четверть окна. Там она уезжает вверх,
+ * как и описывала раскладка Б, выбранная владельцем; с 1000 px высоты — липнет. Фон — тот
+ * же, что у экрана, чтобы строки отряда уходили под неё, а не просвечивали.
+ */
+@media (min-height: 1000px) {
+  .package-band {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+}
+
+.package-band {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-sm) var(--space-lg);
+  margin: var(--space-sm) 0 var(--space-md);
+  padding: var(--space-md);
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.package-band > .offer,
+.package-band > .price,
+.package-band > .actions {
+  grid-column: 1 / -1;
+}
+
+.package-band > .contract,
+.package-band > .offer {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.package-band > .contract > .label:first-child {
+  font-size: var(--type-title);
+  font-weight: 600;
+}
+
+/* Счёт: сколько согласились — крупно, сколько нужно — рядом, мельче. */
+.tally {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: var(--space-xs) var(--space-md);
+}
+
+.tally > .stat:first-child .stat-value {
+  font-size: var(--type-display);
+}
+
+.tally > .label {
+  font-size: var(--type-heading);
+  font-weight: 600;
+}
+
+/* Пакет правится: прежний счёт приглушён, пометка рядом говорит почему. */
+.tally[data-stale='true'] > .stat,
+.tally[data-stale='true'] > .label {
+  color: var(--ink-dim);
+}
+
+/*
+ * Рычаги пакета в ряд, с переносом: каждый блок рычага — своя колонка, чтобы полоса была
+ * широкой и низкой, а не столбом во всю высоту окна.
+ */
+.package-band > .offer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-sm) var(--space-xl);
+}
+
+.package-band .lever-block {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.lever-input {
+  width: 5rem;
+}
+
+/* Лестница из семи шагов: каждый шаг — кнопка и, если она тёмная, причина под ней. */
+.package-band > .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--edge);
+}
+
+.package-band .action {
+  flex: 1 1 8rem;
+  min-width: 0;
+}
+
+.package-band .action > .press {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+/* Карточка героя с его ответом; кант — цвет того, где он стоит. */
+.hero-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--edge);
+  border-left: 3px solid var(--edge);
+  border-radius: 4px;
+  background: var(--surface);
+}
+
+.hero-row[data-stance='refused'] {
+  border-left-color: var(--against);
+}
+
+.hero-row[data-stance='blocked'] {
+  border-left-color: var(--blocked);
+}
+
+.hero-row[data-stance='accepted'] {
+  border-left-color: var(--favour);
+}
+
+.hero-row-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-xs) var(--space-sm);
+}
+
+.hero-row-head > .label:first-child {
+  font-size: var(--type-heading);
+  font-weight: 600;
+}
+
+.wavered {
+  color: var(--ink-dim);
+  font-size: var(--type-caption);
+}
+
+.wavered[data-wavered='true'] {
+  color: var(--status);
+}
+
+.hero-row-scales,
+.hero-row > .key-list {
+  font-size: var(--type-caption);
 }
 
 /* Diagnostics, not part of the screen: readable, and visibly not part of it. */

@@ -5,10 +5,12 @@ import { useText } from '../../text.tsx';
 import { Captioned, KeyList, Label } from '../labels.tsx';
 
 /**
- * The offer itself: its name, the four facts about it, and its tags when it has any.
+ * The offer itself: its name, the two facts about the job, and its tags when it has any.
  *
- * The four facts share one row so that they read as four facts rather than as a
- * column of unexplained numbers.
+ * The facts share one row so that they read as facts rather than as a column of
+ * unexplained numbers. How many the job needs and how many said yes moved to the count of
+ * the package band (`package-band.tsx`): they are the score of the negotiation, not a
+ * property of the job, and printing them twice would make a player check they agree.
  */
 export function ContractBlock({ contract }: { readonly contract: ContractLine }) {
   const text = useText();
@@ -22,14 +24,6 @@ export function ContractBlock({ contract }: { readonly contract: ContractLine })
         <Captioned
           captionKey={FieldKeys.ContractRisk}
           value={text(qualitativeKey(contract.risk))}
-        />
-        <Captioned
-          captionKey={FieldKeys.ContractRequiredCrew}
-          value={String(contract.requiredCrew)}
-        />
-        <Captioned
-          captionKey={FieldKeys.ContractAcceptedCount}
-          value={String(contract.acceptedCount)}
         />
       </div>
 

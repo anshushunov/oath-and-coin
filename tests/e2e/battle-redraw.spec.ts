@@ -9,8 +9,8 @@ import { frameDigest } from './frame-digest.ts';
 /**
  * The live-redraw gate, standing on the battle board.
  *
- * `live-command.spec.ts` asks it of the contract offer's canvas, and that canvas leaves the
- * page (`DEC-020`). The defect the gate was bought with — the renderer destroyed and brought
+ * `live-command.spec.ts` asked it of the contract offer's canvas until that canvas left the
+ * page (`DEC-020`), and the suite left with it. The defect the gate was bought with — the renderer destroyed and brought
  * up again on every model change, a page frozen on the first press, `pnpm verify` green
  * throughout because jsdom replaces the canvas with `null` — is not a defect of the offer:
  * it lives in `WorldCanvas`, and the battle board is the one place that component stays.
