@@ -213,6 +213,21 @@ describe('the screen a reloaded campaign draws', () => {
         const live = contractOfferScreenModel(outcome.finalState, outcome.steps);
 
         expect(model, `${scenario}/seed-${String(seed)}`).toEqual(live);
+
+        // The offer screen's count says "nobody has been asked" off `responses` being empty
+        // (`package-band.tsx`, `Tally`; `expectedSnapshot`), while the number beside it is
+        // the engine's own `acceptedBy`. The two agree only while the answers the factory
+        // keeps are exactly the heroes the engine records as having answered this version
+        // — `contractOfferScreenModel` states that invariant beside `responses`, and this is
+        // where it is checked, on the final state of every shipped run. Not in the factory
+        // itself: hand-built fixtures pair states and steps that no run produces, on purpose.
+        if (live.contract !== null) {
+          const focused = outcome.finalState.contracts.get(live.contract.definition);
+
+          expect(live.responses.length, `${scenario}/seed-${String(seed)}`).toBe(
+            focused?.offer.respondedBy.size
+          );
+        }
       }
     }
 

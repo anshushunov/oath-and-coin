@@ -56,6 +56,15 @@ import { qualitativeKey } from './qualitative-scale.ts';
  * The two lists are produced by unrelated code paths on purpose: a binding mistake
  * breaks the match precisely because nothing here can know what the screen rendered.
  *
+ * **One exception, and what holds it instead.** The offer screen's squad is walked in the
+ * order {@link heroOfferRows} returns, and the screen maps the very same call — so which
+ * answer sits on which hero's row, and which rows come first, are shared by both sides and
+ * this hash cannot catch a mistake in either. That is held elsewhere: by the projection's
+ * own unit tests (`hero-offer-row.test.ts`) and by the literal list of texts in
+ * `rendered-ui-snapshot.test.ts`, neither of which calls the sort to learn what it should
+ * have said. What this hash still holds is everything *inside* a row — which texts a row
+ * owes and in what order it draws them.
+ *
  * The order promised is the order a depth-first walk visits — title, state, error, then
  * the package band (contract, count, levers, treasury, the ladder of commands), then one
  * row per hero with his own answer on it, refusals first (`heroOfferRows`). Not "the order

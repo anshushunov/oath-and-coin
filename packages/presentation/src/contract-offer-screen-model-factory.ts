@@ -250,6 +250,15 @@ export function contractOfferScreenModel(
     .flatMap((step) =>
       step.decisions.map((decision) => toResponseLine(step, decision, heroDisplayNameKeys))
     );
+  // **Invariant: `responses.length === contract.offer.respondedBy.size`** — one line per
+  // hero the engine records as having answered this version, no more and no fewer. The
+  // offer screen leans on it: its count says "nobody has been asked" off this list being
+  // empty, and prints `acceptedCount` off `acceptedBy` otherwise, so a list that fell out
+  // of step with the engine would put "not asked" beside a squad that answered. Checked,
+  // not enforced: `tests/oracle/src/restored-read-model.test.ts` asserts it on the final
+  // state of every shipped scenario at both seeds — a sample of real runs, not a proof —
+  // and nothing throws here, because the hand-built fixtures of this package's own tests
+  // pair states and steps no run produces, on purpose, to reach one branch at a time.
   const responses = answers.slice(
     answers.length - answersToCurrentVersion(state, contract.id, answers.length)
   );

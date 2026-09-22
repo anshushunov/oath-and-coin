@@ -66,8 +66,9 @@ import { SettlementBlock } from './settlement-block.tsx';
  * visits them in the same order a column would.
  *
  * **Layout Б of the kit's relayout (spec §4).** The package is a band across the top —
- * contract, count, levers, treasury, the ladder of commands; sticky where the window has room
- * for it beside the squad (`package-band.tsx`) — and the squad below it
+ * contract, count, levers, treasury, the ladder of commands; sticky only in a window 1000 px
+ * tall or more, a departure from the spec awaiting the owner (`package-band.tsx`) — and the
+ * squad below it
  * is one card per hero with his own answer on it, two cards to a line. The pairing and the
  * "refusals first" order are `heroOfferRows`'s: both are decisions on the *value* of an
  * answer, which this component is not allowed to make, so it only maps the list it is
@@ -138,8 +139,14 @@ export function ContractOfferScreen({
 
   // The count goes quiet while the form holds terms the package does not record — and only
   // then: a refused `compose` leaves the draft where it was but takes the mark off, because
-  // the refusal is now what the screen has to say about those terms (spec §4.2).
-  const stale = form.refusal === null && isEditing(form.draft, model);
+  // the refusal is now what the screen has to say about those terms (spec §4.2). Another
+  // command refused says nothing about the typed terms, so the mark stays. And a package the
+  // model says cannot be recomposed has no "being edited" state at all — the typed terms can
+  // never become it, and the dark `compose` below already says why.
+  const stale =
+    form.refusal?.action !== OfferAction.Compose &&
+    canRecompose(model) &&
+    isEditing(form.draft, model);
   const hasBand =
     model.contract !== null ||
     model.offer !== null ||
@@ -289,6 +296,17 @@ export function ContractOfferScreen({
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * Whether the model lets this package be composed again — its own answer for `compose`,
+ * read as a `null` reason and never worked out here from the phase: a locked package whose
+ * crew has not filled is still revisable (`offer-actions.ts`, `composeRefusal`).
+ */
+function canRecompose(model: ContractOfferScreenModel): boolean {
+  return model.availableActions.some(
+    (available) => available.action === OfferAction.Compose && available.disabledReasonKey === null
   );
 }
 

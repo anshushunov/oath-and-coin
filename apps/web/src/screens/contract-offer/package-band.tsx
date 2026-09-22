@@ -10,10 +10,11 @@ import { Label } from '../labels.tsx';
 /**
  * The package as one band across the top of the screen (spec §4, layout **Б**): the
  * contract, the count, the five levers, the treasury with what the deal would leave, and
- * the ladder of commands. Sticky in a window tall enough to hold it beside the squad, so that
- * a player reading the squad further down still has the terms he is bargaining with in front
- * of him; in the 1280×800 window it would cover most of the screen, and there it scrolls
- * away (`styles.css`, `.package-band`, gives the numbers).
+ * the ladder of commands. The spec asks for it sticky, so that a player reading the squad
+ * further down still has the terms he is bargaining with in front of him. It is sticky only
+ * in a window 1000 px tall or more: in the 1280×800 window it would leave the squad one row
+ * of cards, and there it scrolls away for now — a departure from the spec awaiting the
+ * owner's decision (`styles.css`, `.package-band`, gives the numbers).
  *
  * A container and nothing else — each block inside is the one the screen already had —
  * because what moved is *where* the package is, not what it says.
@@ -35,15 +36,19 @@ export function PackageBand({ children }: { readonly children: ReactNode }) {
  * - **not asked** (`answered` false): the package as it stands has no answers yet — a
  *   freshly composed one, whose answers the engine has just emptied (`DEC-012`). The count
  *   says so in words; a `0` there would read as a squad that refused.
- * - **being edited** (`stale` true): the form holds terms the package does not record yet.
- *   The count stays what it was — nothing has been asked about the new terms — and is
- *   dimmed and marked, because declaring the answers void before the package changed would
- *   be the same lie in the other direction.
- * - **as recorded**: everything else, including a refused `compose`: the package did not
- *   move, so neither does the count, and the refusal stands by the lever it names.
+ * - **being edited** (`stale` true): the form holds terms the package does not record yet,
+ *   and the package may still be recomposed. The count stays what it was — nothing has been
+ *   asked about the new terms — and is dimmed and marked, because declaring the answers void
+ *   before the package changed would be the same lie in the other direction.
+ * - **as recorded**: everything else, including a refused `compose` and a package whose
+ *   `compose` is dark: the package did not move, so neither does the count, and the refusal
+ *   stands by the lever it names.
  *
  * `answered` is the list being empty or not, decided by the caller from the model; `stale`
- * is the screen's own state. Neither is a branch on what an answer says.
+ * is the screen's own state. Neither is a branch on what an answer says. `answered` stands in
+ * for the engine's own `respondedBy` by an invariant the factory states beside `responses`
+ * (one line per hero who answered this version) and the oracle suite checks on every
+ * shipped run.
  */
 export function Tally({
   contract,

@@ -45,6 +45,18 @@ const STANCE_TAG: Readonly<Record<HeroStance, TagRole>> = {
  * on the row beside them. So they stay out of both hashes, which compare texts, and a
  * screen reader skips them (`aria-hidden`) rather than reading an arrow aloud.
  *
+ * **A hero who has not answered wears no chip, on purpose.** A chip names what he *said*,
+ * and he said nothing; his edge stays plain, so no colour claims a meaning either. The words
+ * "не спрашивали" and "не ответил" are not on the card because the row cannot tell them
+ * apart — `heroOfferRows` pairs the roster with the answers and knows nothing of who was
+ * invited — and the band above already says both: its count reads "Отряд ещё не
+ * спрашивали" while nobody has answered this version, and its crew lever lists who is
+ * invited. A status chip here would have to pick one of the two sentences for a hero it
+ * cannot place. The blocked chip carries the same word as a refusal ("Отказался") and
+ * differs by colour; its words are the "Не станет этого делать: …" line below (`Why`,
+ * `FieldKeys.ResponseBlockedBy`), which is on the card for every blocked hero and for no one
+ * else.
+ *
  * Every branch here is on a field being `null` or a list being empty, never on what is in
  * it — `expectedSnapshot` makes the identical decisions from the identical fields.
  */
@@ -132,6 +144,11 @@ function Why({ response }: { readonly response: ResponseLine }) {
  *
  * The same kind of mapping `Bar` makes from a number to a width — a picture of a value the
  * row already states in words — and not a branch on what the grade means.
+ *
+ * Five pips, one per step of `QUALITATIVE_GRADES`, although spec §4.3's sketch draws three
+ * (`▮▮▯`): the scale a reason's strength is graded on has five steps, and three pips would
+ * have to fold two pairs of them together — the picture would then say less than the word
+ * beside it. A deliberate departure from the sketch, not from the scale the spec names.
  */
 function Pips({ grade }: { readonly grade: QualitativeGrade }) {
   const reached = QUALITATIVE_GRADES.indexOf(grade);

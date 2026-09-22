@@ -1796,6 +1796,50 @@ describe('the count while the package is touched', () => {
       control(container, 'offer-rejection').closest(`[data-lever="${OfferLeverId.Terms}"]`)
     ).not.toBeNull();
   });
+
+  // Spec §4.2 takes the mark off for a refused *compose* only: that refusal is about the
+  // typed terms. Another command refused says nothing about them — the form still holds
+  // terms the package does not record, and the count must still say so.
+  it('keeps the mark when a command other than compose is refused', () => {
+    const base = draft();
+    const model = createContractOfferScreenModel({
+      ...base,
+      availableActions: base.availableActions.map((available) => ({
+        ...available,
+        disabledReasonKey: null
+      }))
+    });
+    const { container } = renderWith(model, fakeController(RejectionCodes.AlreadyResponded));
+
+    type(control(container, 'offer.advance'), String(model.offer!.advanceLever.value - 1));
+    click(actionButton(container, OfferAction.AskKeyHero));
+
+    expect(control(container, 'offer-rejection')).toBeDefined();
+    expect(tally(container).dataset['stale']).toBe('true');
+    expect(collectRenderedTexts(tally(container))).toContain(textOf(OfferFieldKeys.Editing));
+  });
+
+  // A package the engine will not let be recomposed has no "being edited" state: what is
+  // typed can never become the package, so marking the count would promise a revision the
+  // ladder already says is refused. Read off the model's own answer for compose, never off
+  // the phase — a locked package whose crew has not filled *can* still be revised.
+  it('does not mark the count of a package that cannot be recomposed', () => {
+    const base = draft();
+    const model = createContractOfferScreenModel({
+      ...base,
+      availableActions: base.availableActions.map((available) =>
+        available.action === OfferAction.Compose
+          ? { ...available, disabledReasonKey: RejectionCodes.OfferNotInDraft }
+          : available
+      )
+    });
+    const { container } = renderWith(model, fakeController());
+
+    type(control(container, 'offer.advance'), String(model.offer!.advanceLever.value - 1));
+
+    expect(tally(container).dataset['stale']).toBe('false');
+    expect(collectRenderedTexts(tally(container))).not.toContain(textOf(OfferFieldKeys.Editing));
+  });
 });
 
 describe('the squad, one card per hero with his own answer', () => {
