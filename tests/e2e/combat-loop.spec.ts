@@ -107,6 +107,11 @@ test('a crew is placed, the fight is watched, and the debrief reads back', async
   await expect(page.getByTestId('battle-screen')).toBeVisible();
   await expect(page.getByTestId('battle-screen')).toHaveAttribute('data-state', 'Incomplete');
 
+  // The board is drawn asynchronously — `Application.init` settles after the screen is up —
+  // so a frame taken on the screen alone can be a frame of an empty canvas, and nothing would
+  // notice. Waited for on the battle only: the offer and the debrief lose their canvas
+  // (`DEC-020`), and a wait there would be a wait for something that is going away.
+  await expect(page.getByTestId('world-canvas')).toHaveAttribute('data-scene-shapes', /^\d+$/u);
   await page.screenshot({ path: join(EVIDENCE_ROOT, 'watching.png'), fullPage: false });
 
   // The lever, live now that a round has started — `DEC-005`'s own measurement is how often
@@ -120,6 +125,7 @@ test('a crew is placed, the fight is watched, and the debrief reads back', async
 
   expect(outcome, 'a finished fight names how it ended').toBeTruthy();
 
+  await expect(page.getByTestId('world-canvas')).toHaveAttribute('data-scene-shapes', /^\d+$/u);
   await page.screenshot({ path: join(EVIDENCE_ROOT, 'finished.png'), fullPage: false });
 
   // **A replay is not a second chance** (`COMBAT_SPEC` §6.3). The outcome is committed the

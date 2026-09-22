@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 
 import { expect, test, type ConsoleMessage, type Page, type Request } from '@playwright/test';
 
+import { frameDigest } from './frame-digest.ts';
+
 /**
  * What happens to the page **after** a player presses something.
  *
@@ -162,68 +164,6 @@ interface PageReport {
 
 async function report(page: Page): Promise<PageReport> {
   return JSON.parse((await page.getByTestId('run-report').textContent()) ?? '') as PageReport;
-}
-
-/** What the canvas is actually showing, read back as pixels the page cannot fake. */
-interface FrameDigest {
-  /** The shape count the component reports, for comparison against the pixels. */
-  readonly shapes: number;
-  /** FNV-1a over every byte of the frame — equal frames, equal digest. */
-  readonly pixels: string;
-  readonly distinctColors: number;
-}
-
-/**
- * Reads the drawn frame back off the canvas.
- *
- * The same technique `contract-offer.spec.ts` uses to prove a scene was drawn at all —
- * `preserveDrawingBuffer` is on for exactly this — carried one step further: a digest, so
- * two frames of one scene can be told apart rather than only "something was drawn".
- */
-async function frameDigest(page: Page): Promise<FrameDigest> {
-  return page.evaluate((testId: string) => {
-    const canvas = document.querySelector(`[data-testid="${testId}"]`);
-
-    if (!(canvas instanceof HTMLCanvasElement)) {
-      throw new Error(`The page has no <canvas data-testid="${testId}">.`);
-    }
-
-    const probe = document.createElement('canvas');
-    probe.width = canvas.width;
-    probe.height = canvas.height;
-
-    const context = probe.getContext('2d', { willReadFrequently: true });
-
-    if (context === null) {
-      throw new Error('This browser gave no 2D context to read the scene back with.');
-    }
-
-    context.drawImage(canvas, 0, 0);
-
-    const { data } = context.getImageData(0, 0, probe.width, probe.height);
-    const colours = new Set<number>();
-    let hash = 0x811c9dc5;
-
-    for (let offset = 0; offset < data.length; offset += 4) {
-      const pixel =
-        ((data[offset] ?? 0) << 24) |
-        ((data[offset + 1] ?? 0) << 16) |
-        ((data[offset + 2] ?? 0) << 8) |
-        (data[offset + 3] ?? 0);
-
-      colours.add(pixel);
-      hash = Math.imul(hash ^ (pixel & 0xff), 0x01000193);
-      hash = Math.imul(hash ^ ((pixel >>> 8) & 0xff), 0x01000193);
-      hash = Math.imul(hash ^ ((pixel >>> 16) & 0xff), 0x01000193);
-      hash = Math.imul(hash ^ ((pixel >>> 24) & 0xff), 0x01000193);
-    }
-
-    return {
-      shapes: Number(canvas.dataset['sceneShapes'] ?? '-1'),
-      pixels: (hash >>> 0).toString(16).padStart(8, '0'),
-      distinctColors: colours.size
-    };
-  }, 'world-canvas');
 }
 
 function runUrl(): string {

@@ -1,0 +1,71 @@
+import { expect, test } from '@playwright/test';
+
+import { frameDigest } from './frame-digest.ts';
+
+/**
+ * The live-redraw gate, standing on the battle board.
+ *
+ * `live-command.spec.ts` asks it of the contract offer's canvas, and that canvas leaves the
+ * page (`DEC-020`). The defect the gate was bought with — the renderer destroyed and brought
+ * up again on every model change, a page frozen on the first press, `pnpm verify` green
+ * throughout because jsdom replaces the canvas with `null` — is not a defect of the offer:
+ * it lives in `WorldCanvas`, and the battle board is the one place that component stays.
+ * So the question moves here **before** the offer's canvas goes, and not after: in between
+ * there would be a window where nothing in a real Chromium could see it.
+ *
+ * **What this measures is that the frame changed, and only that.** Whether it is the *same*
+ * renderer that redrew it is `apps/web/src/world/world-canvas.test.tsx`'s claim — a jsdom
+ * recorder counts mounts and teardowns there; pixels cannot.
+ *
+ * The run is the one `battle.spec.ts` opens the lab with: `battle_ready`, straight onto the
+ * battle screen, paused at the fight's first frame. Skip is the model change, and the frame
+ * it lands on — the end of the fight — differs from the opening one on the board itself.
+ */
+
+const SEED = 424242n;
+const LOCALE = 'ru';
+const SCENARIO = 'battle_ready';
+
+test('боевая доска перерисовывается, а не стоит мёртвым кадром', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+
+  await page.goto(battleRunUrl());
+
+  // Сцена асинхронна: без ожидания кадр можно снять, пока рендерер ещё
+  // поднимается, и пустой канвас будет неотличим от сломанного.
+  await expect(page.getByTestId('world-canvas')).toHaveAttribute('data-scene-shapes', /^\d+$/u);
+
+  const before = await frameDigest(page);
+
+  await page.getByTestId('battle-skip').click();
+  await expect(page.getByTestId('battle-screen')).toHaveAttribute('data-state', 'Normal');
+  await expect(page.getByTestId('world-canvas')).toHaveAttribute('data-scene-shapes', /^\d+$/u);
+
+  const after = await frameDigest(page);
+
+  expect(after.pixels, 'кадр обязан измениться — иначе перерисовки не было').not.toBe(
+    before.pixels
+  );
+
+  // Рендерер, потерявший контекст, заливает кадр одним цветом: это «изменился»
+  // и «сломан» одновременно, поэтому проверяется отдельно от неравенства.
+  expect(after.distinctColors, 'кадр не должен быть залит одним цветом').toBeGreaterThan(1);
+  expect(errors, 'страница не должна ронять ошибок').toEqual([]);
+});
+
+/**
+ * The run this gate stands on, every input stated — the same URL `battle.spec.ts` builds for
+ * the lab, so the two suites look at one fight.
+ */
+function battleRunUrl(): string {
+  const parameters = new URLSearchParams({
+    scenario: SCENARIO,
+    checkpoint: SCENARIO,
+    seed: SEED.toString(),
+    locale: LOCALE,
+    screen: 'battle'
+  });
+
+  return `/?${parameters.toString()}`;
+}

@@ -228,9 +228,23 @@ test.describe('the battle screen, in a browser', () => {
       await page.evaluate((testId: string) => {
         document.querySelector(`[data-testid="${testId}"]`)?.scrollTo(0, 0);
       }, SCREEN);
-      await page.screenshot({ path: join(directory, 'screenshot.png'), fullPage: false });
 
+      // Built before the frame, off the scenario on disk, because it is what says whether this
+      // state has a board at all: `Loading`, `Error` and `Empty` carry no units and mount no
+      // canvas. Where there is one, the frame waits for the renderer to have drawn it —
+      // `Application.init` is asynchronous, and a frame taken on the screen alone can be of
+      // an empty canvas without anything here noticing. Read off the expected model rather
+      // than off the page, so a board that failed to mount is a timeout, not a skipped wait.
       const model = run.model();
+
+      if (model.units.length > 0) {
+        await expect(page.getByTestId('world-canvas')).toHaveAttribute(
+          'data-scene-shapes',
+          /^\d+$/u
+        );
+      }
+
+      await page.screenshot({ path: join(directory, 'screenshot.png'), fullPage: false });
 
       // A second frame, of the journal, on the position that has one. The frame above is
       // what a player sees first, and on a finished fight that is the board — the journal
@@ -258,6 +272,10 @@ test.describe('the battle screen, in a browser', () => {
         await expect(journal.locator('.journal-line', { hasText: to }).first()).toBeInViewport({
           ratio: 1
         });
+        await expect(page.getByTestId('world-canvas')).toHaveAttribute(
+          'data-scene-shapes',
+          /^\d+$/u
+        );
         await page.screenshot({ path: join(directory, 'journal.png'), fullPage: false });
       }
 

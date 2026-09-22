@@ -43,10 +43,11 @@ ADR-001-engine-and-language.md
 | [DEC-012](DEC-012-negotiation-offer-protocol.md) | Протокол оффера, обещание доплаты и казна гильдии | accepted, три пункта изменены поправкой 2026-08-25 ([RESOLUTION_SPEC](../technical/RESOLUTION_SPEC.md) §8) |
 | [DEC-013](DEC-013-hero-capability-layer.md) | Слой способности героя: общая величина и экспертиза по потребностям | accepted |
 | [DEC-014](DEC-014-two-numbers-and-who-is-wounded.md) | Экран разбора: два числа у героя и кого ранит, когда участок держать было некому | accepted |
-| [DEC-015](DEC-015-no-scene-behind-the-debrief-and-the-board.md) | За разбором и доской схематичного мира нет | accepted |
+| [DEC-015](DEC-015-no-scene-behind-the-debrief-and-the-board.md) | За разбором и доской схематичного мира нет | superseded [DEC-020](DEC-020-no-schematic-world-behind-the-screens.md) |
 | [DEC-016](DEC-016-hero-combat-layer.md) | Боевой слой модели героя: пять атрибутов, роль, способности, перк, снаряжение | accepted |
 | [DEC-017](DEC-017-what-the-battle-vocabulary-promised.md) | Что боевой словарь обещал и чего не делал: источник `bleeding`, удаление `blocked`, четвёртое измерение набора | accepted |
 | [DEC-018](DEC-018-colour-in-the-journal.md) | Цвет в боевом журнале: три канала, и у каждого есть слово | proposed |
+| [DEC-020](DEC-020-no-schematic-world-behind-the-screens.md) | Схематичного мира за экранами нет; канвас остаётся только доской боя | accepted |
 
 Технические решения:
 

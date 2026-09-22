@@ -2,7 +2,7 @@
 
 > Дата: 2026-08-28
 >
-> Статус: accepted
+> Статус: superseded by DEC-020 (2026-09-20)
 >
 > Реализует: [`DEC-007`](DEC-007-ui-first-presentation.md), [`RESOLUTION_SPEC`](../technical/RESOLUTION_SPEC.md) §6.1, §6.4
 >

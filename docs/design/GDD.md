@@ -1084,8 +1084,9 @@
 | [DEC-012](../decisions/DEC-012-negotiation-offer-protocol.md) | Протокол оффера, обещание доплаты и казна гильдии | accepted, поправка 2026-08-25 |
 | [DEC-013](../decisions/DEC-013-hero-capability-layer.md) | Слой способности героя: общая величина и экспертиза | accepted |
 | [DEC-014](../decisions/DEC-014-two-numbers-and-who-is-wounded.md) | Экран разбора: два числа у героя и кого ранит | accepted |
-| [DEC-015](../decisions/DEC-015-no-scene-behind-the-debrief-and-the-board.md) | За разбором и доской схематичного мира нет | accepted |
+| [DEC-015](../decisions/DEC-015-no-scene-behind-the-debrief-and-the-board.md) | За разбором и доской схематичного мира нет | superseded [DEC-020](../decisions/DEC-020-no-schematic-world-behind-the-screens.md) |
 | [DEC-016](../decisions/DEC-016-hero-combat-layer.md) | Боевой слой героя: пять атрибутов, роль, способности, перк, снаряжение | accepted |
+| [DEC-020](../decisions/DEC-020-no-schematic-world-behind-the-screens.md) | Схематичного мира за экранами нет; канвас — только доска боя | accepted |
 
 ---
 

@@ -1,10 +1,19 @@
 // @vitest-environment jsdom
-import { startSession } from '@oath-and-coin/application';
-import { LOADING_SCREEN, type ScreenModel } from '@oath-and-coin/presentation';
+import {
+  createSessionController,
+  startSession,
+  type SaveStorePort
+} from '@oath-and-coin/application';
+import { RULESET_VERSION } from '@oath-and-coin/content';
+import {
+  LOADING_SCREEN,
+  type BattleScreenModel,
+  type ScreenModel
+} from '@oath-and-coin/presentation';
 import { StrictMode, act } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { browserContentSource } from '../content-source.ts';
+import { browserContentSource, shippedContentVersion } from '../content-source.ts';
 import { mount } from '../testing/render.tsx';
 
 import { describeScene, type SceneDescription } from './scene-model.ts';
@@ -87,6 +96,66 @@ function aCampaignScreen(): ScreenModel {
     checkpoint: 'screen_normal',
     seed: 424242n
   }).screen;
+}
+
+/**
+ * The fight `battle_ready` is one press away from, at a moment where something has just
+ * landed on somebody — so the phase really moves the picture (the popup rises and fades)
+ * and a redraw between two phases is a redraw of a different scene, not of the same one.
+ *
+ * Built through the live controller rather than by hand, the arrangement
+ * `battle-screen.test.tsx` uses: the board has to be one a campaign can produce.
+ */
+function aBattleScreen(): {
+  readonly at: (applied: number) => BattleScreenModel;
+  readonly landed: number;
+} {
+  const refuse = (): never => {
+    throw new Error('This test draws a board, not a save slot.');
+  };
+  const controller = createSessionController({
+    request: {
+      content: browserContentSource(),
+      scenario: 'battle_ready',
+      checkpoint: 'battle_ready',
+      seed: 424242n
+    },
+    saves: { read: refuse, write: refuse, list: refuse, clear: refuse } as unknown as SaveStorePort,
+    now: () => '1970-01-01T00:00:00.000Z',
+    expected: { rulesetVersion: RULESET_VERSION, contentVersion: shippedContentVersion() }
+  });
+
+  void controller.start();
+
+  const contractId = controller.store.snapshot().focusedContract;
+
+  if (contractId === null) {
+    throw new Error('battle_ready left no contract focused.');
+  }
+
+  const record = controller.previewBattle(contractId, null);
+
+  if (record === null) {
+    throw new Error('battle_ready produced no battle to draw.');
+  }
+
+  const at = (applied: number): BattleScreenModel => {
+    const model = controller.battleScreen(contractId, record, applied, true);
+
+    if (model === null) {
+      throw new Error('battle_ready produced no campaign to build a board from.');
+    }
+
+    return model;
+  };
+
+  for (let applied = 1; applied < record.events.length; applied += 1) {
+    if (at(applied).effect !== null) {
+      return { at, landed: applied };
+    }
+  }
+
+  throw new Error('battle_ready produced no event that lands on anybody.');
 }
 
 /** Mounts the canvas and lets the promise chain the component keeps settle. */
@@ -201,6 +270,34 @@ describe('the renderer behind the screen', () => {
     await settle();
 
     expect(canvas?.dataset['sceneShapes']).toBeUndefined();
+  });
+});
+
+describe('the battle board', () => {
+  it('does not bring up a second renderer between frames', async () => {
+    // The invariant the browser gate cannot see. `battle-redraw.spec.ts` proves the frame on
+    // the board changed; whether the *same* renderer changed it is counted here, where the
+    // renderer is a recorder. The board is the one canvas `DEC-020` leaves on the page, and
+    // both of the feed's inputs reach it: `advance` moves the phase within an event, `apply`
+    // moves the model to the next one. Neither may cost a renderer.
+    const battle = aBattleScreen();
+    const landed = battle.at(battle.landed);
+    const next = battle.at(battle.landed + 1);
+    const tree = mount(<WorldCanvas model={landed} phase={0} />);
+    await settle();
+
+    tree.rerender(<WorldCanvas model={landed} phase={0.5} />);
+    await settle();
+    tree.rerender(<WorldCanvas model={next} phase={0} />);
+    await settle();
+
+    expect(recorder.mounted).toHaveLength(1);
+    expect(recorder.destroyed).toBe(0);
+    expect(recorder.applied).toEqual([describeScene(landed, 0.5), describeScene(next, 0)]);
+    // Three different pictures, or the two draws above would be redraws of one scene and
+    // the case would say nothing about frames.
+    expect(describeScene(landed, 0.5)).not.toEqual(describeScene(landed, 0));
+    expect(describeScene(next, 0)).not.toEqual(describeScene(landed, 0.5));
   });
 });
 
