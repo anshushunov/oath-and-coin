@@ -548,6 +548,171 @@ nav button,
   cursor: pointer;
 }
 
+/*
+ * Компоненты кита (`apps/web/src/ui/`), по правилу на компонент.
+ *
+ * Цвет, кегль и шаг здесь — только `var(--…)` из сгенерированного `ui/tokens.css`
+ * (`ADR-017`): `pnpm lint:colours` не пускает в этот файл цветовой литерал, а кегль и шаг
+ * берутся из тех же токенов, чтобы шкала была одна на весь кит. Толщины рамок в `1px` —
+ * не токен и не цвет: это край, а не шаг вёрстки.
+ *
+ * Роль чипа и полоски выбирается по `data-role`, а не по классу, — тот же атрибут читают
+ * тесты компонентов, и второго способа назвать роль нет.
+ *
+ * `Columns` своего правила не имеет: он рисует `.columns`, объявленный выше для ростера и
+ * ответов оффера, чтобы две колонки были одним правилом, а не двумя одинаковыми.
+ */
+.panel {
+  padding: var(--space-md);
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.panel-title {
+  margin: 0 0 var(--space-sm);
+  font-size: var(--type-heading);
+  font-weight: 600;
+}
+
+.stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+  white-space: nowrap;
+}
+
+.stat-caption {
+  color: var(--ink-dim);
+  font-size: var(--type-caption);
+}
+
+.stat-value {
+  font-size: var(--type-body);
+  font-weight: 600;
+}
+
+.bar-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.bar-label {
+  font-size: var(--type-caption);
+  white-space: nowrap;
+}
+
+/*
+ * Дорожка и заливка. `overflow: hidden` — вторая линия обороны за зажимом в 100% в
+ * `bar.tsx`: заливка, которую не зажали, всё равно не вылезет за скругление дорожки.
+ */
+.bar {
+  flex: 1;
+  min-width: 48px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--health-empty);
+}
+
+.bar > i {
+  display: block;
+  height: 100%;
+  background: var(--health);
+}
+
+.bar[data-role='crew'] > i {
+  background: var(--crew);
+}
+
+.bar[data-role='foe'] > i {
+  background: var(--foe);
+}
+
+/*
+ * Чип красит слово и рамку одним цветом через `currentColor`: цвет роли объявлен в
+ * правиле один раз, и рамка не может разойтись с текстом.
+ */
+.tag {
+  display: inline-block;
+  padding: 0 var(--space-xs);
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  font-size: var(--type-caption);
+  white-space: nowrap;
+}
+
+.tag[data-role='favour'] {
+  color: var(--favour);
+}
+
+.tag[data-role='against'] {
+  color: var(--against);
+}
+
+.tag[data-role='blocked'] {
+  color: var(--blocked);
+}
+
+.tag[data-role='status'] {
+  color: var(--status);
+}
+
+/* Кнопка и причина её отказа — одним рядом, причина переносится под кнопку, если тесно. */
+.press {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-xs) var(--space-sm);
+}
+
+.button {
+  padding: var(--space-xs) var(--space-md);
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.button:disabled {
+  color: var(--ink-dim);
+  cursor: default;
+}
+
+.press-reason {
+  color: var(--ink-dim);
+  font-size: var(--type-caption);
+}
+
+/*
+ * Лента — сама прокручиваемый элемент: прилипать к низу может только то, что
+ * прокручивается. `max-height` — высота по умолчанию, чтобы лента прокручивалась и вне
+ * заданной раскладки; экран, который ставит её в ограниченную по высоте ячейку, может
+ * его перекрыть.
+ */
+.feed {
+  max-height: 24rem;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.feed > li {
+  padding: var(--space-xs) 0;
+}
+
+.rail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-sm) var(--space-lg);
+}
+
 /* Diagnostics, not part of the screen: readable, and visibly not part of it. */
 [data-testid='node-api-exposure'] {
   margin: 0;
