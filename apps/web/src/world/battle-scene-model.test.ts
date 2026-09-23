@@ -66,7 +66,7 @@ function aBoard(units: readonly Partial<BattleUnitLine>[]): BattleScreenModel {
 const WORDS: ReadonlyMap<string, string> = new Map([
   ['hero.bram', 'Брам'],
   ['hero.kestrel', 'Кестрел'],
-  ['battle.role.vanguard.short', 'Фронт'],
+  ['battle.role.vanguard.short', 'Удар'],
   ['battle.role.rear.short', 'Тыл']
 ]);
 
@@ -220,7 +220,7 @@ describe('every man carries a word on his token (the owner, 2026-09-23)', () => 
       'battle-label'
     )[0]!;
 
-    expect(label.label).toBe('Фронт');
+    expect(label.label).toBe('Удар');
     expect(label.side).toBe('foe');
   });
 
@@ -386,7 +386,7 @@ describe('every man carries a word on his token (the owner, 2026-09-23)', () => 
 
     // Nobody standing in the crowded cell: the first man in the model's order has the line.
     expect(of(shapes, 'battle-label').map((label) => [label.id, label.label])).toEqual([
-      ['label:crew:0', 'Фронт'],
+      ['label:crew:0', 'Удар'],
       ['label:more:crew:1:1', '+2'],
       ['label:crew:3', 'Брам']
     ]);
