@@ -1,5 +1,5 @@
 import { FieldKeys, OfferFieldKeys, type ContractLine } from '@oath-and-coin/presentation';
-import type { ReactNode } from 'react';
+import { useLayoutEffect, useRef, type ReactNode } from 'react';
 
 import { useText } from '../../text.tsx';
 import { Rail } from '../../ui/layout.tsx';
@@ -21,14 +21,66 @@ import { Label } from '../labels.tsx';
  *
  * Laid out by the kit's `Rail` — one row, wrapping when it does not fit — inside a wrapper
  * that carries the pinning (`styles.css`, `.offer-summary`).
+ *
+ * **It tells the screen how tall it is** ({@link PINNED_HEIGHT}), because a row painted over
+ * the top of a scrolling box is invisible to the browser's own arithmetic: a control the
+ * keyboard reaches, or anything scrolled to its top edge, is brought to the edge of the box
+ * and lands under the row (WCAG 2.4.11, external review of 2026-09-23). The screen turns the
+ * number into `scroll-padding-top`, which is the box saying "this much of my top is covered".
+ * Measured rather than written into the stylesheet, because the row's height is not a
+ * constant: it wraps to a second line when the count reads "Отряд ещё не спрашивали", and on
+ * a narrower window or a longer contract name it wraps again.
+ *
+ * The screen is the row's parent, and that is not a guess about the tree: a sticky box pins
+ * against its parent, so the row stays pinned across the whole scroll only while its parent
+ * is the scrolling screen. The number is published there and taken away on unmount, so a
+ * screen that loses its row loses the padding with it.
  */
 export function OfferSummary({ children }: { readonly children: ReactNode }) {
+  const row = useRef<HTMLDivElement>(null);
+
+  // Before paint, so the first frame a player can Tab on already has the padding. A
+  // `ResizeObserver` reports its first size as soon as it starts observing, so there is no
+  // separate first measurement to keep in step with it.
+  //
+  // jsdom has no `ResizeObserver` and no layout to measure, so the component tests mount the
+  // row without one; the browser run (`offer-focus.spec.ts`) is what checks the number.
+  useLayoutEffect(() => {
+    const element = row.current;
+    const screen = element?.parentElement ?? null;
+
+    if (element === null || screen === null || typeof ResizeObserver === 'undefined') {
+      return undefined;
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      const size = entries[0]?.borderBoxSize[0];
+
+      if (size !== undefined) {
+        screen.style.setProperty(PINNED_HEIGHT, `${String(size.blockSize)}px`);
+      }
+    });
+
+    observer.observe(element, { box: 'border-box' });
+
+    return () => {
+      observer.disconnect();
+      screen.style.removeProperty(PINNED_HEIGHT);
+    };
+  }, []);
+
   return (
-    <div className="offer-summary" data-testid="offer-summary">
+    <div className="offer-summary" data-testid="offer-summary" ref={row}>
       <Rail>{children}</Rail>
     </div>
   );
 }
+
+/**
+ * The custom property the summary row publishes its height in, on the screen that scrolls
+ * under it — read by `.contract-offer`'s `scroll-padding-top` in `styles.css`.
+ */
+export const PINNED_HEIGHT = '--offer-summary-height';
 
 /**
  * The rest of the package, under the summary row in the ordinary flow (spec §4, layout
