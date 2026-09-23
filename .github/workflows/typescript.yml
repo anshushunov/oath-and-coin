@@ -306,15 +306,22 @@ jobs:
           {
             echo "### battle evidence"
             echo
-            echo "| state | scenario | texts | content | viewport | window | reachable | events |"
-            echo "|---|---|---|---|---|---|---|---|"
+            # The two canvas columns are what the board checks measured — the colour count
+            # the words are held to and the pixels of the intent colour — so a threshold can
+            # be read against its frame without downloading the artifact. `—` on the states
+            # with no board, which measure nothing.
+            echo "| state | scenario | texts | content | viewport | window | reachable | canvas colours | intent pixels | events |"
+            echo "|---|---|---|---|---|---|---|---|---|---|"
             for state in $expected; do
               jq -r '
                 "| \(.battle_screen_state) | \(.scenario) | \(.texts) "
                 + "| \(.layout.contentWidth)x\(.layout.contentHeight) "
                 + "| \(.layout.viewportWidth)x\(.layout.viewportHeight) "
                 + "| \(.layout.windowHeight) "
-                + "| \(.layout.reachableWidth)x\(.layout.reachableHeight) | \(.events) |"
+                + "| \(.layout.reachableWidth)x\(.layout.reachableHeight) "
+                + "| \(.canvas.distinct_colors // "—") "
+                + "| \(if .canvas == null then "—" else "\(.canvas.intent_pixels) (expected: \(.canvas.intent_expected))" end) "
+                + "| \(.events) |"
               ' "$root/$state/report.json"
             done
             echo

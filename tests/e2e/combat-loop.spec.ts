@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { expect, test, type ConsoleMessage, type Page, type Request } from '@playwright/test';
 
 import { expectNextFrame, sceneFrame } from './frame-digest.ts';
+import { expectToneColours } from './tone-colours.ts';
 
 /**
  * The whole of `MVP_PLAN` §6.6's finish line, pressed in a browser: a crew is composed, put
@@ -157,6 +158,11 @@ test('a crew is placed, the fight is watched, and the debrief reads back', async
   await page.getByTestId('battle-leave').click();
   await expect(page.getByTestId('after-action-screen')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId('after-action-battle')).toBeVisible();
+
+  // The debrief's feed is the journal read a second time, and `COMBAT_SPEC` §10.2.1 asks its
+  // colours of the browser here too: the component test says which span carries which role,
+  // only the page says the stylesheet paints the role on this screen as well.
+  await expectToneColours(page, 'after-action-battle');
 
   // The column §10.3 adds: what happened, beside what the forecast promised. Its presence
   // is the whole point of the section — a debrief that lost it would still read perfectly.

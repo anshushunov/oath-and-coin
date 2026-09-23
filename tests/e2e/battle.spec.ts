@@ -25,6 +25,7 @@ import { expect, test, type ConsoleMessage, type Page, type Request } from '@pla
 
 import { expectNextFrame, frameDigest, pixelsOfToken, sceneFrame } from './frame-digest.ts';
 import { expectWindowBoundedScreen, measureLayout } from './layout.ts';
+import { expectToneColours } from './tone-colours.ts';
 
 /**
  * The battle screen in a browser — five states, a frame each (`AGENTS.md` §7, `COMBAT_SPEC`
@@ -269,7 +270,7 @@ test.describe('the battle screen, in a browser', () => {
       // never reaches them is evidence of the half of the screen that was not changed.
       if (model.journal.length > 0) {
         await expectJournalRead(page, directory);
-        await expectToneColours(page);
+        await expectToneColours(page, SCREEN);
       }
 
       writeFileSync(join(directory, 'events.jsonl'), events.map((line) => `${line}\n`).join(''));
@@ -526,54 +527,6 @@ async function expectJournalRead(page: Page, directory: string): Promise<void> {
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.wheel(0, -100_000);
   await expect(lines.first()).toBeInViewport({ ratio: 1 });
-}
-
-/**
- * Every coloured span of the journal is painted the colour its role names (`DEC-018`).
- *
- * The component tests say which span carries which role; only a browser says the stylesheet
- * turns the role into the colour — a rule deleted from `styles.css` leaves every attribute in
- * place and every span in the ink of the text around it. Compared against the token read off
- * the page, never against a literal written here.
- */
-async function expectToneColours(page: Page): Promise<void> {
-  const { checked, wrong } = await page.evaluate((testId: string) => {
-    const root = document.querySelector(`[data-testid="${testId}"]`);
-
-    if (root === null) {
-      throw new Error(`The page has no [data-testid="${testId}"].`);
-    }
-
-    const tokens = getComputedStyle(document.documentElement);
-    const spans = Array.from(root.querySelectorAll('[data-tone]'));
-    const mismatched: string[] = [];
-
-    for (const span of spans) {
-      const tone = span.getAttribute('data-tone') ?? '';
-      const declared = tokens.getPropertyValue(`--${tone}`).trim();
-      const match = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/iu.exec(declared);
-
-      if (match === null) {
-        mismatched.push(`${tone}: no token --${tone} on the page`);
-        continue;
-      }
-
-      const [red, green, blue] = [match[1], match[2], match[3]].map((part) =>
-        Number.parseInt(part ?? '', 16)
-      );
-      const expected = `rgb(${String(red)}, ${String(green)}, ${String(blue)})`;
-      const actual = getComputedStyle(span).color;
-
-      if (actual !== expected) {
-        mismatched.push(`${tone}: ${actual}, expected ${expected}`);
-      }
-    }
-
-    return { checked: spans.length, wrong: mismatched };
-  }, SCREEN);
-
-  expect(checked, 'a finished fight has coloured spans in its journal').toBeGreaterThan(0);
-  expect(wrong, 'every coloured span is the colour of its role').toEqual([]);
 }
 
 /**
