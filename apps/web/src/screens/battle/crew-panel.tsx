@@ -1,4 +1,4 @@
-import { BattleFieldKeys, type BattleUnitLine } from '@oath-and-coin/presentation';
+import { BattleFieldKeys, battleUnitSide, type BattleUnitLine } from '@oath-and-coin/presentation';
 
 import { Bar } from '../../ui/bar.tsx';
 import { Panel } from '../../ui/panel.tsx';
@@ -39,17 +39,19 @@ export function CrewPanel({ units }: { readonly units: readonly BattleUnitLine[]
 /** One man: who he is, where he stands, what is left of him and what is on him. */
 function UnitRow({ unit }: { readonly unit: BattleUnitLine }) {
   const text = useText();
-  const side = unit.side === 'crew' ? 'crew' : 'foe';
+  // The word and the edge colour are the presentation's decision (`battleUnitSide`), the same
+  // rule the journal's names are coloured by: this row reads them and branches on nothing.
+  const side = battleUnitSide(unit);
 
   return (
-    <div className="unit" data-testid={`battle-unit-${unit.unit}`} data-side={side}>
+    <div className="unit" data-testid={`battle-unit-${unit.unit}`} data-side={side.tone}>
       <div className="unit-who">
         {/*
           Which side he is on, in a word and not only in a colour. Found by looking at the
           frame: the list under the board read as nine men with four names and five roles,
           and nothing on it said which of them the player had sent (`GDD` §16.6).
         */}
-        <Label text={text(side === 'crew' ? BattleFieldKeys.Crew : BattleFieldKeys.Foes)} />
+        <Label text={text(side.sideKey)} />
         {unit.displayNameKey === null ? null : <Label text={text(unit.displayNameKey)} />}
         {/* The full word for his job: only the board is short of room (owner, 2026-09-23). */}
         <Label text={text(unit.roleKey)} />

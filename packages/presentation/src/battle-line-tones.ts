@@ -1,3 +1,6 @@
+import type { BattleSide } from '@oath-and-coin/simulation';
+
+import { sideKeyOf } from './battle-journal.ts';
 import { BattleEventKeys, BattleFieldKeys } from './keys.ts';
 
 /**
@@ -98,6 +101,30 @@ export function battleLineTones(line: BattleLineWords): BattleLineTones {
     target: sideTone(line.targetSideKey),
     ...BY_KIND[line.key]
   };
+}
+
+/** The side of one row of the crew panel: the word it says and the colour its edge takes. */
+export interface BattleUnitSide {
+  readonly sideKey: string;
+  readonly tone: SideTone;
+}
+
+/**
+ * Which side a man in the crew panel is on, as a word and as a tone.
+ *
+ * The panel's edge is the journal's name channel on another element (`DEC-018`), so it is
+ * decided by the same rule and in the same place: the tone is read off the side word, exactly
+ * as a journal line's is, and a screen reads both instead of branching on `side` itself.
+ */
+export function battleUnitSide(unit: { readonly side: BattleSide }): BattleUnitSide {
+  const sideKey = sideKeyOf(unit.side);
+  const tone = sideTone(sideKey);
+
+  if (tone === null) {
+    throw new Error(`'${unit.side}' has no side word, so nothing can say whose man this is.`);
+  }
+
+  return { sideKey, tone };
 }
 
 function sideTone(sideKey: string | null): SideTone | null {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { battleLineTones, type BattleLineTones } from './battle-line-tones.ts';
+import { battleLineTones, battleUnitSide, type BattleLineTones } from './battle-line-tones.ts';
 import { BattleEventKeys, BattleFieldKeys } from './keys.ts';
 
 /**
@@ -95,5 +95,36 @@ describe('battleLineTones: which span of a journal line is coloured, and with wh
         targetSideKey: null
       })
     ).toThrow(/battle\.field\.journal/u);
+  });
+});
+
+describe('battleUnitSide: the side a row of the crew panel says and is edged with', () => {
+  // The panel's edge and the journal's name are one channel (`DEC-018`): a man is painted the
+  // same whether he is a row in the list or a name in a line. Decided here for the reason the
+  // journal's colours are — a screen reads what this layer decided and does not branch on
+  // `side` itself.
+  it('says «Отряд» and edges the row as crew for one of ours', () => {
+    expect(battleUnitSide({ side: 'crew' })).toEqual({
+      sideKey: BattleFieldKeys.Crew,
+      tone: 'crew'
+    });
+  });
+
+  it('says «Противник» and edges the row as foe for one of theirs', () => {
+    expect(battleUnitSide({ side: 'foe' })).toEqual({
+      sideKey: BattleFieldKeys.Foes,
+      tone: 'foe'
+    });
+  });
+
+  it('gives the tone the journal gives the same side word', () => {
+    // Not two rules that happen to agree: the tone is read off the word, as the journal's is.
+    for (const side of ['crew', 'foe'] as const) {
+      const { sideKey, tone } = battleUnitSide({ side });
+
+      expect(
+        battleLineTones({ key: BattleEventKeys.UnitDowned, sideKey, targetSideKey: null }).who
+      ).toBe(tone);
+    }
   });
 });

@@ -250,9 +250,11 @@ export {
 
 export {
   battleLineTones,
+  battleUnitSide,
   type AmountTone,
   type BattleLineTones,
   type BattleLineWords,
+  type BattleUnitSide,
   type DetailTone,
   type SideTone
 } from './battle-line-tones.ts';
