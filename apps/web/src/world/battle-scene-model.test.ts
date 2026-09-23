@@ -307,6 +307,90 @@ describe('every man carries a word on his token (the owner, 2026-09-23)', () => 
       expect(label.y + label.height).toBeLessThanOrEqual(mark);
     }
   });
+
+  it('names the man still standing and counts the rest when more than two share a cell', () => {
+    // A cell holds one man standing and any number down (`COMBAT_SPEC` §3.1 — `occupantOf`
+    // counts only the standing), and a side is four men: nothing in the rules stops three or
+    // four ending in one cell. Two lines is all a token has room for above its marks, so the
+    // second line counts the others instead of drawing a third word into the marks and the
+    // bar. The list beside the board names every one of them. The standing man gets the
+    // first line wherever the model put him, because he is the one the fight is still about.
+    const shapes = describeBattleScene(
+      aBoard([
+        {
+          unit: 'crew:0',
+          displayNameKey: 'hero.bram',
+          heroDefinition: 'core:bram' as never,
+          standing: false,
+          leftKey: 'battle.field.downed'
+        },
+        {
+          unit: 'crew:1',
+          displayNameKey: 'hero.kestrel',
+          heroDefinition: 'core:kestrel' as never,
+          standing: false,
+          leftKey: 'battle.field.downed'
+        },
+        {
+          unit: 'crew:2',
+          standing: false,
+          leftKey: 'battle.field.downed'
+        },
+        {
+          unit: 'crew:3',
+          roleShortKey: 'battle.role.rear.short',
+          statuses: [
+            {
+              key: 'battle.status.chilled',
+              markKey: 'battle.status.chilled.mark',
+              remainingRounds: 1
+            }
+          ]
+        }
+      ]),
+      0,
+      textOf
+    ).shapes;
+    const labels = of(shapes, 'battle-label');
+    const token = of(shapes, 'battle-token')[0]!;
+    const mark = of(shapes, 'battle-status-mark')[0]!;
+    const bar = Math.min(...of(shapes, 'battle-health').map((one) => one.y));
+
+    expect(labels.map((label) => label.label)).toEqual(['Тыл', '+3']);
+    expect(labels[0]!.id).toBe('label:crew:3');
+    expect(labels[0]!.y + labels[0]!.height).toBeLessThanOrEqual(labels[1]!.y);
+
+    for (const label of labels) {
+      expect(label.y).toBeGreaterThanOrEqual(token.y);
+      expect(label.y + label.height).toBeLessThanOrEqual(mark.y);
+      expect(label.y + label.height).toBeLessThanOrEqual(bar);
+    }
+  });
+
+  it('keeps each cell to itself when it counts: a crowded cell does not take a line from its neighbour', () => {
+    const shapes = describeBattleScene(
+      aBoard([
+        { unit: 'crew:0', standing: false, leftKey: 'battle.field.downed' },
+        { unit: 'crew:1', standing: false, leftKey: 'battle.field.downed' },
+        { unit: 'crew:2', standing: false, leftKey: 'battle.field.downed' },
+        {
+          unit: 'crew:3',
+          displayNameKey: 'hero.bram',
+          heroDefinition: 'core:bram' as never,
+          column: 2
+        }
+      ]),
+      0,
+      textOf
+    ).shapes;
+
+    // Nobody standing in the crowded cell: the first man in the model's order has the line.
+    expect(of(shapes, 'battle-label').map((label) => [label.id, label.label])).toEqual([
+      ['label:crew:0', 'Фронт'],
+      ['label:more:crew:1:1', '+2'],
+      ['label:crew:3', 'Брам']
+    ]);
+  });
 });
 
 describe('the line of intent (COMBAT_SPEC §10.2, DIRECTION §4.4)', () => {

@@ -58,13 +58,15 @@ const POPUP_SIZE = 24;
  *
  * The pitch is what keeps two men in one cell apart. Two downed men do share a cell — the
  * combat loop's own `finished.png` has Брам and Кестрел in `1:2` — and a second word drawn at
- * the first one's place would be two correct names painted into one smudge. Two fit between
- * the top of the token and the status marks; nothing reachable puts three in one cell today.
+ * the first one's place would be two correct names painted into one smudge. Two lines fit
+ * between the top of the token and the status marks, and a third would sit on them; a cell
+ * with more men than lines counts the rest on its last line (`labelsOf`).
  */
 const LABEL_SIZE = 12;
 const LABEL_TOP = 6;
 const LABEL_PITCH = LABEL_SIZE + 2;
 const LABEL_INSET = 5;
+const LABEL_LINES = 2;
 
 /** A token is the cell less four on every side, so its half-size is this. */
 const TOKEN_INSET = 4;
@@ -310,31 +312,75 @@ function unitShapes(unit: BattleUnitLine): readonly BattleShape[] {
  * of 2026-09-23, because the full word does not fit (`BattleUnitLine.roleShortKey`). The
  * branch is on a field being `null`, the one kind of branch this layer takes.
  *
- * Men who share a cell get one line each, top to bottom in the model's order, rather than one
- * spot for all of them.
+ * Men who share a cell get one line each rather than one spot for all of them — the man still
+ * standing first, the ones down after him in the model's order. A cell holds at most one man
+ * standing and any number down (`COMBAT_SPEC` §3.1), and a token has room for {@link
+ * LABEL_LINES} lines above its marks: when more share it, the first line names one of them and
+ * the last counts the rest («+3»), and the list beside the board names every one. A third word
+ * would sit on the marks and the bar, which is the smudge the lines are there to prevent.
+ *
+ * Cells are taken in the order the model first puts a man in them, so the words come out in
+ * the model's order wherever nobody shares.
  */
 function labelsOf(units: readonly BattleUnitLine[], textOf: ResolveText): readonly BattleLabel[] {
-  const taken = new Map<string, number>();
+  const cells = new Map<string, BattleUnitLine[]>();
 
-  return units.map((unit): BattleLabel => {
-    const side = unit.side === 'crew' ? 'crew' : 'foe';
-    const { x, y } = cornerOf(side, unit.row, unit.column);
-    const cell = `${side}:${String(unit.row)}:${String(unit.column)}`;
-    const below = taken.get(cell) ?? 0;
+  for (const unit of units) {
+    const key = `${sideOf(unit)}:${String(unit.row)}:${String(unit.column)}`;
+    const men = cells.get(key);
 
-    taken.set(cell, below + 1);
+    if (men === undefined) {
+      cells.set(key, [unit]);
+    } else {
+      men.push(unit);
+    }
+  }
 
-    return {
-      kind: 'battle-label',
-      id: `label:${unit.unit}`,
-      side,
-      label: textOf(unit.displayNameKey ?? unit.roleShortKey),
-      x: x + LABEL_INSET,
-      y: y + LABEL_TOP + below * LABEL_PITCH,
-      width: CELL - 2 * LABEL_INSET,
-      height: LABEL_SIZE
-    };
+  return [...cells.entries()].flatMap(([cell, men]) => {
+    const inLine = [
+      ...men.filter((unit) => unit.standing),
+      ...men.filter((unit) => !unit.standing)
+    ];
+    const named = inLine.length > LABEL_LINES ? inLine.slice(0, LABEL_LINES - 1) : inLine;
+    const labels = named.map((unit, line): BattleLabel =>
+      labelAt(unit, line, `label:${unit.unit}`, textOf(unit.displayNameKey ?? unit.roleShortKey))
+    );
+
+    if (named.length < inLine.length) {
+      // A count rather than a word: the number is the whole of it, and it needs no catalogue.
+      labels.push(
+        labelAt(
+          inLine[0]!,
+          named.length,
+          `label:more:${cell}`,
+          `+${String(inLine.length - named.length)}`
+        )
+      );
+    }
+
+    return labels;
   });
+}
+
+/** One line of words on the token of `unit`'s cell. */
+function labelAt(unit: BattleUnitLine, line: number, id: string, label: string): BattleLabel {
+  const side = sideOf(unit);
+  const { x, y } = cornerOf(side, unit.row, unit.column);
+
+  return {
+    kind: 'battle-label',
+    id,
+    side,
+    label,
+    x: x + LABEL_INSET,
+    y: y + LABEL_TOP + line * LABEL_PITCH,
+    width: CELL - 2 * LABEL_INSET,
+    height: LABEL_SIZE
+  };
+}
+
+function sideOf(unit: BattleUnitLine): 'crew' | 'foe' {
+  return unit.side === 'crew' ? 'crew' : 'foe';
 }
 
 /**
