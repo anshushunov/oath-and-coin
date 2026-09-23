@@ -11,6 +11,7 @@ import {
 } from '@oath-and-coin/content/node';
 import {
   ScreenKind,
+  blockingReasons,
   expectedSnapshot,
   readModelHash,
   snapshotHash
@@ -121,6 +122,14 @@ const PINNED_TOLERANCE = 2;
  * спрашивали", and is still far under the bound.
  */
 const SUMMARY_SHARE = 0.25;
+
+/**
+ * "What stands in the way" (`DEC-019`), under the ladder and over the squad. Measured at the
+ * top of the page, before anything is scrolled — where a player stands when a poll has just
+ * filled it — and required to be inside the window whole: a summary under the fold is one the
+ * bargainer does not see, and being seen is the one thing its place was chosen for.
+ */
+const BLOCKERS = 'offer-blockers';
 
 /** A box on the page in viewport pixels, rounded to whole ones. */
 interface Box {
@@ -335,14 +344,21 @@ test.describe('contract-offer screen, in a browser', () => {
         (await page.getByTestId('run-report').textContent()) ?? ''
       ) as PageReport;
       const renderedTexts = await collectRenderedTexts(page);
+
+      // The top of the page, before `measureLayout` wheels it to its end: the frame a player
+      // sees first, and the one in which the summary of what stands in the way has to be whole.
+      const directory = join(EVIDENCE_ROOT, scenario);
+      mkdirSync(directory, { recursive: true });
+      const screenBoxAtTop = await boxOf(page, `[data-testid="${SCREEN}"]`);
+      const blockersBoxAtTop = await boxOf(page, `[data-testid="${BLOCKERS}"]`);
+      await page.screenshot({ path: join(directory, 'top.png'), fullPage: false });
+
       const layout = await measureLayout(page, SCREEN);
       // Taken here, with the screen wheeled to its end by the measurement above — the moment
       // the summary row is for: the squad read to its last card, and the score still on top.
       const screenBox = await boxOf(page, `[data-testid="${SCREEN}"]`);
       const summaryBox = await boxOf(page, `[data-testid="${SUMMARY}"]`);
 
-      const directory = join(EVIDENCE_ROOT, scenario);
-      mkdirSync(directory, { recursive: true });
       await page.screenshot({ path: join(directory, 'screenshot.png'), fullPage: false });
       writeFileSync(join(directory, 'events.jsonl'), events.map((line) => `${line}\n`).join(''));
 
@@ -360,6 +376,8 @@ test.describe('contract-offer screen, in a browser', () => {
         layout,
         screen_box: screenBox,
         summary_box: summaryBox,
+        screen_box_at_top: screenBoxAtTop,
+        blockers_box_at_top: blockersBoxAtTop,
         events: events.length
       };
       writeFileSync(join(directory, 'report.json'), `${JSON.stringify(report, null, 2)}\n`);
@@ -371,6 +389,7 @@ test.describe('contract-offer screen, in a browser', () => {
       // missing file discovered only by the workflow's own summary step, days later, in
       // a different job.
       expect(existsSync(join(directory, 'screenshot.png')), 'screenshot.png').toBe(true);
+      expect(existsSync(join(directory, 'top.png')), 'top.png').toBe(true);
       expect(existsSync(join(directory, 'events.jsonl')), 'events.jsonl').toBe(true);
       expect(existsSync(join(directory, 'report.json')), 'report.json').toBe(true);
 
@@ -463,6 +482,26 @@ test.describe('contract-offer screen, in a browser', () => {
             `the pinned row must leave the squad most of the window: row ${describe(summaryBox)} ` +
               `in a screen ${String(layout.viewportHeight)}px tall`
           ).toBeLessThanOrEqual(layout.viewportHeight * SUMMARY_SHARE);
+        }
+      }
+
+      // What stands in the way (`DEC-019`) is drawn exactly when the model has something in
+      // the way, and then it is whole inside the window at the top of the page — under the
+      // ladder, where the player's eye is after a poll, and not under the fold.
+      if (blockingReasons(expectedModel).length === 0) {
+        expect(blockersBoxAtTop, 'nothing stands in the way, so no summary is drawn').toBeNull();
+      } else {
+        expect(blockersBoxAtTop, 'somebody refused, so the summary is drawn').not.toBeNull();
+
+        if (blockersBoxAtTop !== null && screenBoxAtTop !== null) {
+          const inside =
+            `at the top of the page the summary must be whole inside the window: summary ` +
+            `${describe(blockersBoxAtTop)} against screen ${describe(screenBoxAtTop)}`;
+
+          expect(blockersBoxAtTop.y, inside).toBeGreaterThanOrEqual(screenBoxAtTop.y);
+          expect(blockersBoxAtTop.y + blockersBoxAtTop.height, inside).toBeLessThanOrEqual(
+            screenBoxAtTop.y + screenBoxAtTop.height
+          );
         }
       }
 

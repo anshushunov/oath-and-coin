@@ -401,6 +401,13 @@ describe('the texts a correctly bound screen produces', () => {
       'text(action.offer.resolve)',
       'text(rejected.crew_not_filled)',
       'text(action.offer.settle)',
+      // "What stands in the way" (`DEC-019`), under the ladder and over the squad: nobody
+      // refused outright, so the one line is the principle's — its name, who it closed, and
+      // that it does not bargain.
+      'text(offer.blockers.title)',
+      'text(hero.decision.principle_forbids)',
+      'text(hero.core.doran.name)',
+      'text(offer.blockers.principle)',
       // Doran first: blocked by a principle, and nobody refused outright. Then the two who
       // accepted, in roster order (`heroOfferRows`).
       'text(hero.core.doran.name)',
@@ -459,6 +466,66 @@ describe('the texts a correctly bound screen produces', () => {
       'text(field.settlement.treasury_if_broken)',
       '410'
     ]);
+  });
+
+  it('prints each line of what stands in the way as reason, names, then what changes it', () => {
+    // Ilsa refuses here, where the full model has her accepting on a tie-break: the refusal
+    // branch of the summary is the one the full model does not reach. Her strongest
+    // counter-argument (the payment) is on her card and must not reach the summary.
+    const refused = createContractOfferScreenModel({
+      ...aFullModel,
+      responses: aFullModel.responses.map((response) =>
+        response.heroDefinition === 'core:ilsa'
+          ? {
+              ...response,
+              action: 'action:decline',
+              tieBreakCode: null,
+              reasons: [
+                {
+                  reasonCode: ReasonCodes.RiskTooHigh,
+                  sourceEntity: 'core:escort_the_caravan',
+                  strength: QualitativeGrade.High,
+                  sourceDisplayNameKey: null,
+                  direction: ReasonDirection.Supported
+                },
+                {
+                  reasonCode: ReasonCodes.PaymentAttractive,
+                  sourceEntity: 'core:escort_the_caravan',
+                  strength: QualitativeGrade.Low,
+                  sourceDisplayNameKey: null,
+                  direction: ReasonDirection.Opposed
+                }
+              ]
+            }
+          : response
+      )
+    });
+    const texts = expectedSnapshot(refused, everyKeyOf(refused));
+    const title = texts.indexOf('text(offer.blockers.title)');
+
+    expect(texts.slice(title, title + 7)).toEqual([
+      'text(offer.blockers.title)',
+      'text(hero.decision.risk_too_high)',
+      'text(hero.core.ilsa.name)',
+      'text(offer.blockers.outweighed_by_advance)',
+      'text(hero.decision.principle_forbids)',
+      'text(hero.core.doran.name)',
+      'text(offer.blockers.principle)'
+    ]);
+    // Under the ladder, over the squad.
+    expect(texts[title - 1]).toBe('text(action.offer.settle)');
+    expect(texts[title + 7]).toBe('text(hero.core.ilsa.name)');
+  });
+
+  it('draws no summary when nothing stands in the way', () => {
+    const nobodyRefused = createContractOfferScreenModel({
+      ...aFullModel,
+      responses: aFullModel.responses.filter((response) => response.heroDefinition !== 'core:doran')
+    });
+
+    expect(expectedSnapshot(nobodyRefused, everyKeyOf(nobodyRefused))).not.toContain(
+      'text(offer.blockers.title)'
+    );
   });
 
   it('says the squad has not been asked, rather than that nobody agreed', () => {

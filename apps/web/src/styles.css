@@ -892,6 +892,47 @@ nav button,
   align-items: stretch;
 }
 
+/*
+ * «Что мешает» (`DEC-019`) — под лестницей, над отрядом. Строка свода — три колонки: причина,
+ * кого она держит, что её меняет. Сетка, а не поток: у всех строк рычаг стоит в одной колонке,
+ * и глаз идёт по ней сверху вниз, не выискивая слово в конце каждой строки. Кант — цвет
+ * отказа, как у карточки отказавшегося: свод говорит о тех же людях.
+ */
+[data-testid='offer-blockers'] {
+  margin: 0 0 var(--space-md);
+  border-left: 3px solid var(--against);
+}
+
+.blockers {
+  display: grid;
+  grid-template-columns: minmax(10rem, max-content) minmax(6rem, max-content) minmax(0, 1fr);
+  gap: var(--space-xs) var(--space-lg);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Строка — не свой бокс, а три ячейки общей сетки (`display: contents`). */
+.blocker {
+  display: contents;
+}
+
+.blocker-heroes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-sm);
+}
+
+.blocker-remedy {
+  font-weight: 600;
+}
+
+/* Рычага нет — репутация, настроение, принцип: слово приглушено, но стоит на своём месте. */
+.blocker[data-blocker-lever='none'] > .blocker-remedy {
+  color: var(--ink-dim);
+  font-weight: 400;
+}
+
 /* Карточка героя с его ответом; кант — цвет того, где он стоит. */
 .hero-row {
   display: flex;

@@ -188,9 +188,13 @@ jobs:
           # back with the board's own component (contract-loop UI plan, tasks 8 and 10).
           expected="screen_loading screen_empty screen_error screen_incomplete screen_normal screen_draft screen_locked screen_settlement_due"
 
+          # Two frames per state: `top.png` before anything is scrolled — where "what stands in
+          # the way" (DEC-019) has to be whole inside the window — and `screenshot.png` at the
+          # end of the scroll, where the summary row has to still be pinned.
           missing=""
           for state in $expected; do
             [ -f "$root/$state/report.json" ] || missing="$missing $state"
+            [ -f "$root/$state/top.png" ] || missing="$missing $state/top"
             [ -f "$root/$state/screenshot.png" ] || missing="$missing $state/frame"
             [ -f "$root/$state/events.jsonl" ] || missing="$missing $state/events"
           done

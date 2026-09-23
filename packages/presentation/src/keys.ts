@@ -368,6 +368,34 @@ export const LEVER_DISABLED_KEYS: readonly string[] = Object.freeze(
 );
 
 /**
+ * The offer screen's "what stands in the way" summary (`DEC-019`): its heading, and the word
+ * each line prints for what changes that reason.
+ *
+ * Finer than `OfferLeverId`, and on purpose: the advance, the promise and the method
+ * share one row of controls and one refusal (`Terms`), but a player told "the terms" has three
+ * things to try where the table knows which one. `OfferLeverId` says where on the screen the
+ * lever is; these say which lever it is.
+ *
+ * `OutweighedByAdvance` is the owner's decision of 2026-09-20: a risk is a property of the
+ * contract and no lever removes it, but money does outweigh it, and "cannot be helped" would
+ * lie to the one bargaining. `Principle` is the line a red line gets — no strength to outweigh
+ * (`DEC-010`).
+ */
+export const BlockerKeys = Object.freeze({
+  Title: 'offer.blockers.title',
+  Advance: 'offer.blockers.advance',
+  Promise: 'offer.blockers.promise',
+  Crew: 'offer.blockers.crew',
+  Method: 'offer.blockers.method',
+  OutweighedByAdvance: 'offer.blockers.outweighed_by_advance',
+  NotThisPackage: 'offer.blockers.not_this_package',
+  Reputation: 'offer.blockers.reputation',
+  Principle: 'offer.blockers.principle'
+});
+
+export const BLOCKER_KEYS: readonly string[] = Object.freeze(Object.values(BlockerKeys));
+
+/**
  * What each of the six protocol commands is called on a control (`NEGOTIATION_SPEC` §3.1,
  * `RESOLUTION_SPEC` §3.1) — `compose` → `action.offer.compose`.
  *

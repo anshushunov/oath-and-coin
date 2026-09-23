@@ -2,6 +2,7 @@ import { Sha256, utf8Bytes } from '@oath-and-coin/simulation';
 
 import {
   AfterActionFieldKeys,
+  BlockerKeys,
   ContractBoardFieldKeys,
   FieldKeys,
   OfferFieldKeys,
@@ -38,6 +39,7 @@ import type { ContractBoardScreenModel } from './contract-board-screen-model.ts'
 import { ScreenKind } from './screen-kind.ts';
 import type { ScreenModel } from './screen-model.ts';
 import { ScreenState } from './screen-state.ts';
+import { blockingReasons } from './blocking-reasons.ts';
 import { heroOfferRows } from './hero-offer-row.ts';
 import { qualitativeKey } from './qualitative-scale.ts';
 
@@ -63,12 +65,14 @@ import { qualitativeKey } from './qualitative-scale.ts';
  * own unit tests (`hero-offer-row.test.ts`) and by the literal list of texts in
  * `rendered-ui-snapshot.test.ts`, neither of which calls the sort to learn what it should
  * have said. What this hash still holds is everything *inside* a row — which texts a row
- * owes and in what order it draws them.
+ * owes and in what order it draws them. The "what stands in the way" summary is the same
+ * exception for the same reason: its lines are {@link blockingReasons}'s, shared by both
+ * sides, and held by `blocking-reasons.test.ts`, which does not call it to learn the answer.
  *
  * The order promised is the order a depth-first walk visits — title, state, error, then
  * the pinned summary row (contract, count, treasury), then the package band under it
- * (levers, promise, the ladder of commands), then one row per hero with his own answer on
- * it, refusals first (`heroOfferRows`). Not "the order
+ * (levers, promise, the ladder of commands), then what stands in the way (`DEC-019`), then
+ * one row per hero with his own answer on it, refusals first (`heroOfferRows`). Not "the order
  * a reader encounters it": the screen lays the rows out in two columns, so a person reads
  * them across while the walk still visits one row whole before the next. That distinction
  * matters because this list *is* the second hash — if it described what a reader sees, a
@@ -377,6 +381,23 @@ function contractOfferSnapshot(
 
     if (available.disabledReasonKey !== null) {
       resolve(available.disabledReasonKey);
+    }
+  }
+
+  // What stands in the way (`DEC-019`), under the ladder and over the squad: a heading, then
+  // per line the reason, whom it held back and what changes it. The lines and their order are
+  // `blockingReasons`'s, exactly as the rows' are `heroOfferRows`'s below — the one exception
+  // this hash already names, and `blocking-reasons.test.ts` holds it without calling it. No
+  // heading over an empty list: a branch on the list being empty, never on what is in it.
+  const blockers = blockingReasons(model);
+
+  if (blockers.length > 0) {
+    resolve(BlockerKeys.Title);
+
+    for (const blocker of blockers) {
+      resolve(blocker.reasonCode);
+      blocker.heroDisplayNameKeys.forEach(resolve);
+      resolve(blocker.remedyKey);
     }
   }
 

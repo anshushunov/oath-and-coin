@@ -37,6 +37,8 @@ export {
   BATTLE_STATE_KEYS,
   BATTLE_STATUS_KEYS,
   BATTLE_TITLE_KEY,
+  BLOCKER_KEYS,
+  BlockerKeys,
   BattleControlKeys,
   BattleEventKeys,
   BattleFieldKeys,
@@ -199,6 +201,13 @@ export {
 export { OfferLeverId, leverOfRefusal } from './refused-lever.ts';
 
 export { HERO_STANCES, HeroStance, heroOfferRows, type HeroOfferRow } from './hero-offer-row.ts';
+
+export {
+  LEVER_OF_REASON,
+  blockingReasons,
+  type BlockingReason,
+  type Remedy
+} from './blocking-reasons.ts';
 
 export { describeReadModel, readModelHash, type ScreenModel } from './screen-model.ts';
 

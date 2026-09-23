@@ -24,6 +24,8 @@ import {
   expectedSnapshot,
   failedScreen,
   heroOfferRows,
+  blockingReasons,
+  BlockerKeys,
   snapshotHash,
   type AvailableAction,
   type ContentId,
@@ -1913,6 +1915,67 @@ describe('the squad, one card per hero with his own answer', () => {
     for (const row of answered) {
       expect(chipOf(row)).not.toBe(textOf(OfferFieldKeys.Unanswered));
     }
+  });
+});
+
+describe('what stands in the way (DEC-019)', () => {
+  // Ilsa refuses on this run for the risk and for the insult of the pay — a refusal with
+  // reasons, which is the branch the summary is for.
+  it('prints one line per reason with whom it holds back and what changes it', () => {
+    const { screen } = sessionFor('screen_normal', 'screen_normal', SEED);
+    const container = renderScreen(screen);
+    const summary = control(container, 'offer-blockers');
+    const lines = [...summary.querySelectorAll('[data-testid="blocker"]')] as HTMLElement[];
+    const expected = blockingReasons(screen);
+
+    // The premise: this run has something in the way, so the check below is about something.
+    expect(expected.length).toBeGreaterThan(0);
+    expect(collectRenderedTexts(summary)[0]).toBe(textOf(BlockerKeys.Title));
+    expect(lines.map((line) => collectRenderedTexts(line))).toEqual(
+      expected.map((line) => [
+        textOf(line.reasonCode),
+        ...line.heroDisplayNameKeys.map(textOf),
+        textOf(line.remedyKey)
+      ])
+    );
+    // Where the lever stands, for a reader who wants to go to it — never a colour or a word
+    // worked out on this side.
+    expect(lines.map((line) => line.dataset['blockerLever'])).toEqual(
+      expected.map((line) => line.leverId ?? 'none')
+    );
+  });
+
+  it('stands under the ladder of commands and over the squad', () => {
+    const { screen } = sessionFor('screen_normal', 'screen_normal', SEED);
+    const container = renderScreen(screen);
+    const summary = control(container, 'offer-blockers');
+    const band = control(container, 'package-band');
+    const firstRow = control(container, 'hero-row');
+
+    expect(band.contains(summary)).toBe(false);
+    expect(band.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(
+      summary.compareDocumentPosition(firstRow) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
+  it('puts a principle on its own line, with no lever under it', () => {
+    const { screen } = sessionFor('two_principles_blocked', 'final', SEED);
+    const container = renderScreen(screen);
+    const lines = [
+      ...control(container, 'offer-blockers').querySelectorAll('[data-testid="blocker"]')
+    ] as HTMLElement[];
+    const last = lines.at(-1)!;
+
+    expect(collectRenderedTexts(last).at(-1)).toBe(textOf(BlockerKeys.Principle));
+    expect(last.dataset['blockerLever']).toBe('none');
+  });
+
+  it('draws nothing when nothing stands in the way', () => {
+    const { screen } = sessionFor('screen_draft', 'screen_draft', SEED);
+
+    expect(blockingReasons(screen)).toEqual([]);
+    expect(renderScreen(screen).querySelector('[data-testid="offer-blockers"]')).toBeNull();
   });
 });
 

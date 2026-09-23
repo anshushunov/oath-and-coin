@@ -5,6 +5,7 @@ import {
   ScreenKind,
   ScreenState,
   TreasuryFieldKeys,
+  blockingReasons,
   errorKey,
   heroOfferRows,
   leverOfRefusal,
@@ -23,6 +24,7 @@ import { Columns } from '../../ui/layout.tsx';
 import { Captioned, Label } from '../labels.tsx';
 
 import { ActionsBlock } from './actions-block.tsx';
+import { BlockersBlock } from './blockers-block.tsx';
 import { ContractBlock } from './contract-block.tsx';
 import { FormationBlock } from './formation-block.tsx';
 import { HeroRow } from './hero-row.tsx';
@@ -68,7 +70,8 @@ import { SettlementBlock } from './settlement-block.tsx';
  * **Layout Б of the kit's relayout (spec §4).** The package is across the top: a narrow
  * summary row — contract, count, treasury — pinned while the page scrolls, and under it, in
  * the ordinary flow, the band of levers, promise and the ladder of commands
- * (`package-band.tsx`; the owner's decision of 2026-09-23). The squad below them is one card
+ * (`package-band.tsx`; the owner's decision of 2026-09-23). Under the ladder, when somebody
+ * refused, "what stands in the way" (`blockers-block.tsx`, `DEC-019`). The squad below them is one card
  * per hero with his own answer on it, two cards to a line. The pairing and the
  * "refusals first" order are `heroOfferRows`'s: both are decisions on the *value* of an
  * answer, which this component is not allowed to make, so it only maps the list it is
@@ -148,6 +151,7 @@ export function ContractOfferScreen({
     canRecompose(model) &&
     isEditing(form.draft, model);
   const hasSummary = model.contract !== null || showTreasury;
+  const blockers = blockingReasons(model);
   const hasBand =
     model.offer !== null || model.promiseTerms !== null || model.availableActions.length > 0;
 
@@ -221,6 +225,11 @@ export function ContractOfferScreen({
           />
         </PackageBand>
       ) : null}
+
+      {/* What stands in the way (`DEC-019`), under the ladder and over the squad — why there is
+          `BlockersBlock`'s own remark. The lines are `blockingReasons`'s; the one branch here
+          is on the list being empty, never on what is in it. */}
+      {blockers.length === 0 ? null : <BlockersBlock blockers={blockers} />}
 
       {/* The squad, one card per hero with his own answer on it, refusals first — the
           order and the pairing are `heroOfferRows`'s, not this component's. */}
