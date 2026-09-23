@@ -103,3 +103,27 @@ const EMPTY_SCENE: SceneDescription = Object.freeze({
   height: MIN_SCENE_HEIGHT,
   shapes: Object.freeze([])
 });
+
+/**
+ * Refuses a description whose shapes cannot be told apart.
+ *
+ * Every statement anyone makes about this scene names a shape by its id, so a repeated
+ * one makes those statements ambiguous: "the token for `core:bram` is where it should
+ * be" is satisfied by either of two tokens, and a roster showing one hero twice would
+ * pass it. Loud here rather than quietly ambiguous later — the same reason `useText`
+ * throws on a missing key instead of rendering the key.
+ */
+function requireDistinctIds(shapes: readonly SceneShape[]): void {
+  const seen = new Set<string>();
+
+  for (const shape of shapes) {
+    if (seen.has(shape.id)) {
+      throw new Error(
+        `Scene shape id '${shape.id}' appears twice: a scene cannot draw two things as one, ` +
+          'and the model that produced it names the same entity in two places.'
+      );
+    }
+
+    seen.add(shape.id);
+  }
+}

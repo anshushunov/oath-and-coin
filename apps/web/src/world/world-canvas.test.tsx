@@ -221,7 +221,7 @@ describe('the renderer behind the screen', () => {
 
     expect(recorder.mounted).toHaveLength(1);
 
-    tree.rerender(<WorldCanvas model={campaign} />);
+    tree.rerender(<WorldCanvas model={campaign} textOf={echo} />);
     await settle();
 
     // The claim in full: one renderer for the life of the page, and the new scene reached
@@ -229,7 +229,7 @@ describe('the renderer behind the screen', () => {
     // browser on this very step.
     expect(recorder.mounted).toHaveLength(1);
     expect(recorder.destroyed).toBe(0);
-    expect(recorder.applied).toEqual([describeScene(campaign)]);
+    expect(recorder.applied).toEqual([describeScene(campaign, 0, echo)]);
   });
 
   it('draws the scene it was mounted with exactly once', async () => {
@@ -263,11 +263,13 @@ describe('the renderer behind the screen', () => {
       String(describeScene(LOADING_SCREEN).shapes.length)
     );
 
-    tree.rerender(<WorldCanvas model={campaign} />);
+    tree.rerender(<WorldCanvas model={campaign} textOf={echo} />);
     await settle();
 
-    expect(canvas?.dataset['sceneShapes']).toBe(String(describeScene(campaign).shapes.length));
-    expect(describeScene(campaign).shapes.length).not.toBe(
+    expect(canvas?.dataset['sceneShapes']).toBe(
+      String(describeScene(campaign, 0, echo).shapes.length)
+    );
+    expect(describeScene(campaign, 0, echo).shapes.length).not.toBe(
       describeScene(LOADING_SCREEN).shapes.length
     );
 
@@ -284,19 +286,19 @@ describe('the frame counter a browser check waits on', () => {
     // after a press a wait on it is satisfied at once — by the frame drawn *before* the press.
     // Review found three such waits in the browser suites. A number that moves with every
     // draw is what "the renderer has drawn what the press produced" can be waited on with.
-    const campaign = aCampaignScreen();
+    const campaign = aBoardOnScreen();
     const tree = await mountCanvas(LOADING_SCREEN);
     const canvas = tree.container.querySelector('canvas');
 
     expect(canvas?.dataset['sceneFrame']).toBe('1');
 
-    tree.rerender(<WorldCanvas model={campaign} />);
+    tree.rerender(<WorldCanvas model={campaign} textOf={echo} />);
     await settle();
 
     expect(canvas?.dataset['sceneFrame']).toBe('2');
 
     // The same model again is not a frame: nothing was drawn, so nothing is counted.
-    tree.rerender(<WorldCanvas model={campaign} />);
+    tree.rerender(<WorldCanvas model={campaign} textOf={echo} />);
     await settle();
 
     expect(canvas?.dataset['sceneFrame']).toBe('2');
@@ -376,12 +378,12 @@ describe('a model that arrives before the renderer has finished coming up', () =
     expect(recorder.mounted).toHaveLength(1);
     expect(recorder.applied).toEqual([]);
 
-    tree.rerender(<WorldCanvas model={campaign} />);
+    tree.rerender(<WorldCanvas model={campaign} textOf={echo} />);
     await settle();
     await release();
 
     expect(recorder.mounted).toHaveLength(1);
-    expect(recorder.applied).toEqual([describeScene(campaign)]);
+    expect(recorder.applied).toEqual([describeScene(campaign, 0, echo)]);
   });
 
   it('is released rather than left drawing when the page goes first', async () => {
@@ -433,7 +435,7 @@ describe('a step that fails', () => {
     recorder.applyThrows = refused;
 
     const unhandled = await unhandledDuring(async () => {
-      tree.rerender(<WorldCanvas model={campaign} />);
+      tree.rerender(<WorldCanvas model={campaign} textOf={echo} />);
       await settle();
 
       tree.unmount();
