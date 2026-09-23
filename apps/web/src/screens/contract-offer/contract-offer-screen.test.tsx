@@ -506,17 +506,33 @@ describe('the draft block, the promise, the treasury and the settlement', () => 
     expect(texts).toContain(textOf(PromiseTermsKeys.Breach));
   });
 
-  it('shows the treasury the deal would leave, next to the promise', () => {
-    const container = renderScreen(draftModel());
-    const forecast = container.querySelector('[data-testid="treasury-forecast"]');
+  // Owner's decision of 2026-09-23 (spec §4): only a narrow summary row is pinned — the
+  // contract, the treasury the deal would leave and the count with its mark — and the levers
+  // and the ladder flow under it. Pinned is the stylesheet's to do and a browser's to measure
+  // (`tests/e2e/contract-offer.spec.ts`); which blocks are in the row is this file's.
+  it('puts the contract, the count and the treasury in the summary row, and nothing else', () => {
+    const model = draftModel();
+    const container = renderScreen(model);
+    const summary = control(container, 'offer-summary');
+    const band = control(container, 'package-band');
 
-    expect(forecast).not.toBeNull();
-    expect(forecast?.textContent).toContain('375');
+    expect(collectRenderedTexts(summary)).toContain(textOf(model.contract!.displayNameKey));
+    expect(summary.querySelector('[data-testid="offer-tally"]')).not.toBeNull();
+    expect(summary.querySelector('[data-testid="treasury-forecast"]')?.textContent).toContain(
+      '375'
+    );
 
-    // "Next to the promise": the forecast and the promise's own two sentences share
-    // one container, so a reader sees the price and the predicate it prices without
-    // having to look elsewhere on the screen.
-    expect(forecast?.closest('.price')?.textContent).toContain(textOf(PromiseTermsKeys.Fulfil));
+    // The levers and the ladder are the band's, in the ordinary flow under the row.
+    expect(summary.querySelector('[data-lever]')).toBeNull();
+    expect(summary.contains(actionButton(container, OfferAction.Compose))).toBe(false);
+    expect(band.querySelector('[data-lever]')).not.toBeNull();
+    expect(band.contains(actionButton(container, OfferAction.Compose))).toBe(true);
+    expect(band.querySelector('[data-testid="offer-tally"]')).toBeNull();
+
+    // The promise stays with the levers that set its bonus; the forecast that prices it is
+    // in the pinned row, so it is on screen wherever the promise is read.
+    expect(collectRenderedTexts(band)).toContain(textOf(PromiseTermsKeys.Fulfil));
+    expect(collectRenderedTexts(summary)).not.toContain(textOf(PromiseTermsKeys.Fulfil));
   });
 
   it('renders no settlement block when the model carries no settlement to act on', () => {

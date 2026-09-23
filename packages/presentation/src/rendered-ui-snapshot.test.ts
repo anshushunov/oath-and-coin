@@ -319,7 +319,7 @@ describe('the texts a correctly bound screen produces', () => {
     expect(snapshotHash(loadingTexts)).not.toBe(snapshotHash(emptyTexts));
   });
 
-  it('walks title, state, error, the package band, then one row per hero', () => {
+  it('walks title, state, error, the summary row, the package band, then one row per hero', () => {
     const texts = expectedSnapshot(aFullModel, everyKeyOf(aFullModel));
 
     // Every optional branch of the projection is in this list, which is what makes it
@@ -340,6 +340,12 @@ describe('the texts a correctly bound screen produces', () => {
       '2',
       'text(field.contract.required_crew)',
       '2',
+      // The treasury closes the pinned summary row (owner's decision of 2026-09-23): what
+      // the guild has and what the deal would leave, before the levers that move it.
+      'text(field.treasury)',
+      '400',
+      'text(field.treasury_forecast)',
+      '390',
       'text(field.offer.version)',
       '3',
       'text(offer.phase.locked)',
@@ -382,10 +388,6 @@ describe('the texts a correctly bound screen produces', () => {
       '10',
       'text(field.offer.lock_commitment)',
       '50',
-      'text(field.treasury)',
-      '400',
-      'text(field.treasury_forecast)',
-      '390',
       'text(offer.promise.fulfil)',
       'text(offer.promise.breach)',
       'text(field.offer.promised_bonus)',
@@ -574,17 +576,19 @@ describe('the texts a correctly bound screen produces', () => {
     const texts = expectedSnapshot(aFullModel, everyKeyOf(aFullModel));
     const literals = texts.filter((text) => !text.startsWith('text('));
 
-    // Payment, required crew, accepted count, then the offer's own version, advance and
-    // promised bonus, how many seats the crew must fill, the money the budget still
-    // allows and the two ceilings it puts on the levers, the shortfall this package has
-    // fallen into, its lock commitment, the treasury and its forecast, the promise's own
-    // bonus (shown again beside its two predicates) and the settlement's promised bonus
+    // Payment, accepted count, required crew, the treasury and its forecast (the summary
+    // row), then the offer's own version, advance and promised bonus, how many seats the
+    // crew must fill, the money the budget still allows and the two ceilings it puts on the
+    // levers, the shortfall this package has fallen into, its lock commitment, the promise's
+    // own bonus (shown again beside its two predicates) and the settlement's promised bonus
     // and its two treasury outcomes — the values spec keeps as numbers on purpose. Any
     // extra literal is a key or an identifier that escaped resolution.
     expect(literals).toEqual([
       '40',
       '2',
       '2',
+      '400',
+      '390',
       '3',
       '15',
       '20',
@@ -594,8 +598,6 @@ describe('the texts a correctly bound screen produces', () => {
       '10',
       '10',
       '50',
-      '400',
-      '390',
       '20',
       '20',
       '390',

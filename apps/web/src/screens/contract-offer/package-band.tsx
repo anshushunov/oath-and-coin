@@ -2,19 +2,38 @@ import { FieldKeys, OfferFieldKeys, type ContractLine } from '@oath-and-coin/pre
 import type { ReactNode } from 'react';
 
 import { useText } from '../../text.tsx';
+import { Rail } from '../../ui/layout.tsx';
 import { Stat } from '../../ui/stat.tsx';
 import { Tag } from '../../ui/tag.tsx';
 
 import { Label } from '../labels.tsx';
 
 /**
- * The package as one band across the top of the screen (spec §4, layout **Б**): the
- * contract, the count, the five levers, the treasury with what the deal would leave, and
- * the ladder of commands. The spec asks for it sticky, so that a player reading the squad
- * further down still has the terms he is bargaining with in front of him. It is sticky only
- * in a window 1000 px tall or more: in the 1280×800 window it would leave the squad one row
- * of cards, and there it scrolls away for now — a departure from the spec awaiting the
- * owner's decision (`styles.css`, `.package-band`, gives the numbers).
+ * The summary row, pinned to the top of the screen while the squad scrolls under it (spec
+ * §4, owner's decision of 2026-09-23): the contract, the count with its "being edited" mark,
+ * and the treasury with what the deal would leave. A player reading the squad further down
+ * keeps the score of the negotiation and its price in front of him.
+ *
+ * Only this row is pinned, and on purpose: the whole package band pinned took more than half
+ * of a 1280×800 window and left the squad one row of cards. The levers and the ladder are
+ * {@link PackageBand}, under it in the ordinary flow — they are what a player works with
+ * before he reads the squad, not while.
+ *
+ * Laid out by the kit's `Rail` — one row, wrapping when it does not fit — inside a wrapper
+ * that carries the pinning (`styles.css`, `.offer-summary`).
+ */
+export function OfferSummary({ children }: { readonly children: ReactNode }) {
+  return (
+    <div className="offer-summary" data-testid="offer-summary">
+      <Rail>{children}</Rail>
+    </div>
+  );
+}
+
+/**
+ * The rest of the package, under the summary row in the ordinary flow (spec §4, layout
+ * **Б**): the five levers, the promise, and the ladder of commands. It scrolls away with the
+ * page; the summary row above it does not.
  *
  * A container and nothing else — each block inside is the one the screen already had —
  * because what moved is *where* the package is, not what it says.
@@ -29,7 +48,7 @@ export function PackageBand({ children }: { readonly children: ReactNode }) {
 
 /**
  * How many said yes, against how many the job needs — the number the whole negotiation is
- * about, drawn large (spec §4.2).
+ * about, drawn large in the summary row (spec §4.2).
  *
  * Three states, and only one of them is the model's:
  *

@@ -28,7 +28,7 @@ import { FormationBlock } from './formation-block.tsx';
 import { HeroRow } from './hero-row.tsx';
 import { OfferBlock } from './offer-block.tsx';
 import type { OfferForm } from './offer-form.ts';
-import { PackageBand, Tally } from './package-band.tsx';
+import { OfferSummary, PackageBand, Tally } from './package-band.tsx';
 import type { Refusal } from './refusal.tsx';
 import { SettlementBlock } from './settlement-block.tsx';
 
@@ -65,11 +65,11 @@ import { SettlementBlock } from './settlement-block.tsx';
  * document-order walk, so a row laying a caption and its value out side by side
  * visits them in the same order a column would.
  *
- * **Layout Б of the kit's relayout (spec §4).** The package is a band across the top —
- * contract, count, levers, treasury, the ladder of commands; sticky only in a window 1000 px
- * tall or more, a departure from the spec awaiting the owner (`package-band.tsx`) — and the
- * squad below it
- * is one card per hero with his own answer on it, two cards to a line. The pairing and the
+ * **Layout Б of the kit's relayout (spec §4).** The package is across the top: a narrow
+ * summary row — contract, count, treasury — pinned while the page scrolls, and under it, in
+ * the ordinary flow, the band of levers, promise and the ladder of commands
+ * (`package-band.tsx`; the owner's decision of 2026-09-23). The squad below them is one card
+ * per hero with his own answer on it, two cards to a line. The pairing and the
  * "refusals first" order are `heroOfferRows`'s: both are decisions on the *value* of an
  * answer, which this component is not allowed to make, so it only maps the list it is
  * handed. The squad used to be two columns — every card, then every answer — joined by name
@@ -147,12 +147,9 @@ export function ContractOfferScreen({
     form.refusal?.action !== OfferAction.Compose &&
     canRecompose(model) &&
     isEditing(form.draft, model);
+  const hasSummary = model.contract !== null || showTreasury;
   const hasBand =
-    model.contract !== null ||
-    model.offer !== null ||
-    showTreasury ||
-    model.promiseTerms !== null ||
-    model.availableActions.length > 0;
+    model.offer !== null || model.promiseTerms !== null || model.availableActions.length > 0;
 
   return (
     <section className="contract-offer" data-testid="contract-offer-screen">
@@ -161,13 +158,31 @@ export function ContractOfferScreen({
 
       {model.errorCode === null ? null : <Label text={text(errorKey(model.errorCode))} />}
 
-      {hasBand ? (
-        <PackageBand>
+      {hasSummary ? (
+        <OfferSummary>
           {model.contract === null ? null : <ContractBlock contract={model.contract} />}
           {model.contract === null ? null : (
             <Tally contract={model.contract} answered={model.responses.length > 0} stale={stale} />
           )}
 
+          {/* The treasury and what the deal would leave (`NEGOTIATION_SPEC` §5.1's own "цена
+              уступки, видна до подтверждения"): in the pinned row, so the price of every
+              term below it — the promise included — is on screen wherever that term is. */}
+          {showTreasury ? (
+            <div className="row treasury">
+              <Captioned captionKey={TreasuryFieldKeys.Treasury} value={String(model.treasury)} />
+              <Captioned
+                captionKey={TreasuryFieldKeys.Forecast}
+                value={String(model.treasuryForecast)}
+                testId="treasury-forecast"
+              />
+            </div>
+          ) : null}
+        </OfferSummary>
+      ) : null}
+
+      {hasBand ? (
+        <PackageBand>
           {model.offer === null ? null : (
             <OfferBlock
               offer={model.offer}
@@ -182,38 +197,17 @@ export function ContractOfferScreen({
             />
           )}
 
-          {/* Treasury and its forecast sit beside the promise (`NEGOTIATION_SPEC` §5.1's
-              own "цена уступки, видна до подтверждения"), in the one container both this
-              and `PromiseTermsBlock` render into — the treasury the deal would leave is
-              the price of the very promise stated beside it. */}
-          {showTreasury || model.promiseTerms !== null ? (
-            <div className="row price">
-              {showTreasury ? (
-                <>
-                  <Captioned
-                    captionKey={TreasuryFieldKeys.Treasury}
-                    value={String(model.treasury)}
-                  />
-                  <Captioned
-                    captionKey={TreasuryFieldKeys.Forecast}
-                    value={String(model.treasuryForecast)}
-                    testId="treasury-forecast"
-                  />
-                </>
-              ) : null}
-
-              {model.promiseTerms === null ? null : (
-                <div className="promise">
-                  <Label text={text(model.promiseTerms.fulfilKey)} />
-                  <Label text={text(model.promiseTerms.breachKey)} />
-                  <Captioned
-                    captionKey={OfferFieldKeys.PromisedBonus}
-                    value={String(model.promiseTerms.bonus)}
-                  />
-                </div>
-              )}
+          {/* The promise, under the levers that set its bonus. */}
+          {model.promiseTerms === null ? null : (
+            <div className="promise">
+              <Label text={text(model.promiseTerms.fulfilKey)} />
+              <Label text={text(model.promiseTerms.breachKey)} />
+              <Captioned
+                captionKey={OfferFieldKeys.PromisedBonus}
+                value={String(model.promiseTerms.bonus)}
+              />
             </div>
-          ) : null}
+          )}
 
           <ActionsBlock
             actions={model.availableActions}

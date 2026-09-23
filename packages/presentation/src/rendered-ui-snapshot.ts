@@ -66,8 +66,9 @@ import { qualitativeKey } from './qualitative-scale.ts';
  * owes and in what order it draws them.
  *
  * The order promised is the order a depth-first walk visits — title, state, error, then
- * the package band (contract, count, levers, treasury, the ladder of commands), then one
- * row per hero with his own answer on it, refusals first (`heroOfferRows`). Not "the order
+ * the pinned summary row (contract, count, treasury), then the package band under it
+ * (levers, promise, the ladder of commands), then one row per hero with his own answer on
+ * it, refusals first (`heroOfferRows`). Not "the order
  * a reader encounters it": the screen lays the rows out in two columns, so a person reads
  * them across while the walk still visits one row whole before the next. That distinction
  * matters because this list *is* the second hash — if it described what a reader sees, a
@@ -324,7 +325,7 @@ function contractOfferSnapshot(
       contract.tagKeys.forEach(resolve);
     }
 
-    // The count of the package band: how many said yes, against how many the job needs.
+    // The count of the summary row: how many said yes, against how many the job needs.
     // Nobody answering the package as it stands is its own sentence rather than a `0` —
     // a branch on the list being empty, never on what is in it (spec §4.2).
     if (model.responses.length === 0) {
@@ -338,12 +339,10 @@ function contractOfferSnapshot(
     texts.push(String(contract.requiredCrew));
   }
 
-  const heroDisplayNameKeyOf = displayNameKeyResolver(model.roster);
-
-  if (model.offer !== null) {
-    resolveOffer(model.offer, resolve, texts, heroDisplayNameKeyOf);
-  }
-
+  // The treasury closes the summary row, before the levers that move it: the row is what
+  // stays pinned while the squad scrolls (owner's decision of 2026-09-23, spec §4), and
+  // what the deal would leave is one of the three things it holds.
+  //
   // Not gated on `contract !== null`: `NEGOTIATION_SPEC` §5.1 treats the treasury as a
   // campaign-wide fact, one `GDD` §16.3 already keeps a plain number, and it reads on
   // `Empty` exactly as it reads on `Normal` — a campaign with nothing to offer still
@@ -357,6 +356,12 @@ function contractOfferSnapshot(
     texts.push(String(model.treasury));
     resolve(TreasuryFieldKeys.Forecast);
     texts.push(String(model.treasuryForecast));
+  }
+
+  const heroDisplayNameKeyOf = displayNameKeyResolver(model.roster);
+
+  if (model.offer !== null) {
+    resolveOffer(model.offer, resolve, texts, heroDisplayNameKeyOf);
   }
 
   if (model.promiseTerms !== null) {

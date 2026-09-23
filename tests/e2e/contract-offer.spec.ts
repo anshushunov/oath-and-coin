@@ -101,6 +101,35 @@ const SCREEN = 'contract-offer-screen';
  */
 const CANVAS = 'world-canvas';
 
+/** The narrow row pinned to the top of the screen while the squad scrolls (spec §4). */
+const SUMMARY = 'offer-summary';
+
+/**
+ * How far below the screen box's top edge a pinned row may stand: the screen's own 1px
+ * border and a pixel of rounding. A row that scrolled away stands hundreds of pixels above
+ * it; one pinned with a gap over it (`top` not offsetting the screen's padding) stands 12
+ * below it, with the squad showing through the gap.
+ */
+const PINNED_TOLERANCE = 2;
+
+/**
+ * The most of the screen the pinned row may take. The owner's decision is that the squad
+ * keeps most of the window; the band that was pinned before it took 426 of 691px (0.62). A
+ * quarter leaves the squad three quarters of the window. Measured on 2026-09-23 by this run
+ * (`summary_box` in each state's `report.json`): 59px of a 689px screen on every state with a
+ * contract, one line; the row wraps to a second line when the count reads "Отряд ещё не
+ * спрашивали", and is still far under the bound.
+ */
+const SUMMARY_SHARE = 0.25;
+
+/** A box on the page in viewport pixels, rounded to whole ones. */
+interface Box {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
 /**
  * The five scenarios whose manifests declare the five states `AGENTS.md` §7 requires,
  * plus the four negotiation-phase scenarios `DEC-008` Task 21 adds — `draft`, `locked`,
@@ -307,6 +336,10 @@ test.describe('contract-offer screen, in a browser', () => {
       ) as PageReport;
       const renderedTexts = await collectRenderedTexts(page);
       const layout = await measureLayout(page, SCREEN);
+      // Taken here, with the screen wheeled to its end by the measurement above — the moment
+      // the summary row is for: the squad read to its last card, and the score still on top.
+      const screenBox = await boxOf(page, `[data-testid="${SCREEN}"]`);
+      const summaryBox = await boxOf(page, `[data-testid="${SUMMARY}"]`);
 
       const directory = join(EVIDENCE_ROOT, scenario);
       mkdirSync(directory, { recursive: true });
@@ -325,6 +358,8 @@ test.describe('contract-offer screen, in a browser', () => {
         canonical_hash: reported.canonical_hash,
         texts: renderedTexts.length,
         layout,
+        screen_box: screenBox,
+        summary_box: summaryBox,
         events: events.length
       };
       writeFileSync(join(directory, 'report.json'), `${JSON.stringify(report, null, 2)}\n`);
@@ -406,6 +441,30 @@ test.describe('contract-offer screen, in a browser', () => {
         layout.reachableWidth,
         'content past the right edge must be reachable by scrolling'
       ).toBeGreaterThanOrEqual(layout.contentWidth);
+
+      // The summary row is pinned, and it is narrow (spec §4, owner's decision of
+      // 2026-09-23). Asked of every state with a contract that overflows — the states where
+      // there is somewhere to scroll to — at the end of the scroll, where a row that was
+      // merely at the top of the page would have left the window long ago.
+      if (expectedModel.contract !== null && overflows) {
+        expect(summaryBox, 'a screen with a contract draws the summary row').not.toBeNull();
+
+        if (summaryBox !== null && screenBox !== null) {
+          // Both bounds, each with the boxes in its message: a row that scrolled away stands
+          // above the screen's top edge, one pinned with a gap stands below it.
+          const pinned =
+            `scrolled to the end, the summary row must still stand at the top of the screen: ` +
+            `row ${describe(summaryBox)} against screen ${describe(screenBox)}`;
+
+          expect(summaryBox.y, pinned).toBeGreaterThanOrEqual(screenBox.y);
+          expect(summaryBox.y - screenBox.y, pinned).toBeLessThanOrEqual(PINNED_TOLERANCE);
+          expect(
+            summaryBox.height,
+            `the pinned row must leave the squad most of the window: row ${describe(summaryBox)} ` +
+              `in a screen ${String(layout.viewportHeight)}px tall`
+          ).toBeLessThanOrEqual(layout.viewportHeight * SUMMARY_SHARE);
+        }
+      }
 
       // A page that logged an error rendered the right texts by accident at best. Last,
       // so the specific comparisons above name the failure first when both go.
@@ -543,6 +602,35 @@ async function collectRenderedTexts(page: Page): Promise<readonly string[]> {
 
     return texts;
   }, SCREEN);
+}
+
+/**
+ * The visible box of the first element `selector` matches, or `null` when the page has no
+ * such element — a screen with no contract draws no summary row, and the report says so
+ * rather than the run waiting for one. The same measurement `offer-refusal.spec.ts` takes:
+ * viewport-relative, after layout and after scrolling.
+ */
+async function boxOf(page: Page, selector: string): Promise<Box | null> {
+  const element = page.locator(selector).first();
+
+  if ((await element.count()) === 0) {
+    return null;
+  }
+
+  const box = await element.boundingBox();
+
+  return box === null
+    ? null
+    : {
+        x: Math.round(box.x),
+        y: Math.round(box.y),
+        width: Math.round(box.width),
+        height: Math.round(box.height)
+      };
+}
+
+function describe(box: Box): string {
+  return `[x ${String(box.x)}, y ${String(box.y)}, w ${String(box.width)}, h ${String(box.height)}]`;
 }
 
 function readJson<T>(path: string): T {
