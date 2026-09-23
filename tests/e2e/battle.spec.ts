@@ -383,6 +383,18 @@ test.describe('what the controls actually do', () => {
 const WORDS_ON_THE_BOARD = 200;
 
 /**
+ * How many distinct colours each half of the board is at least — the crew's on the left, the
+ * foes' on the right — so that *both* sides are seen to carry words.
+ *
+ * The count over the whole frame cannot say it: review of Task 7 asked what a regression that
+ * labelled the crew alone would do, and a mutant doing exactly that measured 660 on the
+ * finished frame where the full board measures 802 — far above the 200 either way. Per half,
+ * that mutant leaves the foes' side with no text on it at all. Held at the spike's one word
+ * (126) less a margin, because the fonts a CI runner rasterises with are not this machine's.
+ */
+const WORDS_ON_EACH_SIDE = 100;
+
+/**
  * How many pixels of exactly the intent colour a drawn line of intent is at least.
  *
  * The line is three logical pixels wide and runs from one token's edge to another's — even
@@ -406,7 +418,13 @@ const LINE_OF_INTENT = 20;
 async function expectBoardDrawn(
   page: Page,
   model: BattleScreenModel
-): Promise<{ distinct_colors: number; intent_pixels: number; intent_expected: boolean }> {
+): Promise<{
+  distinct_colors: number;
+  crew_side_colors: number;
+  foe_side_colors: number;
+  intent_pixels: number;
+  intent_expected: boolean;
+}> {
   const digest = await frameDigest(page);
   const intentPixels = await pixelsOfToken(page, '--intent');
   const aimed = model.intent !== null && model.intent.targetUnit !== null;
@@ -415,6 +433,14 @@ async function expectBoardDrawn(
     digest.distinctColors,
     'the tokens must carry their words — a board of rectangles alone is a handful of colours'
   ).toBeGreaterThan(WORDS_ON_THE_BOARD);
+  expect(
+    digest.leftDistinctColors,
+    'the crew’s side of the board must carry its words'
+  ).toBeGreaterThan(WORDS_ON_EACH_SIDE);
+  expect(
+    digest.rightDistinctColors,
+    'the foes’ side of the board must carry its words — the short word for each job'
+  ).toBeGreaterThan(WORDS_ON_EACH_SIDE);
 
   // The finished fight is the frame this check is taken on for the line, and it has to have
   // one to be about: a finished fight whose last intent was aimed at nobody would leave the
@@ -431,6 +457,8 @@ async function expectBoardDrawn(
 
   return {
     distinct_colors: digest.distinctColors,
+    crew_side_colors: digest.leftDistinctColors,
+    foe_side_colors: digest.rightDistinctColors,
     intent_pixels: intentPixels,
     intent_expected: aimed
   };

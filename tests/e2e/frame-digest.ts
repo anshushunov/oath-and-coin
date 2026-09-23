@@ -17,6 +17,17 @@ export interface FrameDigest {
   /** FNV-1a over every byte of the frame — equal frames, equal digest. */
   readonly pixels: string;
   readonly distinctColors: number;
+  /**
+   * The same count over the left half of the frame and over the right half.
+   *
+   * On the battle board that is the crew's side and the foes' (`cornerOf` in
+   * `battle-scene-model.ts`), and the halves are what let a check say *both* sides carry
+   * words: a count over the whole frame is as far above its threshold with only the crew
+   * labelled as with everybody (a mutant labelling the crew alone measured 660 on the frame
+   * where the full board measures 802).
+   */
+  readonly leftDistinctColors: number;
+  readonly rightDistinctColors: number;
 }
 
 /**
@@ -168,6 +179,9 @@ export async function frameDigest(page: Page): Promise<FrameDigest> {
 
     const { data } = context.getImageData(0, 0, probe.width, probe.height);
     const colours = new Set<number>();
+    const left = new Set<number>();
+    const right = new Set<number>();
+    const middle = probe.width / 2;
     let hash = 0x811c9dc5;
 
     for (let offset = 0; offset < data.length; offset += 4) {
@@ -178,6 +192,7 @@ export async function frameDigest(page: Page): Promise<FrameDigest> {
         (data[offset + 3] ?? 0);
 
       colours.add(pixel);
+      ((offset / 4) % probe.width < middle ? left : right).add(pixel);
       hash = Math.imul(hash ^ (pixel & 0xff), 0x01000193);
       hash = Math.imul(hash ^ ((pixel >>> 8) & 0xff), 0x01000193);
       hash = Math.imul(hash ^ ((pixel >>> 16) & 0xff), 0x01000193);
@@ -187,7 +202,9 @@ export async function frameDigest(page: Page): Promise<FrameDigest> {
     return {
       shapes: Number(canvas.dataset['sceneShapes'] ?? '-1'),
       pixels: (hash >>> 0).toString(16).padStart(8, '0'),
-      distinctColors: colours.size
+      distinctColors: colours.size,
+      leftDistinctColors: left.size,
+      rightDistinctColors: right.size
     };
   }, 'world-canvas');
 }
