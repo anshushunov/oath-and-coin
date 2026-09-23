@@ -287,7 +287,7 @@ describe('the page when the campaign itself is on the battle screen', () => {
       screen: 'contract-offer',
       contract: null
     });
-    const { container } = mount(<App createController={() => gated.controller} />);
+    const { container, unmount } = mount(<App createController={() => gated.controller} />);
 
     await act(async () => {
       await gated.finish();
@@ -319,6 +319,13 @@ describe('the page when the campaign itself is on the battle screen', () => {
     expect(screen.screen === ScreenKind.Battle ? screen.units.length : 0).toBeGreaterThan(0);
     expect(reportIn(container).campaign_screen).toBe(ScreenKind.Battle);
     expect(container.querySelectorAll('[data-testid="world-canvas"]')).toHaveLength(1);
+
+    // Taken down before the test ends: the replay plays on a timer, and a board left running
+    // updates after the environment is gone — Vitest reports that as an unhandled error on a
+    // loaded full run, and nowhere when this file runs alone.
+    act(() => {
+      unmount();
+    });
   });
 });
 
