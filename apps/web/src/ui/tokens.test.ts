@@ -23,6 +23,36 @@ describe('токены интерфейса', () => {
     expect(others).not.toContain(Colour.intent);
   });
 
+  // WCAG 1.4.3: обычный текст — не меньше 4,5:1 к фону, на котором он стоит. Внешнее ревью
+  // нашло имена в журнале цветом отряда и противника на 4,28:1 и 4,16:1: проверка «цвет
+  // совпадает с токеном» (`tests/e2e/tone-colours.ts`) такой дефект пропускает по
+  // построению — токен и был неправильным. Роли, которыми красят текст, выписаны списком:
+  // заливки и рамки (`cell`, `edge`, `healthEmpty`…) текстом не бывают.
+  it('каждый цвет текста читается на обоих фонах экранов', () => {
+    const TEXT_ROLES = [
+      'ink',
+      'inkDim',
+      'danger',
+      'favour',
+      'against',
+      'blocked',
+      'status',
+      'harm',
+      'aid',
+      'crew',
+      'foe'
+    ] as const;
+
+    for (const role of TEXT_ROLES) {
+      for (const background of ['panel', 'surface'] as const) {
+        expect(
+          contrast(Colour[role], Colour[background]),
+          `${role} на ${background}`
+        ).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
   // Канвас Pixi принимает число, CSS принимает строку. Одно значение, два вида —
   // и это единственное место, где перевод вообще происходит.
   //
@@ -32,9 +62,9 @@ describe('токены интерфейса', () => {
   // числа через `hex()` нельзя — тогда тест сверял бы функцию с самой собой.
   it('переводит цвет в число, которое понимает Pixi', () => {
     // eslint-disable-next-line no-restricted-syntax -- ожидаемое значение для hex(), см. выше
-    expect(hex('foe')).toBe(0xc8_5a_4a);
+    expect(hex('foe')).toBe(0xcc_66_57);
     // eslint-disable-next-line no-restricted-syntax -- ожидаемое значение для hex(), см. выше
-    expect(hex('crew')).toBe(0x4a_7f_c8);
+    expect(hex('crew')).toBe(0x53_85_cb);
   });
 
   it('объявляет каждую роль переменной CSS', () => {
@@ -119,3 +149,23 @@ describe('токены интерфейса', () => {
     expect(Space.md).toBe(12);
   });
 });
+
+/** Отношение контраста по WCAG 2.2: относительная яркость в линейном sRGB. */
+function contrast(first: string, second: string): number {
+  const [lighter, darker] = [luminance(first), luminance(second)].sort((a, b) => b - a) as [
+    number,
+    number
+  ];
+
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+function luminance(colour: string): number {
+  const [red, green, blue] = [1, 3, 5].map((start) => {
+    const channel = Number.parseInt(colour.slice(start, start + 2), 16) / 255;
+
+    return channel <= 0.040_45 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+  }) as [number, number, number];
+
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+}
