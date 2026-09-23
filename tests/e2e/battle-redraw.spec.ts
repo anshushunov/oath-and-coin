@@ -65,8 +65,8 @@ test('боевая доска перерисовывается, а не стои
   expect(after.distinctColors, 'кадр не должен быть залит одним цветом').toBeGreaterThan(1);
   expect(errors, 'страница не должна ронять ошибок').toEqual([]);
 
-  // Улика `AGENTS.md` §7, как у `live-command.spec.ts`, которому этот гейт наследует:
-  // зелёный статус теста без отпечатков не даёт читателю CI ничего проверить руками.
+  // Улика `AGENTS.md` §7: зелёный статус теста без отпечатков не даёт читателю CI ничего
+  // проверить руками. Шаг «Summarise the battle-redraw evidence» в CI ждёт все три файла.
   await page.screenshot({ path: join(EVIDENCE, 'screenshot.png'), fullPage: false });
   writeFileSync(join(EVIDENCE, 'events.jsonl'), errors.map((line) => `${line}\n`).join(''));
   writeFileSync(

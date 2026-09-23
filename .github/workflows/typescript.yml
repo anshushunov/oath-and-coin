@@ -347,15 +347,13 @@ jobs:
             echo
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
-      # The live-command evidence stood here — a command pressed on the offer and the offer's
-      # canvas proven redrawn. The canvas left the offer (`DEC-020`), the suite left with it,
-      # and the redraw proof stands on the battle board (`tests/e2e/battle-redraw.spec.ts`),
-      # whose verdict is its own assertions rather than an evidence directory.
-
-      # The live-redraw gate on the battle board (`DEC-020`): the successor of the
-      # live-command run above, which stands on the offer's canvas and leaves with it.
-      # Named here for the same reason — a run that stops producing evidence has to fail
-      # a stage, and a green test status alone leaves nothing a reader can check by hand.
+      # The live-redraw gate on the battle board (`DEC-020`): the one browser check that a
+      # canvas redraws after the model changes, rather than standing as a dead first frame.
+      # The battle board is the only canvas on the page since the offer lost its own, so
+      # the check stands there. Its verdict is the run's own assertions; the evidence is
+      # listed here for the reason the lists above are — a run that stops producing it has
+      # to fail a stage, and a green test status alone leaves nothing a reader can check by
+      # hand.
       - name: Summarise the battle-redraw evidence
         if: always() && steps.e2e.outcome != 'skipped'
         shell: bash
