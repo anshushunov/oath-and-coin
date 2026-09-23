@@ -11,8 +11,8 @@ import { ReasonDirection } from './screen-state.ts';
  * prints for it.
  *
  * `leverId` is `null` exactly when nothing in this package changes the reason — the guild's
- * reputation, a hero's mood, a principle. `remedyKey` is never `null`: "this package does not
- * change it" is a line the player reads, not a blank.
+ * reputation, a hero's mood, a trait on a tag the contract carries itself. `remedyKey` is never
+ * `null`: "this package does not change it" is a line the player reads, not a blank.
  */
 export interface Remedy {
   readonly leverId: OfferLeverId | null;
@@ -22,6 +22,10 @@ export interface Remedy {
 /**
  * One line of the offer screen's "what stands in the way" (`DEC-019`): a reason that held at
  * least one hero back, every hero it held, and what changes it.
+ *
+ * One line per reason *and remedy*: an aversion that fired on the contract's own tag for one
+ * hero and on the chosen method for another is two lines, because one lever cannot be true of
+ * both.
  */
 export interface BlockingReason {
   /** The engine's own code — itself the localization key of the reason's name. */
@@ -52,11 +56,12 @@ const TERMS = OfferLeverId.Terms;
  * trust) are never reached by the summary — on a refusal only the negative factors support
  * the answer — and are here for totality, not for the screen.
  *
- * Two rows are true only for some sources of a tag, and `DEC-019` names both rather than
- * hiding them: an aversion is changed by the method only when it fired on the chosen method's
- * tag, and a principle *is* changed by the method when it did. The model does not carry
- * which part of `effectiveTags` a trait matched, so the table follows the spec's text and the
- * question is the owner's.
+ * **The three rows that read a tag are the rows for the contract's own tag.** A conviction, an
+ * aversion and a principle read `effectiveTags` — the contract's authored tags plus the chosen
+ * method — and of those the package moves only the method. So this table answers for a tag
+ * the contract carries itself ("not changed by this package", "cannot be bargained with"), and
+ * {@link LEVER_ON_CHOSEN_METHOD} for the method's tag; which of the two applies is the
+ * factory's fact on the line (`ReasonLine.onChosenMethod`, `ResponseLine.blockedOnChosenMethod`).
  */
 export const LEVER_OF_REASON: Readonly<Record<ReasonCode, Remedy | null>> = Object.freeze({
   [ReasonCodes.PaymentAttractive]: { leverId: TERMS, remedyKey: BlockerKeys.Advance },
@@ -64,8 +69,8 @@ export const LEVER_OF_REASON: Readonly<Record<ReasonCode, Remedy | null>> = Obje
   [ReasonCodes.PromiseOfABonus]: { leverId: TERMS, remedyKey: BlockerKeys.Promise },
   [ReasonCodes.StandsWithComrade]: { leverId: OfferLeverId.Crew, remedyKey: BlockerKeys.Crew },
   [ReasonCodes.WillNotWorkWith]: { leverId: OfferLeverId.Crew, remedyKey: BlockerKeys.Crew },
-  [ReasonCodes.PersonalConviction]: { leverId: TERMS, remedyKey: BlockerKeys.Method },
-  [ReasonCodes.PersonalAversion]: { leverId: TERMS, remedyKey: BlockerKeys.Method },
+  [ReasonCodes.PersonalConviction]: { leverId: null, remedyKey: BlockerKeys.NotThisPackage },
+  [ReasonCodes.PersonalAversion]: { leverId: null, remedyKey: BlockerKeys.NotThisPackage },
   // The owner's decision of 2026-09-20: "outweighed by the advance", not "cannot be helped".
   [ReasonCodes.RiskTooHigh]: { leverId: TERMS, remedyKey: BlockerKeys.OutweighedByAdvance },
   [ReasonCodes.PrincipleForbids]: { leverId: null, remedyKey: BlockerKeys.Principle },
@@ -76,19 +81,34 @@ export const LEVER_OF_REASON: Readonly<Record<ReasonCode, Remedy | null>> = Obje
 });
 
 /**
+ * What changes a trait that fired on the tag the chosen method adds: the method. One remedy
+ * for all three codes that read a tag — another method takes the tag away, whatever the trait
+ * did with it (`DEC-019`; `method_choice_flips_the_key_hero` opens a hero closed by
+ * `core:refuses_deception` exactly so).
+ */
+export const LEVER_ON_CHOSEN_METHOD: Remedy = Object.freeze({
+  leverId: TERMS,
+  remedyKey: BlockerKeys.Method
+});
+
+/**
  * The "what stands in the way" summary of the offer screen (`DEC-019`), one line per reason.
  *
  * **Only what supports a refusal.** A refused hero's reasons with `direction: Supported`; the
  * strongest counter-argument a response also carries is a reason *for* the contract, and
  * printing it under "what stands in the way" would be the lie `DEC-004` forbids. An accepting
- * hero adds nothing. A hero closed by a principle adds his name to one last line of its own —
- * a red line has no strength to outweigh.
+ * hero adds nothing. A hero closed by a principle adds his name to a principle line at the
+ * end — a red line has no strength to outweigh.
+ *
+ * **The lever follows the tag's source.** A reason on the chosen method's tag gets
+ * {@link LEVER_ON_CHOSEN_METHOD}, any other its row of the table; a principle likewise, by
+ * `blockedOnChosenMethod`. Same code, different remedy — different line.
  *
  * **Order.** Lines in the order a reason is first met walking the squad as the screen draws it
  * (`heroOfferRows`: refusals first, roster order inside) and each answer's reasons strongest
- * first; names in that same order, each once per line. The principle line closes the list.
- * No sort of its own: the order is the squad's, so the summary and the cards under it read
- * the same way down.
+ * first; names in that same order, each once per line. The principle lines close the list, in
+ * the order their first hero is met. No sort of its own: the order is the squad's, so the
+ * summary and the cards under it read the same way down.
  *
  * Takes the two lists it reads, like `heroOfferRows`, rather than the whole model.
  *
@@ -100,26 +120,29 @@ export function blockingReasons(source: {
   readonly roster: readonly HeroCard[];
   readonly responses: readonly ResponseLine[];
 }): readonly BlockingReason[] {
-  const lines = new Map<string, { readonly remedy: Remedy; readonly heroes: string[] }>();
-  const blocked: string[] = [];
-
-  const add = (reasonCode: string, remedy: Remedy, hero: string): void => {
-    const line = lines.get(reasonCode) ?? { remedy, heroes: [] };
-
-    if (!line.heroes.includes(hero)) {
-      line.heroes.push(hero);
-    }
-
-    lines.set(reasonCode, line);
-  };
+  const reasons = new SummaryLines();
+  const principles = new SummaryLines();
 
   for (const row of heroOfferRows(source)) {
-    if (row.stance === HeroStance.Blocked) {
-      blocked.push(row.hero.displayNameKey);
+    if (row.response === null) {
       continue;
     }
 
-    if (row.stance !== HeroStance.Refused || row.response === null) {
+    const hero = row.hero.displayNameKey;
+
+    if (row.stance === HeroStance.Blocked) {
+      const remedy = row.response.blockedOnChosenMethod
+        ? LEVER_ON_CHOSEN_METHOD
+        : remedyOf(ReasonCodes.PrincipleForbids);
+
+      if (remedy !== null) {
+        principles.add(ReasonCodes.PrincipleForbids, remedy, hero);
+      }
+
+      continue;
+    }
+
+    if (row.stance !== HeroStance.Refused) {
       continue;
     }
 
@@ -128,34 +151,44 @@ export function blockingReasons(source: {
         continue;
       }
 
-      const remedy = remedyOf(reason.reasonCode);
+      const remedy = reason.onChosenMethod ? LEVER_ON_CHOSEN_METHOD : remedyOf(reason.reasonCode);
 
       if (remedy !== null) {
-        add(reason.reasonCode, remedy, row.hero.displayNameKey);
+        reasons.add(reason.reasonCode, remedy, hero);
       }
     }
   }
 
-  const principle = LEVER_OF_REASON[ReasonCodes.PrincipleForbids];
+  return [...reasons.list(), ...principles.list()];
+}
 
-  return [
-    ...[...lines].map(([reasonCode, { remedy, heroes }]) => ({
+/** Lines of the summary keyed by reason and remedy, in the order each is first met. */
+class SummaryLines {
+  readonly #lines = new Map<
+    string,
+    { readonly reasonCode: string; readonly remedy: Remedy; readonly heroes: string[] }
+  >();
+
+  add(reasonCode: string, remedy: Remedy, hero: string): void {
+    // A reason code is `[a-z_.]` and a key the same, so a space cannot occur in either.
+    const key = `${reasonCode} ${remedy.remedyKey}`;
+    const line = this.#lines.get(key) ?? { reasonCode, remedy, heroes: [] };
+
+    if (!line.heroes.includes(hero)) {
+      line.heroes.push(hero);
+    }
+
+    this.#lines.set(key, line);
+  }
+
+  list(): BlockingReason[] {
+    return [...this.#lines.values()].map(({ reasonCode, remedy, heroes }) => ({
       reasonCode,
       leverId: remedy.leverId,
       remedyKey: remedy.remedyKey,
       heroDisplayNameKeys: heroes
-    })),
-    ...(blocked.length === 0 || principle === null
-      ? []
-      : [
-          {
-            reasonCode: ReasonCodes.PrincipleForbids,
-            leverId: principle.leverId,
-            remedyKey: principle.remedyKey,
-            heroDisplayNameKeys: blocked
-          }
-        ])
-  ];
+    }));
+  }
 }
 
 function remedyOf(reasonCode: string): Remedy | null {

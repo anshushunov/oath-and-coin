@@ -1971,6 +1971,25 @@ describe('what stands in the way (DEC-019)', () => {
     expect(last.dataset['blockerLever']).toBe('none');
   });
 
+  // Vela is closed by `core:refuses_deception` on `method:deception`, the method this package
+  // chose — and the first compose of the same run shows "В открытую" opens her. The line
+  // sends the player to the method, lit like any line with a lever.
+  it('sends a principle on the chosen method to the method', () => {
+    const { screen } = sessionFor('method_choice_flips_the_key_hero', 'final', SEED);
+    const container = renderScreen(screen);
+    const lines = [
+      ...control(container, 'offer-blockers').querySelectorAll('[data-testid="blocker"]')
+    ] as HTMLElement[];
+    const last = lines.at(-1)!;
+
+    expect(collectRenderedTexts(last)).toEqual([
+      textOf('hero.decision.principle_forbids'),
+      textOf('hero.core.vela.name'),
+      textOf(BlockerKeys.Method)
+    ]);
+    expect(last.dataset['blockerLever']).toBe(OfferLeverId.Terms);
+  });
+
   it('draws nothing when nothing stands in the way', () => {
     const { screen } = sessionFor('screen_draft', 'screen_draft', SEED);
 

@@ -7,8 +7,9 @@ import type { HeroCard, ResponseLine } from './contract-offer-screen-model.ts';
  *
  * Four, in the order the rows are drawn. `Blocked` is its own stance and not a kind of
  * `Refused`, although both answer `decline`: a principle that closed the decision has no
- * lever under it, and a player must read "will not do this at all" apart from "the price
- * is wrong".
+ * weight a term could outweigh, and a player must read "will not do this at all" apart from
+ * "the price is wrong". (When the red line stands on the chosen method's tag, another method
+ * removes the tag, not the line — `DEC-019`.)
  */
 export const HeroStance = Object.freeze({
   Refused: 'refused',

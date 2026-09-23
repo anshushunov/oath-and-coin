@@ -127,7 +127,8 @@ const aFullModel = createContractOfferScreenModel({
           sourceEntity: 'core:loyal_to_the_merchant_guild',
           strength: QualitativeGrade.Low,
           sourceDisplayNameKey: 'trait.core.loyal_to_the_merchant_guild.name',
-          direction: ReasonDirection.Supported
+          direction: ReasonDirection.Supported,
+          onChosenMethod: false
         },
         {
           // Source deliberately unnamed: the contract is already on the screen under
@@ -136,11 +137,13 @@ const aFullModel = createContractOfferScreenModel({
           sourceEntity: 'core:escort_the_caravan',
           strength: QualitativeGrade.High,
           sourceDisplayNameKey: null,
-          direction: ReasonDirection.Opposed
+          direction: ReasonDirection.Opposed,
+          onChosenMethod: false
         }
       ],
       blockedByEntity: null,
       blockedByDisplayNameKey: null,
+      blockedOnChosenMethod: false,
       tieBreakCode: null,
       wavered: true
     },
@@ -151,6 +154,7 @@ const aFullModel = createContractOfferScreenModel({
       reasons: [],
       blockedByEntity: 'core:will_not_serve_slavers',
       blockedByDisplayNameKey: 'trait.core.will_not_serve_slavers.name',
+      blockedOnChosenMethod: false,
       tieBreakCode: null,
       wavered: false
     },
@@ -165,6 +169,7 @@ const aFullModel = createContractOfferScreenModel({
       reasons: [],
       blockedByEntity: null,
       blockedByDisplayNameKey: null,
+      blockedOnChosenMethod: false,
       tieBreakCode: ReasonCodes.NoReasonToRefuse,
       wavered: false
     }
@@ -486,14 +491,16 @@ describe('the texts a correctly bound screen produces', () => {
                   sourceEntity: 'core:escort_the_caravan',
                   strength: QualitativeGrade.High,
                   sourceDisplayNameKey: null,
-                  direction: ReasonDirection.Supported
+                  direction: ReasonDirection.Supported,
+                  onChosenMethod: false
                 },
                 {
                   reasonCode: ReasonCodes.PaymentAttractive,
                   sourceEntity: 'core:escort_the_caravan',
                   strength: QualitativeGrade.Low,
                   sourceDisplayNameKey: null,
-                  direction: ReasonDirection.Opposed
+                  direction: ReasonDirection.Opposed,
+                  onChosenMethod: false
                 }
               ]
             }

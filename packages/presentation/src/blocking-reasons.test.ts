@@ -2,7 +2,7 @@ import { Actions, REASON_CODES, ReasonCodes } from '@oath-and-coin/simulation';
 import { describe, expect, it } from 'vitest';
 
 import { BlockerKeys } from './keys.ts';
-import { LEVER_OF_REASON, blockingReasons } from './blocking-reasons.ts';
+import { LEVER_OF_REASON, LEVER_ON_CHOSEN_METHOD, blockingReasons } from './blocking-reasons.ts';
 import { QualitativeGrade } from './qualitative-scale.ts';
 import { OfferLeverId } from './refused-lever.ts';
 import { ReasonDirection } from './screen-state.ts';
@@ -14,14 +14,20 @@ const hero = (definition: string) =>
 
 const reason = (
   reasonCode: string,
-  direction: ReasonDirection = ReasonDirection.Supported
+  direction: ReasonDirection = ReasonDirection.Supported,
+  onChosenMethod = false
 ): ReasonLine => ({
   reasonCode,
   sourceEntity: 'core:escort_the_caravan',
   strength: QualitativeGrade.Moderate,
   sourceDisplayNameKey: null,
-  direction
+  direction,
+  onChosenMethod
 });
+
+/** Неприязнь, сработавшая на тег выбранного метода, а не на тег самого контракта. */
+const aversionOnChosenMethod = (): ReasonLine =>
+  reason(ReasonCodes.PersonalAversion, ReasonDirection.Supported, true);
 
 const refusedBecause = (heroDefinition: string, reasons: readonly ReasonLine[]) =>
   aResponseLine({
@@ -39,13 +45,14 @@ const acceptedBecause = (heroDefinition: string, reasons: readonly ReasonLine[])
     reasons
   });
 
-const blockedByPrinciple = (heroDefinition: string) =>
+const blockedByPrinciple = (heroDefinition: string, blockedOnChosenMethod = false) =>
   aResponseLine({
     heroDefinition,
     heroDisplayNameKey: `hero.${heroDefinition.replace(':', '_')}.name`,
     action: Actions.Decline,
     blockedByEntity: 'core:refuses_deception',
-    blockedByDisplayNameKey: 'trait.core.refuses_deception.name'
+    blockedByDisplayNameKey: 'trait.core.refuses_deception.name',
+    blockedOnChosenMethod
   });
 
 describe('LEVER_OF_REASON', () => {
@@ -73,6 +80,30 @@ describe('LEVER_OF_REASON', () => {
 
   it('tie-break в свод не попадает', () => {
     expect(LEVER_OF_REASON[ReasonCodes.NoReasonToRefuse]).toBeNull();
+  });
+
+  // Ревью DEC-019: склонность и принцип читают `effectiveTags`, и из них пакет двигает только
+  // метод. Таблица — для тега, который несёт сам контракт; его этим пакетом не убрать.
+  it('склонность и принцип на теге самого контракта этим пакетом не меняются', () => {
+    expect(LEVER_OF_REASON[ReasonCodes.PersonalAversion]).toEqual({
+      leverId: null,
+      remedyKey: BlockerKeys.NotThisPackage
+    });
+    expect(LEVER_OF_REASON[ReasonCodes.PersonalConviction]).toEqual({
+      leverId: null,
+      remedyKey: BlockerKeys.NotThisPackage
+    });
+    expect(LEVER_OF_REASON[ReasonCodes.PrincipleForbids]).toEqual({
+      leverId: null,
+      remedyKey: BlockerKeys.Principle
+    });
+  });
+
+  it('на теге выбранного метода их меняет метод', () => {
+    expect(LEVER_ON_CHOSEN_METHOD).toEqual({
+      leverId: OfferLeverId.Terms,
+      remedyKey: BlockerKeys.Method
+    });
   });
 });
 
@@ -127,10 +158,63 @@ describe('blockingReasons', () => {
       },
       {
         reasonCode: ReasonCodes.PersonalAversion,
-        leverId: OfferLeverId.Terms,
-        remedyKey: BlockerKeys.Method,
+        leverId: null,
+        remedyKey: BlockerKeys.NotThisPackage,
         heroDisplayNameKeys: ['hero.core_bram.name']
       }
+    ]);
+  });
+
+  // Мира, Вела и Зара боятся нежити, а `target:undead` контракт несёт сам: метод этого не
+  // снимет, и свод не должен посылать игрока его менять.
+  it('неприязнь к тегу самого контракта не отправляет к методу', () => {
+    const reasons = blockingReasons({
+      roster: [hero('core:mira')],
+      responses: [refusedBecause('core:mira', [reason(ReasonCodes.PersonalAversion)])]
+    });
+
+    expect(reasons).toEqual([
+      {
+        reasonCode: ReasonCodes.PersonalAversion,
+        leverId: null,
+        remedyKey: BlockerKeys.NotThisPackage,
+        heroDisplayNameKeys: ['hero.core_mira.name']
+      }
+    ]);
+  });
+
+  it('неприязнь к тегу выбранного метода снимается методом', () => {
+    const reasons = blockingReasons({
+      roster: [hero('core:vela')],
+      responses: [refusedBecause('core:vela', [aversionOnChosenMethod()])]
+    });
+
+    expect(reasons).toEqual([
+      {
+        reasonCode: ReasonCodes.PersonalAversion,
+        leverId: OfferLeverId.Terms,
+        remedyKey: BlockerKeys.Method,
+        heroDisplayNameKeys: ['hero.core_vela.name']
+      }
+    ]);
+  });
+
+  // Одна причина, два источника — две правды о рычаге. Склеить их значило бы одному из двоих
+  // соврать.
+  it('одна причина из двух источников — две строки, у каждой свой рычаг', () => {
+    const reasons = blockingReasons({
+      roster: [hero('core:mira'), hero('core:vela')],
+      responses: [
+        refusedBecause('core:mira', [reason(ReasonCodes.PersonalAversion)]),
+        refusedBecause('core:vela', [aversionOnChosenMethod()])
+      ]
+    });
+
+    expect(
+      reasons.map(({ remedyKey, heroDisplayNameKeys }) => ({ remedyKey, heroDisplayNameKeys }))
+    ).toEqual([
+      { remedyKey: BlockerKeys.NotThisPackage, heroDisplayNameKeys: ['hero.core_mira.name'] },
+      { remedyKey: BlockerKeys.Method, heroDisplayNameKeys: ['hero.core_vela.name'] }
     ]);
   });
 
@@ -171,6 +255,40 @@ describe('blockingReasons', () => {
         leverId: null,
         remedyKey: BlockerKeys.Principle,
         heroDisplayNameKeys: ['hero.core_mira.name', 'hero.core_vela.name']
+      }
+    ]);
+  });
+
+  // `method_choice_flips_the_key_hero`: Вела закрыта принципом на `method:deception`, и
+  // «В открытую» её открывает. «Торгу не поддаётся» здесь было бы неправдой.
+  it('принцип на теге выбранного метода — своя строка, и лечит её метод', () => {
+    const reasons = blockingReasons({
+      roster: [hero('core:mira'), hero('core:vela'), hero('core:ilza')],
+      responses: [
+        blockedByPrinciple('core:mira'),
+        blockedByPrinciple('core:vela', true),
+        refusedBecause('core:ilza', [reason(ReasonCodes.RiskTooHigh)])
+      ]
+    });
+
+    expect(reasons).toEqual([
+      {
+        reasonCode: ReasonCodes.RiskTooHigh,
+        leverId: OfferLeverId.Terms,
+        remedyKey: BlockerKeys.OutweighedByAdvance,
+        heroDisplayNameKeys: ['hero.core_ilza.name']
+      },
+      {
+        reasonCode: ReasonCodes.PrincipleForbids,
+        leverId: null,
+        remedyKey: BlockerKeys.Principle,
+        heroDisplayNameKeys: ['hero.core_mira.name']
+      },
+      {
+        reasonCode: ReasonCodes.PrincipleForbids,
+        leverId: OfferLeverId.Terms,
+        remedyKey: BlockerKeys.Method,
+        heroDisplayNameKeys: ['hero.core_vela.name']
       }
     ]);
   });

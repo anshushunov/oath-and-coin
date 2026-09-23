@@ -245,10 +245,13 @@ export function contractOfferScreenModel(
   // definition the rest of the screen already shows.
   const heroDefinitionByHeroId = new Map(heroes.map((hero) => [hero.id, hero.definition]));
 
+  const onChosenMethod = firedOnChosenMethod(contract, state.traitRules);
   const answers = steps
     .filter((step) => step.command.contract === contract.id)
     .flatMap((step) =>
-      step.decisions.map((decision) => toResponseLine(step, decision, heroDisplayNameKeys))
+      step.decisions.map((decision) =>
+        toResponseLine(step, decision, heroDisplayNameKeys, onChosenMethod)
+      )
     );
   // **Invariant: `responses.length === contract.offer.respondedBy.size`** — one line per
   // hero the engine records as having answered this version, no more and no fewer. The
@@ -754,10 +757,44 @@ function heroDefinitionOf(step: DecidedStep, decision: DecidedOutcome): ContentI
   return decision.heroDefinition ?? step.heroDefinition;
 }
 
+/**
+ * Whether a trait fired on the tag the package's chosen method adds, rather than on one the
+ * contract carries itself (`DEC-019`): the one part of `effectiveTags` the package moves.
+ *
+ * Read off the offer as it stands, which is the offer every answer this screen keeps was
+ * given to: an applied `composeOffer` empties the answers (`DEC-012`), so no kept answer was
+ * given under another method. A method tag the contract also carries as its own is not the
+ * method's — changing the method leaves it on the contract, and the trait with it.
+ *
+ * A trait the rulebook has no entry for throws, as it does for a hero's card: a trace naming
+ * one is a content-loading bug, and "not on the method" would be a guess dressed as a fact.
+ */
+function firedOnChosenMethod(
+  contract: ContractState,
+  traitRules: SortedMap<ContentId, HeldTrait>
+): (traitId: ContentId) => boolean {
+  const { methodTag } = contract.offer;
+
+  return (traitId) => {
+    const trait = traitRules.get(traitId);
+
+    if (trait === undefined) {
+      throw new Error(
+        `An answer names trait '${traitId}' as the source of an inclination or a principle, but ` +
+          "the state's trait rules have no entry for it — a content-loading bug, not a trait " +
+          'on no tag.'
+      );
+    }
+
+    return methodTag !== null && trait.tag === methodTag && !contract.tags.has(methodTag);
+  };
+}
+
 function toResponseLine(
   step: DecidedStep,
   decision: DecidedOutcome,
-  heroDisplayNameKeys: ReadonlyMap<ContentId, string>
+  heroDisplayNameKeys: ReadonlyMap<ContentId, string>,
+  onChosenMethod: (traitId: ContentId) => boolean
 ): ResponseLine {
   const hero = heroDefinitionOf(step, decision);
 
@@ -792,6 +829,11 @@ function toResponseLine(
       reasons: [],
       blockedByEntity: block.sourceEntity,
       blockedByDisplayNameKey: traitDisplayNameKey(block.sourceEntity),
+      // Every block, not the first alone: a hero closed by the method and by the contract at
+      // once stays closed when the method changes.
+      blockedOnChosenMethod: decision.trace.blockedBy.every((each) =>
+        onChosenMethod(each.sourceEntity)
+      ),
       tieBreakCode: null,
       wavered: false
     };
@@ -801,9 +843,10 @@ function toResponseLine(
     heroDefinition: hero,
     heroDisplayNameKey,
     action: decision.selectedAction,
-    reasons: rankReasons(decision, heroDisplayNameKeys),
+    reasons: rankReasons(decision, heroDisplayNameKeys, onChosenMethod),
     blockedByEntity: null,
     blockedByDisplayNameKey: null,
+    blockedOnChosenMethod: false,
     // Carried through as the rule stated it, never re-derived from the score: which
     // ties exist and how they are settled is the decision rule's business, and a
     // second implementation of it in this layer is exactly the invented explanation
@@ -833,7 +876,8 @@ function toResponseLine(
  */
 function rankReasons(
   decision: DecidedOutcome,
-  heroDisplayNameKeys: ReadonlyMap<ContentId, string>
+  heroDisplayNameKeys: ReadonlyMap<ContentId, string>,
+  onChosenMethod: (traitId: ContentId) => boolean
 ): readonly ReasonLine[] {
   const accepted = decision.selectedAction === Actions.Accept;
   const { positiveFactors, negativeFactors } = decision.trace;
@@ -851,10 +895,14 @@ function rankReasons(
   return [
     ...supporting
       .slice(0, supportingShown)
-      .map((factor) => toReasonLine(factor, ReasonDirection.Supported, heroDisplayNameKeys)),
+      .map((factor) =>
+        toReasonLine(factor, ReasonDirection.Supported, heroDisplayNameKeys, onChosenMethod)
+      ),
     ...opposing
       .slice(0, opposingShown)
-      .map((factor) => toReasonLine(factor, ReasonDirection.Opposed, heroDisplayNameKeys))
+      .map((factor) =>
+        toReasonLine(factor, ReasonDirection.Opposed, heroDisplayNameKeys, onChosenMethod)
+      )
   ];
 }
 
@@ -870,14 +918,18 @@ function ranked(factors: readonly TraceFactor[]): readonly TraceFactor[] {
 function toReasonLine(
   factor: TraceFactor,
   direction: ReasonDirection,
-  heroDisplayNameKeys: ReadonlyMap<ContentId, string>
+  heroDisplayNameKeys: ReadonlyMap<ContentId, string>,
+  onChosenMethod: (traitId: ContentId) => boolean
 ): ReasonLine {
   return {
     reasonCode: factor.reasonCode,
     sourceEntity: factor.sourceEntity,
     strength: gradeForMagnitude(factor.magnitude),
     sourceDisplayNameKey: resolveSourceDisplayNameKey(factor, heroDisplayNameKeys),
-    direction
+    direction,
+    // Only an inclination reads a tag; its source is always the trait that fired.
+    onChosenMethod:
+      TRAIT_SOURCED_REASON_CODES.has(factor.reasonCode) && onChosenMethod(factor.sourceEntity)
   };
 }
 
@@ -1073,6 +1125,7 @@ function describeResponse(response: ResponseLine): CanonicalValue {
     reasons: response.reasons.map(describeReason),
     blocked_by_entity: response.blockedByEntity,
     blocked_by_display_name_key: response.blockedByDisplayNameKey,
+    blocked_on_chosen_method: response.blockedOnChosenMethod,
     tie_break_code: response.tieBreakCode,
     wavered: response.wavered
   };
@@ -1084,7 +1137,8 @@ function describeReason(reason: ReasonLine): CanonicalValue {
     source_entity: reason.sourceEntity,
     strength: reason.strength,
     source_display_name_key: reason.sourceDisplayNameKey,
-    direction: reason.direction
+    direction: reason.direction,
+    on_chosen_method: reason.onChosenMethod
   };
 }
 

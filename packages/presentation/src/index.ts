@@ -204,6 +204,7 @@ export { HERO_STANCES, HeroStance, heroOfferRows, type HeroOfferRow } from './he
 
 export {
   LEVER_OF_REASON,
+  LEVER_ON_CHOSEN_METHOD,
   blockingReasons,
   type BlockingReason,
   type Remedy

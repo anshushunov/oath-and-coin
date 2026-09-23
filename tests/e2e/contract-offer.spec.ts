@@ -28,8 +28,9 @@ import { expectWindowBoundedScreen, measureLayout } from './layout.ts';
  * stop at, and an artifact — a frame, a log and a report — that a third party can read
  * without rerunning anything. `ADR-010` §157 keeps all three and drops what was
  * Godot-specific: the process launch and the frame protocol. So this file is the port by
- * intent rather than by mechanism, and what it produces per state is exactly what
- * `run-smoke` produced: `screenshot.png`, `events.jsonl`, `report.json`.
+ * intent rather than by mechanism, and what it produces per state is what `run-smoke`
+ * produced — `screenshot.png`, `events.jsonl`, `report.json` — plus `top.png`, the frame at
+ * the top of the page before anything is scrolled (`DEC-019`), which CI requires as well.
  *
  * **Nothing here is verified against what the page says about itself.** That is the whole
  * design of the verdict, and it is why the imports above exist:
@@ -128,6 +129,10 @@ const SUMMARY_SHARE = 0.25;
  * top of the page, before anything is scrolled — where a player stands when a poll has just
  * filled it — and required to be inside the window whole: a summary under the fold is one the
  * bargainer does not see, and being seen is the one thing its place was chosen for.
+ *
+ * Measured, not guaranteed: it holds on the summaries these states draw (`screen_normal`: two
+ * lines, 102px, bottom at 649 of 746 on 2026-09-23), and a squad's refusals can fill several
+ * more lines than that. No state here draws a long summary, so a longer one is not covered.
  */
 const BLOCKERS = 'offer-blockers';
 

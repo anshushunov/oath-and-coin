@@ -16,7 +16,9 @@ import {
   type ContentId,
   type GameState,
   type HeroId,
-  type HeroState
+  type HeroState,
+  type TraceBlock,
+  type TraceFactor
 } from '@oath-and-coin/simulation';
 
 import {
@@ -24,7 +26,7 @@ import {
   contractOfferScreenModel,
   failedScreen
 } from './contract-offer-screen-model-factory.ts';
-import { leversOf } from './contract-offer-screen-model.ts';
+import { leversOf, type ResponseLine } from './contract-offer-screen-model.ts';
 import type { OfferBudget } from './lever.ts';
 import { describeReadModel, readModelHash } from './screen-model.ts';
 import { QualitativeGrade } from './qualitative-scale.ts';
@@ -304,7 +306,10 @@ describe('a hero card', () => {
 });
 
 describe('how a response ranks its reasons', () => {
-  const state = withHeroes(aState(), heroes(ids.bram, ids.doran, ids.zara));
+  // The conviction below names its trait, and the factory reads the trait's tag (`DEC-019`).
+  const state = withTraitRules(withHeroes(aState(), heroes(ids.bram, ids.doran, ids.zara)), [
+    aTrait({ id: ids.loyal })
+  ]);
 
   function reasonsOf(
     positiveFactors: readonly ReturnType<typeof aFactor>[],
@@ -463,7 +468,10 @@ describe('how a response ranks its reasons', () => {
 });
 
 describe('which reasons name their source', () => {
-  const state = withHeroes(aState(), heroes(ids.bram, ids.doran));
+  const state = withTraitRules(withHeroes(aState(), heroes(ids.bram, ids.doran)), [
+    aTrait({ id: ids.loyal }),
+    aTrait({ id: ids.squeamish, tag: ids.undead, weight: -20 })
+  ]);
 
   function sourceKeyFor(reasonCode: string, sourceEntity: ContentId): string | null {
     const step = aStep({
@@ -517,7 +525,9 @@ describe('which reasons name their source', () => {
 });
 
 describe('a blocked answer', () => {
-  const state = withHeroes(aState(), heroes(ids.bram));
+  const state = withTraitRules(withHeroes(aState(), heroes(ids.bram)), [
+    aTrait({ id: ids.refusesTemples, isPrinciple: true, weight: 0 })
+  ]);
 
   const blocked = aStep({
     decisions: [
@@ -549,6 +559,145 @@ describe('a blocked answer', () => {
       tieBreakCode: null,
       wavered: false
     });
+  });
+});
+
+/**
+ * `DEC-019`: an inclination and a principle both read `effectiveTags` — the contract's own
+ * tags plus the chosen method — and of those only the method is something the package moves.
+ * Which of the two a trait fired on is the factory's fact, read off the trait's own tag; the
+ * summary only chooses a lever by it.
+ */
+describe('whether a reason fired on the chosen method', () => {
+  const refusesDeception = parseContentId('core:refuses_deception');
+  const rules = [
+    // The one aversion shipped content has: `core:fears_undeath` on `target:undead`, a tag
+    // the undead contracts carry themselves and no method offers.
+    aTrait({ id: ids.squeamish, tag: ids.undead, weight: -20 }),
+    aTrait({ id: ids.loyal, tag: ids.methodDeception, weight: -10 }),
+    aTrait({ id: refusesDeception, tag: ids.methodDeception, isPrinciple: true, weight: 0 }),
+    aTrait({ id: ids.refusesTemples, tag: ids.undead, isPrinciple: true, weight: 0 })
+  ];
+
+  function answerTo(
+    tags: readonly ContentId[],
+    methodTag: ContentId | null,
+    trace: {
+      readonly negativeFactors?: readonly TraceFactor[];
+      readonly blockedBy?: readonly TraceBlock[];
+    }
+  ): ResponseLine {
+    const state = withTraitRules(
+      withContracts(withHeroes(aState(), heroes(ids.bram)), [
+        aContract({ tags: SortedSet.from(compareContentIds, tags), offer: anOffer({ methodTag }) })
+      ]),
+      rules
+    );
+    const blockedBy = trace.blockedBy ?? [];
+    const step = aStep({
+      decisions: [
+        aDecision({
+          selectedAction: Actions.Decline,
+          selectedScore: blockedBy.length > 0 ? null : -10,
+          trace: {
+            traceId: 0,
+            positiveFactors: [],
+            negativeFactors: trace.negativeFactors ?? [],
+            blockedBy,
+            tieBreak: null
+          }
+        })
+      ]
+    });
+    const [response] = contractOfferScreenModel(state, [step]).responses;
+
+    if (response === undefined) {
+      throw new Error('the step above answers the one contract on the board');
+    }
+
+    return response;
+  }
+
+  const aversion = (sourceEntity: ContentId) =>
+    aFactor({ reasonCode: ReasonCodes.PersonalAversion, sourceEntity, magnitude: 20 });
+  const principle = (sourceEntity: ContentId) => ({
+    reasonCode: ReasonCodes.PrincipleForbids,
+    sourceEntity
+  });
+
+  it('is false for fear of the undead on a contract that carries the undead itself', () => {
+    const response = answerTo([ids.undead], ids.methodOpen, {
+      negativeFactors: [aversion(ids.squeamish)]
+    });
+
+    expect(response.reasons.map((reason) => reason.onChosenMethod)).toEqual([false]);
+  });
+
+  it('is true for an aversion to the method the package chose', () => {
+    const response = answerTo([ids.merchants], ids.methodDeception, {
+      negativeFactors: [aversion(ids.loyal)]
+    });
+
+    expect(response.reasons.map((reason) => reason.onChosenMethod)).toEqual([true]);
+  });
+
+  // A method tag the contract also carries itself stays when the method changes.
+  it('is false when the contract carries the chosen method tag as its own too', () => {
+    const response = answerTo([ids.methodDeception], ids.methodDeception, {
+      negativeFactors: [aversion(ids.loyal)]
+    });
+
+    expect(response.reasons.map((reason) => reason.onChosenMethod)).toEqual([false]);
+  });
+
+  it('is false for every reason that is not an inclination', () => {
+    const response = answerTo([ids.merchants], ids.methodDeception, {
+      negativeFactors: [aFactor({ reasonCode: ReasonCodes.RiskTooHigh, magnitude: 30 })]
+    });
+
+    expect(response.reasons.map((reason) => reason.onChosenMethod)).toEqual([false]);
+  });
+
+  // `method_choice_flips_the_key_hero`: Vela on `method:deception`.
+  it('marks a principle closed on the chosen method', () => {
+    const response = answerTo([ids.merchants], ids.methodDeception, {
+      blockedBy: [principle(refusesDeception)]
+    });
+
+    expect(response.blockedOnChosenMethod).toBe(true);
+  });
+
+  it('does not mark a principle closed on the contract’s own tag', () => {
+    const response = answerTo([ids.undead], ids.methodDeception, {
+      blockedBy: [principle(ids.refusesTemples)]
+    });
+
+    expect(response.blockedOnChosenMethod).toBe(false);
+  });
+
+  // Changing the method lifts one red line and leaves the other: the hero stays closed.
+  it('does not mark a hero closed by the method and by the contract at once', () => {
+    const response = answerTo([ids.undead], ids.methodDeception, {
+      blockedBy: [principle(ids.refusesTemples), principle(refusesDeception)]
+    });
+
+    expect(response.blockedOnChosenMethod).toBe(false);
+  });
+
+  it('is false on an answer no principle closed', () => {
+    const response = answerTo([ids.merchants], ids.methodDeception, {
+      negativeFactors: [aversion(ids.loyal)]
+    });
+
+    expect(response.blockedOnChosenMethod).toBe(false);
+  });
+
+  it('refuses a reason whose trait the rulebook has no entry for', () => {
+    expect(() =>
+      answerTo([ids.merchants], ids.methodDeception, {
+        negativeFactors: [aversion(parseContentId('core:made_up'))]
+      })
+    ).toThrow(/core:made_up/u);
   });
 });
 

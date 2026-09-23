@@ -19,7 +19,13 @@ import { Label } from '../labels.tsx';
  * player's eye already is when he pressed it; and the levers he is about to move do not jump
  * down by the summary's height each time a poll fills it or a compose empties it.
  * `tests/e2e/contract-offer.spec.ts` measures that the whole block is inside the window at the
- * top of the page on every state that has one.
+ * top of the page on the e2e states that draw one — measured, not guaranteed: the summary
+ * measured there (`screen_normal`) is two lines, while a squad's refusals can reach every
+ * negative factor code (six) plus the principle lines. Nothing here keeps a longer summary
+ * above the fold.
+ *
+ * A reason is keyed with its remedy: one code can stand on two lines, when it fired on the
+ * contract's own tag for one hero and on the chosen method for another.
  *
  * The lines and their order are `blockingReasons`'s; this component only maps the list and
  * decides nothing — the one branch is the caller's, on the list being empty. Where a line's
@@ -35,7 +41,7 @@ export function BlockersBlock({ blockers }: { readonly blockers: readonly Blocki
         {blockers.map((blocker) => (
           <li
             className="blocker"
-            key={blocker.reasonCode}
+            key={`${blocker.reasonCode} ${blocker.remedyKey}`}
             data-testid="blocker"
             data-blocker-lever={blocker.leverId ?? 'none'}
           >

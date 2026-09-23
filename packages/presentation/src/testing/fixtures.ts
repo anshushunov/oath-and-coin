@@ -416,6 +416,7 @@ export function aResponseLine(overrides: Partial<ResponseLine> = {}): ResponseLi
     reasons: [],
     blockedByEntity: null,
     blockedByDisplayNameKey: null,
+    blockedOnChosenMethod: false,
     tieBreakCode: null,
     wavered: false,
     ...overrides
