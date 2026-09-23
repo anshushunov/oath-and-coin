@@ -449,6 +449,21 @@ describe('the line of intent (COMBAT_SPEC §10.2, DIRECTION §4.4)', () => {
 
     expect(of(shapes, 'battle-intent')).toHaveLength(0);
   });
+
+  it('на законченном бою линии нет', () => {
+    // The owner, 2026-09-23: once the fight is over the last intent is history — its target
+    // is as often as not the man who fell to it — and an arrow still on the board reads as a
+    // blow about to land. The same intent, aimed and on the board, with the outcome set.
+    const finished: BattleScreenModel = {
+      ...facing(intentOf('crew:0', 'foe:0')),
+      state: 'Normal',
+      outcomeKey: 'battle.outcome.crew_standing'
+    } as BattleScreenModel;
+
+    expect(of(describeBattleScene(finished, 0, textOf).shapes, 'battle-intent')).toHaveLength(0);
+    // And the words stay: only the arrow goes, the rest of the board is the same board.
+    expect(of(describeBattleScene(finished, 0, textOf).shapes, 'battle-label')).toHaveLength(2);
+  });
 });
 
 describe('the popup number, and what the second input actually reaches', () => {

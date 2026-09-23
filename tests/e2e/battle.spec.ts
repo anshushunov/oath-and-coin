@@ -41,7 +41,8 @@ import { expectToneColours } from './tone-colours.ts';
  * anything.** A feed running on `requestAnimationFrame` is at a different position every
  * run; a frame of one would be a picture of the machine's timing. So the lab opens paused,
  * the `Incomplete` state is the fight's first frame, and `Normal` is reached by pressing
- * skip — one click, and the same click a player makes.
+ * skip — one click, and the same click a player makes. The middle of the fight is a third
+ * frame, opened paused on a position the URL names (`midFight`).
  *
  * **Neither half of the text comparison can see the other**, the same discipline
  * `contract-offer.spec.ts` records: `expectedSnapshot` computes what a correctly bound
@@ -69,8 +70,18 @@ const catalogue = new Map([
 /** One state of the screen: which scenario reaches it, and what to press once there. */
 interface BattleRun {
   readonly state: string;
+  /**
+   * The name of its evidence directory and of its test, when the state alone does not tell
+   * it apart: the middle of the fight is `Incomplete` exactly as the opening frame is.
+   */
+  readonly name?: string;
   /** The scenario whose run puts the lab in this state. */
   readonly scenario: string;
+  /**
+   * The position the run's URL states (`RunRequest.position`), or nothing for the lab's own
+   * opening. A function for the reason `model` is one: it runs the resolver.
+   */
+  position?: () => number;
   /** Pressed after the page has settled, for the state that is a click away. */
   press?: (page: Page) => Promise<void>;
   /** The model this process builds for the same state, off the scenario on disk. */
@@ -116,6 +127,54 @@ function battleOf(state: GameState) {
   }
 
   return { contract, record };
+}
+
+/**
+ * A position in the middle of the fight whose last intent is aimed at a man still standing —
+ * the frame the line of intent is measured on.
+ *
+ * **Not the finished fight any more**, and that is the owner's decision of 2026-09-23: a
+ * finished fight draws no arrow (`battle-scene-model.ts`, `intentOf`), so the frame skip lands
+ * on can only say the line is absent. The opening frame has no intent at all. What is left is
+ * a frame inside the fight, and it is named rather than timed: the lab opens paused on the
+ * position the URL states, and a feed played and paused would stop wherever this machine's
+ * timing put it.
+ *
+ * Chosen here, off the record this process ran the resolver for, and never read off the
+ * page: the first position from the halfway point on whose model aims the intent at a man
+ * standing. Standing, because an arrow at a man already down is the very picture the
+ * decision removed from the end of the fight, and a check measured on one would be measuring
+ * the case nobody wants to see.
+ */
+function midFight(): { readonly position: number; readonly model: BattleScreenModel } {
+  const state = campaignOf('battle_ready');
+
+  if (state === null) {
+    throw new Error('battle_ready produced no campaign.');
+  }
+
+  const { record } = battleOf(state);
+
+  for (
+    let applied = Math.ceil(record.events.length / 2);
+    applied < record.events.length;
+    applied += 1
+  ) {
+    const model = battleScreenModel(state, CONTRACT, { applied, paused: true, record });
+    const target = model.intent?.targetUnit ?? null;
+
+    if (
+      model.outcomeKey === null &&
+      model.units.some((unit) => unit.unit === target && unit.standing)
+    ) {
+      return { position: applied, model };
+    }
+  }
+
+  throw new Error(
+    'The second half of the fight has no position whose intent is aimed at a man standing, so ' +
+      'there is no frame left to measure the line of intent on.'
+  );
 }
 
 const RUNS: readonly BattleRun[] = [
@@ -166,6 +225,15 @@ const RUNS: readonly BattleRun[] = [
     }
   },
   {
+    // The middle of the fight, paused on a position the URL names: the one frame the line of
+    // intent is on the board, and so the one frame that can say the arrow is drawn at all.
+    state: 'Incomplete',
+    name: 'midfight',
+    scenario: 'battle_ready',
+    position: () => midFight().position,
+    model: () => midFight().model
+  },
+  {
     state: 'Normal',
     scenario: 'battle_ready',
     press: async (page) => {
@@ -205,13 +273,14 @@ test.beforeAll(() => {
 
 test.describe('the battle screen, in a browser', () => {
   for (const run of RUNS) {
-    test(`${run.state.toLowerCase()} draws the fight it declares, and all of it is reachable`, async ({
-      page
-    }) => {
+    const name = run.name ?? run.state.toLowerCase();
+
+    test(`${name} draws the fight it declares, and all of it is reachable`, async ({ page }) => {
       const events: string[] = [];
+      const position = run.position?.() ?? null;
 
       recordEvents(page, events);
-      await page.goto(runUrl(run.scenario));
+      await page.goto(runUrl(run.scenario, position));
 
       await expect(page.getByTestId(SCREEN)).toBeVisible();
 
@@ -226,7 +295,7 @@ test.describe('the battle screen, in a browser', () => {
       const renderedTexts = await collectRenderedTexts(page);
       const layout = await measureLayout(page, SCREEN);
 
-      const directory = join(EVIDENCE_ROOT, run.state.toLowerCase());
+      const directory = join(EVIDENCE_ROOT, name);
 
       mkdirSync(directory, { recursive: true });
       // Back to the top before the frame is taken: `measureLayout` wheels the box to its
@@ -283,6 +352,10 @@ test.describe('the battle screen, in a browser', () => {
             seed: SEED.toString(),
             locale: LOCALE,
             battle_screen_state: run.state,
+            // The position the URL stated, `null` where it stated none — the lab's opening,
+            // or the end one press of skip reaches. What tells the middle of the fight from
+            // its opening frame, which share a state.
+            position,
             texts: renderedTexts.length,
             layout,
             // What the two canvas checks measured, so the thresholds they hold can be read
@@ -414,6 +487,12 @@ const LINE_OF_INTENT = 20;
  * line of intent as without it. The line is found by its own colour instead. On a position
  * whose model has no aimed intent the line must be absent — that is the half which says the
  * colour count is of the line and of nothing else.
+ *
+ * **Absent on a finished fight too, aimed or not** — the owner's decision of 2026-09-23
+ * (`intentOf` in `battle-scene-model.ts`). The finished frame is where that decision is held
+ * in a browser: its last intent *is* aimed, so the nought there is about the fight being over
+ * and not about an intent with no target. Where the line is present is measured in the middle
+ * of the fight (`midFight`).
  */
 async function expectBoardDrawn(
   page: Page,
@@ -428,6 +507,7 @@ async function expectBoardDrawn(
   const digest = await frameDigest(page);
   const intentPixels = await pixelsOfToken(page, '--intent');
   const aimed = model.intent !== null && model.intent.targetUnit !== null;
+  const drawn = aimed && model.outcomeKey === null;
 
   expect(
     digest.distinctColors,
@@ -442,15 +522,17 @@ async function expectBoardDrawn(
     'the foes’ side of the board must carry its words — the short word for each job'
   ).toBeGreaterThan(WORDS_ON_EACH_SIDE);
 
-  // The finished fight is the frame this check is taken on for the line, and it has to have
-  // one to be about: a finished fight whose last intent was aimed at nobody would leave the
-  // line unmeasured and this suite green.
+  // The finished fight is where the absence of the line is held, and it has to have an aimed
+  // intent to be about the outcome: one whose last intent was aimed at nobody would draw no
+  // line under the old rule as well, and the nought would say nothing about the new one.
   if (model.outcomeKey !== null) {
     expect(aimed, 'the last intent of the finished fight must be aimed at somebody').toBe(true);
   }
 
-  if (aimed) {
+  if (drawn) {
     expect(intentPixels, 'the line of intent must be on the board').toBeGreaterThan(LINE_OF_INTENT);
+  } else if (aimed) {
+    expect(intentPixels, 'the fight is over, and its last intent is no arrow on the board').toBe(0);
   } else {
     expect(intentPixels, 'no intent, and nothing of its colour on the board').toBe(0);
   }
@@ -460,7 +542,7 @@ async function expectBoardDrawn(
     crew_side_colors: digest.leftDistinctColors,
     foe_side_colors: digest.rightDistinctColors,
     intent_pixels: intentPixels,
-    intent_expected: aimed
+    intent_expected: drawn
   };
 }
 
@@ -564,7 +646,7 @@ async function expectJournalRead(page: Page, directory: string): Promise<void> {
  * evidence does not say which seed and which screen produced it is evidence about whatever
  * the source file last defaulted to.
  */
-function runUrl(scenario: string): string {
+function runUrl(scenario: string, position: number | null = null): string {
   const parameters = new URLSearchParams({
     scenario,
     checkpoint: scenario,
@@ -572,6 +654,10 @@ function runUrl(scenario: string): string {
     locale: LOCALE,
     screen: 'battle'
   });
+
+  if (position !== null) {
+    parameters.set('position', String(position));
+  }
 
   return `/?${parameters.toString()}`;
 }

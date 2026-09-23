@@ -197,7 +197,8 @@ describe('the page while its session is still arriving', () => {
       seed: 424242n,
       locale: 'ru',
       screen: 'contract-offer',
-      contract: null
+      contract: null,
+      position: null
     });
     const { container } = mount(<App createController={() => gated.controller} />);
 
@@ -211,7 +212,8 @@ describe('the page while its session is still arriving', () => {
       seed: 424242n,
       locale: 'ru',
       screen: 'contract-offer',
-      contract: null
+      contract: null,
+      position: null
     });
     const { container } = mount(<App createController={() => gated.controller} />);
 
@@ -244,7 +246,8 @@ describe('the page when the campaign moves to the debrief', () => {
       seed: 424242n,
       locale: 'ru',
       screen: 'contract-offer',
-      contract: null
+      contract: null,
+      position: null
     });
     const { container } = mount(<App createController={() => gated.controller} />);
 
@@ -285,7 +288,8 @@ describe('the page when the campaign itself is on the battle screen', () => {
       seed: 424242n,
       locale: 'ru',
       screen: 'contract-offer',
-      contract: null
+      contract: null,
+      position: null
     });
     const { container, unmount } = mount(<App createController={() => gated.controller} />);
 
@@ -343,7 +347,8 @@ describe('a page taken down while its session is still arriving', () => {
       seed: 424242n,
       locale: 'ru',
       screen: 'contract-offer',
-      contract: null
+      contract: null,
+      position: null
     });
     const { container, unmount } = mount(<App createController={() => gated.controller} />);
     expect(gated.subscribers()).toBe(1);

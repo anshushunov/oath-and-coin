@@ -389,11 +389,18 @@ function sideOf(unit: BattleUnitLine): 'crew' | 'foe' {
  * Nothing when the intent names no target, when either man is not on the board, and when the
  * two stand on one spot — each of those is a line with no direction, and a board that drew
  * one anyway would be pointing somewhere the fight is not.
+ *
+ * Nothing, too, once the fight is over (`outcomeKey` set) — the owner's decision of
+ * 2026-09-23. An intent is about the blow *coming*, and after the last event there is none:
+ * the last intent's target is as often as not the man who fell to it, and an arrow still
+ * pointing at him reads as a blow about to land on a man already down. The line of words
+ * under the field keeps it — there it reads as what was last declared, which is true; only
+ * the arrow on the board, which reads as what is about to happen, goes.
  */
 function intentOf(model: BattleScreenModel): BattleIntent | null {
   const intent = model.intent;
 
-  if (intent === null || intent.targetUnit === null) {
+  if (model.outcomeKey !== null || intent === null || intent.targetUnit === null) {
     return null;
   }
 

@@ -285,7 +285,9 @@ jobs:
         shell: bash
         run: |
           root=artifacts/browser-evidence/battle
-          expected="loading empty error incomplete normal"
+          # `midfight` is `Incomplete` again, at a position the URL names: since a finished
+          # fight draws no line of intent, it is the one frame the line is measured present on.
+          expected="loading empty error incomplete midfight normal"
 
           missing=""
           for state in $expected; do
@@ -310,11 +312,11 @@ jobs:
             # words are held to, over the whole frame and per side, and the pixels of the
             # intent colour — so a threshold can be read against its frame without
             # downloading the artifact. `—` on the states with no board, which measure nothing.
-            echo "| state | scenario | texts | content | viewport | window | reachable | canvas colours | crew / foe side | intent pixels | events |"
-            echo "|---|---|---|---|---|---|---|---|---|---|---|"
+            echo "| state | scenario | position | texts | content | viewport | window | reachable | canvas colours | crew / foe side | intent pixels | events |"
+            echo "|---|---|---|---|---|---|---|---|---|---|---|---|"
             for state in $expected; do
               jq -r '
-                "| \(.battle_screen_state) | \(.scenario) | \(.texts) "
+                "| \(.battle_screen_state) | \(.scenario) | \(.position // "—") | \(.texts) "
                 + "| \(.layout.contentWidth)x\(.layout.contentHeight) "
                 + "| \(.layout.viewportWidth)x\(.layout.viewportHeight) "
                 + "| \(.layout.windowHeight) "

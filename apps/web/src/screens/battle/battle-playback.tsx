@@ -61,7 +61,8 @@ export function BattlePlayback({
   onLeave,
   leaveLabel,
   initial,
-  startPaused = false
+  startPaused = false,
+  startAt = 0
 }: {
   readonly contractId: ContentId;
   readonly port: BattlePlaybackPort;
@@ -74,6 +75,12 @@ export function BattlePlayback({
    * is one click, and it is the same click a player makes.
    */
   readonly startPaused?: boolean;
+  /**
+   * How many events the feed opens with already applied — the lab's `position`, and `0`
+   * everywhere else. A named place in the fight rather than a time, for the reason
+   * `startPaused` gives; the caller has checked it is within the record.
+   */
+  readonly startAt?: number;
   /**
    * Called once, the first time the feed reaches the end, with the round a withdrawal was
    * signalled at — which is what the caller then commits `resolveContract` with.
@@ -112,7 +119,11 @@ export function BattlePlayback({
    * external review of segment E, which reached it by pressing replay.
    */
   const [committed, setCommitted] = useState(initial !== undefined);
-  const [feed, setFeed] = useState<BattleFeed>(() => ({ ...startFeed(), paused: startPaused }));
+  const [feed, setFeed] = useState<BattleFeed>(() => ({
+    ...startFeed(),
+    applied: startAt,
+    paused: startPaused
+  }));
   const [phase, setPhase] = useState(0);
   const announced = useRef(false);
 
