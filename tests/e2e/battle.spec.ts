@@ -264,12 +264,12 @@ const RUNS: readonly BattleRun[] = [
   }
 ];
 
-test.beforeAll(() => {
-  // Cleared once per run, so a state that stops producing evidence leaves an empty
-  // directory rather than the last run's screenshot under this run's name.
-  rmSync(EVIDENCE_ROOT, { recursive: true, force: true });
-  mkdirSync(EVIDENCE_ROOT, { recursive: true });
-});
+// No `beforeAll` clearing the whole root. It was one, and it wiped the evidence of the red
+// run it most mattered for: Playwright throws a worker away after a failed test and runs
+// `beforeAll` again in the next one, so the tests after a failure deleted every
+// `report.json` written before it — measured, with a threshold mutant, as an empty
+// `battle/` after three red states. Each state clears its own directory instead (below), so
+// a state that stops producing evidence still leaves nothing under this run's name.
 
 test.describe('the battle screen, in a browser', () => {
   for (const run of RUNS) {
@@ -278,6 +278,12 @@ test.describe('the battle screen, in a browser', () => {
     test(`${name} draws the fight it declares, and all of it is reachable`, async ({ page }) => {
       const events: string[] = [];
       const position = run.position?.() ?? null;
+      const directory = join(EVIDENCE_ROOT, name);
+
+      // First thing, before anything can fail: a state whose run goes red early must not
+      // leave the last run's frame and report under this run's name.
+      rmSync(directory, { recursive: true, force: true });
+      mkdirSync(directory, { recursive: true });
 
       recordEvents(page, events);
       await page.goto(runUrl(run.scenario, position));
@@ -295,9 +301,6 @@ test.describe('the battle screen, in a browser', () => {
       const renderedTexts = await collectRenderedTexts(page);
       const layout = await measureLayout(page, SCREEN);
 
-      const directory = join(EVIDENCE_ROOT, name);
-
-      mkdirSync(directory, { recursive: true });
       // Back to the top before the frame is taken: `measureLayout` wheels the box to its
       // end to find out how far a person can scroll it, and a screenshot after that is a
       // picture of the bottom of the screen. What a reader of this evidence needs to see
@@ -324,49 +327,67 @@ test.describe('the battle screen, in a browser', () => {
       await page.screenshot({ path: join(directory, 'screenshot.png'), fullPage: false });
 
       // What the canvas holds, which no text comparison below can see: a canvas has no text
-      // nodes, and jsdom replaces it with nothing. Measured on the positions that have a board.
-      const canvas = model.units.length > 0 ? await expectBoardDrawn(page, model) : null;
+      // nodes, and jsdom replaces it with nothing. Measured on the positions that have a board
+      // — measured here, and held to its thresholds only after the evidence is on disk.
+      const canvas = model.units.length > 0 ? await measureBoard(page, model) : null;
 
-      // The outcome is the one headline of a finished fight, and nothing else on the screen
-      // is set as large (the spec of the kit, §5.4: no second heading competing with it).
-      if (model.outcomeKey !== null) {
-        await expectOutcomeLargest(page);
+      // **The evidence is written before anything is held to a threshold.** The run that most
+      // needs its numbers is the red one: a threshold that fails on a CI runner whose fonts are
+      // not this machine's has to leave the measurement it failed on beside its frame, not a
+      // missing `report.json` for the summary to complain about on top. Written again when the
+      // checks are over, so an error the page logs during them is in `events.jsonl` as well.
+      const writeEvidence = (): void => {
+        writeFileSync(join(directory, 'events.jsonl'), events.map((line) => `${line}\n`).join(''));
+        writeFileSync(
+          join(directory, 'report.json'),
+          `${JSON.stringify(
+            {
+              screen: 'battle',
+              scenario: run.scenario,
+              seed: SEED.toString(),
+              locale: LOCALE,
+              battle_screen_state: run.state,
+              // The position the URL stated, `null` where it stated none — the lab's opening,
+              // or the end one press of skip reaches. What tells the middle of the fight from
+              // its opening frame, which share a state.
+              position,
+              texts: renderedTexts.length,
+              layout,
+              // What the two canvas checks measured, so the thresholds they hold can be read
+              // against the frame they were measured on (`AGENTS.md` §11).
+              canvas,
+              events: events.length
+            },
+            null,
+            2
+          )}\n`
+        );
+      };
+
+      writeEvidence();
+
+      try {
+        if (canvas !== null) {
+          expectBoardDrawn(canvas, model);
+        }
+
+        // The outcome is the one headline of a finished fight, and nothing else on the screen
+        // is set as large (the spec of the kit, §5.4: no second heading competing with it).
+        if (model.outcomeKey !== null) {
+          await expectOutcomeLargest(page);
+        }
+
+        // A second frame, of the journal, on the position that has one. The frame above is
+        // what a player sees first, and on a finished fight that is the board — the journal
+        // is further down, and the owner's first play was about *those* lines. A frame that
+        // never reaches them is evidence of the half of the screen that was not changed.
+        if (model.journal.length > 0) {
+          await expectJournalRead(page, directory);
+          await expectToneColours(page, SCREEN);
+        }
+      } finally {
+        writeEvidence();
       }
-
-      // A second frame, of the journal, on the position that has one. The frame above is
-      // what a player sees first, and on a finished fight that is the board — the journal
-      // is further down, and the owner's first play was about *those* lines. A frame that
-      // never reaches them is evidence of the half of the screen that was not changed.
-      if (model.journal.length > 0) {
-        await expectJournalRead(page, directory);
-        await expectToneColours(page, SCREEN);
-      }
-
-      writeFileSync(join(directory, 'events.jsonl'), events.map((line) => `${line}\n`).join(''));
-      writeFileSync(
-        join(directory, 'report.json'),
-        `${JSON.stringify(
-          {
-            screen: 'battle',
-            scenario: run.scenario,
-            seed: SEED.toString(),
-            locale: LOCALE,
-            battle_screen_state: run.state,
-            // The position the URL stated, `null` where it stated none — the lab's opening,
-            // or the end one press of skip reaches. What tells the middle of the fight from
-            // its opening frame, which share a state.
-            position,
-            texts: renderedTexts.length,
-            layout,
-            // What the two canvas checks measured, so the thresholds they hold can be read
-            // against the frame they were measured on (`AGENTS.md` §11).
-            canvas,
-            events: events.length
-          },
-          null,
-          2
-        )}\n`
-      );
 
       // The list, not a hash of it: a hash says two screens differ and only the list says
       // where. Built here from the catalogue on disk and from a model this process ran the
@@ -493,32 +514,24 @@ const LINE_OF_INTENT = 20;
  * in a browser: its last intent *is* aimed, so the nought there is about the fight being over
  * and not about an intent with no target. Where the line is present is measured in the middle
  * of the fight (`midFight`).
+ *
+ * Held against numbers {@link measureBoard} took, never against the page: the measurement is
+ * on disk before this runs, so a red verdict leaves the figure it was red on.
  */
-async function expectBoardDrawn(
-  page: Page,
-  model: BattleScreenModel
-): Promise<{
-  distinct_colors: number;
-  crew_side_colors: number;
-  foe_side_colors: number;
-  intent_pixels: number;
-  intent_expected: boolean;
-}> {
-  const digest = await frameDigest(page);
-  const intentPixels = await pixelsOfToken(page, '--intent');
+function expectBoardDrawn(canvas: BoardMeasurement, model: BattleScreenModel): void {
   const aimed = model.intent !== null && model.intent.targetUnit !== null;
-  const drawn = aimed && model.outcomeKey === null;
+  const drawn = canvas.intent_expected;
 
   expect(
-    digest.distinctColors,
+    canvas.distinct_colors,
     'the tokens must carry their words — a board of rectangles alone is a handful of colours'
   ).toBeGreaterThan(WORDS_ON_THE_BOARD);
   expect(
-    digest.leftDistinctColors,
+    canvas.crew_side_colors,
     'the crew’s side of the board must carry its words'
   ).toBeGreaterThan(WORDS_ON_EACH_SIDE);
   expect(
-    digest.rightDistinctColors,
+    canvas.foe_side_colors,
     'the foes’ side of the board must carry its words — the short word for each job'
   ).toBeGreaterThan(WORDS_ON_EACH_SIDE);
 
@@ -530,19 +543,41 @@ async function expectBoardDrawn(
   }
 
   if (drawn) {
-    expect(intentPixels, 'the line of intent must be on the board').toBeGreaterThan(LINE_OF_INTENT);
+    expect(canvas.intent_pixels, 'the line of intent must be on the board').toBeGreaterThan(
+      LINE_OF_INTENT
+    );
   } else if (aimed) {
-    expect(intentPixels, 'the fight is over, and its last intent is no arrow on the board').toBe(0);
+    expect(
+      canvas.intent_pixels,
+      'the fight is over, and its last intent is no arrow on the board'
+    ).toBe(0);
   } else {
-    expect(intentPixels, 'no intent, and nothing of its colour on the board').toBe(0);
+    expect(canvas.intent_pixels, 'no intent, and nothing of its colour on the board').toBe(0);
   }
+}
+
+/** What {@link measureBoard} read off the canvas — the `canvas` field of `report.json`. */
+interface BoardMeasurement {
+  readonly distinct_colors: number;
+  readonly crew_side_colors: number;
+  readonly foe_side_colors: number;
+  readonly intent_pixels: number;
+  /** Whether the model this frame is of draws the line: aimed, and the fight not over. */
+  readonly intent_expected: boolean;
+}
+
+/** The canvas's numbers for {@link expectBoardDrawn}, read and asserted nothing about. */
+async function measureBoard(page: Page, model: BattleScreenModel): Promise<BoardMeasurement> {
+  const digest = await frameDigest(page);
+  const intentPixels = await pixelsOfToken(page, '--intent');
+  const aimed = model.intent !== null && model.intent.targetUnit !== null;
 
   return {
     distinct_colors: digest.distinctColors,
     crew_side_colors: digest.leftDistinctColors,
     foe_side_colors: digest.rightDistinctColors,
     intent_pixels: intentPixels,
-    intent_expected: drawn
+    intent_expected: aimed && model.outcomeKey === null
   };
 }
 
