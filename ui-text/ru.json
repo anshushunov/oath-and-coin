@@ -153,6 +153,7 @@
     "field.offer.promised_bonus": "Надбавка по возвращении:",
     "field.offer.retreat_below": "Отойти, если стоит меньше, %",
     "field.offer.shortfall": "Не хватает на пакет:",
+    "field.offer.unanswered": "Нет ответа",
     "field.offer.unplaced": "Не поставлен",
     "field.offer.version": "Версия пакета:",
     "field.save.contract": "Контракт на экране:",

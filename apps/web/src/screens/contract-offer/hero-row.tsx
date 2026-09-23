@@ -1,6 +1,7 @@
 import {
   FieldKeys,
   HeroStance,
+  OfferFieldKeys,
   QUALITATIVE_GRADES,
   actionKey,
   qualitativeKey,
@@ -20,8 +21,8 @@ import { Captioned, KeyList, Label } from '../labels.tsx';
  * The chip each stance wears. A table rather than a branch: which stance a row is in was
  * decided once, by `heroOfferRows`, and the screen only looks the colour up.
  *
- * `Unanswered` is in the table only because the table is total — a hero with no answer
- * draws no chip at all, so its entry is never read.
+ * `Unanswered` wears the status colour — the one the count's "Пакет правится" mark wears —
+ * because "Нет ответа" is a state of the negotiation, not a verdict for or against it.
  */
 const STANCE_TAG: Readonly<Record<HeroStance, TagRole>> = {
   [HeroStance.Refused]: 'against',
@@ -45,17 +46,17 @@ const STANCE_TAG: Readonly<Record<HeroStance, TagRole>> = {
  * on the row beside them. So they stay out of both hashes, which compare texts, and a
  * screen reader skips them (`aria-hidden`) rather than reading an arrow aloud.
  *
- * **A hero who has not answered wears no chip, on purpose.** A chip names what he *said*,
- * and he said nothing; his edge stays plain, so no colour claims a meaning either. The words
- * "не спрашивали" and "не ответил" are not on the card because the row cannot tell them
- * apart — `heroOfferRows` pairs the roster with the answers and knows nothing of who was
- * invited — and the band above already says both: its count reads "Отряд ещё не
- * спрашивали" while nobody has answered this version, and its crew lever lists who is
- * invited. A status chip here would have to pick one of the two sentences for a hero it
- * cannot place. The blocked chip carries the same word as a refusal ("Отказался") and
- * differs by colour; its words are the "Не станет этого делать: …" line below (`Why`,
- * `FieldKeys.ResponseBlockedBy`), which is on the card for every blocked hero and for no one
- * else.
+ * **A hero who has not answered says so in words.** His edge stays plain — no colour claims
+ * a verdict he has not given — and a plain edge alone is an absence, not a signal a player
+ * can read (`GDD` §16.6): on a half-polled package, where the key hero has answered and the
+ * rest have not, the other cards would read like cards the screen forgot. So his chip reads
+ * "Нет ответа" (`OfferFieldKeys.Unanswered`), and not "не ответил" or "не спрашивали": the
+ * row cannot tell a hero who was never invited from one who was — `heroOfferRows` pairs the
+ * roster with the answers and knows nothing of invitations — and of the three only "no
+ * answer" is true of both. Who is invited is the crew lever's to say, above. The blocked chip
+ * carries the same word as a refusal ("Отказался") and differs by colour; its words are the
+ * "Не станет этого делать: …" line below (`Why`, `FieldKeys.ResponseBlockedBy`), which is on
+ * the card for every blocked hero and for no one else.
  *
  * Every branch here is on a field being `null` or a list being empty, never on what is in
  * it — `expectedSnapshot` makes the identical decisions from the identical fields.
@@ -69,7 +70,9 @@ export function HeroRow({ row }: { readonly row: HeroOfferRow }) {
       <div className="hero-row-head">
         <Label text={text(hero.displayNameKey)} />
 
-        {response === null ? null : (
+        {response === null ? (
+          <Tag role={STANCE_TAG[stance]} word={text(OfferFieldKeys.Unanswered)} />
+        ) : (
           <>
             <Tag role={STANCE_TAG[stance]} word={text(actionKey(response.action))} />
             <span className="wavered" data-wavered={String(response.wavered)}>

@@ -291,6 +291,15 @@ export const OfferFieldKeys = Object.freeze({
    */
   NotAsked: 'field.offer.not_asked',
   /**
+   * The chip on a hero's card while he has no answer to the package as it stands — the
+   * word for the plain edge beside it (`GDD` §16.6), which alone is no signal at all.
+   *
+   * "Нет ответа" and not "не ответил" or "не спрашивали": the row cannot tell a hero who was
+   * never invited from one who was and has not been polled yet (`heroOfferRows` knows the
+   * answers, not the invitations), and of the three only this one is true of both.
+   */
+  Unanswered: 'field.offer.unanswered',
+  /**
    * The mark on the count while the form holds terms the package does not record yet.
    * Screen state rather than model state, so no snapshot carries it: the answers under the
    * mark are about the terms as recorded, and the mark is what says so (spec §4.2).

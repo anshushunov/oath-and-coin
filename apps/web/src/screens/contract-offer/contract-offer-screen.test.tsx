@@ -1771,8 +1771,11 @@ describe('the count while the package is touched', () => {
     expect(collectRenderedTexts(tally(container))).toContain(textOf(OfferFieldKeys.NotAsked));
     expect(container.querySelector('[data-testid="tally-accepted"]')).toBeNull();
     expect(tally(container).dataset['stale']).toBe('false');
-    // Cards without answers: no hero carries a chip saying what he said to the old terms.
-    expect(container.querySelectorAll('[data-testid="hero-row"] .tag')).toHaveLength(0);
+    // Cards without answers: no hero carries a chip saying what he said to the old terms —
+    // every chip on the squad is the one that says he has not answered.
+    expect(
+      [...container.querySelectorAll('[data-testid="hero-row"] .tag')].map((tag) => tag.textContent)
+    ).toEqual(after.roster.map(() => textOf(OfferFieldKeys.Unanswered)));
     expect(
       [...container.querySelectorAll('[data-testid="hero-row"]')].map(
         (row) => (row as HTMLElement).dataset['stance']
@@ -1852,7 +1855,8 @@ describe('the squad, one card per hero with his own answer', () => {
     const roleOf: Readonly<Record<string, string>> = {
       [HeroStance.Refused]: 'against',
       [HeroStance.Blocked]: 'blocked',
-      [HeroStance.Accepted]: 'favour'
+      [HeroStance.Accepted]: 'favour',
+      [HeroStance.Unanswered]: 'status'
     };
 
     expect(stances).toEqual(heroOfferRows(screen).map((row) => row.stance));
@@ -1867,6 +1871,31 @@ describe('the squad, one card per hero with his own answer', () => {
           roleOf[row.dataset['stance'] ?? '']
         );
       }
+    }
+  });
+
+  // `GDD` §16.6: a plain edge is an absence of colour, and an absence is not a signal a
+  // player can read. On a half-polled package (the key hero asked, the rest not yet) the
+  // heroes with no answer must say so in words, or they read like cards the screen forgot.
+  it('says in words that a hero has not answered, and only on his card', () => {
+    const { screen } = sessionFor('screen_draft', 'screen_draft', SEED);
+    const container = renderScreen(screen);
+    const rows = [...container.querySelectorAll('[data-testid="hero-row"]')] as HTMLElement[];
+    const chipOf = (row: HTMLElement): string | null =>
+      row.querySelector('.hero-row-head .tag')?.textContent ?? null;
+    const unanswered = rows.filter((row) => row.dataset['stance'] === HeroStance.Unanswered);
+    const answered = rows.filter((row) => row.dataset['stance'] !== HeroStance.Unanswered);
+
+    // The premise: this run has both kinds of card, so the check below is about something.
+    expect(unanswered.length).toBeGreaterThan(0);
+    expect(answered.length).toBeGreaterThan(0);
+
+    for (const row of unanswered) {
+      expect(chipOf(row)).toBe(textOf(OfferFieldKeys.Unanswered));
+    }
+
+    for (const row of answered) {
+      expect(chipOf(row)).not.toBe(textOf(OfferFieldKeys.Unanswered));
     }
   });
 });

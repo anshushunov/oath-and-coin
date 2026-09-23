@@ -475,6 +475,33 @@ describe('the texts a correctly bound screen produces', () => {
     expect(texts).toContain('text(field.contract.required_crew)');
   });
 
+  it('says on each card with no answer that the hero has not answered, beside his name', () => {
+    // `GDD` §16.6: a plain edge carries no word, so the card has to. Where it stands is the
+    // chip's place on an answered card — right after the name.
+    const unasked = createContractOfferScreenModel({
+      ...aFullModel,
+      state: ScreenState.Incomplete,
+      contract: { ...aFullModel.contract!, acceptedCount: 0 },
+      settlement: null,
+      responses: []
+    });
+    const texts = expectedSnapshot(unasked, everyKeyOf(unasked));
+
+    for (const hero of unasked.roster) {
+      const name = texts.lastIndexOf(`text(${hero.displayNameKey})`);
+
+      expect(texts[name + 1], hero.definition).toBe('text(field.offer.unanswered)');
+    }
+
+    expect(texts.filter((text) => text === 'text(field.offer.unanswered)')).toHaveLength(
+      unasked.roster.length
+    );
+    // And never on an answered card: the full model's three heroes all answered.
+    expect(expectedSnapshot(aFullModel, everyKeyOf(aFullModel))).not.toContain(
+      'text(field.offer.unanswered)'
+    );
+  });
+
   it('resolves every key the model carries, and shows no key the model does not', () => {
     // The independent half of the assertion above. That one states an order; this one
     // states coverage — every key on the model reaches the frame exactly as many times

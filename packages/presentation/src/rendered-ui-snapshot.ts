@@ -382,7 +382,11 @@ function contractOfferSnapshot(
   for (const { hero, response } of heroOfferRows(model)) {
     resolve(hero.displayNameKey);
 
-    if (response !== null) {
+    // What he said and whether his mood turned it — or, with no answer, the words for that.
+    // A branch on the answer being `null`, never on what is in it.
+    if (response === null) {
+      resolve(OfferFieldKeys.Unanswered);
+    } else {
       resolve(actionKey(response.action));
       resolve(waveredKey(response.wavered));
     }
