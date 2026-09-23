@@ -85,10 +85,11 @@ export function describeScene(
  * What a scene is resolved with when nobody handed it a catalogue.
  *
  * Only the battle board has words on it, and the one place that draws a board passes the
- * screen's own resolver. Everything else — the canvas behind the campaign screens, which sits
- * outside the `TextSource` because it draws no text — describes a scene with no word in it
- * and never calls this. If something ever does, it fails the way `useText` fails: loudly,
- * naming the key, rather than drawing the key itself on the board.
+ * screen's own resolver. The page mounts no other canvas since `DEC-020` — the campaign's own
+ * replay included, which `App.test.tsx` holds by describing the scene under the page's props —
+ * so a caller without a catalogue can only be asking about a scene with no word in it. If
+ * something ever does call this, it fails the way `useText` fails: loudly, naming the key,
+ * rather than drawing the key itself on the board.
  */
 const NO_CATALOGUE: ResolveText = (key) => {
   throw new Error(
