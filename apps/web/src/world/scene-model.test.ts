@@ -32,6 +32,34 @@ import { MIN_SCENE_HEIGHT, SCENE_WIDTH, describeScene } from './scene-model.ts';
 /** The seed the scenario runner's CLI defaults to, and the one the corpus records. */
 const SEED = 424242n;
 
+/**
+ * A battle board with a nameless man per id, and nothing else that matters here.
+ *
+ * Hand-built, and it says so: the two questions it poses — a unit listed twice, and a board
+ * drawn with no catalogue — are not ones a shipped scenario reaches, which is the point of
+ * asking them.
+ */
+function aBoardOf(units: readonly string[]): BattleScreenModel {
+  return {
+    ...BATTLE_LOADING_SCREEN,
+    units: units.map((unit) => ({
+      unit,
+      side: 'crew',
+      heroDefinition: null,
+      displayNameKey: null,
+      roleKey: 'battle.role.vanguard',
+      roleShortKey: 'battle.role.vanguard.short',
+      row: 1,
+      column: 1,
+      health: 10,
+      maxHealth: 10,
+      standing: true,
+      leftKey: null,
+      statuses: []
+    }))
+  } as unknown as BattleScreenModel;
+}
+
 function offerFor(scenario: string): ContractOfferScreenModel {
   const { screen } = startSession({
     content: browserContentSource(),
@@ -117,9 +145,24 @@ describe('the scene behind each screen', () => {
     }
   });
 
+  it('holds the battle board to one id per shape, as it holds the line-up', () => {
+    // A word on a token and the token under it are two shapes, and every statement about
+    // the board names one by its id. A unit listed twice would put two tokens, two bars and
+    // two words under the same three ids.
+    expect(() => describeScene(aBoardOf(['crew:0', 'crew:0']), 0, (key) => key)).toThrow(
+      /appears twice/u
+    );
+  });
+
+  it('fails loudly, naming the key, when a board with words on it is handed no catalogue', () => {
+    // The canvas behind the campaign screens has no words and is drawn with no catalogue.
+    // The board has words, and one drawn without a resolver must not print its keys.
+    expect(() => describeScene(aBoardOf(['crew:0']))).toThrow(/battle\.role\.vanguard\.short/u);
+  });
+
   it('still draws the battle board', () => {
     // The counterpart, so "draws nothing" cannot quietly become the answer for all four.
-    expect(describeScene(aBoard()).shapes.length).toBeGreaterThan(0);
+    expect(describeScene(aBoard(), 0, (key) => key).shapes.length).toBeGreaterThan(0);
   });
 
   it('is a function of the model alone', () => {
@@ -127,6 +170,6 @@ describe('the scene behind each screen', () => {
     // reached for a clock or a random offset would still pass every check above.
     const board = aBoard();
 
-    expect(describeScene(board)).toEqual(describeScene(board));
+    expect(describeScene(board, 0, (key) => key)).toEqual(describeScene(board, 0, (key) => key));
   });
 });

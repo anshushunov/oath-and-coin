@@ -59,6 +59,12 @@ export interface LayoutMeasurement {
  * stops changing, rather than waited for by a fixed delay: scrolling is applied
  * asynchronously, and a sleep long enough to be safe on this machine is a sleep that is
  * sometimes too short on a loaded CI runner.
+ *
+ * **What it measures is the screen's own box, and only that.** A scroller nested inside the
+ * screen — the battle journal is one, the kit's `Feed`, because sticking to the newest line is
+ * something only a scrolling box can do — keeps its scrolled-away content out of the screen's
+ * `scrollHeight`, so none of the numbers here say anything about it. The suite that has one
+ * checks it separately, with the wheel over it (`battle.spec.ts`, `expectJournalRead`).
  */
 export async function measureLayout(page: Page, screen: string): Promise<LayoutMeasurement> {
   const box = await page.getByTestId(screen).boundingBox();

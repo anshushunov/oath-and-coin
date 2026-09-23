@@ -1,5 +1,7 @@
 import type { BattleScreenModel, BattleUnitLine } from '@oath-and-coin/presentation';
 
+import type { ResolveText } from '../text.tsx';
+
 /**
  * The board behind the battle screen, described as data (`COMBAT_SPEC` §10.2, `DEC-007`).
  *
@@ -9,7 +11,8 @@ import type { BattleScreenModel, BattleUnitLine } from '@oath-and-coin/presentat
  * nothing.
  *
  * **Schematic, and that is `DEC-007` rather than a shortcut.** Two grids of nine cells, a
- * token per unit, a bar per unit, a mark per status and one floating number. No arena, no
+ * token per unit, a word on every token, a bar per unit, a mark per status, one line of intent
+ * and one floating number. No arena, no
  * characters — `MVP_PLAN` §6.6 puts those after the mechanics and the debrief, and a lab that
  * spent its budget on a background would be answering "is it pretty" instead of "does it
  * read".
@@ -43,6 +46,29 @@ const MARK_GAP = 3;
 /** How far a popup number drifts upward over the life of its event, and how big it is. */
 const POPUP_RISE = 22;
 const POPUP_SIZE = 24;
+
+/**
+ * The word on a token: its size, where it starts, and how far a second one sits below it.
+ *
+ * Twelve logical pixels, because the spike measured what they become: at the old 420px
+ * canvas the board is drawn at 0.66 and a word of eleven is seven screen pixels — smaller
+ * than the kit's smallest step and unreadable; with the field across the whole screen and its
+ * height held to half the window the board is drawn at 1.33, and twelve become sixteen
+ * (`docs/research/BATTLE_LABEL_SPIKE_2026-09.md`).
+ *
+ * The pitch is what keeps two men in one cell apart. Two downed men do share a cell — the
+ * combat loop's own `finished.png` has Брам and Кестрел in `1:2` — and a second word drawn at
+ * the first one's place would be two correct names painted into one smudge. Two fit between
+ * the top of the token and the status marks; nothing reachable puts three in one cell today.
+ */
+const LABEL_SIZE = 12;
+const LABEL_TOP = 6;
+const LABEL_PITCH = LABEL_SIZE + 2;
+const LABEL_INSET = 5;
+
+/** A token is the cell less four on every side, so its half-size is this. */
+const TOKEN_INSET = 4;
+const TOKEN_HALF = (CELL - 2 * TOKEN_INSET) / 2;
 
 interface BattleShapeBase {
   readonly id: string;
@@ -115,8 +141,55 @@ export interface BattlePopup extends BattleShapeBase {
   readonly age: number;
 }
 
+/**
+ * The word on a token: a man's name, or — when he has none — the short word for his job.
+ *
+ * **Resolved before it reaches this shape, and that is the point of the field.** The token
+ * carries `role` as a localization key, and a renderer printing that would put
+ * `battle.role.vanguard` on the board. The scene is handed a resolver instead, and what lands
+ * here is the text a player reads.
+ *
+ * A shape of its own rather than a field on the token, so it has an id of its own: every
+ * statement about the scene names a shape, and "the word on Брам's token" is a different
+ * statement from "Брам's token".
+ */
+export interface BattleLabel extends BattleShapeBase {
+  readonly kind: 'battle-label';
+  readonly side: 'crew' | 'foe';
+  readonly label: string;
+}
+
+/**
+ * Who is about to do something to whom — the line of intent, drawn (`COMBAT_SPEC` §10.2).
+ *
+ * The screen has named it in words since segment E; the board never drew it, and the owner's
+ * first play asked «кто кого бьёт» looking at the board. One line, because an intent arrives
+ * one event at a time and the model carries the last one.
+ *
+ * `from*` is on the edge of the actor's token and `to*` on the edge of the target's, so the
+ * arrowhead lands beside the target's name rather than on it. The inherited box is the one
+ * the two ends span.
+ */
+export interface BattleIntent extends BattleShapeBase {
+  readonly kind: 'battle-intent';
+  /** The unit that declared it. */
+  readonly actor: string;
+  /** The unit it is aimed at. */
+  readonly target: string;
+  readonly fromX: number;
+  readonly fromY: number;
+  readonly toX: number;
+  readonly toY: number;
+}
+
 export type BattleShape =
-  BattleCellShape | BattleToken | BattleHealthBar | BattleStatusMark | BattlePopup;
+  | BattleCellShape
+  | BattleToken
+  | BattleHealthBar
+  | BattleStatusMark
+  | BattlePopup
+  | BattleLabel
+  | BattleIntent;
 
 export interface BattleSceneDescription {
   readonly width: number;
@@ -127,12 +200,18 @@ export interface BattleSceneDescription {
 /**
  * The board for `model`, at `phase` of the current event's life (0 → 1).
  *
- * Total and deterministic: the same model and the same phase give the same description, down
- * to the numbers, which is what lets it be compared rather than looked at.
+ * Total and deterministic: the same model, the same phase and the same catalogue give the
+ * same description, down to the numbers, which is what lets it be compared rather than
+ * looked at.
+ *
+ * `textOf` is the one thing this module knows about language, and it knows it only as a
+ * function: every word on the board is resolved here, before the canvas, so the renderer is
+ * handed text and never a key (`ADR-017`'s split — the scene decides, `pixi-scene.ts` draws).
  */
 export function describeBattleScene(
   model: BattleScreenModel,
-  phase: number
+  phase: number,
+  textOf: ResolveText
 ): BattleSceneDescription {
   const age = Math.min(1, Math.max(0, phase));
   const shapes: BattleShape[] = [];
@@ -163,6 +242,16 @@ export function describeBattleScene(
   for (const unit of model.units) {
     shapes.push(...unitShapes(unit));
   }
+
+  // Under the words and over the tokens: a line that crosses a third man's token on its way
+  // must not cover his name, and it must not be hidden by the token it crosses either.
+  const intent = intentOf(model);
+
+  if (intent !== null) {
+    shapes.push(intent);
+  }
+
+  shapes.push(...labelsOf(model.units, textOf));
 
   const popup = popupOf(model, age);
 
@@ -212,6 +301,103 @@ function unitShapes(unit: BattleUnitLine): readonly BattleShape[] {
   }));
 
   return [token, bar, ...marks];
+}
+
+/**
+ * The word on every token, in the model's order.
+ *
+ * His name when he has one; the short word for his job when he has not — the owner's decision
+ * of 2026-09-23, because the full word does not fit (`BattleUnitLine.roleShortKey`). The
+ * branch is on a field being `null`, the one kind of branch this layer takes.
+ *
+ * Men who share a cell get one line each, top to bottom in the model's order, rather than one
+ * spot for all of them.
+ */
+function labelsOf(units: readonly BattleUnitLine[], textOf: ResolveText): readonly BattleLabel[] {
+  const taken = new Map<string, number>();
+
+  return units.map((unit): BattleLabel => {
+    const side = unit.side === 'crew' ? 'crew' : 'foe';
+    const { x, y } = cornerOf(side, unit.row, unit.column);
+    const cell = `${side}:${String(unit.row)}:${String(unit.column)}`;
+    const below = taken.get(cell) ?? 0;
+
+    taken.set(cell, below + 1);
+
+    return {
+      kind: 'battle-label',
+      id: `label:${unit.unit}`,
+      side,
+      label: textOf(unit.displayNameKey ?? unit.roleShortKey),
+      x: x + LABEL_INSET,
+      y: y + LABEL_TOP + below * LABEL_PITCH,
+      width: CELL - 2 * LABEL_INSET,
+      height: LABEL_SIZE
+    };
+  });
+}
+
+/**
+ * The line from the man who declared the last intent to the man it is aimed at, or nothing.
+ *
+ * Nothing when the intent names no target, when either man is not on the board, and when the
+ * two stand on one spot — each of those is a line with no direction, and a board that drew
+ * one anyway would be pointing somewhere the fight is not.
+ */
+function intentOf(model: BattleScreenModel): BattleIntent | null {
+  const intent = model.intent;
+
+  if (intent === null || intent.targetUnit === null) {
+    return null;
+  }
+
+  const actor = model.units.find((unit) => unit.unit === intent.unit);
+  const target = model.units.find((unit) => unit.unit === intent.targetUnit);
+
+  if (actor === undefined || target === undefined) {
+    return null;
+  }
+
+  const from = centreOf(actor);
+  const to = centreOf(target);
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = Math.hypot(dx, dy);
+
+  if (length === 0) {
+    return null;
+  }
+
+  // How far along the line its own token's edge is. A square's edge is where the larger of
+  // the two components reaches the half-size, which is exact on the straight and on the
+  // diagonal alike.
+  const edge = TOKEN_HALF / Math.max(Math.abs(dx), Math.abs(dy));
+  const fromX = from.x + dx * edge;
+  const fromY = from.y + dy * edge;
+  const toX = to.x - dx * edge;
+  const toY = to.y - dy * edge;
+
+  return {
+    kind: 'battle-intent',
+    id: `intent:${actor.unit}`,
+    actor: actor.unit,
+    target: target.unit,
+    fromX,
+    fromY,
+    toX,
+    toY,
+    x: Math.min(fromX, toX),
+    y: Math.min(fromY, toY),
+    width: Math.abs(toX - fromX),
+    height: Math.abs(toY - fromY)
+  };
+}
+
+/** The middle of the token a unit stands on. */
+function centreOf(unit: BattleUnitLine): { readonly x: number; readonly y: number } {
+  const { x, y } = cornerOf(unit.side === 'crew' ? 'crew' : 'foe', unit.row, unit.column);
+
+  return { x: x + CELL / 2, y: y + CELL / 2 };
 }
 
 /**

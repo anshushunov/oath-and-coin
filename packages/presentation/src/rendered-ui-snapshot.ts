@@ -165,35 +165,14 @@ function battleSnapshot(
   if (model.units.length > 0) {
     resolve(BattleFieldKeys.Round);
     texts.push(String(model.round));
+  }
 
-    resolve(BattleFieldKeys.Board);
-
-    for (const unit of model.units) {
-      resolve(unit.side === 'crew' ? BattleFieldKeys.Crew : BattleFieldKeys.Foes);
-
-      if (unit.displayNameKey !== null) {
-        resolve(unit.displayNameKey);
-      }
-
-      resolve(unit.roleKey);
-      // Where he stands, in the two words `COMBAT_SPEC` §3.1 names a cell by. The owner's
-      // first play could not tell how anybody stood: the list had no cell on it.
-      resolve(BattleFieldKeys.Row);
-      texts.push(String(unit.row));
-      resolve(BattleFieldKeys.Column);
-      texts.push(String(unit.column));
-      resolve(BattleFieldKeys.Health);
-      texts.push(String(unit.health));
-
-      if (unit.leftKey !== null) {
-        resolve(unit.leftKey);
-      }
-
-      for (const status of unit.statuses) {
-        resolve(status.key);
-        resolve(status.markKey);
-      }
-    }
+  // How it ended, straight under the field and above everything that explains it — the
+  // layout the owner chose (the spec of the kit, §5.4). It used to be the last text on the
+  // screen, below the whole journal, and the frame of a finished fight never reached it.
+  if (model.outcomeKey !== null) {
+    resolve(BattleFieldKeys.Outcome);
+    resolve(model.outcomeKey);
   }
 
   if (model.intent !== null) {
@@ -233,6 +212,57 @@ function battleSnapshot(
     }
   }
 
+  // Always, and in the order the screen draws them: a control that vanished would leave a
+  // player with no way to learn it existed, which is the same argument the offer screen's
+  // dark buttons make.
+  resolve(model.controls.pauseKey);
+  resolve(model.controls.speedKey);
+  resolve(model.controls.skipKey);
+  resolve(model.controls.replayKey);
+
+  if (model.retreat !== null) {
+    resolve(model.retreat.labelKey);
+    resolve(model.retreat.costKey);
+  }
+
+  // The people on the field, then the journal — the two panels side by side under the
+  // controls. A depth-first walk visits the whole of the first before the second, whatever
+  // the columns look like to a reader (this file's own opening remark).
+  if (model.units.length > 0) {
+    resolve(BattleFieldKeys.Board);
+
+    for (const unit of model.units) {
+      resolve(unit.side === 'crew' ? BattleFieldKeys.Crew : BattleFieldKeys.Foes);
+
+      if (unit.displayNameKey !== null) {
+        resolve(unit.displayNameKey);
+      }
+
+      // The full word for his job: only the board is short of room for it, and the board is
+      // a picture this list does not hold (the owner's decision of 2026-09-23).
+      resolve(unit.roleKey);
+      // Where he stands, in the two words `COMBAT_SPEC` §3.1 names a cell by. The owner's
+      // first play could not tell how anybody stood: the list had no cell on it.
+      resolve(BattleFieldKeys.Row);
+      texts.push(String(unit.row));
+      resolve(BattleFieldKeys.Column);
+      texts.push(String(unit.column));
+      // The caption, then the number on the bar: the bar's length is the picture and the
+      // number is its text dub (`GDD` §16.6).
+      resolve(BattleFieldKeys.Health);
+      texts.push(String(unit.health));
+
+      if (unit.leftKey !== null) {
+        resolve(unit.leftKey);
+      }
+
+      for (const status of unit.statuses) {
+        resolve(status.key);
+        resolve(status.markKey);
+      }
+    }
+  }
+
   if (model.journal.length > 0) {
     resolve(BattleFieldKeys.Journal);
 
@@ -267,24 +297,6 @@ function battleSnapshot(
         texts.push(String(line.amount));
       }
     }
-  }
-
-  // Always, and in the order the screen draws them: a control that vanished would leave a
-  // player with no way to learn it existed, which is the same argument the offer screen's
-  // dark buttons make.
-  resolve(model.controls.pauseKey);
-  resolve(model.controls.speedKey);
-  resolve(model.controls.skipKey);
-  resolve(model.controls.replayKey);
-
-  if (model.retreat !== null) {
-    resolve(model.retreat.labelKey);
-    resolve(model.retreat.costKey);
-  }
-
-  if (model.outcomeKey !== null) {
-    resolve(BattleFieldKeys.Outcome);
-    resolve(model.outcomeKey);
   }
 
   return texts;

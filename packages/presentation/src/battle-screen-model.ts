@@ -27,6 +27,7 @@ import {
   BattleFieldKeys,
   combatActionKey,
   combatRoleKey,
+  combatRoleShortKey,
   contractDisplayNameKey,
   doctrineKey
 } from './keys.ts';
@@ -78,6 +79,14 @@ export interface BattleUnitLine {
   /** `null` together with {@link heroDefinition}: a foe has a role, not a name. */
   readonly displayNameKey: string | null;
   readonly roleKey: string;
+  /**
+   * The same job as {@link roleKey}, in one word short enough for his token on the board.
+   *
+   * The owner's decision of 2026-09-23: a foe is labelled on the board by his job, and the
+   * full word does not fit there. Only the board reads it — the list and the journal keep
+   * the full one.
+   */
+  readonly roleShortKey: string;
   readonly row: number;
   readonly column: number;
   readonly health: number;
@@ -595,6 +604,7 @@ function unitLineOf(unit: BattleBoardUnit, names: Names): BattleUnitLine {
     heroDefinition: displayNameKey === null ? null : definition,
     displayNameKey: definition === null ? null : displayNameKey,
     roleKey: combatRoleKey(unit.role),
+    roleShortKey: combatRoleShortKey(unit.role),
     row: unit.cell.row,
     column: unit.cell.column,
     health: unit.health,
@@ -816,6 +826,7 @@ export function describeBattleReadModel(model: BattleScreenModel): CanonicalValu
       hero_definition: unit.heroDefinition,
       hero_display_name_key: unit.displayNameKey,
       role_key: unit.roleKey,
+      role_short_key: unit.roleShortKey,
       row: unit.row,
       column: unit.column,
       health: unit.health,

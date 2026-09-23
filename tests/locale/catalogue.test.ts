@@ -24,6 +24,7 @@ import {
   BLOCKER_KEYS,
   COMBAT_ACTION_KEYS,
   COMBAT_ROLE_KEYS,
+  COMBAT_ROLE_SHORT_KEYS,
   DOCTRINE_KEYS,
   AFTER_ACTION_TITLE_KEY,
   COMMITMENT_STATE_KEYS,
@@ -367,6 +368,9 @@ function everyKeyTheInterfaceCanShow(): readonly string[] {
     ...BATTLE_STATUS_KEYS,
     ...COMBAT_ACTION_KEYS,
     ...COMBAT_ROLE_KEYS,
+    // The same four jobs in one short word each, for the board alone (the owner's decision
+    // of 2026-09-23): a foe has no name, and his full job does not fit on a token.
+    ...COMBAT_ROLE_SHORT_KEYS,
     ...DOCTRINE_KEYS,
     ...TARGET_REASONS,
     ...MOTIVE_REASONS,

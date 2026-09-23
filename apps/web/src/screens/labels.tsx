@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+
 import { useText } from '../text.tsx';
 
 /**
@@ -133,5 +135,31 @@ export function KeyList({
         <Label key={key} text={text(key)} />
       ))}
     </div>
+  );
+}
+
+/**
+ * One coloured span around what it wraps, or the wrapped thing as it is when there is no colour.
+ *
+ * The colour is named by its role and chosen by the stylesheet (`[data-tone]` in `styles.css`,
+ * reading the same `tokens.css` the canvas's `hex()` reads) — so "blue is ours" is one fact on
+ * both sides of the seam, which is what `DEC-018` asks. A wrapper adds no text, so the
+ * snapshot of the screen does not move by a word.
+ */
+export function Tinted({
+  tone,
+  children
+}: {
+  readonly tone: string | null;
+  readonly children: ReactNode;
+}) {
+  if (tone === null) {
+    return <>{children}</>;
+  }
+
+  return (
+    <span className="tone" data-tone={tone}>
+      {children}
+    </span>
   );
 }

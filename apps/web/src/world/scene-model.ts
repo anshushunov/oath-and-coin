@@ -1,5 +1,7 @@
 import { ScreenKind, type ScreenModel } from '@oath-and-coin/presentation';
 
+import type { ResolveText } from '../text.tsx';
+
 import { describeBattleScene, type BattleShape } from './battle-scene-model.ts';
 
 /**
@@ -45,7 +47,11 @@ export interface SceneDescription {
  * Total and deterministic: the same model gives the same description, down to the
  * numbers, which is what lets the description be compared rather than looked at.
  */
-export function describeScene(model: ScreenModel, phase = 0): SceneDescription {
+export function describeScene(
+  model: ScreenModel,
+  phase = 0,
+  textOf: ResolveText = NO_CATALOGUE
+): SceneDescription {
   // Written as an exhaustive `switch` and not as "everything that is not the battle": the
   // negative form compiles happily the day a fifth screen is added and answers for it
   // silently, which is the exact shape this repository has already paid for three times
@@ -59,13 +65,36 @@ export function describeScene(model: ScreenModel, phase = 0): SceneDescription {
       // `DEC-020`: no scene behind these. The page mounts no canvas for them at all; the
       // empty box is what a caller that asks anyway gets, rather than a throw.
       return EMPTY_SCENE;
-    case ScreenKind.Battle:
+    case ScreenKind.Battle: {
       // The phase defaults to nought — the instant the event landed — so everything holding
       // a `ScreenModel` and no clock (the evidence run, a snapshot, a test) gets a frame it
       // can compare, and only the screen that is actually playing a battle passes one.
-      return describeBattleScene(model, phase);
+      const board = describeBattleScene(model, phase, textOf);
+
+      // The board is held to the rule the line-up is: a word on a token and the token under
+      // it are two shapes, and one id for both would make every statement about either
+      // ambiguous.
+      requireDistinctIds(board.shapes);
+
+      return board;
+    }
   }
 }
+
+/**
+ * What a scene is resolved with when nobody handed it a catalogue.
+ *
+ * Only the battle board has words on it, and the one place that draws a board passes the
+ * screen's own resolver. Everything else — the canvas behind the campaign screens, which sits
+ * outside the `TextSource` because it draws no text — describes a scene with no word in it
+ * and never calls this. If something ever does, it fails the way `useText` fails: loudly,
+ * naming the key, rather than drawing the key itself on the board.
+ */
+const NO_CATALOGUE: ResolveText = (key) => {
+  throw new Error(
+    `The scene was asked to put '${key}' into words, and whoever drew it passed no catalogue.`
+  );
+};
 
 /** The box with nothing in it — see {@link describeScene}. */
 const EMPTY_SCENE: SceneDescription = Object.freeze({

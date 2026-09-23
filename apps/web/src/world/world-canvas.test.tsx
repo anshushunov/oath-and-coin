@@ -156,6 +156,13 @@ function aBattleScreen(): {
   throw new Error('battle_ready produced no event that lands on anybody.');
 }
 
+/**
+ * A resolver that answers every key with itself. The words on the board are not this file's
+ * question — which renderer draws them is — and one stable function is what keeps the
+ * description the same object between two renders of the same model.
+ */
+const echo = (key: string): string => key;
+
 /** Mounts the canvas and lets the promise chain the component keeps settle. */
 async function mountCanvas(model: ScreenModel) {
   const tree = mount(<WorldCanvas model={model} />);
@@ -271,7 +278,59 @@ describe('the renderer behind the screen', () => {
   });
 });
 
+describe('the frame counter a browser check waits on', () => {
+  it('counts every frame drawn, so "the next frame" is something a check can wait for', async () => {
+    // `data-scene-shapes` is set by the mount and never goes away while the canvas lives, so
+    // after a press a wait on it is satisfied at once — by the frame drawn *before* the press.
+    // Review found three such waits in the browser suites. A number that moves with every
+    // draw is what "the renderer has drawn what the press produced" can be waited on with.
+    const campaign = aCampaignScreen();
+    const tree = await mountCanvas(LOADING_SCREEN);
+    const canvas = tree.container.querySelector('canvas');
+
+    expect(canvas?.dataset['sceneFrame']).toBe('1');
+
+    tree.rerender(<WorldCanvas model={campaign} />);
+    await settle();
+
+    expect(canvas?.dataset['sceneFrame']).toBe('2');
+
+    // The same model again is not a frame: nothing was drawn, so nothing is counted.
+    tree.rerender(<WorldCanvas model={campaign} />);
+    await settle();
+
+    expect(canvas?.dataset['sceneFrame']).toBe('2');
+
+    tree.unmount();
+    await settle();
+
+    expect(canvas?.dataset['sceneFrame']).toBeUndefined();
+  });
+});
+
 describe('the battle board', () => {
+  it('resolves the words on the board with the catalogue it is handed', async () => {
+    // The scene resolves every key before the canvas (`battle-scene-model.ts`), and this is
+    // the one seam the resolver crosses to get there. A component that dropped it would
+    // describe a board with no catalogue, which throws on the first word.
+    const battle = aBattleScreen();
+    const asked: string[] = [];
+    const textOf = (key: string): string => {
+      asked.push(key);
+
+      return key;
+    };
+
+    mount(<WorldCanvas model={battle.at(0)} textOf={textOf} />);
+    await settle();
+
+    expect(recorder.mounted).toHaveLength(1);
+    expect(asked.length).toBeGreaterThan(0);
+    expect(
+      recorder.mounted[0]!.shapes.filter((shape) => shape.kind === 'battle-label')
+    ).toHaveLength(battle.at(0).units.length);
+  });
+
   it('does not bring up a second renderer between frames', async () => {
     // The invariant the browser gate cannot see. `battle-redraw.spec.ts` proves the frame on
     // the board changed; whether the *same* renderer changed it is counted here, where the
@@ -281,21 +340,24 @@ describe('the battle board', () => {
     const battle = aBattleScreen();
     const landed = battle.at(battle.landed);
     const next = battle.at(battle.landed + 1);
-    const tree = mount(<WorldCanvas model={landed} phase={0} />);
+    const tree = mount(<WorldCanvas model={landed} phase={0} textOf={echo} />);
     await settle();
 
-    tree.rerender(<WorldCanvas model={landed} phase={0.5} />);
+    tree.rerender(<WorldCanvas model={landed} phase={0.5} textOf={echo} />);
     await settle();
-    tree.rerender(<WorldCanvas model={next} phase={0} />);
+    tree.rerender(<WorldCanvas model={next} phase={0} textOf={echo} />);
     await settle();
 
     expect(recorder.mounted).toHaveLength(1);
     expect(recorder.destroyed).toBe(0);
-    expect(recorder.applied).toEqual([describeScene(landed, 0.5), describeScene(next, 0)]);
+    expect(recorder.applied).toEqual([
+      describeScene(landed, 0.5, echo),
+      describeScene(next, 0, echo)
+    ]);
     // Three different pictures, or the two draws above would be redraws of one scene and
     // the case would say nothing about frames.
-    expect(describeScene(landed, 0.5)).not.toEqual(describeScene(landed, 0));
-    expect(describeScene(next, 0)).not.toEqual(describeScene(landed, 0.5));
+    expect(describeScene(landed, 0.5, echo)).not.toEqual(describeScene(landed, 0, echo));
+    expect(describeScene(next, 0, echo)).not.toEqual(describeScene(landed, 0.5, echo));
   });
 });
 

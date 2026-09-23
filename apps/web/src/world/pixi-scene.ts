@@ -18,7 +18,7 @@ import 'pixi.js/unsafe-eval';
 
 import { Stroke, hex } from '../ui/tokens.ts';
 
-import type { BattlePopup } from './battle-scene-model.ts';
+import type { BattleIntent, BattleLabel, BattlePopup } from './battle-scene-model.ts';
 import type { SceneDescription, SceneShape } from './scene-model.ts';
 
 /**
@@ -92,6 +92,33 @@ const POPUP_OUTLINE_WIDTH = Stroke.thick;
 /** Drawn on every shape, so a token on the background still has an edge. */
 const OUTLINE = hex('outline');
 const OUTLINE_WIDTH = Stroke.hairline;
+
+/**
+ * The word on a token: the page's own ink, over the popup's dark outline.
+ *
+ * The same pairing the floating number uses and for the same reason — a token is blue, red or
+ * the grey of a man who is down, and a word has to read on all three without the scene
+ * knowing which it is on. A hairline rather than the popup's thick stroke: the word is twelve
+ * logical pixels, and three of outline would close its letters up.
+ */
+const LABEL_INK = hex('ink');
+const LABEL_OUTLINE_WIDTH = Stroke.hairline;
+
+/**
+ * The line of intent: its own colour, over a dark edge wide enough to read across a cell, a
+ * token and the gap between the boards alike.
+ *
+ * Its own colour role rather than the ink of the words, and not for looks: the browser check
+ * finds the line by counting the pixels of exactly this colour (`tests/e2e/battle.spec.ts`),
+ * because a count of *all* colours cannot tell "words and no line" from "words and a line" —
+ * words alone are hundreds of shades (`docs/research/BATTLE_LABEL_SPIKE_2026-09.md`).
+ */
+const INTENT = hex('intent');
+const INTENT_WIDTH = Stroke.thick;
+const INTENT_EDGE_WIDTH = Stroke.thick + 2 * Stroke.hairline;
+/** The arrowhead: how long it is along the line, and how far it spreads either side. */
+const ARROW_LENGTH = 9;
+const ARROW_SPREAD = 5;
 
 /** A mounted scene, and the two things its owner may do with it. */
 export interface PixiScene {
@@ -184,6 +211,14 @@ function draw(shape: SceneShape): Container {
     return drawPopup(shape);
   }
 
+  if (shape.kind === 'battle-label') {
+    return drawLabel(shape);
+  }
+
+  if (shape.kind === 'battle-intent') {
+    return drawIntent(shape);
+  }
+
   const graphics = new Graphics();
 
   graphics.label = shape.id;
@@ -235,7 +270,80 @@ function drawPopup(shape: BattlePopup): Container {
   return text;
 }
 
-function fillFor(shape: Exclude<SceneShape, BattlePopup>): number {
+/**
+ * The word on a token, centred across the width the description gives it.
+ *
+ * Centred rather than wrapped: the words are chosen to fit (a name of up to seven letters, a
+ * job of up to five — the owner's decision of 2026-09-23), and the spike measured what wrapping
+ * does to a word that does not — «Столкно / вение», broken mid-word. A word that ever outgrows
+ * its token spills evenly past both edges, which is ugly and still readable; broken in half it
+ * is neither.
+ */
+function drawLabel(shape: BattleLabel): Container {
+  const text = new Text({
+    text: shape.label,
+    style: {
+      fontFamily: 'sans-serif',
+      fontSize: shape.height,
+      fill: LABEL_INK,
+      stroke: { color: POPUP_OUTLINE, width: LABEL_OUTLINE_WIDTH, join: 'round' }
+    }
+  });
+
+  text.label = shape.id;
+  text.anchor.set(0.5, 0);
+  text.x = shape.x + shape.width / 2;
+  text.y = shape.y;
+
+  return text;
+}
+
+/**
+ * The line of intent: from the edge of one token to the edge of the other, with a head at the
+ * target's end — which way it goes is the half of «кто кого бьёт» a plain line would lose.
+ *
+ * Drawn twice, dark and wide under bright and narrow, so it reads over a cell, over a token and
+ * over the scene's own background without the scene having to know which it crosses.
+ */
+function drawIntent(shape: BattleIntent): Container {
+  const graphics = new Graphics();
+  const dx = shape.toX - shape.fromX;
+  const dy = shape.toY - shape.fromY;
+  const length = Math.hypot(dx, dy);
+  // The description never hands over a line with no length (`battle-scene-model.ts` drops
+  // it), so this is arithmetic safety rather than a rule about the board.
+  const ux = length === 0 ? 0 : dx / length;
+  const uy = length === 0 ? 0 : dy / length;
+  const headLength = Math.min(ARROW_LENGTH, length);
+  const baseX = shape.toX - ux * headLength;
+  const baseY = shape.toY - uy * headLength;
+  const head = [
+    shape.toX,
+    shape.toY,
+    baseX - uy * ARROW_SPREAD,
+    baseY + ux * ARROW_SPREAD,
+    baseX + uy * ARROW_SPREAD,
+    baseY - ux * ARROW_SPREAD
+  ];
+
+  graphics.label = shape.id;
+
+  graphics
+    .moveTo(shape.fromX, shape.fromY)
+    .lineTo(baseX, baseY)
+    .stroke({ color: POPUP_OUTLINE, width: INTENT_EDGE_WIDTH, cap: 'round' })
+    .poly(head)
+    .stroke({ color: POPUP_OUTLINE, width: INTENT_EDGE_WIDTH - INTENT_WIDTH, join: 'round' })
+    .moveTo(shape.fromX, shape.fromY)
+    .lineTo(baseX, baseY)
+    .stroke({ color: INTENT, width: INTENT_WIDTH, cap: 'round' })
+    .poly(head)
+    .fill(INTENT);
+
+  return graphics;
+}
+
+function fillFor(shape: Exclude<SceneShape, BattlePopup | BattleLabel | BattleIntent>): number {
   switch (shape.kind) {
     case 'battle-cell':
       return CELL_FILL;

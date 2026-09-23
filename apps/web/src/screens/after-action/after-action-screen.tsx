@@ -5,6 +5,7 @@ import {
   SettlementFieldKeys,
   TreasuryFieldKeys,
   afterActionStateKey,
+  battleLineTones,
   errorKey,
   type AfterActionConsequenceLine,
   type AfterActionContributionLine,
@@ -19,7 +20,7 @@ import { useState } from 'react';
 
 import { useText } from '../../text.tsx';
 
-import { Captioned, KeyList, Label, Who } from '../labels.tsx';
+import { Captioned, KeyList, Label, Tinted, Who } from '../labels.tsx';
 
 /**
  * The debrief: what the run cost, what it bought, and the one decision left over
@@ -140,39 +141,57 @@ export function AfterActionScreen({
               value={String(model.battle.retreatSignalledAtRound)}
             />
           )}
-          {model.battle.feed.map((line, index) => (
-            // Keyed by position, for the reason the outcome feed above is: a battle line
-            // carries no identity of its own, and the list is rebuilt whole.
-            <div className="battle-line" key={index}>
-              <Label text={text(line.key)} />
-              {/*
-                A name when he has one, his side and his job when he has not. A foe carries
-                no display name, and the frame of a finished fight read half a screen of
-                `Намерение Выстрел` — acts with no subject.
-              */}
-              <Who
-                displayNameKey={line.heroDisplayNameKey}
-                sideKey={line.sideKey}
-                roleKey={line.roleKey}
-              />
-              {line.detailKey === null ? null : <Label text={text(line.detailKey)} />}
-              {/*
-                The other man, after the word saying which way it went — the same line the
-                battle screen prints, because it is the same journal read a second time.
-              */}
-              {line.linkKey === null ? null : (
-                <>
-                  <Label text={text(line.linkKey)} />
+          {model.battle.feed.map((line, index) => {
+            // The three colours of `DEC-018` п.4: the debrief's feed is the battle journal read
+            // a second time, so it is coloured by the same rule off the same words.
+            const tones = battleLineTones(line);
+
+            return (
+              // Keyed by position, for the reason the outcome feed above is: a battle line
+              // carries no identity of its own, and the list is rebuilt whole.
+              <div className="battle-line" key={index}>
+                <Label text={text(line.key)} />
+                {/*
+                  A name when he has one, his side and his job when he has not. A foe carries
+                  no display name, and the frame of a finished fight read half a screen of
+                  `Намерение Выстрел` — acts with no subject.
+                */}
+                <Tinted tone={tones.who}>
                   <Who
-                    displayNameKey={line.targetDisplayNameKey}
-                    sideKey={line.targetSideKey}
-                    roleKey={line.targetRoleKey}
+                    displayNameKey={line.heroDisplayNameKey}
+                    sideKey={line.sideKey}
+                    roleKey={line.roleKey}
                   />
-                </>
-              )}
-              {line.amount === null ? null : <Label text={String(line.amount)} />}
-            </div>
-          ))}
+                </Tinted>
+                {line.detailKey === null ? null : (
+                  <Tinted tone={tones.detail}>
+                    <Label text={text(line.detailKey)} />
+                  </Tinted>
+                )}
+                {/*
+                  The other man, after the word saying which way it went — the same line the
+                  battle screen prints, because it is the same journal read a second time.
+                */}
+                {line.linkKey === null ? null : (
+                  <>
+                    <Label text={text(line.linkKey)} />
+                    <Tinted tone={tones.target}>
+                      <Who
+                        displayNameKey={line.targetDisplayNameKey}
+                        sideKey={line.targetSideKey}
+                        roleKey={line.targetRoleKey}
+                      />
+                    </Tinted>
+                  </>
+                )}
+                {line.amount === null ? null : (
+                  <Tinted tone={tones.amount}>
+                    <Label text={String(line.amount)} />
+                  </Tinted>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 

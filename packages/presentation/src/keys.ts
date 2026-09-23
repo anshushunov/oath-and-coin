@@ -804,6 +804,24 @@ export function combatRoleKey(role: CombatRole): string {
 
 export const COMBAT_ROLE_KEYS: readonly string[] = Object.freeze(COMBAT_ROLES.map(combatRoleKey));
 
+/**
+ * The same four jobs, as one short word a token on the board can carry.
+ *
+ * **The owner's decision of 2026-09-23, bought by a spike** (`docs/research/
+ * BATTLE_LABEL_SPIKE_2026-09.md`). A foe has no name, so the board labels him by his job —
+ * and «Столкновение» does not fit on a token even half as large again. A second key per job
+ * rather than a shortened first one: the list under the board and the journal keep the full
+ * words, and only the board reads these. Beside the full key and built the same way, so the
+ * two can never name different jobs.
+ */
+export function combatRoleShortKey(role: CombatRole): string {
+  return `${combatRoleKey(role)}.short`;
+}
+
+export const COMBAT_ROLE_SHORT_KEYS: readonly string[] = Object.freeze(
+  COMBAT_ROLES.map(combatRoleShortKey)
+);
+
 /** What a unit did on its turn (`COMBAT_SPEC` §4.1). */
 export function combatActionKey(action: CombatAction): string {
   return `battle.action.${action}`;

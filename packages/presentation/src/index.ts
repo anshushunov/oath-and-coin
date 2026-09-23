@@ -44,6 +44,7 @@ export {
   BattleFieldKeys,
   COMBAT_ACTION_KEYS,
   COMBAT_ROLE_KEYS,
+  COMBAT_ROLE_SHORT_KEYS,
   DOCTRINE_KEYS,
   battleOutcomeKey,
   battleStateKey,
@@ -51,6 +52,7 @@ export {
   battleStatusMarkKey,
   combatActionKey,
   combatRoleKey,
+  combatRoleShortKey,
   doctrineKey,
   AFTER_ACTION_STATE_KEYS,
   AFTER_ACTION_TITLE_KEY,
@@ -245,6 +247,15 @@ export {
   type BattleUnitLine,
   type BattleView
 } from './battle-screen-model.ts';
+
+export {
+  battleLineTones,
+  type AmountTone,
+  type BattleLineTones,
+  type BattleLineWords,
+  type DetailTone,
+  type SideTone
+} from './battle-line-tones.ts';
 
 export {
   FEED_SPEEDS,

@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import { expect, test } from '@playwright/test';
 
-import { frameDigest } from './frame-digest.ts';
+import { expectNextFrame, frameDigest, sceneFrame } from './frame-digest.ts';
 
 /**
  * The live-redraw gate, standing on the battle board.
@@ -49,10 +49,14 @@ test('боевая доска перерисовывается, а не стои
   await expect(page.getByTestId('world-canvas')).toHaveAttribute('data-scene-shapes', /^\d+$/u);
 
   const before = await frameDigest(page);
+  const drawn = await sceneFrame(page);
 
   await page.getByTestId('battle-skip').click();
   await expect(page.getByTestId('battle-screen')).toHaveAttribute('data-state', 'Normal');
-  await expect(page.getByTestId('world-canvas')).toHaveAttribute('data-scene-shapes', /^\d+$/u);
+  // For the frame the press produced, not for any frame: `data-scene-shapes` was set by the
+  // mount and stays, so a wait on it after the press was satisfied at once, by the frame from
+  // before it. What moves with every draw is the frame number.
+  await expectNextFrame(page, drawn);
 
   const after = await frameDigest(page);
 

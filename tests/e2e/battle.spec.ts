@@ -23,6 +23,7 @@ import {
 } from '@oath-and-coin/simulation';
 import { expect, test, type ConsoleMessage, type Page, type Request } from '@playwright/test';
 
+import { expectNextFrame, frameDigest, pixelsOfToken, sceneFrame } from './frame-digest.ts';
 import { expectWindowBoundedScreen, measureLayout } from './layout.ts';
 
 /**
@@ -167,8 +168,14 @@ const RUNS: readonly BattleRun[] = [
     state: 'Normal',
     scenario: 'battle_ready',
     press: async (page) => {
+      // The frame from before the press, so the wait below is for the frame the press drew:
+      // `data-scene-shapes` was set by the mount and would satisfy a wait at once.
+      await expect(page.getByTestId('world-canvas')).toHaveAttribute('data-scene-frame', /^\d+$/u);
+      const before = await sceneFrame(page);
+
       await page.getByTestId('battle-skip').click();
       await expect(page.getByTestId(SCREEN)).toHaveAttribute('data-state', 'Normal');
+      await expectNextFrame(page, before);
     },
     model: () => {
       const state = campaignOf('battle_ready');
@@ -246,37 +253,23 @@ test.describe('the battle screen, in a browser', () => {
 
       await page.screenshot({ path: join(directory, 'screenshot.png'), fullPage: false });
 
+      // What the canvas holds, which no text comparison below can see: a canvas has no text
+      // nodes, and jsdom replaces it with nothing. Measured on the positions that have a board.
+      const canvas = model.units.length > 0 ? await expectBoardDrawn(page, model) : null;
+
+      // The outcome is the one headline of a finished fight, and nothing else on the screen
+      // is set as large (the spec of the kit, §5.4: no second heading competing with it).
+      if (model.outcomeKey !== null) {
+        await expectOutcomeLargest(page);
+      }
+
       // A second frame, of the journal, on the position that has one. The frame above is
       // what a player sees first, and on a finished fight that is the board — the journal
-      // is eighty lines further down, and the owner's first play was about *those* lines.
-      // A frame that never reaches them is evidence of the half of the screen that was not
-      // changed. Scrolled by name rather than by wheel, so the frame is of the same lines on
-      // every run.
+      // is further down, and the owner's first play was about *those* lines. A frame that
+      // never reaches them is evidence of the half of the screen that was not changed.
       if (model.journal.length > 0) {
-        const journal = page.getByTestId('battle-journal');
-        const to = catalogue.get(BattleFieldKeys.To);
-
-        if (to === undefined) {
-          throw new Error(`The catalogue has no text for '${BattleFieldKeys.To}'.`);
-        }
-
-        await journal.evaluate((element) => {
-          element.scrollIntoView({ block: 'start' });
-        });
-
-        // Whole, not "some part of": at 1280x800 the journal's heading sits exactly on the
-        // fold of a finished fight, so a check that any pixel of it is on screen is green
-        // with every arrow line below the fold — measured, and that is why the check is on
-        // the first line that carries the arrow.
-        await expect(journal.locator('.label').first()).toBeInViewport({ ratio: 1 });
-        await expect(journal.locator('.journal-line', { hasText: to }).first()).toBeInViewport({
-          ratio: 1
-        });
-        await expect(page.getByTestId('world-canvas')).toHaveAttribute(
-          'data-scene-shapes',
-          /^\d+$/u
-        );
-        await page.screenshot({ path: join(directory, 'journal.png'), fullPage: false });
+        await expectJournalRead(page, directory);
+        await expectToneColours(page);
       }
 
       writeFileSync(join(directory, 'events.jsonl'), events.map((line) => `${line}\n`).join(''));
@@ -291,6 +284,9 @@ test.describe('the battle screen, in a browser', () => {
             battle_screen_state: run.state,
             texts: renderedTexts.length,
             layout,
+            // What the two canvas checks measured, so the thresholds they hold can be read
+            // against the frame they were measured on (`AGENTS.md` §11).
+            canvas,
             events: events.length
           },
           null,
@@ -373,6 +369,212 @@ test.describe('what the controls actually do', () => {
     await expect(page.getByTestId('battle-retreat')).toBeDisabled();
   });
 });
+
+/**
+ * How many distinct colours a frame of words on tokens is at least.
+ *
+ * Measured by the spike on this very fight, opening frame (`docs/research/
+ * BATTLE_LABEL_SPIKE_2026-09.md`, `frameDigest`): rectangles alone are 6, rectangles and the
+ * floating number 11, one word 126, eight words 711 — antialiased text is hundreds of shades,
+ * shapes with straight edges are a handful. The line of intent is antialiased too, and a few
+ * dozen shades at most; this sits far above both and far below a board of named tokens.
+ */
+const WORDS_ON_THE_BOARD = 200;
+
+/**
+ * How many pixels of exactly the intent colour a drawn line of intent is at least.
+ *
+ * The line is three logical pixels wide and runs from one token's edge to another's — even
+ * two tokens in neighbouring cells leave its head and a stub of line, dozens of pixels whose
+ * colour antialiasing has not touched. Nothing else on the board is drawn in that colour
+ * (`tokens.test.ts` holds it apart from every other role), so on a frame without the line the
+ * count is nought.
+ */
+const LINE_OF_INTENT = 20;
+
+/**
+ * The two things on the canvas jsdom cannot see and the text comparison does not hold: the
+ * words on the tokens and the line of intent.
+ *
+ * **Two checks, because one could not tell the halves apart.** A count of distinct colours
+ * says there are words on the board; it is hundreds either way, so it is as green with the
+ * line of intent as without it. The line is found by its own colour instead. On a position
+ * whose model has no aimed intent the line must be absent — that is the half which says the
+ * colour count is of the line and of nothing else.
+ */
+async function expectBoardDrawn(
+  page: Page,
+  model: BattleScreenModel
+): Promise<{ distinct_colors: number; intent_pixels: number; intent_expected: boolean }> {
+  const digest = await frameDigest(page);
+  const intentPixels = await pixelsOfToken(page, '--intent');
+  const aimed = model.intent !== null && model.intent.targetUnit !== null;
+
+  expect(
+    digest.distinctColors,
+    'the tokens must carry their words — a board of rectangles alone is a handful of colours'
+  ).toBeGreaterThan(WORDS_ON_THE_BOARD);
+
+  // The finished fight is the frame this check is taken on for the line, and it has to have
+  // one to be about: a finished fight whose last intent was aimed at nobody would leave the
+  // line unmeasured and this suite green.
+  if (model.outcomeKey !== null) {
+    expect(aimed, 'the last intent of the finished fight must be aimed at somebody').toBe(true);
+  }
+
+  if (aimed) {
+    expect(intentPixels, 'the line of intent must be on the board').toBeGreaterThan(LINE_OF_INTENT);
+  } else {
+    expect(intentPixels, 'no intent, and nothing of its colour on the board').toBe(0);
+  }
+
+  return {
+    distinct_colors: digest.distinctColors,
+    intent_pixels: intentPixels,
+    intent_expected: aimed
+  };
+}
+
+/** The outcome of a finished fight is the largest text on the screen, and the only one that size. */
+async function expectOutcomeLargest(page: Page): Promise<void> {
+  const texts = await page.evaluate((testId: string) => {
+    const root = document.querySelector(`[data-testid="${testId}"]`);
+
+    if (root === null) {
+      throw new Error(`The page has no [data-testid="${testId}"].`);
+    }
+
+    const found: { text: string; size: number; outcome: boolean }[] = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+
+    for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+      const element = node.parentElement;
+
+      if (element === null || (node.nodeValue ?? '').trim() === '') {
+        continue;
+      }
+
+      found.push({
+        text: node.nodeValue ?? '',
+        size: Number.parseFloat(getComputedStyle(element).fontSize),
+        outcome: element.closest('[data-testid="battle-outcome"]') !== null
+      });
+    }
+
+    return found;
+  }, SCREEN);
+
+  const largest = Math.max(...texts.map((text) => text.size));
+  const atLargest = texts.filter((text) => text.size === largest);
+
+  expect(
+    atLargest.map((text) => ({ text: text.text, outcome: text.outcome })),
+    'the outcome alone is set in the largest size on the screen'
+  ).toEqual([{ text: atLargest[0]?.text, outcome: true }]);
+}
+
+/**
+ * The journal, read the way a person reads it: its newest line in view without scrolling it,
+ * and its first line reachable with the wheel.
+ *
+ * **The journal is a scroller inside the screen**, the kit's `Feed` — sticking to the bottom is
+ * something only a scrolling box can do (§5.3 of the spec of the kit). That puts its hidden
+ * lines outside `measureLayout`, which measures the screen's own box: the screen's
+ * `scrollHeight` does not count what the feed has scrolled away. So the feed's reach is checked
+ * here, with the wheel, as `layout.ts` checks the screen's: the head of the journal is on
+ * screen only after a person has wheeled up to it.
+ */
+async function expectJournalRead(page: Page, directory: string): Promise<void> {
+  const journal = page.getByTestId('battle-journal');
+  const lines = journal.locator('li');
+  const to = catalogue.get(BattleFieldKeys.To);
+
+  if (to === undefined) {
+    throw new Error(`The catalogue has no text for '${BattleFieldKeys.To}'.`);
+  }
+
+  await journal.evaluate((element) => {
+    element.scrollIntoView({ block: 'end' });
+  });
+
+  // The feed on the screen, and holding more than it shows: otherwise there is nothing for it
+  // to stick with, and the two checks after this one are about nothing. Not `ratio: 1` for
+  // the box: scrolled flush to the window's edge it measured 0.99984 — a fraction of a pixel
+  // of layout rounding, not a line out of view. The lines below are held to the whole.
+  await expect(journal).toBeInViewport({ ratio: 0.99 });
+  expect(
+    await journal.evaluate((element) => element.scrollHeight > element.clientHeight),
+    'the journal of a finished fight must be longer than its box'
+  ).toBe(true);
+
+  // Stuck to its newest line, with nobody having scrolled it: the last line whole on screen,
+  // the first one scrolled away, and the last blow's arrow readable.
+  await expect(lines.last()).toBeInViewport({ ratio: 1 });
+  await expect(lines.first()).not.toBeInViewport();
+  await expect(journal.locator('.journal-line', { hasText: to }).last()).toBeInViewport({
+    ratio: 1
+  });
+  await page.screenshot({ path: join(directory, 'journal.png'), fullPage: false });
+
+  // And the head of it is a wheel away, not lost.
+  const box = await journal.boundingBox();
+
+  if (box === null) {
+    throw new Error('The journal has no box to wheel over.');
+  }
+
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.wheel(0, -100_000);
+  await expect(lines.first()).toBeInViewport({ ratio: 1 });
+}
+
+/**
+ * Every coloured span of the journal is painted the colour its role names (`DEC-018`).
+ *
+ * The component tests say which span carries which role; only a browser says the stylesheet
+ * turns the role into the colour — a rule deleted from `styles.css` leaves every attribute in
+ * place and every span in the ink of the text around it. Compared against the token read off
+ * the page, never against a literal written here.
+ */
+async function expectToneColours(page: Page): Promise<void> {
+  const { checked, wrong } = await page.evaluate((testId: string) => {
+    const root = document.querySelector(`[data-testid="${testId}"]`);
+
+    if (root === null) {
+      throw new Error(`The page has no [data-testid="${testId}"].`);
+    }
+
+    const tokens = getComputedStyle(document.documentElement);
+    const spans = Array.from(root.querySelectorAll('[data-tone]'));
+    const mismatched: string[] = [];
+
+    for (const span of spans) {
+      const tone = span.getAttribute('data-tone') ?? '';
+      const declared = tokens.getPropertyValue(`--${tone}`).trim();
+      const match = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/iu.exec(declared);
+
+      if (match === null) {
+        mismatched.push(`${tone}: no token --${tone} on the page`);
+        continue;
+      }
+
+      const [red, green, blue] = [match[1], match[2], match[3]].map((part) =>
+        Number.parseInt(part ?? '', 16)
+      );
+      const expected = `rgb(${String(red)}, ${String(green)}, ${String(blue)})`;
+      const actual = getComputedStyle(span).color;
+
+      if (actual !== expected) {
+        mismatched.push(`${tone}: ${actual}, expected ${expected}`);
+      }
+    }
+
+    return { checked: spans.length, wrong: mismatched };
+  }, SCREEN);
+
+  expect(checked, 'a finished fight has coloured spans in its journal').toBeGreaterThan(0);
+  expect(wrong, 'every coloured span is the colour of its role').toEqual([]);
+}
 
 /**
  * The URL a run declares itself with.

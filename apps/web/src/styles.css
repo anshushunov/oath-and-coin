@@ -136,23 +136,20 @@ body {
  */
 .contract-offer > .label,
 .after-action > .label,
-.contract-board > .label,
-.battle > .label {
+.contract-board > .label {
   display: block;
 }
 
 .contract-offer > .label:first-child,
 .after-action > .label:first-child,
-.contract-board > .label:first-child,
-.battle > .label:first-child {
+.contract-board > .label:first-child {
   font-size: 20px;
   font-weight: 600;
 }
 
 .contract-offer > .label:nth-child(2),
 .after-action > .label:nth-child(2),
-.contract-board > .label:nth-child(2),
-.battle > .label:nth-child(2) {
+.contract-board > .label:nth-child(2) {
   color: var(--ink-dim);
 }
 
@@ -345,15 +342,13 @@ body {
 }
 
 /*
- * The battle screen's own sections (`COMBAT_SPEC` §10.2).
+ * The debrief's battle feed and the formation block (`COMBAT_SPEC` §10.2, §10.3).
  *
  * The same block rule the debrief's sections have, and for the same reason one level down:
  * a journal line is several `.label`s in a row, and eighty of them run together into one
- * paragraph without it. The board is a grid of one row per man rather than a column of
- * runs, and the buttons sit on one line because they are one group of controls.
+ * paragraph without it. The battle screen's own journal and board list left this rule for
+ * the kit's panels (layout Б, below); the debrief's feed has not been relaid yet.
  */
-.board,
-.journal,
 .battle-feed,
 .formation {
   margin: 12px 0;
@@ -361,7 +356,6 @@ body {
   border-left: 3px solid var(--edge);
 }
 
-.unit,
 .journal-line,
 .battle-line {
   display: flex;
@@ -987,6 +981,143 @@ nav button,
 .hero-row-scales,
 .hero-row > .key-list {
   font-size: var(--type-caption);
+}
+
+/*
+ * Экран боя, раскладка Б (спека кита §5; решение владельца №2 от 2026-09-23).
+ *
+ * Шапка — одной строкой, чтобы поле начиналось как можно выше. Поле во всю ширину: только
+ * так слово на фишке читается — спайк замерил 7–8 экранных пикселей при прежних 420px и
+ * 15–16 при полной ширине с высотой, ограниченной половиной окна
+ * (`docs/research/BATTLE_LABEL_SPIKE_2026-09.md`). `object-fit: contain` держит пропорции
+ * сцены, когда высоту режет `max-height`; поля по бокам залиты фоном сцены, чтобы коробка
+ * поля не выглядела дырой в панели. Под полем — исход самым крупным кеглем экрана, строка
+ * намерения и кнопки, под ними люди и журнал в две колонки (`Columns`).
+ */
+.battle-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-xs) var(--space-lg);
+}
+
+.battle-head > .label:first-child {
+  font-size: var(--type-title);
+  font-weight: 600;
+}
+
+.battle-head > .label:nth-child(2) {
+  color: var(--ink-dim);
+}
+
+.battle-field {
+  margin: var(--space-md) 0;
+}
+
+.battle-field canvas {
+  max-width: none;
+  max-height: 50vh;
+  object-fit: contain;
+  background: var(--scene-background);
+}
+
+/*
+ * Исход — единственный текст кеглем `display` на экране. Подпись «Исход боя» мельче и
+ * тусклее, чтобы рядом с «Бой закончен» в шапке не стояло второго заголовка того же веса.
+ */
+.battle-outcome {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-sm) var(--space-md);
+  margin: var(--space-md) 0;
+}
+
+.battle-outcome > .label:first-child {
+  color: var(--ink-dim);
+  font-size: var(--type-heading);
+}
+
+.battle-outcome > .label:last-child {
+  font-size: var(--type-display);
+  font-weight: 600;
+}
+
+.battle .columns {
+  margin-top: var(--space-md);
+}
+
+/*
+ * Строка бойца: кто он — одной строкой, где стоит, сколько у него осталось и что на нём —
+ * второй. Край строки красится стороной, как фишка на поле; слово стороны стоит первым в
+ * строке, так что цвет никогда не единственный носитель (`GDD` §16.6).
+ */
+.unit {
+  margin-bottom: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  border-left: 3px solid var(--edge);
+}
+
+.unit[data-side='crew'] {
+  border-left-color: var(--crew);
+}
+
+.unit[data-side='foe'] {
+  border-left-color: var(--foe);
+}
+
+.unit-who,
+.unit-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+}
+
+.unit-health {
+  display: flex;
+  flex: 1 1 8rem;
+  align-items: center;
+  gap: var(--space-xs);
+  min-width: 8rem;
+}
+
+.unit-health > .bar-row {
+  flex: 1;
+}
+
+/*
+ * Три цветовых канала журнала (`DEC-018`, `COMBAT_SPEC` §10.2.1): сторона человека, вред
+ * или помощь у числа, состояние. Цвет — у пролёта, никогда у строки; какой пролёт каким
+ * цветом, решает `battleLineTones`, а здесь роль превращается в токен. Пролёт — ряд со
+ * своим зазором: «Противник» и «Столкновение» внутри одного пролёта иначе слиплись бы в
+ * одно слово.
+ */
+.tone {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
+[data-tone='crew'] {
+  color: var(--crew);
+}
+
+[data-tone='foe'] {
+  color: var(--foe);
+}
+
+[data-tone='harm'] {
+  color: var(--harm);
+}
+
+[data-tone='aid'] {
+  color: var(--aid);
+}
+
+[data-tone='status'] {
+  color: var(--status);
 }
 
 /* Diagnostics, not part of the screen: readable, and visibly not part of it. */

@@ -15,6 +15,7 @@ import {
   ScreenState,
   afterActionFailedScreen,
   afterActionScreenModel,
+  battleLineTones,
   expectedSnapshot,
   snapshotHash,
   type AfterActionScreenModel,
@@ -367,6 +368,34 @@ describe('the battle’s own section', () => {
       expect(line, line.join(' | ')).toContain(to);
       expect(line[line.indexOf(to) + 1]).not.toMatch(/^\d+$/u);
     }
+  });
+
+  it('colours the feed by the three channels the battle journal has (DEC-018 п.4)', () => {
+    // «Лента разбора — тот же журнал» with the same three colours: the same rule, read off the
+    // same words, so a line is one colour-scheme whichever of the two screens shows it.
+    const model = aFoughtDebrief();
+    const container = renderScreen(model);
+    const lines = Array.from(container.querySelectorAll('.battle-line'));
+    const feed = model.battle?.feed ?? [];
+
+    expect(lines).toHaveLength(feed.length);
+    expect(feed.length).toBeGreaterThan(0);
+
+    feed.forEach((line, index) => {
+      const tones = battleLineTones(line);
+      const shown = Array.from(lines[index]!.querySelectorAll('[data-tone]')).map((span) =>
+        span.getAttribute('data-tone')
+      );
+      const expected = [
+        tones.who,
+        line.detailKey === null ? null : tones.detail,
+        line.linkKey === null ? null : tones.target,
+        line.amount === null ? null : tones.amount
+      ].filter((tone) => tone !== null);
+
+      expect(lines[index]!.hasAttribute('data-tone')).toBe(false);
+      expect(shown, `${String(index)}: ${textOf(line.key)}`).toEqual(expected);
+    });
   });
 });
 

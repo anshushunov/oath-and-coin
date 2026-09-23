@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 
 import { expect, test, type ConsoleMessage, type Page, type Request } from '@playwright/test';
 
+import { expectNextFrame, sceneFrame } from './frame-digest.ts';
+
 /**
  * The whole of `MVP_PLAN` §6.6's finish line, pressed in a browser: a crew is composed, put
  * on a 3×3 under a doctrine, sent, watched, and the debrief is read.
@@ -118,6 +120,8 @@ test('a crew is placed, the fight is watched, and the debrief reads back', async
   // a person reaches for it, and a button that could not be pressed would measure nothing.
   await expect(page.getByTestId('battle-retreat')).toBeVisible();
 
+  const watched = await sceneFrame(page);
+
   await page.getByTestId('battle-skip').click();
   await expect(page.getByTestId('battle-screen')).toHaveAttribute('data-state', 'Normal');
 
@@ -125,7 +129,10 @@ test('a crew is placed, the fight is watched, and the debrief reads back', async
 
   expect(outcome, 'a finished fight names how it ended').toBeTruthy();
 
-  await expect(page.getByTestId('world-canvas')).toHaveAttribute('data-scene-shapes', /^\d+$/u);
+  // The frame the skip drew, and not the one from before it: `data-scene-shapes` is set by
+  // the mount and stays, so a wait on it here was satisfied at once. The frame number moves
+  // with every draw.
+  await expectNextFrame(page, watched);
   await page.screenshot({ path: join(EVIDENCE_ROOT, 'finished.png'), fullPage: false });
 
   // **A replay is not a second chance** (`COMBAT_SPEC` §6.3). The outcome is committed the

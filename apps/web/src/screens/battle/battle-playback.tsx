@@ -9,7 +9,7 @@ import {
   type BattleScreenModel,
   type ContentId
 } from '@oath-and-coin/presentation';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { BattleScreen, type BattleControls } from './battle-screen.tsx';
 
@@ -207,10 +207,20 @@ export function BattlePlayback({
     retreat: signalRetreat
   };
 
-  const model =
-    record === null
-      ? null
-      : port.battleScreen(contractId, record, feed.applied, feed.paused, feed.speed, !committed);
+  // One model per position, not one per animation frame. The loop above sets the feed on every
+  // frame, and a running feed is a new object each time even when nothing has been applied —
+  // so a model built afresh on every render was a new model sixty times a second, and the
+  // board behind it, keyed on the model, was torn down and drawn again at the same rate with
+  // nothing on it moving. Found through the browser evidence: the frame counter of a finished
+  // fight never stopped climbing. Keyed on the facts the model is a function of.
+  const { applied, paused, speed } = feed;
+  const model = useMemo(
+    () =>
+      record === null
+        ? null
+        : port.battleScreen(contractId, record, applied, paused, speed, !committed),
+    [port, contractId, record, applied, paused, speed, committed]
+  );
 
   if (model === null) {
     return null;

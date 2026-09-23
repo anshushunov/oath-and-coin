@@ -195,11 +195,14 @@ describe('the debrief’s feed, as texts', () => {
     const journal = expectedSnapshot(watched, everyKeyOf(watched));
     const feed = expectedSnapshot(debrief, everyKeyOf(debrief));
 
+    // The journal is the last block of the battle screen since the owner's layout put the
+    // outcome and the controls above it (the spec of the kit, §5), so it runs to the end.
     const from = journal.indexOf(`text(${BattleFieldKeys.Journal})`) + 1;
-    const to = journal.indexOf(`text(${watched.controls.pauseKey})`);
-    const lines = journal.slice(from, to);
+    const lines = journal.slice(from);
 
+    expect(from).toBeGreaterThan(0);
     expect(lines.length).toBeGreaterThan(0);
+    expect(lines).not.toContain(`text(${watched.controls.pauseKey})`);
     expect(lines).toContain(`text(${BattleFieldKeys.To})`);
     expect(indexOfRun(feed, lines)).toBeGreaterThanOrEqual(0);
   });

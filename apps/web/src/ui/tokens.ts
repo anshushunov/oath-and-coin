@@ -60,6 +60,9 @@ export const COLOUR_ROLES = [
   'popupOutline',
   // Обводка на каждой фигуре, чтобы фишка на фоне всё-таки имела край.
   'outline',
+  // Линия намерения на доске: кто на кого сейчас пойдёт. Свой цвет, не повторяющий ни
+  // одной другой роли, — браузерная проверка находит линию по нему (`battle.spec.ts`).
+  'intent',
   // Строка героя: что говорит «за», что «против» и что закрыто совсем.
   'favour',
   'against',
@@ -91,6 +94,7 @@ export const Colour: Readonly<Record<ColourRole, `#${string}`>> = {
   aid: '#d0ffd8',
   popupOutline: '#0a0b0f',
   outline: '#8b93a7',
+  intent: '#7fd8e6',
   favour: '#9ed0a1',
   against: '#e8a596',
   blocked: '#c2addf'
