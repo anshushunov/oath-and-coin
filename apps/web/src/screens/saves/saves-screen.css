@@ -53,7 +53,7 @@
 /* A refusal is the one thing on this screen a player has to notice, so it is the one
    thing with a colour of its own. */
 .saves .refusal {
-  color: #f0a8a8;
+  color: var(--danger);
 }
 
 /*

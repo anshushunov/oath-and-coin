@@ -26,9 +26,31 @@ describe('the inputs a run declares', () => {
       seed: 7n,
       locale: 'ru',
       screen: 'saves',
-      contract: 'core:escort_the_relic'
+      contract: 'core:escort_the_relic',
+      position: null
     });
   });
+
+  it('reads the lab’s opening position on the lab, as a count of events', () => {
+    expect(parseRunRequest('?scenario=battle_ready&screen=battle&position=137').position).toBe(137);
+    // Absent is the opening position, which is what every lab URL written before it meant.
+    expect(parseRunRequest('?scenario=battle_ready&screen=battle').position).toBeNull();
+  });
+
+  it('refuses a position on a screen that does not read one', () => {
+    // A position on the contract offer would do nothing under a URL claiming it did.
+    expect(() => parseRunRequest('?position=3')).toThrow(/Run parameter 'position'/u);
+    expect(() => parseRunRequest('?screen=saves&position=3')).toThrow(/Run parameter 'position'/u);
+  });
+
+  it.each(['0x10', '1e3', ' 7', '-1', '2.5', 'middle', '99999999999999999999'])(
+    'refuses a position spelled %j',
+    (position) => {
+      expect(() =>
+        parseRunRequest(`?screen=battle&position=${encodeURIComponent(position)}`)
+      ).toThrow(/non-negative decimal integer/u);
+    }
+  );
 
   it('leaves the contract to the campaign when none is declared', () => {
     // The sixth parameter arrived with the combat lab, so its absence has to keep meaning

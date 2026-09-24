@@ -127,7 +127,8 @@ const aFullModel = createContractOfferScreenModel({
           sourceEntity: 'core:loyal_to_the_merchant_guild',
           strength: QualitativeGrade.Low,
           sourceDisplayNameKey: 'trait.core.loyal_to_the_merchant_guild.name',
-          direction: ReasonDirection.Supported
+          direction: ReasonDirection.Supported,
+          onChosenMethod: false
         },
         {
           // Source deliberately unnamed: the contract is already on the screen under
@@ -136,11 +137,13 @@ const aFullModel = createContractOfferScreenModel({
           sourceEntity: 'core:escort_the_caravan',
           strength: QualitativeGrade.High,
           sourceDisplayNameKey: null,
-          direction: ReasonDirection.Opposed
+          direction: ReasonDirection.Opposed,
+          onChosenMethod: false
         }
       ],
       blockedByEntity: null,
       blockedByDisplayNameKey: null,
+      blockedOnChosenMethod: false,
       tieBreakCode: null,
       wavered: true
     },
@@ -151,16 +154,22 @@ const aFullModel = createContractOfferScreenModel({
       reasons: [],
       blockedByEntity: 'core:will_not_serve_slavers',
       blockedByDisplayNameKey: 'trait.core.will_not_serve_slavers.name',
+      blockedOnChosenMethod: false,
       tieBreakCode: null,
       wavered: false
     },
     {
-      heroDefinition: 'core:bram',
-      heroDisplayNameKey: 'hero.core.bram.name',
+      // Ilsa and not Bram a second time. The screen pairs each hero with *his* answer
+      // (`heroOfferRows`), and one hero answering one version twice is a state the engine
+      // refuses (`respondedBy`) and the projection refuses in turn — the fixture used to
+      // carry it only because two columns never had to say whose answer was whose.
+      heroDefinition: 'core:ilsa',
+      heroDisplayNameKey: 'hero.core.ilsa.name',
       action: 'action:accept',
       reasons: [],
       blockedByEntity: null,
       blockedByDisplayNameKey: null,
+      blockedOnChosenMethod: false,
       tieBreakCode: ReasonCodes.NoReasonToRefuse,
       wavered: false
     }
@@ -315,7 +324,7 @@ describe('the texts a correctly bound screen produces', () => {
     expect(snapshotHash(loadingTexts)).not.toBe(snapshotHash(emptyTexts));
   });
 
-  it('walks title, state, error, contract, roster, then responses', () => {
+  it('walks title, state, error, the summary row, the package band, then one row per hero', () => {
     const texts = expectedSnapshot(aFullModel, everyKeyOf(aFullModel));
 
     // Every optional branch of the projection is in this list, which is what makes it
@@ -329,60 +338,19 @@ describe('the texts a correctly bound screen produces', () => {
       '40',
       'text(field.contract.risk)',
       'text(qualitative.moderate)',
-      'text(field.contract.required_crew)',
-      '2',
-      'text(field.contract.accepted_count)',
-      '2',
       'text(field.contract.tags)',
       'text(tag.patron.merchant_guild)',
       'text(tag.target.bandits)',
-      'text(hero.core.bram.name)',
-      'text(field.hero.greed)',
-      'text(qualitative.moderate)',
-      'text(field.hero.caution)',
-      'text(qualitative.low)',
-      'text(field.hero.pride)',
-      'text(qualitative.moderate)',
-      'text(field.hero.principles)',
-      'text(trait.core.will_not_strike_a_temple.name)',
-      'text(field.hero.inclinations)',
-      'text(trait.core.hates_the_cult.name)',
-      'text(trait.core.hungry_for_renown.name)',
-      'text(hero.core.doran.name)',
-      'text(field.hero.greed)',
-      'text(qualitative.high)',
-      'text(field.hero.caution)',
-      'text(qualitative.negligible)',
-      'text(field.hero.pride)',
-      'text(qualitative.extreme)',
-      'text(hero.core.ilsa.name)',
-      'text(field.hero.greed)',
-      'text(qualitative.low)',
-      'text(field.hero.caution)',
-      'text(qualitative.moderate)',
-      'text(field.hero.pride)',
-      'text(qualitative.low)',
-      'text(hero.core.bram.name)',
-      'text(action.accept)',
-      'text(hero.decision.personal_conviction)',
-      'text(trait.core.loyal_to_the_merchant_guild.name)',
-      'text(reason.direction.supported)',
-      'text(field.reason.strength)',
-      'text(qualitative.low)',
-      'text(hero.decision.risk_too_high)',
-      'text(reason.direction.opposed)',
-      'text(field.reason.strength)',
-      'text(qualitative.high)',
-      'text(response.wavered.true)',
-      'text(hero.core.doran.name)',
-      'text(action.decline)',
-      'text(field.response.blocked_by)',
-      'text(trait.core.will_not_serve_slavers.name)',
-      'text(response.wavered.false)',
-      'text(hero.core.bram.name)',
-      'text(action.accept)',
-      'text(hero.decision.no_reason_to_refuse)',
-      'text(response.wavered.false)',
+      'text(field.contract.accepted_count)',
+      '2',
+      'text(field.contract.required_crew)',
+      '2',
+      // The treasury closes the pinned summary row (owner's decision of 2026-09-23): what
+      // the guild has and what the deal would leave, before the levers that move it.
+      'text(field.treasury)',
+      '400',
+      'text(field.treasury_forecast)',
+      '390',
       'text(field.offer.version)',
       '3',
       'text(offer.phase.locked)',
@@ -425,14 +393,72 @@ describe('the texts a correctly bound screen produces', () => {
       '10',
       'text(field.offer.lock_commitment)',
       '50',
-      'text(field.treasury)',
-      '400',
-      'text(field.treasury_forecast)',
-      '390',
       'text(offer.promise.fulfil)',
       'text(offer.promise.breach)',
       'text(field.offer.promised_bonus)',
       '20',
+      'text(action.offer.compose)',
+      'text(action.offer.ask_key_hero)',
+      'text(rejected.already_responded)',
+      'text(action.offer.lock)',
+      'text(rejected.offer_not_in_draft)',
+      'text(action.offer.poll)',
+      'text(action.offer.resolve)',
+      'text(rejected.crew_not_filled)',
+      'text(action.offer.settle)',
+      // "What stands in the way" (`DEC-019`), under the ladder and over the squad: nobody
+      // refused outright, so the one line is the principle's — its name, who it closed, and
+      // that it does not bargain.
+      'text(offer.blockers.title)',
+      'text(hero.decision.principle_forbids)',
+      'text(hero.core.doran.name)',
+      'text(offer.blockers.principle)',
+      // Doran first: blocked by a principle, and nobody refused outright. Then the two who
+      // accepted, in roster order (`heroOfferRows`).
+      'text(hero.core.doran.name)',
+      'text(action.decline)',
+      'text(response.wavered.false)',
+      'text(field.hero.greed)',
+      'text(qualitative.high)',
+      'text(field.hero.caution)',
+      'text(qualitative.negligible)',
+      'text(field.hero.pride)',
+      'text(qualitative.extreme)',
+      'text(field.response.blocked_by)',
+      'text(trait.core.will_not_serve_slavers.name)',
+      'text(hero.core.bram.name)',
+      'text(action.accept)',
+      'text(response.wavered.true)',
+      'text(field.hero.greed)',
+      'text(qualitative.moderate)',
+      'text(field.hero.caution)',
+      'text(qualitative.low)',
+      'text(field.hero.pride)',
+      'text(qualitative.moderate)',
+      'text(field.hero.principles)',
+      'text(trait.core.will_not_strike_a_temple.name)',
+      'text(field.hero.inclinations)',
+      'text(trait.core.hates_the_cult.name)',
+      'text(trait.core.hungry_for_renown.name)',
+      'text(hero.decision.personal_conviction)',
+      'text(trait.core.loyal_to_the_merchant_guild.name)',
+      'text(reason.direction.supported)',
+      'text(field.reason.strength)',
+      'text(qualitative.low)',
+      'text(hero.decision.risk_too_high)',
+      'text(reason.direction.opposed)',
+      'text(field.reason.strength)',
+      'text(qualitative.high)',
+      'text(hero.core.ilsa.name)',
+      'text(action.accept)',
+      'text(response.wavered.false)',
+      'text(field.hero.greed)',
+      'text(qualitative.low)',
+      'text(field.hero.caution)',
+      'text(qualitative.moderate)',
+      'text(field.hero.pride)',
+      'text(qualitative.low)',
+      'text(hero.decision.no_reason_to_refuse)',
       'text(field.offer.promised_bonus)',
       '20',
       'text(field.offer.key_hero)',
@@ -443,17 +469,113 @@ describe('the texts a correctly bound screen produces', () => {
       'text(field.settlement.treasury_if_kept)',
       '390',
       'text(field.settlement.treasury_if_broken)',
-      '410',
-      'text(action.offer.compose)',
-      'text(action.offer.ask_key_hero)',
-      'text(rejected.already_responded)',
-      'text(action.offer.lock)',
-      'text(rejected.offer_not_in_draft)',
-      'text(action.offer.poll)',
-      'text(action.offer.resolve)',
-      'text(rejected.crew_not_filled)',
-      'text(action.offer.settle)'
+      '410'
     ]);
+  });
+
+  it('prints each line of what stands in the way as reason, names, then what changes it', () => {
+    // Ilsa refuses here, where the full model has her accepting on a tie-break: the refusal
+    // branch of the summary is the one the full model does not reach. Her strongest
+    // counter-argument (the payment) is on her card and must not reach the summary.
+    const refused = createContractOfferScreenModel({
+      ...aFullModel,
+      responses: aFullModel.responses.map((response) =>
+        response.heroDefinition === 'core:ilsa'
+          ? {
+              ...response,
+              action: 'action:decline',
+              tieBreakCode: null,
+              reasons: [
+                {
+                  reasonCode: ReasonCodes.RiskTooHigh,
+                  sourceEntity: 'core:escort_the_caravan',
+                  strength: QualitativeGrade.High,
+                  sourceDisplayNameKey: null,
+                  direction: ReasonDirection.Supported,
+                  onChosenMethod: false
+                },
+                {
+                  reasonCode: ReasonCodes.PaymentAttractive,
+                  sourceEntity: 'core:escort_the_caravan',
+                  strength: QualitativeGrade.Low,
+                  sourceDisplayNameKey: null,
+                  direction: ReasonDirection.Opposed,
+                  onChosenMethod: false
+                }
+              ]
+            }
+          : response
+      )
+    });
+    const texts = expectedSnapshot(refused, everyKeyOf(refused));
+    const title = texts.indexOf('text(offer.blockers.title)');
+
+    expect(texts.slice(title, title + 7)).toEqual([
+      'text(offer.blockers.title)',
+      'text(hero.decision.risk_too_high)',
+      'text(hero.core.ilsa.name)',
+      'text(offer.blockers.outweighed_by_advance)',
+      'text(hero.decision.principle_forbids)',
+      'text(hero.core.doran.name)',
+      'text(offer.blockers.principle)'
+    ]);
+    // Under the ladder, over the squad.
+    expect(texts[title - 1]).toBe('text(action.offer.settle)');
+    expect(texts[title + 7]).toBe('text(hero.core.ilsa.name)');
+  });
+
+  it('draws no summary when nothing stands in the way', () => {
+    const nobodyRefused = createContractOfferScreenModel({
+      ...aFullModel,
+      responses: aFullModel.responses.filter((response) => response.heroDefinition !== 'core:doran')
+    });
+
+    expect(expectedSnapshot(nobodyRefused, everyKeyOf(nobodyRefused))).not.toContain(
+      'text(offer.blockers.title)'
+    );
+  });
+
+  it('says the squad has not been asked, rather than that nobody agreed', () => {
+    // The count of the band on a package nobody has answered yet — a freshly composed one
+    // (`DEC-012`). A `0` beside "согласились" would read as four refusals.
+    const unasked = createContractOfferScreenModel({
+      ...aFullModel,
+      state: ScreenState.Incomplete,
+      contract: { ...aFullModel.contract!, acceptedCount: 0 },
+      responses: []
+    });
+    const texts = expectedSnapshot(unasked, everyKeyOf(unasked));
+
+    expect(texts).toContain('text(field.offer.not_asked)');
+    expect(texts).not.toContain('text(field.contract.accepted_count)');
+    expect(texts).toContain('text(field.contract.required_crew)');
+  });
+
+  it('says on each card with no answer that the hero has not answered, beside his name', () => {
+    // `GDD` §16.6: a plain edge carries no word, so the card has to. Where it stands is the
+    // chip's place on an answered card — right after the name.
+    const unasked = createContractOfferScreenModel({
+      ...aFullModel,
+      state: ScreenState.Incomplete,
+      contract: { ...aFullModel.contract!, acceptedCount: 0 },
+      settlement: null,
+      responses: []
+    });
+    const texts = expectedSnapshot(unasked, everyKeyOf(unasked));
+
+    for (const hero of unasked.roster) {
+      const name = texts.lastIndexOf(`text(${hero.displayNameKey})`);
+
+      expect(texts[name + 1], hero.definition).toBe('text(field.offer.unanswered)');
+    }
+
+    expect(texts.filter((text) => text === 'text(field.offer.unanswered)')).toHaveLength(
+      unasked.roster.length
+    );
+    // And never on an answered card: the full model's three heroes all answered.
+    expect(expectedSnapshot(aFullModel, everyKeyOf(aFullModel))).not.toContain(
+      'text(field.offer.unanswered)'
+    );
   });
 
   it('resolves every key the model carries, and shows no key the model does not', () => {
@@ -528,17 +650,19 @@ describe('the texts a correctly bound screen produces', () => {
     const texts = expectedSnapshot(aFullModel, everyKeyOf(aFullModel));
     const literals = texts.filter((text) => !text.startsWith('text('));
 
-    // Payment, required crew, accepted count, then the offer's own version, advance and
-    // promised bonus, how many seats the crew must fill, the money the budget still
-    // allows and the two ceilings it puts on the levers, the shortfall this package has
-    // fallen into, its lock commitment, the treasury and its forecast, the promise's own
-    // bonus (shown again beside its two predicates) and the settlement's promised bonus
+    // Payment, accepted count, required crew, the treasury and its forecast (the summary
+    // row), then the offer's own version, advance and promised bonus, how many seats the
+    // crew must fill, the money the budget still allows and the two ceilings it puts on the
+    // levers, the shortfall this package has fallen into, its lock commitment, the promise's
+    // own bonus (shown again beside its two predicates) and the settlement's promised bonus
     // and its two treasury outcomes — the values spec keeps as numbers on purpose. Any
     // extra literal is a key or an identifier that escaped resolution.
     expect(literals).toEqual([
       '40',
       '2',
       '2',
+      '400',
+      '390',
       '3',
       '15',
       '20',
@@ -548,8 +672,6 @@ describe('the texts a correctly bound screen produces', () => {
       '10',
       '10',
       '50',
-      '400',
-      '390',
       '20',
       '20',
       '390',

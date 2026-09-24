@@ -23,7 +23,9 @@ import {
 } from '@oath-and-coin/simulation';
 import { expect, test, type ConsoleMessage, type Page, type Request } from '@playwright/test';
 
+import { expectNextFrame, frameDigest, pixelsOfToken, sceneFrame } from './frame-digest.ts';
 import { expectWindowBoundedScreen, measureLayout } from './layout.ts';
+import { expectToneColours } from './tone-colours.ts';
 
 /**
  * The battle screen in a browser — five states, a frame each (`AGENTS.md` §7, `COMBAT_SPEC`
@@ -39,7 +41,8 @@ import { expectWindowBoundedScreen, measureLayout } from './layout.ts';
  * anything.** A feed running on `requestAnimationFrame` is at a different position every
  * run; a frame of one would be a picture of the machine's timing. So the lab opens paused,
  * the `Incomplete` state is the fight's first frame, and `Normal` is reached by pressing
- * skip — one click, and the same click a player makes.
+ * skip — one click, and the same click a player makes. The middle of the fight is a third
+ * frame, opened paused on a position the URL names (`midFight`).
  *
  * **Neither half of the text comparison can see the other**, the same discipline
  * `contract-offer.spec.ts` records: `expectedSnapshot` computes what a correctly bound
@@ -67,8 +70,18 @@ const catalogue = new Map([
 /** One state of the screen: which scenario reaches it, and what to press once there. */
 interface BattleRun {
   readonly state: string;
+  /**
+   * The name of its evidence directory and of its test, when the state alone does not tell
+   * it apart: the middle of the fight is `Incomplete` exactly as the opening frame is.
+   */
+  readonly name?: string;
   /** The scenario whose run puts the lab in this state. */
   readonly scenario: string;
+  /**
+   * The position the run's URL states (`RunRequest.position`), or nothing for the lab's own
+   * opening. A function for the reason `model` is one: it runs the resolver.
+   */
+  position?: () => number;
   /** Pressed after the page has settled, for the state that is a click away. */
   press?: (page: Page) => Promise<void>;
   /** The model this process builds for the same state, off the scenario on disk. */
@@ -114,6 +127,54 @@ function battleOf(state: GameState) {
   }
 
   return { contract, record };
+}
+
+/**
+ * A position in the middle of the fight whose last intent is aimed at a man still standing —
+ * the frame the line of intent is measured on.
+ *
+ * **Not the finished fight any more**, and that is the owner's decision of 2026-09-23: a
+ * finished fight draws no arrow (`battle-scene-model.ts`, `intentOf`), so the frame skip lands
+ * on can only say the line is absent. The opening frame has no intent at all. What is left is
+ * a frame inside the fight, and it is named rather than timed: the lab opens paused on the
+ * position the URL states, and a feed played and paused would stop wherever this machine's
+ * timing put it.
+ *
+ * Chosen here, off the record this process ran the resolver for, and never read off the
+ * page: the first position from the halfway point on whose model aims the intent at a man
+ * standing. Standing, because an arrow at a man already down is the very picture the
+ * decision removed from the end of the fight, and a check measured on one would be measuring
+ * the case nobody wants to see.
+ */
+function midFight(): { readonly position: number; readonly model: BattleScreenModel } {
+  const state = campaignOf('battle_ready');
+
+  if (state === null) {
+    throw new Error('battle_ready produced no campaign.');
+  }
+
+  const { record } = battleOf(state);
+
+  for (
+    let applied = Math.ceil(record.events.length / 2);
+    applied < record.events.length;
+    applied += 1
+  ) {
+    const model = battleScreenModel(state, CONTRACT, { applied, paused: true, record });
+    const target = model.intent?.targetUnit ?? null;
+
+    if (
+      model.outcomeKey === null &&
+      model.units.some((unit) => unit.unit === target && unit.standing)
+    ) {
+      return { position: applied, model };
+    }
+  }
+
+  throw new Error(
+    'The second half of the fight has no position whose intent is aimed at a man standing, so ' +
+      'there is no frame left to measure the line of intent on.'
+  );
 }
 
 const RUNS: readonly BattleRun[] = [
@@ -164,11 +225,26 @@ const RUNS: readonly BattleRun[] = [
     }
   },
   {
+    // The middle of the fight, paused on a position the URL names: the one frame the line of
+    // intent is on the board, and so the one frame that can say the arrow is drawn at all.
+    state: 'Incomplete',
+    name: 'midfight',
+    scenario: 'battle_ready',
+    position: () => midFight().position,
+    model: () => midFight().model
+  },
+  {
     state: 'Normal',
     scenario: 'battle_ready',
     press: async (page) => {
+      // The frame from before the press, so the wait below is for the frame the press drew:
+      // `data-scene-shapes` was set by the mount and would satisfy a wait at once.
+      await expect(page.getByTestId('world-canvas')).toHaveAttribute('data-scene-frame', /^\d+$/u);
+      const before = await sceneFrame(page);
+
       await page.getByTestId('battle-skip').click();
       await expect(page.getByTestId(SCREEN)).toHaveAttribute('data-state', 'Normal');
+      await expectNextFrame(page, before);
     },
     model: () => {
       const state = campaignOf('battle_ready');
@@ -188,22 +264,29 @@ const RUNS: readonly BattleRun[] = [
   }
 ];
 
-test.beforeAll(() => {
-  // Cleared once per run, so a state that stops producing evidence leaves an empty
-  // directory rather than the last run's screenshot under this run's name.
-  rmSync(EVIDENCE_ROOT, { recursive: true, force: true });
-  mkdirSync(EVIDENCE_ROOT, { recursive: true });
-});
+// No `beforeAll` clearing the whole root. It was one, and it wiped the evidence of the red
+// run it most mattered for: Playwright throws a worker away after a failed test and runs
+// `beforeAll` again in the next one, so the tests after a failure deleted every
+// `report.json` written before it — measured, with a threshold mutant, as an empty
+// `battle/` after three red states. Each state clears its own directory instead (below), so
+// a state that stops producing evidence still leaves nothing under this run's name.
 
 test.describe('the battle screen, in a browser', () => {
   for (const run of RUNS) {
-    test(`${run.state.toLowerCase()} draws the fight it declares, and all of it is reachable`, async ({
-      page
-    }) => {
+    const name = run.name ?? run.state.toLowerCase();
+
+    test(`${name} draws the fight it declares, and all of it is reachable`, async ({ page }) => {
       const events: string[] = [];
+      const position = run.position?.() ?? null;
+      const directory = join(EVIDENCE_ROOT, name);
+
+      // First thing, before anything can fail: a state whose run goes red early must not
+      // leave the last run's frame and report under this run's name.
+      rmSync(directory, { recursive: true, force: true });
+      mkdirSync(directory, { recursive: true });
 
       recordEvents(page, events);
-      await page.goto(runUrl(run.scenario));
+      await page.goto(runUrl(run.scenario, position));
 
       await expect(page.getByTestId(SCREEN)).toBeVisible();
 
@@ -218,9 +301,6 @@ test.describe('the battle screen, in a browser', () => {
       const renderedTexts = await collectRenderedTexts(page);
       const layout = await measureLayout(page, SCREEN);
 
-      const directory = join(EVIDENCE_ROOT, run.state.toLowerCase());
-
-      mkdirSync(directory, { recursive: true });
       // Back to the top before the frame is taken: `measureLayout` wheels the box to its
       // end to find out how far a person can scroll it, and a screenshot after that is a
       // picture of the bottom of the screen. What a reader of this evidence needs to see
@@ -228,57 +308,86 @@ test.describe('the battle screen, in a browser', () => {
       await page.evaluate((testId: string) => {
         document.querySelector(`[data-testid="${testId}"]`)?.scrollTo(0, 0);
       }, SCREEN);
-      await page.screenshot({ path: join(directory, 'screenshot.png'), fullPage: false });
 
+      // Built before the frame, off the scenario on disk, because it is what says whether this
+      // state has a board at all: `Loading`, `Error` and `Empty` carry no units and mount no
+      // canvas. Where there is one, the frame waits for the renderer to have drawn it —
+      // `Application.init` is asynchronous, and a frame taken on the screen alone can be of
+      // an empty canvas without anything here noticing. Read off the expected model rather
+      // than off the page, so a board that failed to mount is a timeout, not a skipped wait.
       const model = run.model();
 
-      // A second frame, of the journal, on the position that has one. The frame above is
-      // what a player sees first, and on a finished fight that is the board — the journal
-      // is eighty lines further down, and the owner's first play was about *those* lines.
-      // A frame that never reaches them is evidence of the half of the screen that was not
-      // changed. Scrolled by name rather than by wheel, so the frame is of the same lines on
-      // every run.
-      if (model.journal.length > 0) {
-        const journal = page.getByTestId('battle-journal');
-        const to = catalogue.get(BattleFieldKeys.To);
-
-        if (to === undefined) {
-          throw new Error(`The catalogue has no text for '${BattleFieldKeys.To}'.`);
-        }
-
-        await journal.evaluate((element) => {
-          element.scrollIntoView({ block: 'start' });
-        });
-
-        // Whole, not "some part of": at 1280x800 the journal's heading sits exactly on the
-        // fold of a finished fight, so a check that any pixel of it is on screen is green
-        // with every arrow line below the fold — measured, and that is why the check is on
-        // the first line that carries the arrow.
-        await expect(journal.locator('.label').first()).toBeInViewport({ ratio: 1 });
-        await expect(journal.locator('.journal-line', { hasText: to }).first()).toBeInViewport({
-          ratio: 1
-        });
-        await page.screenshot({ path: join(directory, 'journal.png'), fullPage: false });
+      if (model.units.length > 0) {
+        await expect(page.getByTestId('world-canvas')).toHaveAttribute(
+          'data-scene-shapes',
+          /^\d+$/u
+        );
       }
 
-      writeFileSync(join(directory, 'events.jsonl'), events.map((line) => `${line}\n`).join(''));
-      writeFileSync(
-        join(directory, 'report.json'),
-        `${JSON.stringify(
-          {
-            screen: 'battle',
-            scenario: run.scenario,
-            seed: SEED.toString(),
-            locale: LOCALE,
-            battle_screen_state: run.state,
-            texts: renderedTexts.length,
-            layout,
-            events: events.length
-          },
-          null,
-          2
-        )}\n`
-      );
+      await page.screenshot({ path: join(directory, 'screenshot.png'), fullPage: false });
+
+      // What the canvas holds, which no text comparison below can see: a canvas has no text
+      // nodes, and jsdom replaces it with nothing. Measured on the positions that have a board
+      // — measured here, and held to its thresholds only after the evidence is on disk.
+      const canvas = model.units.length > 0 ? await measureBoard(page, model) : null;
+
+      // **The evidence is written before anything is held to a threshold.** The run that most
+      // needs its numbers is the red one: a threshold that fails on a CI runner whose fonts are
+      // not this machine's has to leave the measurement it failed on beside its frame, not a
+      // missing `report.json` for the summary to complain about on top. Written again when the
+      // checks are over, so an error the page logs during them is in `events.jsonl` as well.
+      const writeEvidence = (): void => {
+        writeFileSync(join(directory, 'events.jsonl'), events.map((line) => `${line}\n`).join(''));
+        writeFileSync(
+          join(directory, 'report.json'),
+          `${JSON.stringify(
+            {
+              screen: 'battle',
+              scenario: run.scenario,
+              seed: SEED.toString(),
+              locale: LOCALE,
+              battle_screen_state: run.state,
+              // The position the URL stated, `null` where it stated none — the lab's opening,
+              // or the end one press of skip reaches. What tells the middle of the fight from
+              // its opening frame, which share a state.
+              position,
+              texts: renderedTexts.length,
+              layout,
+              // What the two canvas checks measured, so the thresholds they hold can be read
+              // against the frame they were measured on (`AGENTS.md` §11).
+              canvas,
+              events: events.length
+            },
+            null,
+            2
+          )}\n`
+        );
+      };
+
+      writeEvidence();
+
+      try {
+        if (canvas !== null) {
+          expectBoardDrawn(canvas, model);
+        }
+
+        // The outcome is the one headline of a finished fight, and nothing else on the screen
+        // is set as large (the spec of the kit, §5.4: no second heading competing with it).
+        if (model.outcomeKey !== null) {
+          await expectOutcomeLargest(page);
+        }
+
+        // A second frame, of the journal, on the position that has one. The frame above is
+        // what a player sees first, and on a finished fight that is the board — the journal
+        // is further down, and the owner's first play was about *those* lines. A frame that
+        // never reaches them is evidence of the half of the screen that was not changed.
+        if (model.journal.length > 0) {
+          await expectJournalRead(page, directory);
+          await expectToneColours(page, SCREEN);
+        }
+      } finally {
+        writeEvidence();
+      }
 
       // The list, not a hash of it: a hash says two screens differ and only the list says
       // where. Built here from the catalogue on disk and from a model this process ran the
@@ -357,13 +466,222 @@ test.describe('what the controls actually do', () => {
 });
 
 /**
+ * How many distinct colours a frame of words on tokens is at least.
+ *
+ * Measured by the spike on this very fight, opening frame (`docs/research/
+ * BATTLE_LABEL_SPIKE_2026-09.md`, `frameDigest`): rectangles alone are 6, rectangles and the
+ * floating number 11, one word 126, eight words 711 — antialiased text is hundreds of shades,
+ * shapes with straight edges are a handful. The line of intent is antialiased too, and a few
+ * dozen shades at most; this sits far above both and far below a board of named tokens.
+ */
+const WORDS_ON_THE_BOARD = 200;
+
+/**
+ * How many distinct colours each half of the board is at least — the crew's on the left, the
+ * foes' on the right — so that *both* sides are seen to carry words.
+ *
+ * The count over the whole frame cannot say it: review of Task 7 asked what a regression that
+ * labelled the crew alone would do, and a mutant doing exactly that measured 660 on the
+ * finished frame where the full board measures 802 — far above the 200 either way. Per half,
+ * that mutant leaves the foes' side with no text on it at all. Held at the spike's one word
+ * (126) less a margin, because the fonts a CI runner rasterises with are not this machine's.
+ */
+const WORDS_ON_EACH_SIDE = 100;
+
+/**
+ * How many pixels of exactly the intent colour a drawn line of intent is at least.
+ *
+ * The line is three logical pixels wide and runs from one token's edge to another's — even
+ * two tokens in neighbouring cells leave its head and a stub of line, dozens of pixels whose
+ * colour antialiasing has not touched. Nothing else on the board is drawn in that colour
+ * (`tokens.test.ts` holds it apart from every other role), so on a frame without the line the
+ * count is nought.
+ */
+const LINE_OF_INTENT = 20;
+
+/**
+ * The two things on the canvas jsdom cannot see and the text comparison does not hold: the
+ * words on the tokens and the line of intent.
+ *
+ * **Two checks, because one could not tell the halves apart.** A count of distinct colours
+ * says there are words on the board; it is hundreds either way, so it is as green with the
+ * line of intent as without it. The line is found by its own colour instead. On a position
+ * whose model has no aimed intent the line must be absent — that is the half which says the
+ * colour count is of the line and of nothing else.
+ *
+ * **Absent on a finished fight too, aimed or not** — the owner's decision of 2026-09-23
+ * (`intentOf` in `battle-scene-model.ts`). The finished frame is where that decision is held
+ * in a browser: its last intent *is* aimed, so the nought there is about the fight being over
+ * and not about an intent with no target. Where the line is present is measured in the middle
+ * of the fight (`midFight`).
+ *
+ * Held against numbers {@link measureBoard} took, never against the page: the measurement is
+ * on disk before this runs, so a red verdict leaves the figure it was red on.
+ */
+function expectBoardDrawn(canvas: BoardMeasurement, model: BattleScreenModel): void {
+  const aimed = model.intent !== null && model.intent.targetUnit !== null;
+  const drawn = canvas.intent_expected;
+
+  expect(
+    canvas.distinct_colors,
+    'the tokens must carry their words — a board of rectangles alone is a handful of colours'
+  ).toBeGreaterThan(WORDS_ON_THE_BOARD);
+  expect(
+    canvas.crew_side_colors,
+    'the crew’s side of the board must carry its words'
+  ).toBeGreaterThan(WORDS_ON_EACH_SIDE);
+  expect(
+    canvas.foe_side_colors,
+    'the foes’ side of the board must carry its words — the short word for each job'
+  ).toBeGreaterThan(WORDS_ON_EACH_SIDE);
+
+  // The finished fight is where the absence of the line is held, and it has to have an aimed
+  // intent to be about the outcome: one whose last intent was aimed at nobody would draw no
+  // line under the old rule as well, and the nought would say nothing about the new one.
+  if (model.outcomeKey !== null) {
+    expect(aimed, 'the last intent of the finished fight must be aimed at somebody').toBe(true);
+  }
+
+  if (drawn) {
+    expect(canvas.intent_pixels, 'the line of intent must be on the board').toBeGreaterThan(
+      LINE_OF_INTENT
+    );
+  } else if (aimed) {
+    expect(
+      canvas.intent_pixels,
+      'the fight is over, and its last intent is no arrow on the board'
+    ).toBe(0);
+  } else {
+    expect(canvas.intent_pixels, 'no intent, and nothing of its colour on the board').toBe(0);
+  }
+}
+
+/** What {@link measureBoard} read off the canvas — the `canvas` field of `report.json`. */
+interface BoardMeasurement {
+  readonly distinct_colors: number;
+  readonly crew_side_colors: number;
+  readonly foe_side_colors: number;
+  readonly intent_pixels: number;
+  /** Whether the model this frame is of draws the line: aimed, and the fight not over. */
+  readonly intent_expected: boolean;
+}
+
+/** The canvas's numbers for {@link expectBoardDrawn}, read and asserted nothing about. */
+async function measureBoard(page: Page, model: BattleScreenModel): Promise<BoardMeasurement> {
+  const digest = await frameDigest(page);
+  const intentPixels = await pixelsOfToken(page, '--intent');
+  const aimed = model.intent !== null && model.intent.targetUnit !== null;
+
+  return {
+    distinct_colors: digest.distinctColors,
+    crew_side_colors: digest.leftDistinctColors,
+    foe_side_colors: digest.rightDistinctColors,
+    intent_pixels: intentPixels,
+    intent_expected: aimed && model.outcomeKey === null
+  };
+}
+
+/** The outcome of a finished fight is the largest text on the screen, and the only one that size. */
+async function expectOutcomeLargest(page: Page): Promise<void> {
+  const texts = await page.evaluate((testId: string) => {
+    const root = document.querySelector(`[data-testid="${testId}"]`);
+
+    if (root === null) {
+      throw new Error(`The page has no [data-testid="${testId}"].`);
+    }
+
+    const found: { text: string; size: number; outcome: boolean }[] = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+
+    for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+      const element = node.parentElement;
+
+      if (element === null || (node.nodeValue ?? '').trim() === '') {
+        continue;
+      }
+
+      found.push({
+        text: node.nodeValue ?? '',
+        size: Number.parseFloat(getComputedStyle(element).fontSize),
+        outcome: element.closest('[data-testid="battle-outcome"]') !== null
+      });
+    }
+
+    return found;
+  }, SCREEN);
+
+  const largest = Math.max(...texts.map((text) => text.size));
+  const atLargest = texts.filter((text) => text.size === largest);
+
+  expect(
+    atLargest.map((text) => ({ text: text.text, outcome: text.outcome })),
+    'the outcome alone is set in the largest size on the screen'
+  ).toEqual([{ text: atLargest[0]?.text, outcome: true }]);
+}
+
+/**
+ * The journal, read the way a person reads it: its newest line in view without scrolling it,
+ * and its first line reachable with the wheel.
+ *
+ * **The journal is a scroller inside the screen**, the kit's `Feed` — sticking to the bottom is
+ * something only a scrolling box can do (§5.3 of the spec of the kit). That puts its hidden
+ * lines outside `measureLayout`, which measures the screen's own box: the screen's
+ * `scrollHeight` does not count what the feed has scrolled away. So the feed's reach is checked
+ * here, with the wheel, as `layout.ts` checks the screen's: the head of the journal is on
+ * screen only after a person has wheeled up to it.
+ */
+async function expectJournalRead(page: Page, directory: string): Promise<void> {
+  const journal = page.getByTestId('battle-journal');
+  const lines = journal.locator('li');
+  const to = catalogue.get(BattleFieldKeys.To);
+
+  if (to === undefined) {
+    throw new Error(`The catalogue has no text for '${BattleFieldKeys.To}'.`);
+  }
+
+  await journal.evaluate((element) => {
+    element.scrollIntoView({ block: 'end' });
+  });
+
+  // The feed on the screen, and holding more than it shows: otherwise there is nothing for it
+  // to stick with, and the two checks after this one are about nothing. Not `ratio: 1` for
+  // the box: scrolled flush to the window's edge it measured 0.99984 — a fraction of a pixel
+  // of layout rounding, not a line out of view. The lines below are held to the whole.
+  await expect(journal).toBeInViewport({ ratio: 0.99 });
+  expect(
+    await journal.evaluate((element) => element.scrollHeight > element.clientHeight),
+    'the journal of a finished fight must be longer than its box'
+  ).toBe(true);
+
+  // Stuck to its newest line, with nobody having scrolled it: the last line whole on screen,
+  // the first one scrolled away, and the last blow's arrow readable.
+  await expect(lines.last()).toBeInViewport({ ratio: 1 });
+  await expect(lines.first()).not.toBeInViewport();
+  await expect(journal.locator('.journal-line', { hasText: to }).last()).toBeInViewport({
+    ratio: 1
+  });
+  await page.screenshot({ path: join(directory, 'journal.png'), fullPage: false });
+
+  // And the head of it is a wheel away, not lost.
+  const box = await journal.boundingBox();
+
+  if (box === null) {
+    throw new Error('The journal has no box to wheel over.');
+  }
+
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.wheel(0, -100_000);
+  await expect(lines.first()).toBeInViewport({ ratio: 1 });
+}
+
+/**
  * The URL a run declares itself with.
  *
  * Every input is stated, including the ones that equal the page's defaults: a run whose
  * evidence does not say which seed and which screen produced it is evidence about whatever
  * the source file last defaulted to.
  */
-function runUrl(scenario: string): string {
+function runUrl(scenario: string, position: number | null = null): string {
   const parameters = new URLSearchParams({
     scenario,
     checkpoint: scenario,
@@ -371,6 +689,10 @@ function runUrl(scenario: string): string {
     locale: LOCALE,
     screen: 'battle'
   });
+
+  if (position !== null) {
+    parameters.set('position', String(position));
+  }
 
   return `/?${parameters.toString()}`;
 }

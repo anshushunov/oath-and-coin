@@ -41,6 +41,18 @@ export interface ReasonLine {
   readonly sourceDisplayNameKey: string | null;
   /** Which way this reason pulled relative to the answer it belongs to. */
   readonly direction: ReasonDirection;
+  /**
+   * `true` exactly when this is an inclination that fired on the tag the package's chosen
+   * method adds — a tag the contract does not carry itself — so another method takes it away.
+   * `false` for an inclination on the contract's own tag, and for every reason that reads no
+   * tag at all.
+   *
+   * An inclination reads `effectiveTags` (`NEGOTIATION_SPEC` §2.4), and the code alone cannot
+   * say which half of it: fear of the undead on a crypt and dislike of deception on a caravan
+   * robbed by deceit are one code with two different levers (`DEC-019`). The factory knows the
+   * trait's tag and the offer's method; the summary only reads this.
+   */
+  readonly onChosenMethod: boolean;
 }
 
 /**
@@ -81,6 +93,14 @@ export interface ResponseLine {
   readonly blockedByEntity: string | null;
   /** The key naming that principle, or `null` exactly when the entity is. */
   readonly blockedByDisplayNameKey: string | null;
+  /**
+   * `true` exactly when every principle that closed this hero fired on the tag the chosen
+   * method adds, so another method opens him — `core:refuses_deception` under
+   * `method:deception` (`method_choice_flips_the_key_hero`). `false` when any of them fired
+   * on the contract's own tag, and on an answer no principle closed. The same fact as
+   * {@link ReasonLine.onChosenMethod}, for the gate (`DEC-019`).
+   */
+  readonly blockedOnChosenMethod: boolean;
   /**
    * The stable code of the rule that settled a dead heat, or `null` when the decision
    * was not a tie. Its own line rather than folded into {@link reasons}: a tie-break

@@ -4,6 +4,9 @@ import { fileURLToPath } from 'node:url';
 
 import { expect, test, type ConsoleMessage, type Page, type Request } from '@playwright/test';
 
+import { expectNextFrame, sceneFrame } from './frame-digest.ts';
+import { expectToneColours } from './tone-colours.ts';
+
 /**
  * The whole of `MVP_PLAN` §6.6's finish line, pressed in a browser: a crew is composed, put
  * on a 3×3 under a doctrine, sent, watched, and the debrief is read.
@@ -107,11 +110,18 @@ test('a crew is placed, the fight is watched, and the debrief reads back', async
   await expect(page.getByTestId('battle-screen')).toBeVisible();
   await expect(page.getByTestId('battle-screen')).toHaveAttribute('data-state', 'Incomplete');
 
+  // The board is drawn asynchronously — `Application.init` settles after the screen is up —
+  // so a frame taken on the screen alone can be a frame of an empty canvas, and nothing would
+  // notice. Waited for on the battle only: the offer and the debrief lose their canvas
+  // (`DEC-020`), and a wait there would be a wait for something that is going away.
+  await expect(page.getByTestId('world-canvas')).toHaveAttribute('data-scene-shapes', /^\d+$/u);
   await page.screenshot({ path: join(EVIDENCE_ROOT, 'watching.png'), fullPage: false });
 
   // The lever, live now that a round has started — `DEC-005`'s own measurement is how often
   // a person reaches for it, and a button that could not be pressed would measure nothing.
   await expect(page.getByTestId('battle-retreat')).toBeVisible();
+
+  const watched = await sceneFrame(page);
 
   await page.getByTestId('battle-skip').click();
   await expect(page.getByTestId('battle-screen')).toHaveAttribute('data-state', 'Normal');
@@ -120,6 +130,10 @@ test('a crew is placed, the fight is watched, and the debrief reads back', async
 
   expect(outcome, 'a finished fight names how it ended').toBeTruthy();
 
+  // The frame the skip drew, and not the one from before it: `data-scene-shapes` is set by
+  // the mount and stays, so a wait on it here was satisfied at once. The frame number moves
+  // with every draw.
+  await expectNextFrame(page, watched);
   await page.screenshot({ path: join(EVIDENCE_ROOT, 'finished.png'), fullPage: false });
 
   // **A replay is not a second chance** (`COMBAT_SPEC` §6.3). The outcome is committed the
@@ -144,6 +158,11 @@ test('a crew is placed, the fight is watched, and the debrief reads back', async
   await page.getByTestId('battle-leave').click();
   await expect(page.getByTestId('after-action-screen')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId('after-action-battle')).toBeVisible();
+
+  // The debrief's feed is the journal read a second time, and `COMBAT_SPEC` §10.2.1 asks its
+  // colours of the browser here too: the component test says which span carries which role,
+  // only the page says the stylesheet paints the role on this screen as well.
+  await expectToneColours(page, 'after-action-battle');
 
   // The column §10.3 adds: what happened, beside what the forecast promised. Its presence
   // is the whole point of the section — a debrief that lost it would still read perfectly.

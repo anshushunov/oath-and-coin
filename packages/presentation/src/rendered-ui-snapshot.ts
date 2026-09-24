@@ -2,6 +2,7 @@ import { Sha256, utf8Bytes } from '@oath-and-coin/simulation';
 
 import {
   AfterActionFieldKeys,
+  BlockerKeys,
   ContractBoardFieldKeys,
   FieldKeys,
   OfferFieldKeys,
@@ -38,6 +39,8 @@ import type { ContractBoardScreenModel } from './contract-board-screen-model.ts'
 import { ScreenKind } from './screen-kind.ts';
 import type { ScreenModel } from './screen-model.ts';
 import { ScreenState } from './screen-state.ts';
+import { blockingReasons } from './blocking-reasons.ts';
+import { heroOfferRows } from './hero-offer-row.ts';
 import { qualitativeKey } from './qualitative-scale.ts';
 
 /**
@@ -55,13 +58,31 @@ import { qualitativeKey } from './qualitative-scale.ts';
  * The two lists are produced by unrelated code paths on purpose: a binding mistake
  * breaks the match precisely because nothing here can know what the screen rendered.
  *
- * The order promised is the order a depth-first walk visits — title, state, error,
- * contract, then the whole roster, then every response. Not "the order a reader
- * encounters it": the screen may lay the roster and the responses out as two columns,
- * so a person reads them interleaved while the walk still visits every roster text
- * before every response text. That distinction matters because this list *is* the
- * second hash — if it described what a reader sees, a pure layout change would have to
- * move it, and the hash would assert something no code on either side computes.
+ * **One exception, and what holds it instead.** The offer screen's squad is walked in the
+ * order {@link heroOfferRows} returns, and the screen maps the very same call — so which
+ * answer sits on which hero's row, and which rows come first, are shared by both sides and
+ * this hash cannot catch a mistake in either. That is held elsewhere: by the projection's
+ * own unit tests (`hero-offer-row.test.ts`) and by the literal list of texts in
+ * `rendered-ui-snapshot.test.ts`, neither of which calls the sort to learn what it should
+ * have said. What this hash still holds is everything *inside* a row — which texts a row
+ * owes and in what order it draws them. The "what stands in the way" summary is the same
+ * exception for the same reason: its lines are {@link blockingReasons}'s, shared by both
+ * sides, and held by `blocking-reasons.test.ts`, which does not call it to learn the answer.
+ *
+ * The order promised is the order a depth-first walk visits — title, state, error, then
+ * the pinned summary row (contract, count, treasury), then the package band under it
+ * (levers, promise, the ladder of commands), then what stands in the way (`DEC-019`), then
+ * one row per hero with his own answer on it, refusals first (`heroOfferRows`). Not "the order
+ * a reader encounters it": the screen lays the rows out in two columns, so a person reads
+ * them across while the walk still visits one row whole before the next. That distinction
+ * matters because this list *is* the second hash — if it described what a reader sees, a
+ * pure layout change would have to move it, and the hash would assert something no code on
+ * either side computes.
+ *
+ * The rows are paired since the kit's relayout (spec §4.1). Before it the screen printed
+ * the whole roster and then every response, and a player matched a hero to his answer by
+ * name across two columns — the thing the owner could not read. That moved this list on
+ * purpose, and the component tests and the browser comparison moved with it.
  */
 
 /**
@@ -144,35 +165,14 @@ function battleSnapshot(
   if (model.units.length > 0) {
     resolve(BattleFieldKeys.Round);
     texts.push(String(model.round));
+  }
 
-    resolve(BattleFieldKeys.Board);
-
-    for (const unit of model.units) {
-      resolve(unit.side === 'crew' ? BattleFieldKeys.Crew : BattleFieldKeys.Foes);
-
-      if (unit.displayNameKey !== null) {
-        resolve(unit.displayNameKey);
-      }
-
-      resolve(unit.roleKey);
-      // Where he stands, in the two words `COMBAT_SPEC` §3.1 names a cell by. The owner's
-      // first play could not tell how anybody stood: the list had no cell on it.
-      resolve(BattleFieldKeys.Row);
-      texts.push(String(unit.row));
-      resolve(BattleFieldKeys.Column);
-      texts.push(String(unit.column));
-      resolve(BattleFieldKeys.Health);
-      texts.push(String(unit.health));
-
-      if (unit.leftKey !== null) {
-        resolve(unit.leftKey);
-      }
-
-      for (const status of unit.statuses) {
-        resolve(status.key);
-        resolve(status.markKey);
-      }
-    }
+  // How it ended, straight under the field and above everything that explains it — the
+  // layout the owner chose (the spec of the kit, §5.4). It used to be the last text on the
+  // screen, below the whole journal, and the frame of a finished fight never reached it.
+  if (model.outcomeKey !== null) {
+    resolve(BattleFieldKeys.Outcome);
+    resolve(model.outcomeKey);
   }
 
   if (model.intent !== null) {
@@ -212,6 +212,57 @@ function battleSnapshot(
     }
   }
 
+  // Always, and in the order the screen draws them: a control that vanished would leave a
+  // player with no way to learn it existed, which is the same argument the offer screen's
+  // dark buttons make.
+  resolve(model.controls.pauseKey);
+  resolve(model.controls.speedKey);
+  resolve(model.controls.skipKey);
+  resolve(model.controls.replayKey);
+
+  if (model.retreat !== null) {
+    resolve(model.retreat.labelKey);
+    resolve(model.retreat.costKey);
+  }
+
+  // The people on the field, then the journal — the two panels side by side under the
+  // controls. A depth-first walk visits the whole of the first before the second, whatever
+  // the columns look like to a reader (this file's own opening remark).
+  if (model.units.length > 0) {
+    resolve(BattleFieldKeys.Board);
+
+    for (const unit of model.units) {
+      resolve(unit.side === 'crew' ? BattleFieldKeys.Crew : BattleFieldKeys.Foes);
+
+      if (unit.displayNameKey !== null) {
+        resolve(unit.displayNameKey);
+      }
+
+      // The full word for his job: only the board is short of room for it, and the board is
+      // a picture this list does not hold (the owner's decision of 2026-09-23).
+      resolve(unit.roleKey);
+      // Where he stands, in the two words `COMBAT_SPEC` §3.1 names a cell by. The owner's
+      // first play could not tell how anybody stood: the list had no cell on it.
+      resolve(BattleFieldKeys.Row);
+      texts.push(String(unit.row));
+      resolve(BattleFieldKeys.Column);
+      texts.push(String(unit.column));
+      // The caption, then the number on the bar: the bar's length is the picture and the
+      // number is its text dub (`GDD` §16.6).
+      resolve(BattleFieldKeys.Health);
+      texts.push(String(unit.health));
+
+      if (unit.leftKey !== null) {
+        resolve(unit.leftKey);
+      }
+
+      for (const status of unit.statuses) {
+        resolve(status.key);
+        resolve(status.markKey);
+      }
+    }
+  }
+
   if (model.journal.length > 0) {
     resolve(BattleFieldKeys.Journal);
 
@@ -248,24 +299,6 @@ function battleSnapshot(
     }
   }
 
-  // Always, and in the order the screen draws them: a control that vanished would leave a
-  // player with no way to learn it existed, which is the same argument the offer screen's
-  // dark buttons make.
-  resolve(model.controls.pauseKey);
-  resolve(model.controls.speedKey);
-  resolve(model.controls.skipKey);
-  resolve(model.controls.replayKey);
-
-  if (model.retreat !== null) {
-    resolve(model.retreat.labelKey);
-    resolve(model.retreat.costKey);
-  }
-
-  if (model.outcomeKey !== null) {
-    resolve(BattleFieldKeys.Outcome);
-    resolve(model.outcomeKey);
-  }
-
   return texts;
 }
 
@@ -299,10 +332,6 @@ function contractOfferSnapshot(
     texts.push(String(contract.patronFee));
     resolve(FieldKeys.ContractRisk);
     resolve(qualitativeKey(contract.risk));
-    resolve(FieldKeys.ContractRequiredCrew);
-    texts.push(String(contract.requiredCrew));
-    resolve(FieldKeys.ContractAcceptedCount);
-    texts.push(String(contract.acceptedCount));
 
     // A caption for a list nobody has is a heading over nothing, so an empty list
     // produces neither. A branch on whether a model field is empty — never on what is
@@ -311,10 +340,95 @@ function contractOfferSnapshot(
       resolve(FieldKeys.ContractTags);
       contract.tagKeys.forEach(resolve);
     }
+
+    // The count of the summary row: how many said yes, against how many the job needs.
+    // Nobody answering the package as it stands is its own sentence rather than a `0` —
+    // a branch on the list being empty, never on what is in it (spec §4.2).
+    if (model.responses.length === 0) {
+      resolve(OfferFieldKeys.NotAsked);
+    } else {
+      resolve(FieldKeys.ContractAcceptedCount);
+      texts.push(String(contract.acceptedCount));
+    }
+
+    resolve(FieldKeys.ContractRequiredCrew);
+    texts.push(String(contract.requiredCrew));
   }
 
-  for (const hero of model.roster) {
+  // The treasury closes the summary row, before the levers that move it: the row is what
+  // stays pinned while the squad scrolls (owner's decision of 2026-09-23, spec §4), and
+  // what the deal would leave is one of the three things it holds.
+  //
+  // Not gated on `contract !== null`: `NEGOTIATION_SPEC` §5.1 treats the treasury as a
+  // campaign-wide fact, one `GDD` §16.3 already keeps a plain number, and it reads on
+  // `Empty` exactly as it reads on `Normal` — a campaign with nothing to offer still
+  // has a treasury. `Loading` and `Error` are excluded because there is no campaign
+  // behind either to read one from at all (`ContractOfferScreenModel.treasury`'s own
+  // doc comment): both are `0` by construction, and showing a manufactured `0` beside
+  // a title that has not finished loading would claim a fact this screen does not
+  // have.
+  if (model.state !== ScreenState.Loading && model.state !== ScreenState.Error) {
+    resolve(TreasuryFieldKeys.Treasury);
+    texts.push(String(model.treasury));
+    resolve(TreasuryFieldKeys.Forecast);
+    texts.push(String(model.treasuryForecast));
+  }
+
+  const heroDisplayNameKeyOf = displayNameKeyResolver(model.roster);
+
+  if (model.offer !== null) {
+    resolveOffer(model.offer, resolve, texts, heroDisplayNameKeyOf);
+  }
+
+  if (model.promiseTerms !== null) {
+    resolvePromiseTerms(model.promiseTerms, resolve, texts);
+  }
+
+  // The ladder closes the package band: every one of the seven, dark ones included, each
+  // followed by the refusal it would get — a control that vanished would leave the player
+  // with no way to learn what to do instead, and a dark one with no reason would leave them
+  // with no way to learn why not.
+  for (const available of model.availableActions) {
+    resolve(offerActionKey(available.action));
+
+    if (available.disabledReasonKey !== null) {
+      resolve(available.disabledReasonKey);
+    }
+  }
+
+  // What stands in the way (`DEC-019`), under the ladder and over the squad: a heading, then
+  // per line the reason, whom it held back and what changes it. The lines and their order are
+  // `blockingReasons`'s, exactly as the rows' are `heroOfferRows`'s below — the one exception
+  // this hash already names, and `blocking-reasons.test.ts` holds it without calling it. No
+  // heading over an empty list: a branch on the list being empty, never on what is in it.
+  const blockers = blockingReasons(model);
+
+  if (blockers.length > 0) {
+    resolve(BlockerKeys.Title);
+
+    for (const blocker of blockers) {
+      resolve(blocker.reasonCode);
+      blocker.heroDisplayNameKeys.forEach(resolve);
+      resolve(blocker.remedyKey);
+    }
+  }
+
+  // The squad, one row per hero with his answer on it, in the order `heroOfferRows` sorts
+  // them — refusals first. The sort is the projection's and not repeated here, so the two
+  // sides of the second hash cannot disagree about it; what this walk states is the texts
+  // one row owes, in the order the row draws them.
+  for (const { hero, response } of heroOfferRows(model)) {
     resolve(hero.displayNameKey);
+
+    // What he said and whether his mood turned it — or, with no answer, the words for that.
+    // A branch on the answer being `null`, never on what is in it.
+    if (response === null) {
+      resolve(OfferFieldKeys.Unanswered);
+    } else {
+      resolve(actionKey(response.action));
+      resolve(waveredKey(response.wavered));
+    }
+
     resolve(FieldKeys.HeroGreed);
     resolve(qualitativeKey(hero.greed));
     resolve(FieldKeys.HeroCaution);
@@ -331,11 +445,10 @@ function contractOfferSnapshot(
       resolve(FieldKeys.HeroInclinations);
       hero.inclinationKeys.forEach(resolve);
     }
-  }
 
-  for (const response of model.responses) {
-    resolve(response.heroDisplayNameKey);
-    resolve(actionKey(response.action));
+    if (response === null) {
+      continue;
+    }
 
     for (const reason of response.reasons) {
       resolve(reason.reasonCode);
@@ -357,33 +470,6 @@ function contractOfferSnapshot(
     if (response.tieBreakCode !== null) {
       resolve(response.tieBreakCode);
     }
-
-    resolve(waveredKey(response.wavered));
-  }
-
-  const heroDisplayNameKeyOf = displayNameKeyResolver(model.roster);
-
-  if (model.offer !== null) {
-    resolveOffer(model.offer, resolve, texts, heroDisplayNameKeyOf);
-  }
-
-  // Not gated on `contract !== null`: `NEGOTIATION_SPEC` §5.1 treats the treasury as a
-  // campaign-wide fact, one `GDD` §16.3 already keeps a plain number, and it reads on
-  // `Empty` exactly as it reads on `Normal` — a campaign with nothing to offer still
-  // has a treasury. `Loading` and `Error` are excluded because there is no campaign
-  // behind either to read one from at all (`ContractOfferScreenModel.treasury`'s own
-  // doc comment): both are `0` by construction, and showing a manufactured `0` beside
-  // a title that has not finished loading would claim a fact this screen does not
-  // have.
-  if (model.state !== ScreenState.Loading && model.state !== ScreenState.Error) {
-    resolve(TreasuryFieldKeys.Treasury);
-    texts.push(String(model.treasury));
-    resolve(TreasuryFieldKeys.Forecast);
-    texts.push(String(model.treasuryForecast));
-  }
-
-  if (model.promiseTerms !== null) {
-    resolvePromiseTerms(model.promiseTerms, resolve, texts);
   }
 
   if (model.settlement !== null) {
@@ -460,18 +546,6 @@ function contractOfferSnapshot(
           texts.push(String(reason.column));
         }
       }
-    }
-  }
-
-  // Last, because it is what a player does *after* reading everything above. Every one of
-  // the seven, dark ones included, each followed by the refusal it would get — a control
-  // that vanished would leave the player with no way to learn what to do instead, and a
-  // dark one with no reason would leave them with no way to learn why not.
-  for (const available of model.availableActions) {
-    resolve(offerActionKey(available.action));
-
-    if (available.disabledReasonKey !== null) {
-      resolve(available.disabledReasonKey);
     }
   }
 

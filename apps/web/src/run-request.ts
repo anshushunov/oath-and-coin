@@ -47,6 +47,23 @@ export interface RunRequest {
    * facilitator who mistypes an id must be told, not handed the wrong fight.
    */
   readonly contract: string | null;
+  /**
+   * How many of the fight's events the combat lab opens with already applied, or `null` for
+   * the opening position.
+   *
+   * The seventh input, and it exists for the browser evidence of the line of intent. Since
+   * the owner's decision of 2026-09-23 a finished fight draws no arrow, so the one frame the
+   * lab could name besides the opening — the end, one press of skip away — has nothing to
+   * measure the arrow on; and a feed played and then paused stops wherever the machine's
+   * timing put it, which is a frame nobody can take twice (`AGENTS.md` §7: a frame is taken
+   * at a named position, not at a time). A position stated in the URL is named, and the lab
+   * still opens paused on it: from there the player's controls are the player's controls.
+   *
+   * Refused on any screen but the lab's, for the reason every other refusal here has: a
+   * position on the contract offer would be a parameter quietly doing nothing under a URL
+   * that claims it did something.
+   */
+  readonly position: number | null;
 }
 
 /** The two screens the page can open on. Anything else is a typo, not an extension. */
@@ -81,7 +98,8 @@ export const DEFAULT_RUN: RunRequest = {
   // corpus, in the browser evidence, in `ADR-008`'s examples — names no screen at all,
   // and each of them has to keep meaning what it meant.
   screen: 'contract-offer',
-  contract: null
+  contract: null,
+  position: null
 };
 
 /** The parameters a run may declare. Anything else is a mistake, not an extension. */
@@ -91,7 +109,8 @@ const KNOWN_PARAMETERS = [
   'seed',
   'locale',
   'screen',
-  'contract'
+  'contract',
+  'position'
 ] as const;
 
 /**
@@ -114,6 +133,8 @@ export function parseRunRequest(search: string): RunRequest {
     }
   }
 
+  const screen = parseScreen(stated(parameters, 'screen'));
+
   return {
     scenario: stated(parameters, 'scenario') ?? DEFAULT_RUN.scenario,
     // `null` when absent, and absent is the only way to ask for the manifest's last
@@ -122,9 +143,41 @@ export function parseRunRequest(search: string): RunRequest {
     checkpoint: stated(parameters, 'checkpoint') ?? DEFAULT_RUN.checkpoint,
     seed: parseSeed(stated(parameters, 'seed')),
     locale: stated(parameters, 'locale') ?? DEFAULT_RUN.locale,
-    screen: parseScreen(stated(parameters, 'screen')),
-    contract: stated(parameters, 'contract') ?? DEFAULT_RUN.contract
+    screen,
+    contract: stated(parameters, 'contract') ?? DEFAULT_RUN.contract,
+    position: parsePosition(stated(parameters, 'position'), screen)
   };
+}
+
+/**
+ * The lab's opening position, refused unless it is a count of events and the run is the lab.
+ *
+ * Spelled out for the reason the seed is: `Number` reads `0x10`, `1e3` and ` 7` as numbers,
+ * and a position that parsed as something the URL did not say would be a frame of another
+ * moment of the fight under this one's name. Whether the fight runs that far is the lab's to
+ * check — the record does not exist until the scenario has run.
+ */
+function parsePosition(stated: string | null, screen: ScreenName): number | null {
+  if (stated === null) {
+    return DEFAULT_RUN.position;
+  }
+
+  if (screen !== 'battle') {
+    throw new Error(
+      `Run parameter 'position' is a position in the combat lab's fight, and this run opens ` +
+        `'${screen}'. A parameter the screen does not read would be a URL claiming something ` +
+        'the frame beside it never did.'
+    );
+  }
+
+  if (!/^\d+$/u.test(stated) || !Number.isSafeInteger(Number(stated))) {
+    throw new Error(
+      `Run parameter 'position' must be a non-negative decimal integer — a count of events — ` +
+        `not '${stated}'.`
+    );
+  }
+
+  return Number(stated);
 }
 
 /**

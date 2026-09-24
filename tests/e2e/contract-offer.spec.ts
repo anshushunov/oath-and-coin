@@ -11,6 +11,7 @@ import {
 } from '@oath-and-coin/content/node';
 import {
   ScreenKind,
+  blockingReasons,
   expectedSnapshot,
   readModelHash,
   snapshotHash
@@ -27,8 +28,9 @@ import { expectWindowBoundedScreen, measureLayout } from './layout.ts';
  * stop at, and an artifact — a frame, a log and a report — that a third party can read
  * without rerunning anything. `ADR-010` §157 keeps all three and drops what was
  * Godot-specific: the process launch and the frame protocol. So this file is the port by
- * intent rather than by mechanism, and what it produces per state is exactly what
- * `run-smoke` produced: `screenshot.png`, `events.jsonl`, `report.json`.
+ * intent rather than by mechanism, and what it produces per state is what `run-smoke`
+ * produced — `screenshot.png`, `events.jsonl`, `report.json` — plus `top.png`, the frame at
+ * the top of the page before anything is scrolled (`DEC-019`), which CI requires as well.
  *
  * **Nothing here is verified against what the page says about itself.** That is the whole
  * design of the verdict, and it is why the imports above exist:
@@ -95,8 +97,52 @@ const LOCALE = 'ru';
 /** The element the rendered-UI hash is collected from. */
 const SCREEN = 'contract-offer-screen';
 
-/** The PixiJS canvas — the one thing on this page with no DOM to inspect. */
+/**
+ * The PixiJS canvas, which this screen no longer has (`DEC-020`). Named so that its absence
+ * is asserted by the same id the battle board's presence is.
+ */
 const CANVAS = 'world-canvas';
+
+/** The narrow row pinned to the top of the screen while the squad scrolls (spec §4). */
+const SUMMARY = 'offer-summary';
+
+/**
+ * How far below the screen box's top edge a pinned row may stand: the screen's own 1px
+ * border and a pixel of rounding. A row that scrolled away stands hundreds of pixels above
+ * it; one pinned with a gap over it (`top` not offsetting the screen's padding) stands 12
+ * below it, with the squad showing through the gap.
+ */
+const PINNED_TOLERANCE = 2;
+
+/**
+ * The most of the screen the pinned row may take. The owner's decision is that the squad
+ * keeps most of the window; the band that was pinned before it took 426 of 691px (0.62). A
+ * quarter leaves the squad three quarters of the window. Measured on 2026-09-23 by this run
+ * (`summary_box` in each state's `report.json`): 59px of a 689px screen on every state with a
+ * contract, one line; the row wraps to a second line when the count reads "Отряд ещё не
+ * спрашивали", and is still far under the bound.
+ */
+const SUMMARY_SHARE = 0.25;
+
+/**
+ * "What stands in the way" (`DEC-019`), under the ladder and over the squad. Measured at the
+ * top of the page, before anything is scrolled — where a player stands when a poll has just
+ * filled it — and required to be inside the window whole: a summary under the fold is one the
+ * bargainer does not see, and being seen is the one thing its place was chosen for.
+ *
+ * Measured, not guaranteed: it holds on the summaries these states draw (`screen_normal`: two
+ * lines, 102px, bottom at 649 of 746 on 2026-09-23), and a squad's refusals can fill several
+ * more lines than that. No state here draws a long summary, so a longer one is not covered.
+ */
+const BLOCKERS = 'offer-blockers';
+
+/** A box on the page in viewport pixels, rounded to whole ones. */
+interface Box {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
 
 /**
  * The five scenarios whose manifests declare the five states `AGENTS.md` §7 requires,
@@ -116,13 +162,16 @@ const CANVAS = 'world-canvas';
  * `overflows` is stated per state because reachability is satisfied trivially by content
  * that fits, and several of these states hold few enough texts that they can never fill a
  * 1280x800 window. Measured from the `report.json` each state writes under
- * `artifacts/browser-evidence`: at a window of 800 the screen's box is 532, and loading,
- * empty and error report 532px of content inside it — a box stretched to the window with
+ * `artifacts/browser-evidence`: at a window of 800 the screen's box is 689, and loading,
+ * empty and error report 689px of content inside it — a box stretched to the window with
  * shorter content reads its own height — while incomplete and the four negotiation-phase
  * states hold enough offer, promise and settlement detail to overflow, and normal does
- * too. Two things moved the original five numbers in Task 16.8: the screen link took a
+ * too. Three things moved the original five numbers: in Task 16.8 the screen link took a
  * row above the screen, and the project's viewport was repaired from the 720
- * `devices['Desktop Chrome']` had been quietly imposing to the 800 the record asks for.
+ * `devices['Desktop Chrome']` had been quietly imposing to the 800 the record asks for;
+ * with `DEC-020` the canvas under the screen left the page, and the box grew from 532 to
+ * 689. None of the five flags moved with it — the squad cards and the package band still
+ * overflow the taller box on every state that has a contract.
  *
  * So the check is real on most of these, and saying which turns "the reachability check
  * passed" into a claim with a subject — a layout change that stops the roster overflowing
@@ -173,21 +222,6 @@ interface PageReport {
   readonly read_model_hash: string;
   readonly content_version: string | null;
   readonly canonical_hash: string | null;
-}
-
-/**
- * What the rendered scene looks like from outside the renderer.
- *
- * `distinctColors` is the port of `TerminalEvent.FrameDistinctColors` from the Godot
- * harness, and it carries the same idea: a frame can be judged without a reference image
- * by asking whether anything was drawn at all. `shapes` is what the page says it drew,
- * checked against a count this process derives from the model on disk.
- */
-interface FrameMeasurement {
-  readonly width: number;
-  readonly height: number;
-  readonly shapes: number;
-  readonly distinctColors: number;
 }
 
 // Both catalogues, merged the same way the page itself merges them
@@ -288,10 +322,6 @@ test.describe('contract-offer screen, in a browser', () => {
       // from two code paths that share no data, even though neither is external to it.
       const expectedReadModelHash = readModelHash(expectedModel);
 
-      // What the scene owes, derived here from the same model — a marker when there is a
-      // contract, a token per hero. The projection's own rule, restated in one line
-      // because this process may not import `apps/web`; if the two ever disagree the
-      // disagreement surfaces as a red run rather than as agreement by construction.
       // The matrix's own invariant, enforced rather than assumed: every scenario in it is a
       // negotiation. Since §6.4 routes a resolved or settled campaign elsewhere, a scenario
       // that has moved past the offer belongs in another matrix — against another
@@ -304,30 +334,36 @@ test.describe('contract-offer screen, in a browser', () => {
         );
       }
 
-      const expectedShapes =
-        (expectedModel.contract === null ? 0 : 1) + expectedModel.roster.length;
-
       const events: string[] = [];
       recordEvents(page, events);
 
       await page.goto(runUrl(scenario, checkpoint));
       await expect(page.getByTestId(SCREEN)).toBeVisible();
 
-      // Waited for before anything is measured or photographed. `Application.init` is
-      // asynchronous, so without this the frame could be captured — and the pixels read —
-      // while the renderer was still coming up, and a blank canvas would be ind...
-      // ambiguous between "not ready" and "drew nothing".
-      await expect(page.getByTestId(CANVAS)).toHaveAttribute('data-scene-shapes', /^\d+$/u);
+      // No scene behind the offer (`DEC-020`): the page mounts no canvas for it at all. The
+      // proof that a canvas redraws, which this file's pixel checks used to carry, stands on
+      // the battle board now (`battle-redraw.spec.ts`).
+      await expect(page.getByTestId(CANVAS)).toHaveCount(0);
 
       const reported = JSON.parse(
         (await page.getByTestId('run-report').textContent()) ?? ''
       ) as PageReport;
       const renderedTexts = await collectRenderedTexts(page);
-      const layout = await measureLayout(page, SCREEN);
-      const frame = await measureFrame(page);
 
+      // The top of the page, before `measureLayout` wheels it to its end: the frame a player
+      // sees first, and the one in which the summary of what stands in the way has to be whole.
       const directory = join(EVIDENCE_ROOT, scenario);
       mkdirSync(directory, { recursive: true });
+      const screenBoxAtTop = await boxOf(page, `[data-testid="${SCREEN}"]`);
+      const blockersBoxAtTop = await boxOf(page, `[data-testid="${BLOCKERS}"]`);
+      await page.screenshot({ path: join(directory, 'top.png'), fullPage: false });
+
+      const layout = await measureLayout(page, SCREEN);
+      // Taken here, with the screen wheeled to its end by the measurement above — the moment
+      // the summary row is for: the squad read to its last card, and the score still on top.
+      const screenBox = await boxOf(page, `[data-testid="${SCREEN}"]`);
+      const summaryBox = await boxOf(page, `[data-testid="${SUMMARY}"]`);
+
       await page.screenshot({ path: join(directory, 'screenshot.png'), fullPage: false });
       writeFileSync(join(directory, 'events.jsonl'), events.map((line) => `${line}\n`).join(''));
 
@@ -343,7 +379,10 @@ test.describe('contract-offer screen, in a browser', () => {
         canonical_hash: reported.canonical_hash,
         texts: renderedTexts.length,
         layout,
-        frame,
+        screen_box: screenBox,
+        summary_box: summaryBox,
+        screen_box_at_top: screenBoxAtTop,
+        blockers_box_at_top: blockersBoxAtTop,
         events: events.length
       };
       writeFileSync(join(directory, 'report.json'), `${JSON.stringify(report, null, 2)}\n`);
@@ -355,6 +394,7 @@ test.describe('contract-offer screen, in a browser', () => {
       // missing file discovered only by the workflow's own summary step, days later, in
       // a different job.
       expect(existsSync(join(directory, 'screenshot.png')), 'screenshot.png').toBe(true);
+      expect(existsSync(join(directory, 'top.png')), 'top.png').toBe(true);
       expect(existsSync(join(directory, 'events.jsonl')), 'events.jsonl').toBe(true);
       expect(existsSync(join(directory, 'report.json')), 'report.json').toBe(true);
 
@@ -426,38 +466,48 @@ test.describe('contract-offer screen, in a browser', () => {
         'content past the right edge must be reachable by scrolling'
       ).toBeGreaterThanOrEqual(layout.contentWidth);
 
-      // The scene, and this is the half of the evidence external review found missing.
-      // Every check above is about the DOM, and the scene has no DOM: a `draw` reduced to
-      // a no-op left the texts, both hashes, the reachability numbers, the event log and
-      // the report identical, and the whole suite green over a page whose world was
-      // blank. So the canvas is asserted about directly, in three steps that fail
-      // differently.
-      //
-      // First, the shape count the page drew against the count derived here from the
-      // model on disk. Second, the drawing buffer has the size the scene stated — a
-      // canvas left at the browser's default 300x150 is a canvas the renderer never took
-      // over. Third, and the one the no-op mutant cannot survive: the pixels.
-      expect(frame.shapes, 'the page must draw the shapes its model implies').toBe(expectedShapes);
-      expect(
-        frame.width,
-        'the canvas must carry the scene, not the browser default'
-      ).toBeGreaterThan(0);
-      expect(frame.height).toBeGreaterThan(0);
+      // The summary row is pinned, and it is narrow (spec §4, owner's decision of
+      // 2026-09-23). Asked of every state with a contract that overflows — the states where
+      // there is somewhere to scroll to — at the end of the scroll, where a row that was
+      // merely at the top of the page would have left the window long ago.
+      if (expectedModel.contract !== null && overflows) {
+        expect(summaryBox, 'a screen with a contract draws the summary row').not.toBeNull();
 
-      // `distinctColors` is the port of `TerminalEvent.FrameDistinctColors`, and it says
-      // the one thing about a frame that needs no reference image: a scene that drew
-      // nothing is exactly one colour — its background — however correct everything
-      // around it is. States with shapes must therefore hold more than one, and states
-      // without them exactly one. Antialiasing puts the real count in the hundreds, so
-      // the bound is deliberately loose: the claim is "something was drawn", not "this
-      // picture".
-      if (expectedShapes === 0) {
-        expect(frame.distinctColors, 'a scene with nothing in it must be one flat colour').toBe(1);
+        if (summaryBox !== null && screenBox !== null) {
+          // Both bounds, each with the boxes in its message: a row that scrolled away stands
+          // above the screen's top edge, one pinned with a gap stands below it.
+          const pinned =
+            `scrolled to the end, the summary row must still stand at the top of the screen: ` +
+            `row ${describe(summaryBox)} against screen ${describe(screenBox)}`;
+
+          expect(summaryBox.y, pinned).toBeGreaterThanOrEqual(screenBox.y);
+          expect(summaryBox.y - screenBox.y, pinned).toBeLessThanOrEqual(PINNED_TOLERANCE);
+          expect(
+            summaryBox.height,
+            `the pinned row must leave the squad most of the window: row ${describe(summaryBox)} ` +
+              `in a screen ${String(layout.viewportHeight)}px tall`
+          ).toBeLessThanOrEqual(layout.viewportHeight * SUMMARY_SHARE);
+        }
+      }
+
+      // What stands in the way (`DEC-019`) is drawn exactly when the model has something in
+      // the way, and then it is whole inside the window at the top of the page — under the
+      // ladder, where the player's eye is after a poll, and not under the fold.
+      if (blockingReasons(expectedModel).length === 0) {
+        expect(blockersBoxAtTop, 'nothing stands in the way, so no summary is drawn').toBeNull();
       } else {
-        expect(
-          frame.distinctColors,
-          'a scene with shapes in it must not be one flat colour'
-        ).toBeGreaterThan(1);
+        expect(blockersBoxAtTop, 'somebody refused, so the summary is drawn').not.toBeNull();
+
+        if (blockersBoxAtTop !== null && screenBoxAtTop !== null) {
+          const inside =
+            `at the top of the page the summary must be whole inside the window: summary ` +
+            `${describe(blockersBoxAtTop)} against screen ${describe(screenBoxAtTop)}`;
+
+          expect(blockersBoxAtTop.y, inside).toBeGreaterThanOrEqual(screenBoxAtTop.y);
+          expect(blockersBoxAtTop.y + blockersBoxAtTop.height, inside).toBeLessThanOrEqual(
+            screenBoxAtTop.y + screenBoxAtTop.height
+          );
+        }
       }
 
       // A page that logged an error rendered the right texts by accident at best. Last,
@@ -599,54 +649,32 @@ async function collectRenderedTexts(page: Page): Promise<readonly string[]> {
 }
 
 /**
- * The rendered scene, read back out of the canvas.
- *
- * `drawImage` into a 2D context is what makes a WebGL canvas readable at all, and it
- * only answers real pixels because the renderer is initialized with
- * `preserveDrawingBuffer` — without it the back buffer is cleared after compositing and
- * this would report transparent black for every frame, which is exactly the answer a
- * scene that drew nothing gives. That would make the check agree with the failure it
- * exists to catch.
+ * The visible box of the first element `selector` matches, or `null` when the page has no
+ * such element — a screen with no contract draws no summary row, and the report says so
+ * rather than the run waiting for one. The same measurement `offer-refusal.spec.ts` takes:
+ * viewport-relative, after layout and after scrolling.
  */
-async function measureFrame(page: Page): Promise<FrameMeasurement> {
-  return page.evaluate((testId: string) => {
-    const canvas = document.querySelector(`[data-testid="${testId}"]`);
+async function boxOf(page: Page, selector: string): Promise<Box | null> {
+  const element = page.locator(selector).first();
 
-    if (!(canvas instanceof HTMLCanvasElement)) {
-      throw new Error(`The page has no <canvas data-testid="${testId}">.`);
-    }
+  if ((await element.count()) === 0) {
+    return null;
+  }
 
-    const probe = document.createElement('canvas');
-    probe.width = canvas.width;
-    probe.height = canvas.height;
+  const box = await element.boundingBox();
 
-    const context = probe.getContext('2d', { willReadFrequently: true });
+  return box === null
+    ? null
+    : {
+        x: Math.round(box.x),
+        y: Math.round(box.y),
+        width: Math.round(box.width),
+        height: Math.round(box.height)
+      };
+}
 
-    if (context === null) {
-      throw new Error('This browser gave no 2D context to read the scene back with.');
-    }
-
-    context.drawImage(canvas, 0, 0);
-
-    const { data } = context.getImageData(0, 0, probe.width, probe.height);
-    const colours = new Set<number>();
-
-    for (let offset = 0; offset < data.length; offset += 4) {
-      colours.add(
-        ((data[offset] ?? 0) << 24) |
-          ((data[offset + 1] ?? 0) << 16) |
-          ((data[offset + 2] ?? 0) << 8) |
-          (data[offset + 3] ?? 0)
-      );
-    }
-
-    return {
-      width: canvas.width,
-      height: canvas.height,
-      shapes: Number(canvas.dataset['sceneShapes'] ?? '-1'),
-      distinctColors: colours.size
-    };
-  }, CANVAS);
+function describe(box: Box): string {
+  return `[x ${String(box.x)}, y ${String(box.y)}, w ${String(box.width)}, h ${String(box.height)}]`;
 }
 
 function readJson<T>(path: string): T {

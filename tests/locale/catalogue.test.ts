@@ -21,8 +21,10 @@ import {
   BATTLE_STATE_KEYS,
   BATTLE_STATUS_KEYS,
   BATTLE_TITLE_KEY,
+  BLOCKER_KEYS,
   COMBAT_ACTION_KEYS,
   COMBAT_ROLE_KEYS,
+  COMBAT_ROLE_SHORT_KEYS,
   DOCTRINE_KEYS,
   AFTER_ACTION_TITLE_KEY,
   COMMITMENT_STATE_KEYS,
@@ -287,6 +289,10 @@ function everyKeyTheInterfaceCanShow(): readonly string[] {
     // negotiation is, and this names why a control refuses — a locked package with an
     // unfilled crew is `locked` and not disabled at all (`RESOLUTION_SPEC` §6.2).
     ...LEVER_DISABLED_KEYS,
+    // The offer screen's "what stands in the way" (`DEC-019`): its heading and the word each
+    // line prints for what changes a reason. The reason's own name is the engine's code,
+    // already on the content side through `REASON_CODES` above; these are the screen's.
+    ...BLOCKER_KEYS,
     // The six commands a player presses, and every way the engine can refuse one
     // (contract-loop UI plan, Task 5). A `RejectionCodes` member is already a dotted
     // lowercase key — the same shape a `ReasonCodes` member has on a response line — so
@@ -362,6 +368,9 @@ function everyKeyTheInterfaceCanShow(): readonly string[] {
     ...BATTLE_STATUS_KEYS,
     ...COMBAT_ACTION_KEYS,
     ...COMBAT_ROLE_KEYS,
+    // The same four jobs in one short word each, for the board alone (the owner's decision
+    // of 2026-09-23): a foe has no name, and his full job does not fit on a token.
+    ...COMBAT_ROLE_SHORT_KEYS,
     ...DOCTRINE_KEYS,
     ...TARGET_REASONS,
     ...MOTIVE_REASONS,

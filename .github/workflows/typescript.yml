@@ -70,6 +70,21 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      # The two halves of the colour ban (ADR-017), in the same position they
+      # hold inside `pnpm verify`: after formatting, before the content schemas.
+      #
+      # They run in the release gate too — that job runs `pnpm verify` whole, and
+      # `tests/architecture/release-gate.test.ts` keeps both stages in the chain —
+      # so this is not a hole being closed, it is feedback arriving in seconds on
+      # every push instead of behind a browser download. A `tokens.css` that was
+      # not regenerated is a one-line fix, and learning about it from the slowest
+      # job in the workflow is how a one-line fix costs an afternoon.
+      - name: UI tokens are generated from their source
+        run: pnpm tokens:check
+
+      - name: No colour is declared twice in CSS
+        run: pnpm lint:colours
+
       # Three statements of the content rules, held to each other: the Zod
       # contracts, the generated schemas committed beside them, and the
       # hand-written schemas the .NET stack still reads until cutover. Cheap, and
@@ -173,9 +188,13 @@ jobs:
           # back with the board's own component (contract-loop UI plan, tasks 8 and 10).
           expected="screen_loading screen_empty screen_error screen_incomplete screen_normal screen_draft screen_locked screen_settlement_due"
 
+          # Two frames per state: `top.png` before anything is scrolled — where "what stands in
+          # the way" (DEC-019) has to be whole inside the window — and `screenshot.png` at the
+          # end of the scroll, where the summary row has to still be pinned.
           missing=""
           for state in $expected; do
             [ -f "$root/$state/report.json" ] || missing="$missing $state"
+            [ -f "$root/$state/top.png" ] || missing="$missing $state/top"
             [ -f "$root/$state/screenshot.png" ] || missing="$missing $state/frame"
             [ -f "$root/$state/events.jsonl" ] || missing="$missing $state/events"
           done
@@ -266,7 +285,9 @@ jobs:
         shell: bash
         run: |
           root=artifacts/browser-evidence/battle
-          expected="loading empty error incomplete normal"
+          # `midfight` is `Incomplete` again, at a position the URL names: since a finished
+          # fight draws no line of intent, it is the one frame the line is measured present on.
+          expected="loading empty error incomplete midfight normal"
 
           missing=""
           for state in $expected; do
@@ -287,15 +308,23 @@ jobs:
           {
             echo "### battle evidence"
             echo
-            echo "| state | scenario | texts | content | viewport | window | reachable | events |"
-            echo "|---|---|---|---|---|---|---|---|"
+            # The canvas columns are what the board checks measured — the colour count the
+            # words are held to, over the whole frame and per side, and the pixels of the
+            # intent colour — so a threshold can be read against its frame without
+            # downloading the artifact. `—` on the states with no board, which measure nothing.
+            echo "| state | scenario | position | texts | content | viewport | window | reachable | canvas colours | crew / foe side | intent pixels | events |"
+            echo "|---|---|---|---|---|---|---|---|---|---|---|---|"
             for state in $expected; do
               jq -r '
-                "| \(.battle_screen_state) | \(.scenario) | \(.texts) "
+                "| \(.battle_screen_state) | \(.scenario) | \(.position // "—") | \(.texts) "
                 + "| \(.layout.contentWidth)x\(.layout.contentHeight) "
                 + "| \(.layout.viewportWidth)x\(.layout.viewportHeight) "
                 + "| \(.layout.windowHeight) "
-                + "| \(.layout.reachableWidth)x\(.layout.reachableHeight) | \(.events) |"
+                + "| \(.layout.reachableWidth)x\(.layout.reachableHeight) "
+                + "| \(.canvas.distinct_colors // "—") "
+                + "| \(if .canvas == null then "—" else "\(.canvas.crew_side_colors) / \(.canvas.foe_side_colors)" end) "
+                + "| \(if .canvas == null then "—" else "\(.canvas.intent_pixels) (expected: \(.canvas.intent_expected))" end) "
+                + "| \(.events) |"
               ' "$root/$state/report.json"
             done
             echo
@@ -332,20 +361,18 @@ jobs:
             echo
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
-      # The fifth evidence directory, and the only one produced by a run that applies a
-      # game command. The save-slots run does press buttons, so what is new here is not the
-      # click: it is that the campaign underneath the page *moves*, which is the transition
-      # both lists above are blind to — they photograph a screen the scenario replayed into
-      # place. That blindness cost a page which froze the moment a player touched it.
-      #
-      # Named here for the reason the two lists are named: a run that stops producing
-      # evidence has to fail a stage, and the only place that can be noticed is a list of
-      # what was expected.
-      - name: Summarise the live-command evidence
+      # The live-redraw gate on the battle board (`DEC-020`): the one browser check that a
+      # canvas redraws after the model changes, rather than standing as a dead first frame.
+      # The battle board is the only canvas on the page since the offer lost its own, so
+      # the check stands there. Its verdict is the run's own assertions; the evidence is
+      # listed here for the reason the lists above are — a run that stops producing it has
+      # to fail a stage, and a green test status alone leaves nothing a reader can check by
+      # hand.
+      - name: Summarise the battle-redraw evidence
         if: always() && steps.e2e.outcome != 'skipped'
         shell: bash
         run: |
-          root=artifacts/browser-evidence/live_command
+          root=artifacts/browser-evidence/battle_redraw
 
           missing=""
           [ -f "$root/report.json" ] || missing="$missing report"
@@ -353,18 +380,17 @@ jobs:
           [ -f "$root/events.jsonl" ] || missing="$missing events"
 
           if [ -n "$missing" ]; then
-            echo "::error::The live-command run produced no evidence for:$missing"
+            echo "::error::The battle-redraw run produced no evidence for:$missing"
             exit 1
           fi
 
           {
-            echo "### live-command evidence"
+            echo "### battle-redraw evidence"
             echo
-            echo "| scenario | command | read model before | read model after | screen | shapes | frame before | frame after | colors | events |"
-            echo "|---|---|---|---|---|---|---|---|---|---|"
+            echo "| scenario | command | shapes | frame before | frame after | colors | events |"
+            echo "|---|---|---|---|---|---|---|"
             jq -r '
-              "| \(.scenario) | \(.command) | \(.read_model_hash_before[0:16]) "
-              + "| \(.read_model_hash_after[0:16]) | \(.campaign_screen_after) "
+              "| \(.scenario) | \(.command) "
               + "| \(.scene_shapes_before)→\(.scene_shapes_after) "
               + "| \(.frame_digest_before) | \(.frame_digest_after) "
               + "| \(.distinct_colors_after) | \(.events) |"
@@ -405,6 +431,11 @@ jobs:
               and (.screen_box | box)
               and (.refusal_within_lever_block | type == "boolean")
               and (.refusal_within_screen | type == "boolean")
+              and (.scrolled_refusal_box | box)
+              and (.scrolled_summary_box | box)
+              and (.scrolled_summary_pinned | type == "boolean")
+              and (.refusal_clearance_under_summary | type == "number")
+              and (.refusal_clear_of_summary | type == "boolean")
               and (.events | type == "number")
           ' "$root/report.json" > /dev/null; then
             echo "::error::The offer-refusal report is not the shape the run writes (see tests/e2e/offer-refusal.spec.ts)"
@@ -414,13 +445,17 @@ jobs:
           {
             echo "### offer-refusal evidence"
             echo
-            echo "| scenario | typed | ceiling | lever | refusal box (y, h) | screen box (y, h) | in lever block | on screen | events |"
-            echo "|---|---|---|---|---|---|---|---|---|"
+            # The last two columns are the second question (WCAG 2.4.11): the refusal scrolled
+            # to the top edge of the screen, and how far under the pinned summary row it stood.
+            echo "| scenario | typed | ceiling | lever | refusal box (y, h) | screen box (y, h) | in lever block | on screen | scrolled to: row (y, h) / clearance | events |"
+            echo "|---|---|---|---|---|---|---|---|---|---|"
             jq -r '
               "| \(.scenario) | \(.advance_typed) | \(.ceiling) | \(.lever) "
               + "| \(.refusal_box.y), \(.refusal_box.height) "
               + "| \(.screen_box.y), \(.screen_box.height) "
-              + "| \(.refusal_within_lever_block) | \(.refusal_within_screen) | \(.events) |"
+              + "| \(.refusal_within_lever_block) | \(.refusal_within_screen) "
+              + "| \(.scrolled_summary_box.y), \(.scrolled_summary_box.height) / \(.refusal_clearance_under_summary) "
+              + "| \(.events) |"
             ' "$root/report.json"
             echo
           } | tee -a "$GITHUB_STEP_SUMMARY"
@@ -428,11 +463,78 @@ jobs:
           # The verdict, after the row is in the summary: the run writes its report before
           # it judges, so a red run's boxes are printed above — and then this stage is red
           # for the same reason the run was.
-          if ! jq -e '.refusal_within_lever_block and .refusal_within_screen and .events == 0' \
+          if ! jq -e '.refusal_within_lever_block and .refusal_within_screen and .scrolled_summary_pinned and .refusal_clear_of_summary and .events == 0' \
             "$root/report.json" > /dev/null; then
-            echo "::error::The offer-refusal run measured the refusal outside its lever block or off screen, or the page produced events (see the table above)"
+            echo "::error::The offer-refusal run measured the refusal outside its lever block, off screen or under the pinned summary row, or the page produced events (see the table above)"
             exit 1
           fi
+
+      # Where a control the keyboard reaches lands against the pinned summary row (WCAG
+      # 2.4.11, external review of 2026-09-23): every control of the offer screen left behind
+      # the row, then reached with Shift+Tab, on a one-line row and on a two-line one.
+      #
+      # **This list is edited together with `STATES` in `tests/e2e/offer-focus.spec.ts`**, for
+      # the reason the lists above are: a state whose run stops producing evidence has to fail
+      # a stage.
+      - name: Summarise the offer-focus evidence
+        if: always() && steps.e2e.outcome != 'skipped'
+        shell: bash
+        run: |
+          root=artifacts/browser-evidence/offer_focus
+          expected="screen_normal battle_lab"
+
+          missing=""
+          for state in $expected; do
+            [ -f "$root/$state/report.json" ] || missing="$missing $state"
+            [ -f "$root/$state/screenshot.png" ] || missing="$missing $state/frame"
+            [ -f "$root/$state/events.jsonl" ] || missing="$missing $state/events"
+          done
+
+          if [ -n "$missing" ]; then
+            echo "::error::The offer-focus run produced no evidence for:$missing"
+            exit 1
+          fi
+
+          # The shape first, for the reason the offer-refusal step gives: `jq -r` prints
+          # `null` for a missing field and exits 0.
+          for state in $expected; do
+            if ! jq -e '
+              (.scenario | type == "string")
+                and (.summary_lines | type == "number")
+                and (.summary_height | type == "number")
+                and (.presses | type == "number")
+                and (.presses_under_pinned_row | type == "number")
+                and (.min_clearance | type == "number")
+                and (.events | type == "number")
+            ' "$root/$state/report.json" > /dev/null; then
+              echo "::error::The offer-focus report for $state is not the shape the run writes (see tests/e2e/offer-focus.spec.ts)"
+              exit 1
+            fi
+          done
+
+          {
+            echo "### offer-focus evidence"
+            echo
+            echo "| scenario | row lines | row height | presses | from behind the row | least clearance | events |"
+            echo "|---|---|---|---|---|---|---|"
+            for state in $expected; do
+              jq -r '
+                "| \(.scenario) | \(.summary_lines) | \(.summary_height) | \(.presses) "
+                + "| \(.presses_under_pinned_row) | \(.min_clearance) | \(.events) |"
+              ' "$root/$state/report.json"
+            done
+            echo
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+          # The verdict after the rows are printed: every control focus landed on stood clear
+          # of the row, and some press really started from behind it.
+          for state in $expected; do
+            if ! jq -e '.min_clearance >= 0 and .presses_under_pinned_row > 0 and .events == 0' \
+              "$root/$state/report.json" > /dev/null; then
+              echo "::error::The offer-focus run for $state left a focused control under the pinned summary row, never started a press from behind it, or the page produced events (see the table above)"
+              exit 1
+            fi
+          done
 
       # The vitest report of whatever ran here, on its own and under a bare
       # `always()`. It is not folded into the upload below, and that is the whole

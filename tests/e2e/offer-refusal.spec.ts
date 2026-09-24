@@ -24,6 +24,11 @@ import { expect, test, type ConsoleMessage, type Page, type Request } from '@pla
  *
  * The same walk `combat-loop.spec.ts` starts with, up to the press — the same contract, the
  * same seed, the same key hero and crew — with the one number the owner typed.
+ *
+ * Then a second question on the same refusal, raised by external review on 2026-09-23 (WCAG
+ * 2.4.11): scrolled to the top edge of the screen, the sentence must stand under the pinned
+ * summary row and not behind it. `offer-focus.spec.ts` asks the same of every control the
+ * keyboard reaches.
  */
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -40,6 +45,9 @@ const CEILING = 65;
 
 /** The screen element, which is the one scrolling box on the page (`layout.ts`). */
 const SCREEN = 'contract-offer-screen';
+
+/** The narrow row pinned to the top of the screen while the rest scrolls (spec §4). */
+const SUMMARY = 'offer-summary';
 
 const catalogue = loadUiTextCatalogue(join(REPOSITORY_ROOT, 'ui-text', `${LOCALE}.json`));
 
@@ -111,6 +119,21 @@ test('a term the engine refuses is refused on screen, beside the lever it came f
   const leverBox = await boxIfPresent(page, `[data-lever="${OfferLeverId.Terms}"]`);
 
   await page.screenshot({ path: join(EVIDENCE_ROOT, 'screenshot.png'), fullPage: false });
+
+  // The second question, asked after the first is measured: the refusal scrolled to, the way
+  // a page brings an element to the top edge of its scrolling box, must not land under the
+  // pinned summary row (WCAG 2.4.11). The browser aligns to the edge of the box and knows
+  // nothing of a row painted over that edge unless the box says how much of it is covered.
+  const scrolled = await scrollToTop(page, '[data-testid="offer-rejection"]');
+  const scrolledRefusalBox = await boxOf(page, '[data-testid="offer-rejection"]');
+  const scrolledSummaryBox = await boxOf(page, `[data-testid="${SUMMARY}"]`);
+  const scrolledScreenBox = await boxOf(page, `[data-testid="${SCREEN}"]`);
+  // Stuck to the screen's top edge, give or take its border and a pixel of rounding.
+  const summaryPinned = scrolledSummaryBox.y - scrolledScreenBox.y <= 2;
+  const refusalClearance =
+    scrolledRefusalBox.y - (scrolledSummaryBox.y + scrolledSummaryBox.height);
+
+  await page.screenshot({ path: join(EVIDENCE_ROOT, 'scrolled.png'), fullPage: false });
   writeFileSync(join(EVIDENCE_ROOT, 'events.jsonl'), events.map((line) => `${line}\n`).join(''));
   writeFileSync(
     join(EVIDENCE_ROOT, 'report.json'),
@@ -131,6 +154,13 @@ test('a term the engine refuses is refused on screen, beside the lever it came f
         refusal_box: refusalBox,
         refusal_within_screen: within(refusalBox, screenBox),
         refusal_within_lever_block: within(refusalBox, leverBox),
+        scrolled_top_before: scrolled.before,
+        scrolled_top_after: scrolled.after,
+        scrolled_refusal_box: scrolledRefusalBox,
+        scrolled_summary_box: scrolledSummaryBox,
+        scrolled_summary_pinned: summaryPinned,
+        refusal_clearance_under_summary: refusalClearance,
+        refusal_clear_of_summary: refusalClearance >= 0,
         events: events.length
       },
       null,
@@ -158,6 +188,17 @@ test('a term the engine refuses is refused on screen, beside the lever it came f
   // And the number it is about is on the same screen, so both halves of "you typed 100
   // over a ceiling of 65" can be read at once.
   expect(within(advanceBox, screenBox), 'the advance control must be on screen too').toBe(true);
+
+  // Scrolled to, it stands wholly under the pinned row. The premise first: the scroll moved
+  // the screen and left the row pinned over it, or "not under the row" is about a row that
+  // was standing in its place in the flow.
+  expect(scrolled.after, 'scrolling to the refusal must move the screen').not.toBe(scrolled.before);
+  expect(summaryPinned, 'scrolled to the refusal, the summary row must be pinned').toBe(true);
+  expect(
+    refusalClearance,
+    `scrolled to, the refusal must not stand under the pinned summary row: refusal ` +
+      `${describe(scrolledRefusalBox)} against row ${describe(scrolledSummaryBox)}`
+  ).toBeGreaterThanOrEqual(0);
 
   expect(events, 'the page must produce no error or failed request').toEqual([]);
 });
@@ -224,6 +265,48 @@ async function scrollTop(page: Page): Promise<number> {
 
     return element.scrollTop;
   }, SCREEN);
+}
+
+/**
+ * Scrolls the first element `selector` matches to the top edge of the screen with the page's
+ * own `scrollIntoView({ block: 'start' })`, and answers the screen's `scrollTop` before and
+ * after, once three consecutive frames agree on it (the wait `layout.ts` uses for a wheel).
+ */
+async function scrollToTop(
+  page: Page,
+  selector: string
+): Promise<{ before: number; after: number }> {
+  return page.evaluate(
+    async ({ target, testId }) => {
+      const element = document.querySelector(target);
+      const screen = document.querySelector(`[data-testid="${testId}"]`);
+
+      if (element === null || screen === null) {
+        throw new Error(
+          `The page has no '${target}' inside [data-testid="${testId}"] to scroll to.`
+        );
+      }
+
+      const before = screen.scrollTop;
+      element.scrollIntoView({ block: 'start' });
+
+      let last = screen.scrollTop;
+      let agreed = 0;
+
+      for (let frame = 0; frame < 60 && agreed < 2; frame += 1) {
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => {
+            resolve();
+          });
+        });
+        agreed = screen.scrollTop === last ? agreed + 1 : 0;
+        last = screen.scrollTop;
+      }
+
+      return { before, after: last };
+    },
+    { target: selector, testId: SCREEN }
+  );
 }
 
 function runUrl(): string {

@@ -1,6 +1,8 @@
 import type { ScreenModel } from '@oath-and-coin/presentation';
 import { useEffect, useMemo, useRef, type RefObject } from 'react';
 
+import type { ResolveText } from '../text.tsx';
+
 import { mountPixiScene, type PixiScene } from './pixi-scene.ts';
 import { describeScene, type SceneDescription } from './scene-model.ts';
 
@@ -47,7 +49,8 @@ import { describeScene, type SceneDescription } from './scene-model.ts';
  */
 export function WorldCanvas({
   model,
-  phase = 0
+  phase = 0,
+  textOf
 }: {
   readonly model: ScreenModel;
   /**
@@ -58,6 +61,18 @@ export function WorldCanvas({
    * event landed, which is the only frame a caller with no clock can name.
    */
   readonly phase?: number;
+  /**
+   * What the words on the board are resolved with — the screen's own `useText`.
+   *
+   * A prop rather than a context read here, because this component also sits behind the
+   * campaign screens *outside* the `TextSource` (`App.tsx` says why): only the battle board
+   * has words on it, and the one screen that draws a board passes its resolver in. Without
+   * one, a board with words on it fails loudly naming the key (`scene-model.ts`).
+   *
+   * Stable per catalogue (`useText` memoizes it), which matters: it is part of what the
+   * description is memoized on, and a new function every render would redraw every render.
+   */
+  readonly textOf?: ResolveText;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chainRef = useRef<Promise<void>>(Promise.resolve());
@@ -66,7 +81,9 @@ export function WorldCanvas({
   // from "not drawn yet". Compared by identity, which is exactly what `useMemo` gives it:
   // one description per model, and one model per store update.
   const drawnRef = useRef<SceneDescription | null>(null);
-  const description = useMemo(() => describeScene(model, phase), [model, phase]);
+  // How many frames the renderer has drawn since it came up — see `data-scene-frame` below.
+  const frameRef = useRef(0);
+  const description = useMemo(() => describeScene(model, phase, textOf), [model, phase, textOf]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -99,12 +116,14 @@ export function WorldCanvas({
       // cannot fake. A marker without a pixel check would be a page marking its own
       // work; a pixel check without a marker would be a race.
       canvas.dataset['sceneShapes'] = String(description.shapes.length);
+      markFrame(canvas, frameRef, 1);
     });
 
     return () => {
       cancelled = true;
       queue(chainRef, () => {
         delete canvas.dataset['sceneShapes'];
+        delete canvas.dataset['sceneFrame'];
         sceneRef.current?.destroy();
         sceneRef.current = null;
         drawnRef.current = null;
@@ -141,6 +160,7 @@ export function WorldCanvas({
       scene.apply(description);
       drawnRef.current = description;
       canvas.dataset['sceneShapes'] = String(description.shapes.length);
+      markFrame(canvas, frameRef, frameRef.current + 1);
     });
   }, [description]);
 
@@ -155,6 +175,22 @@ export function WorldCanvas({
       height={description.height}
     />
   );
+}
+
+/**
+ * Numbers the frame the renderer has just drawn, on the element.
+ *
+ * `data-scene-shapes` says the renderer got as far as drawing *something*, and it is set once
+ * by the mount and then only changes value — so after a press, a wait on it is satisfied at
+ * once by the frame from before the press. Review of the browser suites found three waits of
+ * exactly that kind. This number moves with every draw and with nothing else, so "the frame
+ * the press produced is on the canvas" becomes a wait for it to pass the number read before
+ * the press. Like the shape count, it says only that a draw happened; the pixels are still
+ * the check.
+ */
+function markFrame(canvas: HTMLCanvasElement, frame: RefObject<number>, number: number): void {
+  frame.current = number;
+  canvas.dataset['sceneFrame'] = String(number);
 }
 
 /**

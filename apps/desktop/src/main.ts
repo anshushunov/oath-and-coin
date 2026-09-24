@@ -100,7 +100,20 @@ function createWindow(): BrowserWindow {
     // before the app renders is the kind of thing that gets "fixed" later with
     // a splash screen.
     show: false,
-    backgroundColor: '#101014',
+    // The one colour literal left in this repository outside `apps/web/src/ui/tokens.ts`
+    // and the file generated from it, and it is here as a consequence of a boundary rather
+    // than as a hole in the ban (`ADR-017` §3). The host cannot import the renderer — not
+    // by custom but mechanically: `.dependency-cruiser.cjs` holds
+    // `host-must-not-import-the-renderer` and `renderer-must-not-import-the-host`, and
+    // `pnpm lint:deps` fails on an edge either way — so there is no import graph along
+    // which this file could read a token.
+    //
+    // It is therefore obliged to equal the `surface` token by hand. It was `#101014`
+    // against a `--surface` of `#0d0f14` until this was written down, which is precisely
+    // the kind of near-miss `ADR-017` exists to end: two values of one meaning, neither
+    // file able to see the other. A future divergence shows up as a frame of one colour
+    // around a window of another for the instant before the first paint.
+    backgroundColor: '#0d0f14',
     webPreferences: {
       // ADR-010 §80, non-negotiable and repeated in ADR-011. The README of
       // steamworks.js asks for the opposite of the second and third; that

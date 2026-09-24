@@ -1,16 +1,23 @@
 import {
+  BattleEventKeys,
   BattleFieldKeys,
+  battleLineTones,
   battleStateKey,
   errorKey,
+  type BattleIntentLine,
   type BattleJournalLine,
-  type BattleScreenModel,
-  type BattleUnitLine
+  type BattleScreenModel
 } from '@oath-and-coin/presentation';
 
+import { Feed } from '../../ui/feed.tsx';
+import { Columns } from '../../ui/layout.tsx';
+import { Panel } from '../../ui/panel.tsx';
 import { WorldCanvas } from '../../world/world-canvas.tsx';
 import { useText } from '../../text.tsx';
 
-import { Captioned, Label, Who } from '../labels.tsx';
+import { Captioned, Label, Tinted, Who } from '../labels.tsx';
+
+import { CrewPanel } from './crew-panel.tsx';
 
 /**
  * The fight, as a board, a line of intent, a journal and five buttons (`COMBAT_SPEC` §10.2).
@@ -26,9 +33,15 @@ import { Captioned, Label, Who } from '../labels.tsx';
  * them on the read model would put an animation coordinate through the read-model hash, and
  * the browser evidence would then measure a different screen every frame.
  *
- * **The board is drawn twice, and both are on purpose.** The canvas is the picture; the list
- * beside it is the same board in words, because a picture is not a text dub and `GDD` §16.6
- * asks for one. The journal underneath is the same argument over time.
+ * **The board is drawn twice, and both are on purpose.** The canvas is the picture; the panel
+ * under it is everybody on it in words, because a picture is not a text dub and `GDD` §16.6
+ * asks for one. The journal beside the panel is the same argument over time.
+ *
+ * **Layout Б, the owner's** (the spec of the kit, §5; decision 2 of 2026-09-23): the field
+ * across the whole width, because only there does a word on a token read; under it the
+ * outcome in the largest size on the screen, the line of intent and the controls; under those
+ * the people and the journal side by side. The order in the document is the order a reader
+ * meets them, and `expectedSnapshot` walks the same order.
  */
 export function BattleScreen({
   model,
@@ -44,145 +57,154 @@ export function BattleScreen({
 
   return (
     <section className="battle" data-testid="battle-screen" data-state={model.state}>
-      <Label text={text(model.titleKey)} />
-      <Label text={text(battleStateKey(model.state))} />
+      <div className="battle-head">
+        <Label text={text(model.titleKey)} />
+        <Label text={text(battleStateKey(model.state))} />
 
-      {model.errorCode === null ? null : <Label text={text(errorKey(model.errorCode))} />}
+        {model.errorCode === null ? null : <Label text={text(errorKey(model.errorCode))} />}
 
-      {model.contractDisplayNameKey === null ? null : (
-        <Label text={text(model.contractDisplayNameKey)} />
-      )}
+        {model.contractDisplayNameKey === null ? null : (
+          <Label text={text(model.contractDisplayNameKey)} />
+        )}
 
-      {model.doctrineKey === null ? null : (
-        <Captioned captionKey={BattleFieldKeys.Doctrine} value={text(model.doctrineKey)} />
-      )}
+        {model.doctrineKey === null ? null : (
+          <Captioned captionKey={BattleFieldKeys.Doctrine} value={text(model.doctrineKey)} />
+        )}
 
-      {model.units.length === 0 ? null : (
-        <>
+        {model.units.length === 0 ? null : (
           <Captioned
             captionKey={BattleFieldKeys.Round}
             value={String(model.round)}
             testId="battle-round"
           />
-          <WorldCanvas model={model} phase={phase} />
-          <div className="board" data-testid="battle-board">
-            <Label text={text(BattleFieldKeys.Board)} />
-            {model.units.map((unit) => (
-              <UnitRow key={unit.unit} unit={unit} />
-            ))}
-          </div>
-        </>
-      )}
+        )}
+      </div>
 
-      {model.intent === null ? null : (
-        <div className="intent" data-testid="battle-intent">
-          <Label text={text(BattleFieldKeys.Intent)} />
-          {/*
-            A name when he has one, his side and his job when he has not. A foe carries no
-            display name, and the frame of a running fight read `Намерение Выстрел Доран`:
-            the act had no subject and the *target's* name sat where the actor's belongs.
-          */}
-          <Who
-            displayNameKey={model.intent.displayNameKey}
-            sideKey={model.intent.sideKey}
-            roleKey={model.intent.roleKey}
-          />
-          <Label text={text(model.intent.actionKey)} />
-          {/*
-            The word between the two men, the same one the journal's own `intent_declared`
-            line carries: an intent is always the subject's act aimed at the other man, so
-            it is always `To`. Without it the same event read two ways on one screen.
-          */}
-          {model.intent.targetUnit === null ? null : (
-            <>
-              <Label text={text(BattleFieldKeys.To)} />
-              <Who
-                displayNameKey={model.intent.targetDisplayNameKey}
-                sideKey={model.intent.targetSideKey}
-                roleKey={model.intent.targetRoleKey}
-              />
-            </>
-          )}
-          <Label text={text(model.intent.reasonKey)} />
-          {/*
-            The moment `DIRECTION` §4.8 is about, and it is never shown on its own: a man
-            going against the order is only legible beside the order he went against.
-          */}
-          {model.intent.contraryToDoctrineKey === null ? null : (
-            <Label text={text(model.intent.contraryToDoctrineKey)} />
-          )}
+      {model.units.length === 0 ? null : (
+        <div className="battle-field">
+          {/* The screen's own resolver: every word on the board is resolved before the canvas. */}
+          <WorldCanvas model={model} phase={phase} textOf={text} />
         </div>
       )}
 
-      {model.journal.length === 0 ? null : (
-        <div className="journal" data-testid="battle-journal">
-          <Label text={text(BattleFieldKeys.Journal)} />
-          {model.journal.map((line, index) => (
-            // Keyed by position: a journal line carries no identity of its own — two
-            // `turn_spent` lines about one man differ in nothing — and the list only ever
-            // grows at the end, so there is no reordering for a key to survive.
-            <JournalRow key={index} line={line} />
-          ))}
+      {/*
+        How it ended, first thing under the field and in the largest size on the screen. It
+        was always drawn — last, below eighty lines of journal and in the size of everything
+        else, so the frame of a finished fight never showed it (§1 of the spec). The screen's
+        title and its state stay smaller: this is the one headline a finished fight has.
+      */}
+      {model.outcomeKey === null ? null : (
+        <div className="battle-outcome" data-testid="battle-outcome">
+          <Label text={text(BattleFieldKeys.Outcome)} />
+          <Label text={text(model.outcomeKey)} />
         </div>
       )}
+
+      {model.intent === null ? null : <IntentLine intent={model.intent} />}
 
       <Controls model={model} controls={controls} />
 
-      {model.outcomeKey === null ? null : (
-        <Captioned
-          captionKey={BattleFieldKeys.Outcome}
-          value={text(model.outcomeKey)}
-          testId="battle-outcome"
-        />
+      {model.units.length === 0 && model.journal.length === 0 ? null : (
+        <Columns>
+          {model.units.length === 0 ? null : <CrewPanel units={model.units} />}
+          {model.journal.length === 0 ? null : (
+            <Panel titleKey={BattleFieldKeys.Journal}>
+              <Feed
+                testId="battle-journal"
+                // Keyed by position inside the feed: a journal line carries no identity of
+                // its own — two `turn_spent` lines about one man differ in nothing — and the
+                // list only ever grows at the end, so there is no reordering to survive.
+                lines={model.journal.map((line, index) => (
+                  <JournalRow key={index} line={line} />
+                ))}
+              />
+            </Panel>
+          )}
+        </Columns>
       )}
     </section>
   );
 }
 
-/** One man, in words: who he is, what he holds, what is left of him and what is on him. */
-function UnitRow({ unit }: { readonly unit: BattleUnitLine }) {
+/** The line of intent with its cause, in words — the board draws the same line as an arrow. */
+function IntentLine({ intent }: { readonly intent: BattleIntentLine }) {
   const text = useText();
+  // The names are coloured by the rule the journal's are, off the same two side words: the
+  // intent line is the journal's `intent_declared` line lifted out and kept in view.
+  const tones = battleLineTones({
+    key: BattleEventKeys.IntentDeclared,
+    sideKey: intent.sideKey,
+    targetSideKey: intent.targetSideKey
+  });
 
   return (
-    <div className="unit" data-testid={`battle-unit-${unit.unit}`}>
+    <div className="intent" data-testid="battle-intent">
+      <Label text={text(BattleFieldKeys.Intent)} />
       {/*
-        Which side he is on, in a word and not only in a colour. Found by looking at the
-        frame: the list under the board read as nine men with four names and five roles,
-        and nothing on it said which of them the player had sent — §10.2 п.5's argument
-        about status applies to the side just as directly (`GDD` §16.6).
+        A name when he has one, his side and his job when he has not. A foe carries no
+        display name, and the frame of a running fight read `Намерение Выстрел Доран`: the
+        act had no subject and the *target's* name sat where the actor's belongs.
       */}
-      <Label text={text(unit.side === 'crew' ? BattleFieldKeys.Crew : BattleFieldKeys.Foes)} />
-      {unit.displayNameKey === null ? null : <Label text={text(unit.displayNameKey)} />}
-      <Label text={text(unit.roleKey)} />
+      <Tinted tone={tones.who}>
+        <Who
+          displayNameKey={intent.displayNameKey}
+          sideKey={intent.sideKey}
+          roleKey={intent.roleKey}
+        />
+      </Tinted>
+      <Label text={text(intent.actionKey)} />
       {/*
-        Where he stands, in the two words `COMBAT_SPEC` §3.1 names a cell by: row 1 is the
-        rank that meets the enemy, and the column is shared with the other side. The owner's
-        first play: «непонятно, как стоят» — the list carried everything about a man except
-        his cell, and the canvas beside it has no text a reader can check the picture against.
+        The word between the two men, the same one the journal's own `intent_declared` line
+        carries: an intent is always the subject's act aimed at the other man, so it is
+        always `To`. Without it the same event read two ways on one screen.
       */}
-      <Captioned captionKey={BattleFieldKeys.Row} value={String(unit.row)} />
-      <Captioned captionKey={BattleFieldKeys.Column} value={String(unit.column)} />
-      <Captioned captionKey={BattleFieldKeys.Health} value={String(unit.health)} />
-      {unit.leftKey === null ? null : <Label text={text(unit.leftKey)} />}
-      {unit.statuses.map((status) => (
-        // The word and the mark, both, and never the tint alone (§10.2 п.5, `GDD` §16.6).
-        <span className="status" key={status.key}>
-          <Label text={text(status.key)} />
-          <Label text={text(status.markKey)} />
-        </span>
-      ))}
+      {intent.targetUnit === null ? null : (
+        <>
+          <Label text={text(BattleFieldKeys.To)} />
+          <Tinted tone={tones.target}>
+            <Who
+              displayNameKey={intent.targetDisplayNameKey}
+              sideKey={intent.targetSideKey}
+              roleKey={intent.targetRoleKey}
+            />
+          </Tinted>
+        </>
+      )}
+      <Label text={text(intent.reasonKey)} />
+      {/*
+        The moment `DIRECTION` §4.8 is about, and it is never shown on its own: a man going
+        against the order is only legible beside the order he went against.
+      */}
+      {intent.contraryToDoctrineKey === null ? null : (
+        <Label text={text(intent.contraryToDoctrineKey)} />
+      )}
     </div>
   );
 }
 
+/**
+ * One line of the journal, with the three colours of `DEC-018` on its spans.
+ *
+ * Which span carries which colour is `battleLineTones`' decision, read off the words this line
+ * prints and off nothing else (`packages/presentation`, where every branch on a value lives).
+ * What is left here is putting each colour on the one span it belongs to: the man, the man
+ * after the arrow, the status, the number — never the line.
+ */
 function JournalRow({ line }: { readonly line: BattleJournalLine }) {
   const text = useText();
+  const tones = battleLineTones(line);
 
   return (
     <div className="journal-line">
       <Label text={text(line.key)} />
-      <Who displayNameKey={line.displayNameKey} sideKey={line.sideKey} roleKey={line.roleKey} />
-      {line.detailKey === null ? null : <Label text={text(line.detailKey)} />}
+      <Tinted tone={tones.who}>
+        <Who displayNameKey={line.displayNameKey} sideKey={line.sideKey} roleKey={line.roleKey} />
+      </Tinted>
+      {line.detailKey === null ? null : (
+        <Tinted tone={tones.detail}>
+          <Label text={text(line.detailKey)} />
+        </Tinted>
+      )}
       {/*
         The other man, after the word saying which way it went and before the number. The
         owner's first play read `Урон Противник Столкновение 10` and asked «кто куда бьёт»:
@@ -193,14 +215,20 @@ function JournalRow({ line }: { readonly line: BattleJournalLine }) {
       {line.linkKey === null ? null : (
         <>
           <Label text={text(line.linkKey)} />
-          <Who
-            displayNameKey={line.targetDisplayNameKey}
-            sideKey={line.targetSideKey}
-            roleKey={line.targetRoleKey}
-          />
+          <Tinted tone={tones.target}>
+            <Who
+              displayNameKey={line.targetDisplayNameKey}
+              sideKey={line.targetSideKey}
+              roleKey={line.targetRoleKey}
+            />
+          </Tinted>
         </>
       )}
-      {line.amount === null ? null : <Label text={String(line.amount)} />}
+      {line.amount === null ? null : (
+        <Tinted tone={tones.amount}>
+          <Label text={String(line.amount)} />
+        </Tinted>
+      )}
     </div>
   );
 }

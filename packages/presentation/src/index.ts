@@ -37,11 +37,14 @@ export {
   BATTLE_STATE_KEYS,
   BATTLE_STATUS_KEYS,
   BATTLE_TITLE_KEY,
+  BLOCKER_KEYS,
+  BlockerKeys,
   BattleControlKeys,
   BattleEventKeys,
   BattleFieldKeys,
   COMBAT_ACTION_KEYS,
   COMBAT_ROLE_KEYS,
+  COMBAT_ROLE_SHORT_KEYS,
   DOCTRINE_KEYS,
   battleOutcomeKey,
   battleStateKey,
@@ -49,6 +52,7 @@ export {
   battleStatusMarkKey,
   combatActionKey,
   combatRoleKey,
+  combatRoleShortKey,
   doctrineKey,
   AFTER_ACTION_STATE_KEYS,
   AFTER_ACTION_TITLE_KEY,
@@ -198,6 +202,16 @@ export {
 
 export { OfferLeverId, leverOfRefusal } from './refused-lever.ts';
 
+export { HERO_STANCES, HeroStance, heroOfferRows, type HeroOfferRow } from './hero-offer-row.ts';
+
+export {
+  LEVER_OF_REASON,
+  LEVER_ON_CHOSEN_METHOD,
+  blockingReasons,
+  type BlockingReason,
+  type Remedy
+} from './blocking-reasons.ts';
+
 export { describeReadModel, readModelHash, type ScreenModel } from './screen-model.ts';
 
 export {
@@ -233,6 +247,17 @@ export {
   type BattleUnitLine,
   type BattleView
 } from './battle-screen-model.ts';
+
+export {
+  battleLineTones,
+  battleUnitSide,
+  type AmountTone,
+  type BattleLineTones,
+  type BattleLineWords,
+  type BattleUnitSide,
+  type DetailTone,
+  type SideTone
+} from './battle-line-tones.ts';
 
 export {
   FEED_SPEEDS,

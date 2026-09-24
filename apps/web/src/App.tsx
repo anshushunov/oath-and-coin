@@ -37,7 +37,6 @@ import { ContractBoardScreen } from './screens/board/contract-board-screen.tsx';
 import { ContractOfferScreen } from './screens/contract-offer/contract-offer-screen.tsx';
 import { SavesScreen } from './screens/saves/saves-screen.tsx';
 import { TextSource, useText } from './text.tsx';
-import { WorldCanvas } from './world/world-canvas.tsx';
 
 /**
  * The browser build's root: the port of `Main._Ready` minus Godot.
@@ -170,7 +169,7 @@ export function App({ createController = browserSessionController }: AppProps = 
             }}
           />
         ) : screen === 'battle' ? (
-          <BattleLab session={session} controller={controller} />
+          <BattleLab session={session} controller={controller} position={run.position} />
         ) : watching === null ? (
           <CampaignScreen model={session.screen} controller={controller} onBattle={watch} />
         ) : (
@@ -199,22 +198,12 @@ export function App({ createController = browserSessionController }: AppProps = 
       </TextSource>
 
       {/*
-        The schematic world behind the screen (`DEC-007`, Task 14). Outside the
-        `TextSource` because it renders no text at all — a canvas has no text nodes, so
-        the rendered-UI hash collected from the screen above cannot see it either way,
-        and putting it under a text provider would suggest otherwise.
-
-        Drawn on both screens, and from the same model: it is the campaign behind the
-        page rather than a decoration of one screen, and a canvas that blanked while the
-        player looked at the slots would be claiming the campaign went away.
-
-        **Not while a battle is on screen.** The battle draws its own board, and this one
-        would be a second canvas showing the campaign's line-up under it — two pictures of
-        different things, one above the other, with nothing saying which is which. Found by
-        looking at the frame, and by nothing else: every hash was green on it, correctly,
-        because a canvas has no texts for either of them to see.
+        No schematic world behind the screens (`DEC-020`, superseding `DEC-015`). A canvas
+        stood here under the offer, the board, the debrief and the saves; the offer's count
+        and its squad cards now say in words what its line-up of tokens said in shapes, and
+        on the other three it was already an empty box. The one canvas left on the page is
+        the battle board, which `BattleScreen` mounts for itself.
       */}
-      {screen === 'battle' || watching !== null ? null : <WorldCanvas model={session.screen} />}
 
       {/*
         Not part of the screen, and deliberately after it: one fact worth reporting
@@ -604,13 +593,20 @@ const parseContentIdLike = (stated: string): ContentId => stated as ContentId;
  * **Paused at the opening position.** A feed running on `requestAnimationFrame` is at a
  * different place in every run, so a screenshot of one is a screenshot of the machine's
  * timing rather than of the screen; pressing play is the player's own first click.
+ *
+ * **Or paused at the position the run states** (`RunRequest.position`): the same fight with
+ * that many of its events applied, which is how the browser evidence names a frame in the
+ * middle of it. A position past the fight's end is refused rather than clamped — a frame of
+ * the end under a URL asking for a middle would be evidence about the wrong moment.
  */
 function BattleLab({
   session,
-  controller
+  controller,
+  position
 }: {
   readonly session: SessionState;
   readonly controller: SessionController;
+  readonly position: number | null;
 }) {
   const errorCode = session.screen.errorCode;
 
@@ -631,7 +627,9 @@ function BattleLab({
 
   // A contract the abstract resolver answers, or one whose crew is not on the board yet:
   // both are "there is no fight here", and the screen's own `Empty` says so.
-  if (controller.previewBattle(contractId, null) === null) {
+  const record = controller.previewBattle(contractId, null);
+
+  if (record === null) {
     return (
       <BattleScreen
         model={controller.battleScreen(contractId, null, 0) ?? BATTLE_LOADING_SCREEN}
@@ -640,5 +638,15 @@ function BattleLab({
     );
   }
 
-  return <BattlePlayback contractId={contractId} port={controller} startPaused />;
+  if (position !== null && position > record.events.length) {
+    throw new Error(
+      `Run parameter 'position' is ${String(position)}, and this fight has ` +
+        `${String(record.events.length)} events. A position past the end is refused rather ` +
+        'than read as the end: the frame would be of a moment the URL did not name.'
+    );
+  }
+
+  return (
+    <BattlePlayback contractId={contractId} port={controller} startPaused startAt={position ?? 0} />
+  );
 }

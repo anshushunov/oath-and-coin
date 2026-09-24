@@ -16,7 +16,9 @@ import { Application, Container, Graphics, Text } from 'pixi.js';
 // transform.
 import 'pixi.js/unsafe-eval';
 
-import type { BattlePopup } from './battle-scene-model.ts';
+import { Stroke, hex } from '../ui/tokens.ts';
+
+import type { BattleIntent, BattleLabel, BattlePopup } from './battle-scene-model.ts';
 import type { SceneDescription, SceneShape } from './scene-model.ts';
 
 /**
@@ -37,34 +39,44 @@ import type { SceneDescription, SceneShape } from './scene-model.ts';
  * nothing here pretends otherwise.
  *
  * The colours are the schematic palette `DEC-007` asks for until the vertical slice —
- * a token, a marker, and the one distinction the scene draws. They are constants here
- * rather than CSS custom properties because nothing in a canvas reads CSS.
+ * the board's cells, the two sides and the marks on them. They are read through
+ * `hex()` rather than written here as numbers, because nothing in a canvas reads CSS and
+ * `ADR-017` refuses the obvious consequence — a second palette that happens to agree with
+ * the stylesheets until the day it does not. The names below are unchanged: this file
+ * swapped where its numbers come from and nothing else.
  */
 
 /** The scene's own background, so the canvas is never a hole in the page. */
-const BACKGROUND = 0x11131a;
+const BACKGROUND = hex('sceneBackground');
 
-/** The offered contract. */
-const MARKER_FILL = 0xc8a04a;
-
-/** A hero who has answered, and one still to. */
-const TOKEN_ANSWERED = 0x4a7fc8;
-const TOKEN_WAITING = 0x3a3f4b;
+/*
+ * The offer's marker and its two hero-token colours stood here, written as numbers on a
+ * deadline with a directive each — and left with the canvas of the offer (`DEC-020`). Every
+ * colour this file draws is a role of `tokens.ts` now; there is no line left for the ban on
+ * `0xrrggbb` to excuse.
+ */
 
 /** The battle board: a cell, the two sides, a man who is down, a bar and a status mark. */
-const CELL_FILL = 0x1a1d26;
-const TOKEN_CREW = 0x4a7fc8;
-const TOKEN_FOE = 0xc85a4a;
+const CELL_FILL = hex('cell');
+const TOKEN_CREW = hex('crew');
+const TOKEN_FOE = hex('foe');
 /*
  * A man who is out of the fight. Far enough from the cell's own fill to read as a token
  * rather than as an empty cell — found by looking at the frame, where the first value
  * (`0x2a2d36`) was within a shade of `CELL_FILL` and four downed men looked like four
  * cells nobody had ever stood in.
+ *
+ * That rejected value stays written down. It is a record of what was tried, not a colour
+ * anything uses, and it survives both gates honestly: the ESLint ban matches `Literal`
+ * nodes rather than comment text, and `check-ui-colours.mjs` reads only `.css`. Nothing
+ * here is leaking through a hole — do not "fix" it, and note that it needs no
+ * `eslint-disable` either: a directive over a comment would suppress nothing and
+ * `reportUnusedDisableDirectives` would report it.
  */
-const TOKEN_DOWNED = 0x5a4a52;
-const HEALTH_FILL = 0x6fbf73;
-const HEALTH_EMPTY = 0x3a2a2a;
-const STATUS_MARK = 0xd8c26a;
+const TOKEN_DOWNED = hex('downed');
+const HEALTH_FILL = hex('health');
+const HEALTH_EMPTY = hex('healthEmpty');
+const STATUS_MARK = hex('status');
 
 /**
  * The floating number and the outline under it (`COMBAT_SPEC` §10.2 п.4).
@@ -72,14 +84,41 @@ const STATUS_MARK = 0xd8c26a;
  * The outline is near-black and three pixels wide, which is what makes the number readable
  * on the white flash the spike measured it disappearing into.
  */
-const POPUP_DAMAGE = 0xffd8d0;
-const POPUP_HEALING = 0xd0ffd8;
-const POPUP_OUTLINE = 0x0a0b0f;
-const POPUP_OUTLINE_WIDTH = 3;
+const POPUP_DAMAGE = hex('harm');
+const POPUP_HEALING = hex('aid');
+const POPUP_OUTLINE = hex('popupOutline');
+const POPUP_OUTLINE_WIDTH = Stroke.thick;
 
 /** Drawn on every shape, so a token on the background still has an edge. */
-const OUTLINE = 0x8b93a7;
-const OUTLINE_WIDTH = 2;
+const OUTLINE = hex('outline');
+const OUTLINE_WIDTH = Stroke.hairline;
+
+/**
+ * The word on a token: the page's own ink, over the popup's dark outline.
+ *
+ * The same pairing the floating number uses and for the same reason — a token is blue, red or
+ * the grey of a man who is down, and a word has to read on all three without the scene
+ * knowing which it is on. A hairline rather than the popup's thick stroke: the word is twelve
+ * logical pixels, and three of outline would close its letters up.
+ */
+const LABEL_INK = hex('ink');
+const LABEL_OUTLINE_WIDTH = Stroke.hairline;
+
+/**
+ * The line of intent: its own colour, over a dark edge wide enough to read across a cell, a
+ * token and the gap between the boards alike.
+ *
+ * Its own colour role rather than the ink of the words, and not for looks: the browser check
+ * finds the line by counting the pixels of exactly this colour (`tests/e2e/battle.spec.ts`),
+ * because a count of *all* colours cannot tell "words and no line" from "words and a line" —
+ * words alone are hundreds of shades (`docs/research/BATTLE_LABEL_SPIKE_2026-09.md`).
+ */
+const INTENT = hex('intent');
+const INTENT_WIDTH = Stroke.thick;
+const INTENT_EDGE_WIDTH = Stroke.thick + 2 * Stroke.hairline;
+/** The arrowhead: how long it is along the line, and how far it spreads either side. */
+const ARROW_LENGTH = 9;
+const ARROW_SPREAD = 5;
 
 /** A mounted scene, and the two things its owner may do with it. */
 export interface PixiScene {
@@ -172,6 +211,14 @@ function draw(shape: SceneShape): Container {
     return drawPopup(shape);
   }
 
+  if (shape.kind === 'battle-label') {
+    return drawLabel(shape);
+  }
+
+  if (shape.kind === 'battle-intent') {
+    return drawIntent(shape);
+  }
+
   const graphics = new Graphics();
 
   graphics.label = shape.id;
@@ -223,12 +270,81 @@ function drawPopup(shape: BattlePopup): Container {
   return text;
 }
 
-function fillFor(shape: Exclude<SceneShape, BattlePopup>): number {
+/**
+ * The word on a token, centred across the width the description gives it.
+ *
+ * Centred rather than wrapped: the words are chosen to fit (a name of up to seven letters, a
+ * job of up to five — the owner's decision of 2026-09-23), and the spike measured what wrapping
+ * does to a word that does not — «Столкно / вение», broken mid-word. A word that ever outgrows
+ * its token spills evenly past both edges, which is ugly and still readable; broken in half it
+ * is neither.
+ */
+function drawLabel(shape: BattleLabel): Container {
+  const text = new Text({
+    text: shape.label,
+    style: {
+      fontFamily: 'sans-serif',
+      fontSize: shape.height,
+      fill: LABEL_INK,
+      stroke: { color: POPUP_OUTLINE, width: LABEL_OUTLINE_WIDTH, join: 'round' }
+    }
+  });
+
+  text.label = shape.id;
+  text.anchor.set(0.5, 0);
+  text.x = shape.x + shape.width / 2;
+  text.y = shape.y;
+
+  return text;
+}
+
+/**
+ * The line of intent: from the edge of one token to the edge of the other, with a head at the
+ * target's end — which way it goes is the half of «кто кого бьёт» a plain line would lose.
+ *
+ * Drawn twice, dark and wide under bright and narrow, so it reads over a cell, over a token and
+ * over the scene's own background without the scene having to know which it crosses.
+ */
+function drawIntent(shape: BattleIntent): Container {
+  const graphics = new Graphics();
+  const dx = shape.toX - shape.fromX;
+  const dy = shape.toY - shape.fromY;
+  const length = Math.hypot(dx, dy);
+  // The description never hands over a line with no length (`battle-scene-model.ts` drops
+  // it), so this is arithmetic safety rather than a rule about the board.
+  const ux = length === 0 ? 0 : dx / length;
+  const uy = length === 0 ? 0 : dy / length;
+  const headLength = Math.min(ARROW_LENGTH, length);
+  const baseX = shape.toX - ux * headLength;
+  const baseY = shape.toY - uy * headLength;
+  const head = [
+    shape.toX,
+    shape.toY,
+    baseX - uy * ARROW_SPREAD,
+    baseY + ux * ARROW_SPREAD,
+    baseX + uy * ARROW_SPREAD,
+    baseY - ux * ARROW_SPREAD
+  ];
+
+  graphics.label = shape.id;
+
+  graphics
+    .moveTo(shape.fromX, shape.fromY)
+    .lineTo(baseX, baseY)
+    .stroke({ color: POPUP_OUTLINE, width: INTENT_EDGE_WIDTH, cap: 'round' })
+    .poly(head)
+    .stroke({ color: POPUP_OUTLINE, width: INTENT_EDGE_WIDTH - INTENT_WIDTH, join: 'round' })
+    .moveTo(shape.fromX, shape.fromY)
+    .lineTo(baseX, baseY)
+    .stroke({ color: INTENT, width: INTENT_WIDTH, cap: 'round' })
+    .poly(head)
+    .fill(INTENT);
+
+  return graphics;
+}
+
+function fillFor(shape: Exclude<SceneShape, BattlePopup | BattleLabel | BattleIntent>): number {
   switch (shape.kind) {
-    case 'contract-marker':
-      return MARKER_FILL;
-    case 'hero-token':
-      return shape.answered ? TOKEN_ANSWERED : TOKEN_WAITING;
     case 'battle-cell':
       return CELL_FILL;
     case 'battle-token':

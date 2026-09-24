@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
-import { startSession, type SessionState } from '@oath-and-coin/application';
 import {
+  createSessionController,
+  startSession,
+  type SessionState
+} from '@oath-and-coin/application';
+import {
+  HeroStance,
   LeverDisabledKeys,
   OFFER_ACTIONS,
   OfferAction,
@@ -18,6 +23,9 @@ import {
   createContractOfferScreenModel,
   expectedSnapshot,
   failedScreen,
+  heroOfferRows,
+  blockingReasons,
+  BlockerKeys,
   snapshotHash,
   type AvailableAction,
   type ContentId,
@@ -500,17 +508,33 @@ describe('the draft block, the promise, the treasury and the settlement', () => 
     expect(texts).toContain(textOf(PromiseTermsKeys.Breach));
   });
 
-  it('shows the treasury the deal would leave, next to the promise', () => {
-    const container = renderScreen(draftModel());
-    const forecast = container.querySelector('[data-testid="treasury-forecast"]');
+  // Owner's decision of 2026-09-23 (spec §4): only a narrow summary row is pinned — the
+  // contract, the treasury the deal would leave and the count with its mark — and the levers
+  // and the ladder flow under it. Pinned is the stylesheet's to do and a browser's to measure
+  // (`tests/e2e/contract-offer.spec.ts`); which blocks are in the row is this file's.
+  it('puts the contract, the count and the treasury in the summary row, and nothing else', () => {
+    const model = draftModel();
+    const container = renderScreen(model);
+    const summary = control(container, 'offer-summary');
+    const band = control(container, 'package-band');
 
-    expect(forecast).not.toBeNull();
-    expect(forecast?.textContent).toContain('375');
+    expect(collectRenderedTexts(summary)).toContain(textOf(model.contract!.displayNameKey));
+    expect(summary.querySelector('[data-testid="offer-tally"]')).not.toBeNull();
+    expect(summary.querySelector('[data-testid="treasury-forecast"]')?.textContent).toContain(
+      '375'
+    );
 
-    // "Next to the promise": the forecast and the promise's own two sentences share
-    // one container, so a reader sees the price and the predicate it prices without
-    // having to look elsewhere on the screen.
-    expect(forecast?.closest('.price')?.textContent).toContain(textOf(PromiseTermsKeys.Fulfil));
+    // The levers and the ladder are the band's, in the ordinary flow under the row.
+    expect(summary.querySelector('[data-lever]')).toBeNull();
+    expect(summary.contains(actionButton(container, OfferAction.Compose))).toBe(false);
+    expect(band.querySelector('[data-lever]')).not.toBeNull();
+    expect(band.contains(actionButton(container, OfferAction.Compose))).toBe(true);
+    expect(band.querySelector('[data-testid="offer-tally"]')).toBeNull();
+
+    // The promise stays with the levers that set its bonus; the forecast that prices it is
+    // in the pinned row, so it is on screen wherever the promise is read.
+    expect(collectRenderedTexts(band)).toContain(textOf(PromiseTermsKeys.Fulfil));
+    expect(collectRenderedTexts(summary)).not.toContain(textOf(PromiseTermsKeys.Fulfil));
   });
 
   it('renders no settlement block when the model carries no settlement to act on', () => {
@@ -1675,3 +1699,310 @@ describe('a screen with some controls live and others dark', () => {
     ]);
   });
 });
+
+/**
+ * The count of the package band while the package is touched — the three transitions of
+ * spec §4.2, each one a thing the screen could lie about in a different direction.
+ *
+ * Off `screen_draft`, a real run: the package is composed and the key hero has answered,
+ * so the count is a number and the inputs are live. The middle case runs through the real
+ * session controller rather than a hand-built model, because that is where it used to go
+ * wrong: the answers are rebuilt from history, and a re-composed package went on showing
+ * an answer to the version before it (`contractOfferScreenModel`'s window, `DEC-012`).
+ */
+describe('the count while the package is touched', () => {
+  function draft(): ContractOfferScreenModel {
+    return sessionFor('screen_draft', 'screen_draft', SEED).screen;
+  }
+
+  function tally(container: HTMLElement): HTMLElement {
+    return control(container, 'offer-tally');
+  }
+
+  /** Every text of the squad's cards, in order — what "the rows did not move" is about. */
+  function rowTexts(container: HTMLElement): readonly string[] {
+    return [...container.querySelectorAll('[data-testid="hero-row"]')].flatMap((row) =>
+      collectRenderedTexts(row)
+    );
+  }
+
+  it('dims the count and marks it while the form holds terms nobody was asked about', () => {
+    const model = draft();
+    const { container } = renderWith(model, fakeController());
+    const countBefore = control(container, 'tally-accepted').textContent;
+    const rowsBefore = rowTexts(container);
+
+    expect(model.responses.length).toBeGreaterThan(0);
+    expect(tally(container).dataset['stale']).toBe('false');
+    expect(collectRenderedTexts(tally(container))).not.toContain(textOf(OfferFieldKeys.Editing));
+
+    type(control(container, 'offer.advance'), String(model.offer!.advanceLever.value - 1));
+
+    expect(tally(container).dataset['stale']).toBe('true');
+    expect(collectRenderedTexts(tally(container))).toContain(textOf(OfferFieldKeys.Editing));
+    // The numbers are the ones the recorded package got — nothing has been asked yet.
+    expect(control(container, 'tally-accepted').textContent).toBe(countBefore);
+    expect(rowTexts(container)).toEqual(rowsBefore);
+  });
+
+  it('says the squad has not been asked once a new package is recorded', async () => {
+    const controller = createSessionController({
+      request: {
+        content: browserContentSource(),
+        scenario: 'screen_draft',
+        checkpoint: 'screen_draft',
+        seed: SEED
+      },
+      saves: {
+        read: () => Promise.resolve(null),
+        write: () => Promise.resolve(),
+        list: () => Promise.resolve([])
+      },
+      now: () => '2026-09-22T00:00:00.000Z',
+      expected: { rulesetVersion: 'unused-here', contentVersion: 'unused-here' }
+    });
+    await controller.start();
+
+    const before = offerScreenOf(controller.store.snapshot().screen);
+    const { container, rerender } = mount(
+      <TextSource catalogue={catalogue}>
+        <ContractOfferScreen model={before} controller={controller} />
+      </TextSource>
+    );
+
+    expect(before.responses.length).toBeGreaterThan(0);
+
+    type(control(container, 'offer.advance'), String(before.offer!.advanceLever.value - 1));
+    click(actionButton(container, OfferAction.Compose));
+
+    const after = offerScreenOf(controller.store.snapshot().screen);
+
+    // Applied: the package moved to a new version, and the engine emptied its answers.
+    expect(after.offer!.version).toBe(before.offer!.version + 1);
+
+    rerender(
+      <TextSource catalogue={catalogue}>
+        <ContractOfferScreen model={after} controller={controller} />
+      </TextSource>
+    );
+
+    expect(collectRenderedTexts(tally(container))).toContain(textOf(OfferFieldKeys.NotAsked));
+    expect(container.querySelector('[data-testid="tally-accepted"]')).toBeNull();
+    expect(tally(container).dataset['stale']).toBe('false');
+    // Cards without answers: no hero carries a chip saying what he said to the old terms —
+    // every chip on the squad is the one that says he has not answered.
+    expect(
+      [...container.querySelectorAll('[data-testid="hero-row"] .tag')].map((tag) => tag.textContent)
+    ).toEqual(after.roster.map(() => textOf(OfferFieldKeys.Unanswered)));
+    expect(
+      [...container.querySelectorAll('[data-testid="hero-row"]')].map(
+        (row) => (row as HTMLElement).dataset['stance']
+      )
+    ).toEqual(after.roster.map(() => HeroStance.Unanswered));
+  });
+
+  it('takes the mark off a refused package and leaves the count where it was', () => {
+    const model = draft();
+    const { container } = renderWith(model, fakeController(RejectionCodes.OfferTermsOutOfBounds));
+    const countBefore = control(container, 'tally-accepted').textContent;
+
+    type(control(container, 'offer.advance'), String(model.offer!.advanceLever.value - 1));
+    click(actionButton(container, OfferAction.Compose));
+
+    expect(tally(container).dataset['stale']).toBe('false');
+    expect(collectRenderedTexts(tally(container))).not.toContain(textOf(OfferFieldKeys.Editing));
+    expect(control(container, 'tally-accepted').textContent).toBe(countBefore);
+    // The refusal is what the screen says about those terms now, and it stands by the lever.
+    expect(
+      control(container, 'offer-rejection').closest(`[data-lever="${OfferLeverId.Terms}"]`)
+    ).not.toBeNull();
+  });
+
+  // Spec §4.2 takes the mark off for a refused *compose* only: that refusal is about the
+  // typed terms. Another command refused says nothing about them — the form still holds
+  // terms the package does not record, and the count must still say so.
+  it('keeps the mark when a command other than compose is refused', () => {
+    const base = draft();
+    const model = createContractOfferScreenModel({
+      ...base,
+      availableActions: base.availableActions.map((available) => ({
+        ...available,
+        disabledReasonKey: null
+      }))
+    });
+    const { container } = renderWith(model, fakeController(RejectionCodes.AlreadyResponded));
+
+    type(control(container, 'offer.advance'), String(model.offer!.advanceLever.value - 1));
+    click(actionButton(container, OfferAction.AskKeyHero));
+
+    expect(control(container, 'offer-rejection')).toBeDefined();
+    expect(tally(container).dataset['stale']).toBe('true');
+    expect(collectRenderedTexts(tally(container))).toContain(textOf(OfferFieldKeys.Editing));
+  });
+
+  // A package the engine will not let be recomposed has no "being edited" state: what is
+  // typed can never become the package, so marking the count would promise a revision the
+  // ladder already says is refused. Read off the model's own answer for compose, never off
+  // the phase — a locked package whose crew has not filled *can* still be revised.
+  it('does not mark the count of a package that cannot be recomposed', () => {
+    const base = draft();
+    const model = createContractOfferScreenModel({
+      ...base,
+      availableActions: base.availableActions.map((available) =>
+        available.action === OfferAction.Compose
+          ? { ...available, disabledReasonKey: RejectionCodes.OfferNotInDraft }
+          : available
+      )
+    });
+    const { container } = renderWith(model, fakeController());
+
+    type(control(container, 'offer.advance'), String(model.offer!.advanceLever.value - 1));
+
+    expect(tally(container).dataset['stale']).toBe('false');
+    expect(collectRenderedTexts(tally(container))).not.toContain(textOf(OfferFieldKeys.Editing));
+  });
+});
+
+describe('the squad, one card per hero with his own answer', () => {
+  it('puts the refusals first and colours each answer by where its hero stands', () => {
+    // A blocked answer is on this run, so the order has something to put before the rest.
+    const { screen } = sessionFor('two_principles_blocked', 'final', SEED);
+    const container = renderScreen(screen);
+    const rows = [...container.querySelectorAll('[data-testid="hero-row"]')] as HTMLElement[];
+    const stances = rows.map((row) => row.dataset['stance']);
+    const roleOf: Readonly<Record<string, string>> = {
+      [HeroStance.Refused]: 'against',
+      [HeroStance.Blocked]: 'blocked',
+      [HeroStance.Accepted]: 'favour',
+      [HeroStance.Unanswered]: 'status'
+    };
+
+    expect(stances).toEqual(heroOfferRows(screen).map((row) => row.stance));
+    expect(stances).toContain(HeroStance.Blocked);
+
+    // The chip's colour is the stance's, never worked out from the word on it.
+    for (const row of rows) {
+      const tag = row.querySelector<HTMLElement>('.tag');
+
+      if (tag !== null) {
+        expect(tag.dataset['role'], row.dataset['stance']).toBe(
+          roleOf[row.dataset['stance'] ?? '']
+        );
+      }
+    }
+  });
+
+  // `GDD` §16.6: a plain edge is an absence of colour, and an absence is not a signal a
+  // player can read. On a half-polled package (the key hero asked, the rest not yet) the
+  // heroes with no answer must say so in words, or they read like cards the screen forgot.
+  it('says in words that a hero has not answered, and only on his card', () => {
+    const { screen } = sessionFor('screen_draft', 'screen_draft', SEED);
+    const container = renderScreen(screen);
+    const rows = [...container.querySelectorAll('[data-testid="hero-row"]')] as HTMLElement[];
+    const chipOf = (row: HTMLElement): string | null =>
+      row.querySelector('.hero-row-head .tag')?.textContent ?? null;
+    const unanswered = rows.filter((row) => row.dataset['stance'] === HeroStance.Unanswered);
+    const answered = rows.filter((row) => row.dataset['stance'] !== HeroStance.Unanswered);
+
+    // The premise: this run has both kinds of card, so the check below is about something.
+    expect(unanswered.length).toBeGreaterThan(0);
+    expect(answered.length).toBeGreaterThan(0);
+
+    for (const row of unanswered) {
+      expect(chipOf(row)).toBe(textOf(OfferFieldKeys.Unanswered));
+    }
+
+    for (const row of answered) {
+      expect(chipOf(row)).not.toBe(textOf(OfferFieldKeys.Unanswered));
+    }
+  });
+});
+
+describe('what stands in the way (DEC-019)', () => {
+  // Ilsa refuses on this run for the risk and for the insult of the pay — a refusal with
+  // reasons, which is the branch the summary is for.
+  it('prints one line per reason with whom it holds back and what changes it', () => {
+    const { screen } = sessionFor('screen_normal', 'screen_normal', SEED);
+    const container = renderScreen(screen);
+    const summary = control(container, 'offer-blockers');
+    const lines = [...summary.querySelectorAll('[data-testid="blocker"]')] as HTMLElement[];
+    const expected = blockingReasons(screen);
+
+    // The premise: this run has something in the way, so the check below is about something.
+    expect(expected.length).toBeGreaterThan(0);
+    expect(collectRenderedTexts(summary)[0]).toBe(textOf(BlockerKeys.Title));
+    expect(lines.map((line) => collectRenderedTexts(line))).toEqual(
+      expected.map((line) => [
+        textOf(line.reasonCode),
+        ...line.heroDisplayNameKeys.map(textOf),
+        textOf(line.remedyKey)
+      ])
+    );
+    // Where the lever stands, for a reader who wants to go to it — never a colour or a word
+    // worked out on this side.
+    expect(lines.map((line) => line.dataset['blockerLever'])).toEqual(
+      expected.map((line) => line.leverId ?? 'none')
+    );
+  });
+
+  it('stands under the ladder of commands and over the squad', () => {
+    const { screen } = sessionFor('screen_normal', 'screen_normal', SEED);
+    const container = renderScreen(screen);
+    const summary = control(container, 'offer-blockers');
+    const band = control(container, 'package-band');
+    const firstRow = control(container, 'hero-row');
+
+    expect(band.contains(summary)).toBe(false);
+    expect(band.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(
+      summary.compareDocumentPosition(firstRow) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
+  it('puts a principle on its own line, with no lever under it', () => {
+    const { screen } = sessionFor('two_principles_blocked', 'final', SEED);
+    const container = renderScreen(screen);
+    const lines = [
+      ...control(container, 'offer-blockers').querySelectorAll('[data-testid="blocker"]')
+    ] as HTMLElement[];
+    const last = lines.at(-1)!;
+
+    expect(collectRenderedTexts(last).at(-1)).toBe(textOf(BlockerKeys.Principle));
+    expect(last.dataset['blockerLever']).toBe('none');
+  });
+
+  // Vela is closed by `core:refuses_deception` on `method:deception`, the method this package
+  // chose — and the first compose of the same run shows "В открытую" opens her. The line
+  // sends the player to the method, lit like any line with a lever.
+  it('sends a principle on the chosen method to the method', () => {
+    const { screen } = sessionFor('method_choice_flips_the_key_hero', 'final', SEED);
+    const container = renderScreen(screen);
+    const lines = [
+      ...control(container, 'offer-blockers').querySelectorAll('[data-testid="blocker"]')
+    ] as HTMLElement[];
+    const last = lines.at(-1)!;
+
+    expect(collectRenderedTexts(last)).toEqual([
+      textOf('hero.decision.principle_forbids'),
+      textOf('hero.core.vela.name'),
+      textOf(BlockerKeys.Method)
+    ]);
+    expect(last.dataset['blockerLever']).toBe(OfferLeverId.Terms);
+  });
+
+  it('draws nothing when nothing stands in the way', () => {
+    const { screen } = sessionFor('screen_draft', 'screen_draft', SEED);
+
+    expect(blockingReasons(screen)).toEqual([]);
+    expect(renderScreen(screen).querySelector('[data-testid="offer-blockers"]')).toBeNull();
+  });
+});
+
+/** The session's screen, narrowed to the one this file is about, or a loud failure. */
+function offerScreenOf(screen: SessionState['screen']): ContractOfferScreenModel {
+  if (screen.screen !== ScreenKind.ContractOffer) {
+    throw new Error(`The session is on '${screen.screen}', not on the contract-offer screen.`);
+  }
+
+  return screen;
+}

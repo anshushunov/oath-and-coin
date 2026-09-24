@@ -7,6 +7,7 @@ import {
   createBattleScreenModel,
   type BattleScreenContent
 } from './battle-screen-model.ts';
+import { COMBAT_ROLE_KEYS, COMBAT_ROLE_SHORT_KEYS } from './keys.ts';
 import { readModelHash } from './screen-model.ts';
 import { ScreenState } from './screen-state.ts';
 import { parseContentId } from '@oath-and-coin/simulation';
@@ -105,6 +106,43 @@ describe('what moves as the feed moves', () => {
 
   it('clamps a position past the end rather than answering with a half-built screen', () => {
     expect(at(events.length + 500)).toEqual(at(events.length));
+  });
+});
+
+describe('the board names a man short enough to fit on his token', () => {
+  // The owner's decision of 2026-09-23 (`docs/research/BATTLE_LABEL_SPIKE_2026-09.md`): a
+  // foe has no name, and the full words of his job — «Столкновение», «Ломающий строй» — do
+  // not fit a token even half as large again. The board gets a short word of its own, and
+  // the list and the journal keep the full one.
+  it('gives every man the short word for the same job the full one names', () => {
+    const units = at(0).units;
+
+    expect(units.length).toBeGreaterThan(0);
+
+    for (const unit of units) {
+      const job = COMBAT_ROLE_KEYS.indexOf(unit.roleKey);
+
+      expect(job, unit.roleKey).toBeGreaterThanOrEqual(0);
+      expect(unit.roleShortKey).toBe(COMBAT_ROLE_SHORT_KEYS[job]);
+      expect(unit.roleShortKey).not.toBe(unit.roleKey);
+    }
+  });
+
+  it('puts the short word through the read-model hash with the rest of the man', () => {
+    const model = at(0);
+    const first = model.units[0]!;
+    const renamed = {
+      ...model,
+      units: [
+        {
+          ...first,
+          roleShortKey: COMBAT_ROLE_SHORT_KEYS.find((key) => key !== first.roleShortKey)!
+        },
+        ...model.units.slice(1)
+      ]
+    };
+
+    expect(readModelHash(renamed)).not.toBe(readModelHash(model));
   });
 });
 

@@ -6,7 +6,7 @@ import {
   type Store
 } from '@oath-and-coin/application';
 import { RULESET_VERSION, SaveErrorCodes, SaveReadError } from '@oath-and-coin/content';
-import { ScreenKind, ScreenState } from '@oath-and-coin/presentation';
+import { ScreenKind, ScreenState, type ScreenModel } from '@oath-and-coin/presentation';
 import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -14,6 +14,7 @@ import { App } from './App.tsx';
 import { browserContentSource, shippedContentVersion } from './content-source.ts';
 import type { RunRequest } from './run-request.ts';
 import { mount, render } from './testing/render.tsx';
+import type { ResolveText } from './text.tsx';
 
 /**
  * The page's lifecycle, which is what Task 16 changed about it.
@@ -40,10 +41,33 @@ import { mount, render } from './testing/render.tsx';
  * PixiJS. What that would measure is jsdom, not the page. The scene has its own checks
  * on both sides of this: `scene-model.test.ts` over the description it draws, and the
  * browser evidence over the pixels a real renderer produces.
+ *
+ * **The stand-in still describes the scene it was handed**, with the real `describeScene`
+ * and the props the page gave it, and marks the spot where the canvas would be. Only the
+ * renderer is replaced: the description is pure and runs in jsdom, and it is where a canvas
+ * mounted with the wrong props fails — review found the campaign's own battle screen
+ * drawing a board through the background canvas, which has no catalogue to put the board's
+ * words into, and a stand-in returning `null` would have stayed green over that crash.
  */
-vi.mock('./world/world-canvas.tsx', () => ({
-  WorldCanvas: () => null
-}));
+vi.mock('./world/world-canvas.tsx', async () => {
+  const { describeScene } = await import('./world/scene-model.ts');
+
+  return {
+    WorldCanvas: ({
+      model,
+      phase,
+      textOf
+    }: {
+      readonly model: ScreenModel;
+      readonly phase?: number;
+      readonly textOf?: ResolveText;
+    }) => {
+      describeScene(model, phase, textOf);
+
+      return <canvas data-testid="world-canvas" />;
+    }
+  };
+});
 
 interface PageReport {
   readonly screen: string;
@@ -173,7 +197,8 @@ describe('the page while its session is still arriving', () => {
       seed: 424242n,
       locale: 'ru',
       screen: 'contract-offer',
-      contract: null
+      contract: null,
+      position: null
     });
     const { container } = mount(<App createController={() => gated.controller} />);
 
@@ -187,7 +212,8 @@ describe('the page while its session is still arriving', () => {
       seed: 424242n,
       locale: 'ru',
       screen: 'contract-offer',
-      contract: null
+      contract: null,
+      position: null
     });
     const { container } = mount(<App createController={() => gated.controller} />);
 
@@ -220,7 +246,8 @@ describe('the page when the campaign moves to the debrief', () => {
       seed: 424242n,
       locale: 'ru',
       screen: 'contract-offer',
-      contract: null
+      contract: null,
+      position: null
     });
     const { container } = mount(<App createController={() => gated.controller} />);
 
@@ -248,6 +275,64 @@ describe('the page when the campaign moves to the debrief', () => {
   });
 });
 
+describe('the page when the campaign itself is on the battle screen', () => {
+  it('draws the stored battle on one canvas, not the board a second time behind it', async () => {
+    // The replay: `show(Battle)` puts the campaign on a board with men on it, and
+    // `StoredBattle` draws that board with the screen's words. The canvas behind the
+    // campaign screens has no catalogue — it sits outside the `TextSource` — so drawing the
+    // same board there would ask it for words it cannot resolve, and before that it drew a
+    // second board with no words under the first.
+    const gated = gatedController({
+      scenario: 'battle_ready',
+      checkpoint: 'battle_ready',
+      seed: 424242n,
+      locale: 'ru',
+      screen: 'contract-offer',
+      contract: null,
+      position: null
+    });
+    const { container, unmount } = mount(<App createController={() => gated.controller} />);
+
+    await act(async () => {
+      await gated.finish();
+    });
+
+    const contractId = gated.controller.store.snapshot().focusedContract;
+
+    if (contractId === null) {
+      throw new Error('The battle-ready run left no contract focused.');
+    }
+
+    // The fight, committed the way the playback commits it — `battle_ready` stops one press
+    // before it — so the campaign holds a record to show.
+    act(() => {
+      expect(gated.controller.resolveContract({ retreatAtRound: null, contractId }).applied).toBe(
+        true
+      );
+    });
+
+    act(() => {
+      gated.controller.show(ScreenKind.Battle);
+    });
+
+    const screen = gated.controller.store.snapshot().screen;
+
+    // Guarding the premise: the path is only worth measuring while it is a board with men
+    // on it. A battle screen with nobody on it describes no words and would pass either way.
+    expect(screen.screen).toBe(ScreenKind.Battle);
+    expect(screen.screen === ScreenKind.Battle ? screen.units.length : 0).toBeGreaterThan(0);
+    expect(reportIn(container).campaign_screen).toBe(ScreenKind.Battle);
+    expect(container.querySelectorAll('[data-testid="world-canvas"]')).toHaveLength(1);
+
+    // Taken down before the test ends: the replay plays on a timer, and a board left running
+    // updates after the environment is gone — Vitest reports that as an unhandled error on a
+    // loaded full run, and nowhere when this file runs alone.
+    act(() => {
+      unmount();
+    });
+  });
+});
+
 describe('a page taken down while its session is still arriving', () => {
   it('is written into by nothing that arrives afterwards', async () => {
     // The hazard the lifecycle introduced: a run landing after the player has navigated
@@ -262,7 +347,8 @@ describe('a page taken down while its session is still arriving', () => {
       seed: 424242n,
       locale: 'ru',
       screen: 'contract-offer',
-      contract: null
+      contract: null,
+      position: null
     });
     const { container, unmount } = mount(<App createController={() => gated.controller} />);
     expect(gated.subscribers()).toBe(1);

@@ -285,6 +285,27 @@ export const OfferFieldKeys = Object.freeze({
   Shortfall: 'field.offer.shortfall',
   LockCommitment: 'field.offer.lock_commitment',
   /**
+   * The count of the package band when nobody has answered the package as it stands — a
+   * freshly composed one, whose answers the engine has just emptied (`DEC-012`). A `0`
+   * there would read as "everyone refused", which is the opposite of what happened.
+   */
+  NotAsked: 'field.offer.not_asked',
+  /**
+   * The chip on a hero's card while he has no answer to the package as it stands — the
+   * word for the plain edge beside it (`GDD` §16.6), which alone is no signal at all.
+   *
+   * "Нет ответа" and not "не ответил" or "не спрашивали": the row cannot tell a hero who was
+   * never invited from one who was and has not been polled yet (`heroOfferRows` knows the
+   * answers, not the invitations), and of the three only this one is true of both.
+   */
+  Unanswered: 'field.offer.unanswered',
+  /**
+   * The mark on the count while the form holds terms the package does not record yet.
+   * Screen state rather than model state, so no snapshot carries it: the answers under the
+   * mark are about the terms as recorded, and the mark is what says so (spec §4.2).
+   */
+  Editing: 'field.offer.editing',
+  /**
    * The formation block (`COMBAT_SPEC` §3.7), which lives on the package because it is
    * decided before the crew leaves and not at the moment of sending.
    */
@@ -345,6 +366,34 @@ export const LeverDisabledKeys = Object.freeze({
 export const LEVER_DISABLED_KEYS: readonly string[] = Object.freeze(
   Object.values(LeverDisabledKeys)
 );
+
+/**
+ * The offer screen's "what stands in the way" summary (`DEC-019`): its heading, and the word
+ * each line prints for what changes that reason.
+ *
+ * Finer than `OfferLeverId`, and on purpose: the advance, the promise and the method
+ * share one row of controls and one refusal (`Terms`), but a player told "the terms" has three
+ * things to try where the table knows which one. `OfferLeverId` says where on the screen the
+ * lever is; these say which lever it is.
+ *
+ * `OutweighedByAdvance` is the owner's decision of 2026-09-20: a risk is a property of the
+ * contract and no lever removes it, but money does outweigh it, and "cannot be helped" would
+ * lie to the one bargaining. `Principle` is the line a red line gets — no strength to outweigh
+ * (`DEC-010`).
+ */
+export const BlockerKeys = Object.freeze({
+  Title: 'offer.blockers.title',
+  Advance: 'offer.blockers.advance',
+  Promise: 'offer.blockers.promise',
+  Crew: 'offer.blockers.crew',
+  Method: 'offer.blockers.method',
+  OutweighedByAdvance: 'offer.blockers.outweighed_by_advance',
+  NotThisPackage: 'offer.blockers.not_this_package',
+  Reputation: 'offer.blockers.reputation',
+  Principle: 'offer.blockers.principle'
+});
+
+export const BLOCKER_KEYS: readonly string[] = Object.freeze(Object.values(BlockerKeys));
 
 /**
  * What each of the six protocol commands is called on a control (`NEGOTIATION_SPEC` §3.1,
@@ -754,6 +803,24 @@ export function combatRoleKey(role: CombatRole): string {
 }
 
 export const COMBAT_ROLE_KEYS: readonly string[] = Object.freeze(COMBAT_ROLES.map(combatRoleKey));
+
+/**
+ * The same four jobs, as one short word a token on the board can carry.
+ *
+ * **The owner's decision of 2026-09-23, bought by a spike** (`docs/research/
+ * BATTLE_LABEL_SPIKE_2026-09.md`). A foe has no name, so the board labels him by his job —
+ * and «Столкновение» does not fit on a token even half as large again. A second key per job
+ * rather than a shortened first one: the list under the board and the journal keep the full
+ * words, and only the board reads these. Beside the full key and built the same way, so the
+ * two can never name different jobs.
+ */
+export function combatRoleShortKey(role: CombatRole): string {
+  return `${combatRoleKey(role)}.short`;
+}
+
+export const COMBAT_ROLE_SHORT_KEYS: readonly string[] = Object.freeze(
+  COMBAT_ROLES.map(combatRoleShortKey)
+);
 
 /** What a unit did on its turn (`COMBAT_SPEC` §4.1). */
 export function combatActionKey(action: CombatAction): string {
