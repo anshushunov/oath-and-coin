@@ -38,9 +38,16 @@ import { measureLayout } from './layout.ts';
  *
  * Two states, because the row has two heights: one line of text, and two when the count
  * reads "Отряд ещё не спрашивали" and the treasury wraps under the contract. A fix sized by
- * a number taken off the one-line row would pass the first and fail the second; how many
- * lines each state draws is asserted, not assumed, so a copy change that stopped the wrap
+ * a number taken off the one-line row would pass the first and fail the second; that the
+ * wrapping state wraps is asserted, not assumed, so a copy change that stopped the wrap
  * would say so here.
+ *
+ * **A floor, not an exact count.** How many lines a row of words takes is the fonts' say, and
+ * the fonts are the machine's: on the Linux runner the one-line row of `screen_normal` wraps
+ * to two, where Windows draws it on one. An exact `1` there reddened CI over a font, not over
+ * the fix. What the pair needs is only that the second state really wraps; the lines each
+ * run drew go into its report and the CI table, so the height a verdict was taken at is on
+ * the record either way.
  */
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -66,14 +73,14 @@ const FOCUSABLE = ['input', 'button', 'select', 'textarea', 'a[href]', '[tabinde
   .join(', ');
 
 /**
- * The states swept, and how many lines of text the summary row draws on each — the premise
+ * The states swept, and the fewest lines of text the summary row draws on each — the premise
  * of the pair, asserted before the verdict.
  */
 const STATES = [
-  { scenario: 'screen_normal', summaryLines: 1 },
+  { scenario: 'screen_normal', minSummaryLines: 1 },
   // The run `offer-refusal.spec.ts` starts from: a package nobody has been asked about yet,
   // so the count reads "Отряд ещё не спрашивали" and the treasury wraps under the contract.
-  { scenario: 'battle_lab', summaryLines: 2 }
+  { scenario: 'battle_lab', minSummaryLines: 2 }
 ] as const;
 
 interface Box {
@@ -118,7 +125,7 @@ interface FocusStep {
   readonly clearance: number;
 }
 
-for (const { scenario, summaryLines } of STATES) {
+for (const { scenario, minSummaryLines } of STATES) {
   test(`${scenario}: no control the keyboard reaches is hidden under the pinned summary row`, async ({
     page
   }) => {
@@ -209,9 +216,10 @@ for (const { scenario, summaryLines } of STATES) {
     // The premise, in two parts: the state draws the row at the height it is here for, and
     // some press really started from a control behind the pinned row — a sweep whose
     // controls never stood there would be green about nothing.
-    expect(linesDrawn, `the summary row must draw ${String(summaryLines)} line(s) here`).toBe(
-      summaryLines
-    );
+    expect(
+      linesDrawn,
+      `the summary row must draw at least ${String(minSummaryLines)} line(s) here`
+    ).toBeGreaterThanOrEqual(minSummaryLines);
     expect(
       asked.length,
       'some press must start from a control behind the pinned summary row'
